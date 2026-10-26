@@ -17,7 +17,7 @@ const SheetOverlay = forwardRef<
     return (
         <DialogPrimitive.Overlay
             className={cn(
-                "fixed inset-0 z-50 bg-foreground/60 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=open]:fade-in",
+                "fixed inset-0 z-overlay bg-overlay backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=open]:fade-in",
                 className,
             )}
             ref={ref}
@@ -27,7 +27,7 @@ const SheetOverlay = forwardRef<
 });
 
 const sheetVariants = cva(
-    "fixed z-[51] gap-4 bg-card p-6 text-foreground shadow-xl transition ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500 data-[state=open]:animate-in data-[state=closed]:animate-out",
+    "fixed z-modal gap-4 bg-card p-6 text-foreground shadow-xl transition ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500 data-[state=open]:animate-in data-[state=closed]:animate-out",
     {
         variants: {
             side: {

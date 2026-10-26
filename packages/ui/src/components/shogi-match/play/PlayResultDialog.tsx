@@ -87,7 +87,7 @@ export function PlayResultDialog({ variant }: PlayResultDialogProps): ReactEleme
                 <DialogContent
                     onOpenAutoFocus={focusPrimary}
                     onCloseAutoFocus={focusHeading}
-                    overlayClassName="bg-black/30 backdrop-blur-none"
+                    overlayClassName="bg-overlay-light backdrop-blur-none"
                     // 対局の条件と読みのまとめで縦に長くなるので、低い画面では中でスクロールさせる。
                     className="max-h-[calc(100dvh-32px)] w-[min(400px,calc(100%-32px))] overflow-y-auto border-wafuu-border bg-background p-5 motion-reduce:animate-none"
                 >
@@ -100,7 +100,7 @@ export function PlayResultDialog({ variant }: PlayResultDialogProps): ReactEleme
         <DialogPrimitive.Root open={revealed} onOpenChange={onOpenChange}>
             <DialogPrimitive.Portal>
                 {/* 盤の上半分（詰みの形）が見えるよう、暗くするのは薄めにする。 */}
-                <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/30 data-[state=open]:animate-in data-[state=open]:fade-in data-[state=closed]:animate-out data-[state=closed]:fade-out motion-reduce:animate-none" />
+                <DialogPrimitive.Overlay className="fixed inset-0 z-overlay bg-overlay-light data-[state=open]:animate-in data-[state=open]:fade-in data-[state=closed]:animate-out data-[state=closed]:fade-out motion-reduce:animate-none" />
                 {/* 対局の条件と読みのまとめで縦に長くなるので、低い画面（横向きなど）では中でスクロールさせる。 */}
                 <DialogPrimitive.Content
                     aria-describedby={undefined}
@@ -108,7 +108,7 @@ export function PlayResultDialog({ variant }: PlayResultDialogProps): ReactEleme
                     onCloseAutoFocus={focusHeading}
                     className={cn(
                         surfaceTheme,
-                        "fixed inset-x-0 bottom-0 z-[51] max-h-[calc(100dvh-16px)] overflow-y-auto rounded-t-2xl border-t border-wafuu-border bg-background px-4 pb-[max(env(safe-area-inset-bottom),16px)] pt-2 text-foreground shadow-xl outline-none duration-300 data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom motion-reduce:animate-none",
+                        "fixed inset-x-0 bottom-0 z-modal max-h-[calc(100dvh-16px)] overflow-y-auto rounded-t-2xl border-t border-wafuu-border bg-background px-4 pb-[max(env(safe-area-inset-bottom),16px)] pt-2 text-foreground shadow-xl outline-none duration-300 data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom motion-reduce:animate-none",
                     )}
                 >
                     <div className="flex flex-col gap-2">

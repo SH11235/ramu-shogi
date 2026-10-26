@@ -153,7 +153,7 @@ export function ActiveEngineSettingsPanel({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent
                 className="fixed right-0 top-0 bottom-0 left-auto h-full w-96 max-w-full rounded-none border-l border-wafuu-border bg-wafuu-washi-warm p-0 translate-x-0 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right duration-300"
-                overlayClassName="bg-black/30"
+                overlayClassName="bg-overlay-light"
             >
                 <DialogHeader className="p-4 border-b border-wafuu-border">
                     <DialogTitle className="text-sm font-semibold text-wafuu-sumi">

@@ -43,7 +43,7 @@ export const DragGhost = forwardRef<HTMLDivElement, DragGhostProps>(function Dra
         <div
             ref={ref}
             className={cn(
-                "pointer-events-none fixed left-0 top-0 z-[9999]",
+                "pointer-events-none fixed left-0 top-0 z-drag",
                 "h-12 w-12 items-center justify-center transition-opacity duration-75 will-change-transform",
                 isDragging ? "flex opacity-100" : "hidden opacity-0",
             )}
@@ -58,8 +58,8 @@ export const DragGhost = forwardRef<HTMLDivElement, DragGhostProps>(function Dra
                     shouldFlip && "-rotate-180",
                     // 削除モード時のエフェクト
                     mode === "delete" && [
-                        "ring-2 ring-red-500/70",
-                        "shadow-[0_0_16px_rgba(239,68,68,0.5),0_8px_24px_rgba(0,0,0,0.35)]",
+                        "ring-2 ring-destructive/70",
+                        "shadow-[0_0_16px_hsl(var(--destructive)/0.5),0_8px_24px_rgba(0,0,0,0.35)]",
                     ],
                 )}
             >
@@ -83,7 +83,7 @@ export const DragGhost = forwardRef<HTMLDivElement, DragGhostProps>(function Dra
                 className={cn(
                     "absolute inset-0 rounded-lg",
                     "animate-[ping_1.5s_infinite]",
-                    mode === "delete" ? "bg-red-400/20" : "bg-amber-400/20",
+                    mode === "delete" ? "bg-destructive/20" : "bg-wafuu-kin/20",
                     "pointer-events-none",
                 )}
             />

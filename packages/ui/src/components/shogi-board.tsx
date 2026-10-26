@@ -139,7 +139,7 @@ export function ShogiBoard({
                     ))}
                 </div>
                 {/* 角は直角にする。丸めると、隅のマスの駒が角で欠ける。外周は outline を足して内側の線より太く見せる。 */}
-                <div className="grid flex-1 grid-cols-9 overflow-hidden border-l border-t border-shogi-border outline outline-1 outline-shogi-border">
+                <div className="grid flex-1 grid-cols-9 border-l border-t border-shogi-border outline outline-1 outline-shogi-border">
                     {grid.map((row, rowIndex) =>
                         row.map((cell, columnIndex) => {
                             const isSelected = selectedSquare === cell.id;
@@ -226,7 +226,7 @@ export function ShogiBoard({
                                                 : `${cell.id} 空マス`
                                         }
                                         className={cn(
-                                            "absolute inset-0 overflow-hidden text-base font-semibold transition-all duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-wafuu-shu/70 focus-visible:ring-offset-transparent",
+                                            "absolute inset-0 overflow-hidden text-base font-semibold transition-all duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-wafuu-shu/70",
                                             "hover:ring-2 hover:ring-inset hover:ring-shogi-border",
                                             // タッチ選択・長押しメニュー防止
                                             "select-none [-webkit-touch-callout:none]",
@@ -272,7 +272,7 @@ export function ShogiBoard({
                                                         ) ?? ""
                                                     }
                                                     alt={`${cell.piece.owner === "sente" ? "先手" : "後手"}の${PIECE_LABELS[cell.piece.type] ?? cell.piece.type}${cell.piece.promoted ? "成" : ""}`}
-                                                    className="h-[90%] w-[90%] object-contain drop-shadow-[0_2px_4px_rgba(0,0,0,0.15)]"
+                                                    className="h-[90%] w-[90%] object-contain drop-shadow-piece"
                                                     draggable={false}
                                                 />
                                             </span>

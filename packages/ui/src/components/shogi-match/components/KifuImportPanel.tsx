@@ -72,7 +72,7 @@ export function KifuImportPanel({
                 type="button"
                 className={`w-full py-2 text-sm rounded-md border transition-colors ${
                     success
-                        ? "bg-green-600 text-white border-green-600"
+                        ? "bg-status-success text-status-success-fg border-status-success"
                         : "bg-primary text-primary-foreground border-primary hover:bg-primary/90"
                 } disabled:opacity-50 disabled:cursor-not-allowed`}
                 onClick={() => void handleImport()}

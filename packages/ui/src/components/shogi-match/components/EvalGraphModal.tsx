@@ -75,7 +75,7 @@ export function EvalGraphModal({
 
     return (
         <div
-            className="fixed flex flex-col overflow-hidden bg-card border border-border rounded-xl shadow-2xl z-[1000]"
+            className="fixed flex flex-col overflow-hidden bg-card border border-border rounded-xl shadow-2xl z-window"
             style={{
                 left: position.x,
                 top: position.y,

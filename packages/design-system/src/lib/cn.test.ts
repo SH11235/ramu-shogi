@@ -56,4 +56,14 @@ describe("cn", () => {
             ),
         ).toBe("base-class conditional-class array-class-1 array-class-2 final-class");
     });
+
+    it("preset で足した名前付きの重なり順・影は、後から渡したクラスで打ち消せる", () => {
+        expect(cn("z-modal", "z-50")).toBe("z-50");
+        expect(cn("shadow-modal", "shadow-sm")).toBe("shadow-sm");
+        expect(cn("drop-shadow-piece", "drop-shadow-md")).toBe("drop-shadow-md");
+    });
+
+    it("名前付きの影は、文字の色と混ざらない", () => {
+        expect(cn("shadow-panel", "text-foreground")).toBe("shadow-panel text-foreground");
+    });
 });

@@ -47,8 +47,8 @@ const MESSAGE_CLASS = "w-0 min-w-full whitespace-pre-line break-words text-cente
 /** メッセージ種類に応じたスタイルクラス */
 const MESSAGE_STYLES: Record<Message["type"], string> = {
     error: "text-destructive",
-    warning: "text-yellow-600 dark:text-yellow-500",
-    success: "text-green-600 dark:text-green-500",
+    warning: "text-status-warning",
+    success: "text-status-success",
 };
 
 interface MatchControlsProps {

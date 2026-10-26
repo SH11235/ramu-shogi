@@ -10,8 +10,7 @@ import type { ReactElement } from "react";
 import { useState } from "react";
 import { formatEngineEventLog } from "../hooks/formatEngineEvent";
 
-const baseCardClassName =
-    "w-full rounded-xl border border-border bg-card p-3 shadow-[0_14px_28px_rgba(0,0,0,0.12)]";
+const baseCardClassName = "w-full rounded-xl border border-border bg-card p-3 shadow-panel";
 
 interface EngineLogsPanelProps {
     /** イベントログのリスト */
@@ -90,7 +89,7 @@ function ErrorDetailSection({
                         onClick={() => onRetry(side)}
                         disabled={isRetrying}
                         className={cn(
-                            "rounded-md px-4 py-2 text-[13px] font-medium text-white",
+                            "rounded-md px-4 py-2 text-[13px] font-medium text-primary-foreground",
                             isRetrying
                                 ? "cursor-not-allowed bg-muted opacity-60"
                                 : "cursor-pointer bg-primary",

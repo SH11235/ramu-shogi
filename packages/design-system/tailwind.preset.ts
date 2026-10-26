@@ -85,6 +85,11 @@ const preset: Omit<Config, "content"> = {
                     "warning-bg": "hsl(var(--status-warning-bg))",
                     "warning-border": "hsl(var(--status-warning-border))",
                 },
+                // モーダルの後ろを暗くする幕。light は盤を見せたまま結果を出すシート用
+                overlay: {
+                    DEFAULT: "hsl(var(--overlay) / 0.7)",
+                    light: "hsl(var(--overlay) / 0.3)",
+                },
                 // 研究ノートの注目局面（悪手・疑問手）
                 study: {
                     blunder: "hsl(var(--study-blunder))",
@@ -123,6 +128,24 @@ const preset: Omit<Config, "content"> = {
             },
             boxShadow: {
                 card: "0 20px 25px -5px rgba(15, 23, 42, 0.08), 0 10px 10px -5px rgba(15, 23, 42, 0.04)",
+                // 画面の上に浮く小窓（エンジンのログ、再起動中の表示など）
+                panel: "0 14px 28px rgba(0, 0, 0, 0.12)",
+                // ダイアログ
+                modal: "0 24px 70px rgba(0, 0, 0, 0.35)",
+            },
+            dropShadow: {
+                // 盤と駒台の駒
+                piece: "0 2px 4px rgba(0, 0, 0, 0.15)",
+            },
+            // 画面全体に重なる層の順番。ページ内の重なり（z-10〜40）より上に置く。
+            // ポップオーバー類はダイアログや小窓の中からも開くので、それらより上にする。
+            zIndex: {
+                overlay: "50",
+                modal: "51",
+                window: "60",
+                popover: "70",
+                blocking: "90",
+                drag: "100",
             },
             keyframes: {
                 "accordion-down": {
