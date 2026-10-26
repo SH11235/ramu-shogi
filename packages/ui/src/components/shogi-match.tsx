@@ -4,7 +4,6 @@ import type {
     KifuTree,
     LastMove,
     NnueSelection,
-    PieceType,
     Player,
     PositionState,
     Square,
@@ -32,9 +31,6 @@ import {
     MATCH_LAYOUT_CLASSES,
     TOOLTIP_DELAY_DURATION_MS,
 } from "./shogi-match/constants";
-import { applyDropResult } from "./shogi-match/dnd/dropLogic";
-import type { DropResult } from "./shogi-match/dnd/types";
-import { usePieceDnd } from "./shogi-match/dnd/usePieceDnd";
 import {
     useInitialAnalysisEntries,
     useMatchSnapshotReports,
@@ -68,6 +64,7 @@ import { usePassRights } from "./shogi-match/hooks/usePassRights";
 import { usePlayHintNnueSelection } from "./shogi-match/hooks/usePlayHintNnueSelection";
 import { usePlayHintSearch } from "./shogi-match/hooks/usePlayHintSearch";
 import { usePlayScreen } from "./shogi-match/hooks/usePlayScreen";
+import { usePositionEditDnd } from "./shogi-match/hooks/usePositionEditDnd";
 import { useUIState } from "./shogi-match/hooks/useUIState";
 import { ShogiMatchLayout } from "./shogi-match/layouts/ShogiMatchLayout";
 import { type PlayPhase, ShogiMatchProvider } from "./shogi-match/ShogiMatchContext";
@@ -1282,73 +1279,19 @@ export function ShogiMatch({
         setIsMatchRunning,
     });
 
-    // DnD ドロップハンドラ
-    const handleDndDrop = (result: DropResult) => {
-        if (!editAllowed) return;
-
-        const applied = applyDropResult(result, positionRef.current);
-        if (!applied.ok) {
-            setMessage({ text: applied.error ?? "ドロップに失敗しました", type: "error" });
-            return;
-        }
-
-        applyEditedPosition(applied.next);
-    };
-
-    // DnD コントローラー
-    const dndController = usePieceDnd({
-        onDrop: handleDndDrop,
-        disabled: !editAllowed,
+    const {
+        dndController,
+        handlePiecePointerDown,
+        handleHandPiecePointerDown,
+        handlePieceTogglePromote,
+    } = usePositionEditDnd({
+        editAllowed,
+        position,
+        positionRef,
+        setMessage,
+        applyEditedPosition,
+        setPiecePromotion,
     });
-
-    // DnD ドラッグ開始ハンドラ（盤上の駒）
-    // 注: isEditMode チェックは usePieceDnd の disabled オプションと
-    //     JSX での条件付き props 渡しで行うため、ここでは不要
-    const handlePiecePointerDown = (
-        square: string,
-        piece: { owner: "sente" | "gote"; type: string; promoted?: boolean },
-        e: React.PointerEvent,
-    ) => {
-        const origin = { type: "board" as const, square: square as Square };
-        const payload = {
-            owner: piece.owner as Player,
-            pieceType: piece.type as PieceType,
-            isPromoted: piece.promoted ?? false,
-        };
-
-        dndController.startDrag(origin, payload, e);
-    };
-
-    // DnD ドラッグ開始ハンドラ（持ち駒）
-    const handleHandPiecePointerDown = (
-        owner: Player,
-        pieceType: PieceType,
-        e: React.PointerEvent,
-    ) => {
-        // 持ち駒が0個の場合はストック扱い（編集モード時、無限供給）
-        const count = position?.hands[owner][pieceType] ?? 0;
-        const origin =
-            count > 0
-                ? { type: "hand" as const, owner, pieceType }
-                : { type: "stock" as const, owner, pieceType };
-        const payload = {
-            owner,
-            pieceType,
-            isPromoted: false,
-        };
-
-        dndController.startDrag(origin, payload, e);
-    };
-
-    const handlePieceTogglePromote = (
-        square: string,
-        piece: { owner: "sente" | "gote"; type: string; promoted?: boolean },
-        _event: React.MouseEvent<HTMLButtonElement>,
-    ) => {
-        if (!editAllowed) return;
-        const sq = square as Square;
-        setPiecePromotion(sq, !piece.promoted);
-    };
 
     // 指し手実行管理フック
     const {
