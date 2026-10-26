@@ -82,6 +82,7 @@ export function PCKifuSection(): ReactElement {
         >
             {!readOnly && (
                 <TabHeader
+                    className="mb-2"
                     tabs={[
                         { id: "kifu", label: "棋譜" },
                         { id: "ai", label: "AI解析" },

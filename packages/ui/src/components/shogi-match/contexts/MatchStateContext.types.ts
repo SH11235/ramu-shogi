@@ -109,7 +109,7 @@ export interface MatchStateContextValue {
     enterEditModeFromPaused: () => void;
     handleResign: () => void;
     handleUndo: () => void;
-    onOpenSettings: () => void;
+    onOpenImport: () => void;
 
     // パス関連
     shouldRenderPassButton: boolean;

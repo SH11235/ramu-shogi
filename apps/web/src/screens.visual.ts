@@ -32,6 +32,36 @@ const openStudyAtEnd = async (page: Page): Promise<void> => {
     await page.getByRole("button", { name: "最後の局面へ" }).first().click();
 };
 
+// 公開棋譜の画面は API の応答を固定して描く（棋譜を見るだけの盤と、スマホの設定の欄）。
+const PUBLIC_GAME_ID = "visual-sample";
+const openPublicGame = async (page: Page): Promise<void> => {
+    await page.route(`**/api/public/games/${PUBLIC_GAME_ID}`, (route) =>
+        route.fulfill({
+            json: {
+                game: {
+                    id: PUBLIC_GAME_ID,
+                    roomId: null,
+                    source: "online_room",
+                    visibility: "public",
+                    publicId: PUBLIC_GAME_ID,
+                    status: "finished",
+                    result: null,
+                    participants: [],
+                    createdAt: "2026-01-01T00:00:00Z",
+                    finishedAt: null,
+                    initialSfen: "startpos",
+                    metadata: null,
+                    moves: ["7g7f", "3c3d", "8h2b+", "3a2b", "B*5e"],
+                    kifuText: "",
+                    startedAt: null,
+                },
+            },
+        }),
+    );
+    await page.goto(`/public/games/${PUBLIC_GAME_ID}`);
+    await page.getByRole("button", { name: "研究ノートで開く" }).first().waitFor();
+};
+
 const SCENES: Scene[] = [
     {
         name: "landing",
@@ -74,6 +104,17 @@ const SCENES: Scene[] = [
         ),
     },
     { name: "study-note", open: openStudyAtEnd },
+    { name: "public-game", open: openPublicGame },
+    {
+        name: "public-game-settings",
+        open: async (page) => {
+            await openPublicGame(page);
+            // 設定の欄はスマホだけにある。PC ではそのまま撮る。
+            if ((page.viewportSize()?.width ?? 0) >= 768) return;
+            await page.getByRole("button", { name: "設定を開く" }).click();
+            await page.getByRole("dialog").waitFor();
+        },
+    },
     {
         name: "study-analysis-settings",
         open: async (page) => {

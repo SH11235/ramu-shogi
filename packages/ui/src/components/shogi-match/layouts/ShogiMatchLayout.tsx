@@ -218,7 +218,7 @@ export function ShogiMatchLayout({
         enterEditModeFromPaused,
         handleResign,
         handleUndo,
-        setIsSettingsModalOpen,
+        setIsImportDialogOpen,
         shouldRenderPassButton,
         canMakePassMove,
         passButtonDisabledReason,
@@ -232,7 +232,7 @@ export function ShogiMatchLayout({
     const {
         matchLayoutClasses,
         candidateNote,
-        isSettingsModalOpen,
+        isImportDialogOpen,
         importSfen,
         importKif,
         positionReady,
@@ -441,7 +441,7 @@ export function ShogiMatchLayout({
                             enterEditModeFromPaused={enterEditModeFromPaused}
                             handleResign={handleResign}
                             handleUndo={handleUndo}
-                            onOpenSettings={() => setIsSettingsModalOpen(true)}
+                            onOpenImport={() => setIsImportDialogOpen(true)}
                             shouldRenderPassButton={shouldRenderPassButton}
                             canMakePassMove={canMakePassMove}
                             passButtonDisabledReason={passButtonDisabledReason}
@@ -585,7 +585,7 @@ export function ShogiMatchLayout({
                             enterEditModeFromPaused={enterEditModeFromPaused}
                             handleResign={handleResign}
                             handleUndo={handleUndo}
-                            onOpenSettings={() => setIsSettingsModalOpen(true)}
+                            onOpenImport={() => setIsImportDialogOpen(true)}
                             shouldRenderPassButton={shouldRenderPassButton}
                             canMakePassMove={canMakePassMove}
                             passButtonDisabledReason={passButtonDisabledReason}
@@ -630,8 +630,8 @@ export function ShogiMatchLayout({
                                     <PCLayout
                                         matchLayoutClasses={matchLayoutClasses}
                                         candidateNote={candidateNote}
-                                        isSettingsModalOpen={isSettingsModalOpen}
-                                        onSettingsModalOpenChange={setIsSettingsModalOpen}
+                                        isImportDialogOpen={isImportDialogOpen}
+                                        onImportDialogOpenChange={setIsImportDialogOpen}
                                         importSfen={importSfen}
                                         importKif={importKif}
                                         positionReady={positionReady}

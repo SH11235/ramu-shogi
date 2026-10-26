@@ -1017,8 +1017,8 @@ export function ShogiMatch({
 
     // ダイアログ状態管理
     const {
-        isSettingsModalOpen,
-        setIsSettingsModalOpen,
+        isImportDialogOpen,
+        setIsImportDialogOpen,
         isNnueManagerOpen,
         nnueManagerOpenReason,
         openNnueManager,
@@ -2483,7 +2483,7 @@ export function ShogiMatch({
         enterEditModeFromPaused,
         handleResign,
         handleUndo,
-        setIsSettingsModalOpen,
+        setIsImportDialogOpen,
         shouldRenderPassButton: passRights.shouldRenderPassButton,
         canMakePassMove: passRights.canMakePassMove,
         passButtonDisabledReason: passRights.passButtonDisabledReason,
@@ -2497,7 +2497,7 @@ export function ShogiMatch({
     const pcSpecificProps: PCSpecificProps = {
         matchLayoutClasses: MATCH_LAYOUT_CLASSES,
         candidateNote,
-        isSettingsModalOpen,
+        isImportDialogOpen,
         importSfen: importSfenFromPanel,
         importKif: importKifFromPanel,
         positionReady,

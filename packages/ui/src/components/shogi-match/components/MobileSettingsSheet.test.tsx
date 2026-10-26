@@ -1,5 +1,5 @@
 import { NONE_NNUE_SELECTION } from "@shogi/app-core";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_DISPLAY_SETTINGS } from "../types";
@@ -119,5 +119,22 @@ describe("MobileSettingsSheet", () => {
         });
         const root = container.firstElementChild as HTMLElement;
         expect(root.firstElementChild?.textContent).toContain("表示設定");
+    });
+
+    it("先後それぞれの欄は、その側の設定だけを変える", () => {
+        const onTimeSettingsChange = vi.fn();
+        const onEngineThreadsChange = vi.fn();
+        renderSheet({ onTimeSettingsChange, onEngineThreadsChange });
+        const byoyomi = document.getElementById("mobile-gote-byoyomi") as HTMLInputElement;
+        fireEvent.change(byoyomi, { target: { value: "30" } });
+        fireEvent.blur(byoyomi);
+        expect(onTimeSettingsChange).toHaveBeenLastCalledWith({
+            sente: side,
+            gote: { ...side, byoyomiMs: 30_000 },
+        });
+        fireEvent.change(document.getElementById("mobile-sente-threads") as HTMLSelectElement, {
+            target: { value: "1" },
+        });
+        expect(onEngineThreadsChange).toHaveBeenLastCalledWith({ sente: 1, gote: 0 });
     });
 });

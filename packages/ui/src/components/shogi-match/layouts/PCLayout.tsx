@@ -20,12 +20,12 @@ import type { Player } from "@shogi/app-core";
 import type { Dispatch, ReactElement, ReactNode, SetStateAction } from "react";
 import { DisplaySettingsPanel } from "../components/DisplaySettingsPanel";
 import { EngineLogsPanel } from "../components/EngineLogsPanel";
+import { ImportDialog } from "../components/ImportDialog";
 import { KifuImportPanel } from "../components/KifuImportPanel";
 import { LeftSidebar } from "../components/LeftSidebar";
 import { PassRightsSettingsDialog } from "../components/PassRightsSettingsDialog";
 import { PCBoardSection } from "../components/PCBoardSection";
 import { PCKifuSection } from "../components/PCKifuSection";
-import { SettingsModal } from "../components/SettingsModal";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { useNavigation } from "../contexts/NavigationContext";
 import type { DisplaySettings, PassRightsSettings } from "../types";
@@ -43,9 +43,9 @@ interface PCLayoutProps {
     /** 候補手の注釈（盤面表示用） */
     candidateNote: string | null;
 
-    /** 設定モーダルの開閉状態 */
-    isSettingsModalOpen: boolean;
-    onSettingsModalOpenChange: (open: boolean) => void;
+    /** 棋譜/局面インポートのダイアログの開閉状態 */
+    isImportDialogOpen: boolean;
+    onImportDialogOpenChange: (open: boolean) => void;
 
     /** SFENインポート時のコールバック */
     importSfen: ImportSfenHandler;
@@ -89,8 +89,8 @@ interface PCLayoutProps {
 export function PCLayout({
     matchLayoutClasses,
     candidateNote,
-    isSettingsModalOpen,
-    onSettingsModalOpenChange,
+    isImportDialogOpen,
+    onImportDialogOpenChange,
     importSfen,
     importKif,
     positionReady,
@@ -195,8 +195,8 @@ export function PCLayout({
                 </div>
             )}
 
-            {/* 設定モーダル（棋譜インポート等） */}
-            <SettingsModal open={isSettingsModalOpen} onOpenChange={onSettingsModalOpenChange}>
+            {/* 棋譜/局面インポート（開発モードではエンジンログも） */}
+            <ImportDialog open={isImportDialogOpen} onOpenChange={onImportDialogOpenChange}>
                 <div className="flex flex-col gap-6">
                     {/* インポート */}
                     <KifuImportPanel
@@ -216,7 +216,7 @@ export function PCLayout({
                         />
                     )}
                 </div>
-            </SettingsModal>
+            </ImportDialog>
 
             {/* 変則ルールダイアログ */}
             {passRightsSettings && (

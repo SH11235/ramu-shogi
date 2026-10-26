@@ -76,7 +76,7 @@ export function PCBoardSection({ candidateNote, hideClock }: PCBoardSectionProps
         enterEditModeFromPaused,
         handleResign,
         handleUndo,
-        onOpenSettings,
+        onOpenImport,
         shouldRenderPassButton,
         canMakePassMove,
         passButtonDisabledReason,
@@ -194,7 +194,7 @@ export function PCBoardSection({ candidateNote, hideClock }: PCBoardSectionProps
                         isMatchRunning={isMatchRunning}
                         gameMode={gameMode}
                         message={message}
-                        onOpenSettings={onOpenSettings}
+                        onOpenImport={onOpenImport}
                         viewerMode={viewerMode}
                         passProps={
                             shouldRenderPassButton

@@ -91,7 +91,7 @@ interface MatchStateProviderProps {
     enterEditModeFromPaused: () => void;
     handleResign: () => void;
     handleUndo: () => void;
-    onOpenSettings: () => void;
+    onOpenImport: () => void;
 
     // パス関連
     shouldRenderPassButton: boolean;
@@ -151,7 +151,7 @@ export function MatchStateProvider({
     enterEditModeFromPaused,
     handleResign,
     handleUndo,
-    onOpenSettings,
+    onOpenImport,
     shouldRenderPassButton,
     canMakePassMove,
     passButtonDisabledReason,
@@ -200,7 +200,7 @@ export function MatchStateProvider({
         enterEditModeFromPaused,
         handleResign,
         handleUndo,
-        onOpenSettings,
+        onOpenImport,
         shouldRenderPassButton,
         canMakePassMove,
         passButtonDisabledReason,

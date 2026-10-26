@@ -1495,6 +1495,7 @@ export function OnlineGameView({
             {/* サイドバー: 棋譜 / AI 解析 タブ（PC のみ表示） */}
             <div className="hidden md:flex w-64 flex-col">
                 <TabHeader
+                    className="mb-2"
                     tabs={[
                         { id: "kifu" as const, label: "棋譜" },
                         ...(aiSupport || analysis ? [{ id: "ai" as const, label: "AI解析" }] : []),

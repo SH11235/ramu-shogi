@@ -249,7 +249,7 @@ export interface BoardHandlersProps {
     enterEditModeFromPaused: () => void;
     handleResign: () => void;
     handleUndo: () => void;
-    setIsSettingsModalOpen: (open: boolean) => void;
+    setIsImportDialogOpen: (open: boolean) => void;
     shouldRenderPassButton: boolean;
     canMakePassMove: boolean;
     passButtonDisabledReason?: import("../components/PassButton").PassDisabledReason;
@@ -261,7 +261,7 @@ export interface BoardHandlersProps {
 
 /**
  * PC専用propsグループ
- * - 設定モーダル
+ * - 棋譜/局面インポートのダイアログ
  * - 棋譜インポート
  * - エンジンログパネル
  * - 表示設定ダイアログ
@@ -269,7 +269,7 @@ export interface BoardHandlersProps {
 export interface PCSpecificProps {
     matchLayoutClasses: string;
     candidateNote: string | null;
-    isSettingsModalOpen: boolean;
+    isImportDialogOpen: boolean;
     importSfen: import("../utils/kifuImport").ImportSfenHandler;
     importKif: import("../utils/kifuImport").ImportKifHandler;
     positionReady: boolean;
