@@ -104,9 +104,12 @@ const SCENES: Scene[] = [
     },
     {
         name: "play-setup",
-        open: gotoAndWait("/play", (p) =>
-            p.getByRole("button", { name: "対局開始", exact: true }).waitFor(),
-        ),
+        open: async (page) => {
+            await page.goto("/play");
+            await page.getByRole("button", { name: "対局開始", exact: true }).waitFor();
+            // 盤は局面を読み込んでから描くので、ボタンより遅れて出ることがある。
+            await page.locator("[data-square='5i']").first().waitFor();
+        },
     },
     {
         name: "play-settings",
