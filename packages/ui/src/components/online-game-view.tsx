@@ -1,4 +1,3 @@
-import type { LayerStacksConfig } from "@shogi/app-core";
 import {
     applyMoveWithState,
     type BoardState,
@@ -13,9 +12,7 @@ import {
 } from "@shogi/app-core";
 import type {
     AiSupportSettings,
-    ClockState,
     ErrorCode,
-    GameResult,
     RoomClient,
     RoomClientStatus,
     RoomEvent,
@@ -57,7 +54,15 @@ import {
     type SerialQueue,
     snapshotAnalysisRemaining,
 } from "./online-game-state";
-import { type AiHintMove, AiHintPanel } from "./shogi-match/components/AiHintPanel";
+import { GameEndDialog } from "./online-game-view/GameEndDialog";
+import { GameResultStrip } from "./online-game-view/GameResultStrip";
+import { formatGameEndReason, formatGameResultTitle } from "./online-game-view/gameResultText";
+import { OnlineAiPanel } from "./online-game-view/OnlineAiPanel";
+import { OnlineKifuList } from "./online-game-view/OnlineKifuList";
+import type { OnlineAnalysis } from "./online-game-view/onlineAnalysis";
+import { PlayerHeader } from "./online-game-view/PlayerHeader";
+import { useOnlineClock } from "./online-game-view/useOnlineClock";
+import type { AiHintMove } from "./shogi-match/components/AiHintPanel";
 import { BottomSheet } from "./shogi-match/components/BottomSheet";
 import { KifuNavigationToolbar } from "./shogi-match/components/KifuNavigationToolbar";
 import { type HandInfo, MobileBoardSection } from "./shogi-match/components/MobileBoardSection";
@@ -66,26 +71,9 @@ import { PvPreviewDialog } from "./shogi-match/components/PvPreviewDialog";
 import { TabHeader } from "./shogi-match/components/TabHeader";
 import { useIsMobile } from "./shogi-match/hooks/useMediaQuery";
 import type { PromotionSelection } from "./shogi-match/types";
-import { formatMoveSimple } from "./shogi-match/utils/kifFormat";
 import { computeMoveShadow } from "./shogi-match/utils/moveShadow";
 import { boardToGrid } from "./shogi-match/utils/positionUtils";
 import { determinePromotion } from "./shogi-match/utils/promotionLogic";
-
-// ─── AI 解析インターフェース（export） ─────────────────────────────────────────
-
-export interface AnalysisMoveResult {
-    usi: string;
-    cp: number;
-    pv: string[];
-}
-
-export interface OnlineAnalysis {
-    isAnalyzing: boolean;
-    topMoves: AnalysisMoveResult[];
-    startAnalysis: (sfen: string, moves: string[]) => Promise<void>;
-    cancelAnalysis: () => Promise<void>;
-    loadNnue?: (nnueId: string | null, layerStacks?: LayerStacksConfig) => Promise<void>;
-}
 
 // ─── 型定義 ───────────────────────────────────────────────────────────────────
 
@@ -94,14 +82,6 @@ const BOARD_DISPLAY_SETTINGS = {
     squareNotation: "none" as const,
     showBoardLabels: true,
 };
-
-// 時間フォーマット
-function formatMs(ms: number): string {
-    const totalSec = Math.max(0, Math.floor(ms / 1000));
-    const min = Math.floor(totalSec / 60);
-    const sec = totalSec % 60;
-    return `${String(min).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
-}
 
 // サーバーに拒否された操作のうち、利用者がやり直せるものだけ案内する
 function rejectedCommandNotice(code: ErrorCode, seat: Seat): string | null {
@@ -235,34 +215,6 @@ function uiReducer(state: UIState, action: UIAction): UIState {
         case "set_end_dialog_closed":
             return { ...state, endDialogClosed: action.closed };
     }
-}
-
-// ─── クロックフック ────────────────────────────────────────────────────────────
-
-function useOnlineClock(clockState: ClockState | null): { b: number; w: number } {
-    const [displayMs, setDisplayMs] = useState<{ b: number; w: number }>({ b: 0, w: 0 });
-
-    useEffect(() => {
-        if (!clockState) return;
-        const update = (): void => {
-            const elapsed = Date.now() - clockState.lastTickTs;
-            setDisplayMs({
-                b:
-                    clockState.running === "b"
-                        ? Math.max(0, clockState.b.remainMs - elapsed)
-                        : clockState.b.remainMs,
-                w:
-                    clockState.running === "w"
-                        ? Math.max(0, clockState.w.remainMs - elapsed)
-                        : clockState.w.remainMs,
-            });
-        };
-        update();
-        const id = setInterval(update, 500);
-        return () => clearInterval(id);
-    }, [clockState]);
-
-    return displayMs;
 }
 
 // ─── メインコンポーネント ──────────────────────────────────────────────────────
@@ -1133,54 +1085,14 @@ export function OnlineGameView({
             />
         ) : null;
 
-    // PC サイドバー・モバイル BottomSheet 共通: 棋譜リスト
     const kifuPanelContent = (
-        <div className="flex flex-col gap-1 overflow-y-auto max-h-[50dvh] md:max-h-[calc(100dvh-160px)]">
-            {usiMoveLog.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">
-                    まだ指し手がありません
-                </p>
-            ) : (
-                usiMoveLog
-                    .map((entry, i) => ({
-                        ply: i + 1,
-                        usi: entry.usi,
-                        pos: positionHistory[i],
-                    }))
-                    .map((item) => {
-                        const moveText = item.pos
-                            ? formatMoveSimple(item.usi, item.pos.turn, item.pos.board)
-                            : item.usi;
-                        const isCurrentPly = currentPly === item.ply;
-                        return (
-                            <button
-                                key={item.ply}
-                                type="button"
-                                disabled={!gameResult && !isSpectator}
-                                onClick={() =>
-                                    dispatchUI({
-                                        type: "set_nav_index",
-                                        index:
-                                            item.ply >= positionHistory.length - 1
-                                                ? null
-                                                : item.ply,
-                                    })
-                                }
-                                className={`flex gap-2 text-xs px-2 py-1 rounded text-left transition-colors ${
-                                    isCurrentPly
-                                        ? "bg-wafuu-kincha/20 text-wafuu-kincha font-medium"
-                                        : "hover:bg-muted disabled:cursor-default"
-                                }`}
-                            >
-                                <span className="text-muted-foreground w-6 shrink-0 tabular-nums">
-                                    {item.ply}.
-                                </span>
-                                <span>{moveText}</span>
-                            </button>
-                        );
-                    })
-            )}
-        </div>
+        <OnlineKifuList
+            usiMoveLog={usiMoveLog}
+            positionHistory={positionHistory}
+            currentPly={currentPly}
+            disabled={!gameResult && !isSpectator}
+            onSelectPly={(index) => dispatchUI({ type: "set_nav_index", index })}
+        />
     );
 
     return (
@@ -1234,7 +1146,6 @@ export function OnlineGameView({
                     isMyTurn={flipBoard ? turn === "b" : turn === "w"}
                     remainMs={flipBoard ? clockDisplay.b : clockDisplay.w}
                     isOffline={flipBoard ? offlineSeats.has("b") : offlineSeats.has("w")}
-                    isFlipped={flipBoard}
                     passRightsCount={
                         passRights != null ? (flipBoard ? passRights.b : passRights.w) : undefined
                     }
@@ -1311,7 +1222,6 @@ export function OnlineGameView({
                     isMyTurn={flipBoard ? turn === "w" : turn === "b"}
                     remainMs={flipBoard ? clockDisplay.w : clockDisplay.b}
                     isOffline={flipBoard ? offlineSeats.has("w") : offlineSeats.has("b")}
-                    isFlipped={flipBoard}
                     passRightsCount={
                         passRights != null ? (flipBoard ? passRights.w : passRights.b) : undefined
                     }
@@ -1604,321 +1514,5 @@ export function OnlineGameView({
                 />
             )}
         </div>
-    );
-}
-
-// ─── サブコンポーネント ────────────────────────────────────────────────────────
-
-interface PlayerHeaderProps {
-    name: string;
-    seat: "b" | "w";
-    isMyTurn: boolean;
-    remainMs: number;
-    isOffline: boolean;
-    isFlipped: boolean;
-    /** undefined = パス権機能が無効、数値 = 残りパス権数 */
-    passRightsCount?: number;
-}
-
-function PlayerHeader({
-    name,
-    seat,
-    isMyTurn,
-    remainMs,
-    isOffline,
-    passRightsCount,
-}: PlayerHeaderProps): ReactElement {
-    return (
-        // スマホでは親が中央寄せなので、幅を指定しないと中身の幅に縮み、名前と残り時間がくっつく。
-        <div
-            className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 ${isMyTurn ? "border-primary bg-primary/5" : "border-border bg-card"}`}
-        >
-            <div className="flex min-w-0 flex-wrap items-center gap-x-2">
-                <span
-                    className={`min-w-0 truncate text-sm font-semibold ${seat === "b" ? "text-wafuu-shu" : "text-wafuu-ai"}`}
-                >
-                    {seat === "b" ? "▲" : "△"} {name}
-                </span>
-                {isOffline && <span className="text-xs text-destructive">● 切断中</span>}
-                {passRightsCount !== undefined && (
-                    <span
-                        className={`text-xs ${passRightsCount > 0 ? "text-muted-foreground" : "text-muted-foreground/50"}`}
-                    >
-                        パス権: {passRightsCount}
-                    </span>
-                )}
-            </div>
-            <span
-                className={`shrink-0 font-mono text-base tabular-nums md:text-sm ${isMyTurn ? "text-primary font-bold" : "text-muted-foreground"}`}
-            >
-                {formatMs(remainMs)}
-            </span>
-        </div>
-    );
-}
-
-const GAME_END_REASONS: Record<string, string> = {
-    resign: "投了",
-    checkmate: "詰み",
-    timeout: "時間切れ",
-    sennichite: "千日手",
-    oute_sennichite: "連続王手の千日手",
-    illegal_move: "反則",
-    disconnect: "切断不戦敗",
-};
-
-function formatGameResultTitle(result: GameResult, playerNames: { b: string; w: string }): string {
-    const winnerName =
-        result.winner === "b" ? playerNames.b : result.winner === "w" ? playerNames.w : null;
-    return winnerName ? `${winnerName} の勝ち` : "引き分け";
-}
-
-function formatGameEndReason(result: GameResult): string {
-    return GAME_END_REASONS[result.reason] ?? result.reason;
-}
-
-interface GameEndDialogProps {
-    result: GameResult;
-    kifu: string;
-    playerNames: { b: string; w: string };
-    onDownloadKifu: () => void;
-    analysisLog: Array<{ seat: "b" | "w"; ply: number }>;
-    onStartReview?: () => void;
-    onExit?: () => void;
-    onDismiss: () => void;
-}
-
-// ダイアログを閉じた瞬間に下の棋譜ナビがずれないよう、終局したら高さを確保しておき、
-// 閉じたときだけ見せる。押したボタンはダイアログごと消えるので、開き直すボタンへ
-// フォーカスを移す。スクロールさせると見ようとした盤が画面の外へ押し出される
-function GameResultStrip({
-    shown,
-    text,
-    onReopen,
-}: {
-    shown: boolean;
-    text: string;
-    onReopen: () => void;
-}): ReactElement {
-    const buttonRef = useRef<HTMLButtonElement>(null);
-    useEffect(() => {
-        if (shown) buttonRef.current?.focus({ preventScroll: true });
-    }, [shown]);
-    return (
-        <div
-            aria-hidden={!shown}
-            className={`flex w-full max-w-md items-center justify-between gap-3 self-center rounded-lg border border-border bg-card px-3 py-2 ${shown ? "" : "invisible"}`}
-        >
-            <p className="text-sm font-semibold text-foreground">{text}</p>
-            <button
-                ref={buttonRef}
-                type="button"
-                onClick={onReopen}
-                className="shrink-0 rounded-md bg-secondary px-3 py-1.5 text-xs font-semibold text-secondary-foreground hover:bg-secondary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-                結果を表示
-            </button>
-        </div>
-    );
-}
-
-function GameEndDialog({
-    result,
-    kifu,
-    playerNames,
-    onDownloadKifu,
-    analysisLog,
-    onStartReview,
-    onExit,
-    onDismiss,
-}: GameEndDialogProps): ReactElement {
-    const [kifuCopied, setKifuCopied] = useState(false);
-    useEffect(() => {
-        if (!kifuCopied) return;
-        const timerId = setTimeout(() => setKifuCopied(false), 2000);
-        return () => clearTimeout(timerId);
-    }, [kifuCopied]);
-
-    // 背景の盤を操作できないモーダルなので、開いたらフォーカスをダイアログの中へ移す
-    const dialogRef = useRef<HTMLDivElement>(null);
-    useEffect(() => {
-        dialogRef.current?.focus();
-    }, []);
-
-    const bAnalysisCount = analysisLog.filter((e) => e.seat === "b").length;
-    const wAnalysisCount = analysisLog.filter((e) => e.seat === "w").length;
-
-    return (
-        <div className="fixed inset-0 z-modal flex items-center justify-center bg-overlay p-4">
-            <div
-                ref={dialogRef}
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="game-end-dialog-title"
-                tabIndex={-1}
-                onKeyDown={(e) => {
-                    if (e.key === "Escape") onDismiss();
-                }}
-                className="max-h-full min-w-[280px] max-w-sm overflow-y-auto rounded-xl border border-border bg-card p-6 shadow-xl focus-visible:outline-none"
-            >
-                <h2
-                    id="game-end-dialog-title"
-                    className="mb-3 text-center text-xl font-bold text-foreground"
-                >
-                    {formatGameResultTitle(result, playerNames)}
-                </h2>
-                <p className="mb-5 text-center text-sm text-muted-foreground">
-                    {formatGameEndReason(result)}
-                </p>
-
-                {/* 解析ログ開示 */}
-                {analysisLog.length > 0 && (
-                    <div className="mb-4 rounded-md border border-border bg-muted/30 p-3">
-                        <p className="mb-2 text-xs font-semibold text-foreground">
-                            AI 解析使用回数
-                        </p>
-                        <div className="flex flex-col gap-1 text-xs text-muted-foreground">
-                            <div className="flex justify-between">
-                                <span className="text-wafuu-shu">▲ {playerNames.b}</span>
-                                <span>{bAnalysisCount} 回</span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span className="text-wafuu-ai">△ {playerNames.w}</span>
-                                <span>{wAnalysisCount} 回</span>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                <div className="flex flex-col gap-2">
-                    {onStartReview && (
-                        <button
-                            type="button"
-                            onClick={onStartReview}
-                            className="w-full rounded-lg bg-primary py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
-                        >
-                            棋譜を検討する
-                        </button>
-                    )}
-                    {kifu && (
-                        <>
-                            <button
-                                type="button"
-                                onClick={async () => {
-                                    await navigator.clipboard.writeText(kifu);
-                                    setKifuCopied(true);
-                                }}
-                                className="w-full rounded-lg bg-secondary py-2 text-sm font-semibold text-secondary-foreground hover:bg-secondary/80"
-                            >
-                                {kifuCopied ? "コピーしました！" : "棋譜をコピー"}
-                            </button>
-                            <button
-                                type="button"
-                                onClick={onDownloadKifu}
-                                className="w-full rounded-lg bg-secondary py-2 text-sm font-semibold text-secondary-foreground hover:bg-secondary/80"
-                            >
-                                棋譜をダウンロード
-                            </button>
-                        </>
-                    )}
-                    {onExit && (
-                        <button
-                            type="button"
-                            onClick={onExit}
-                            className="w-full rounded-lg bg-secondary py-2 text-sm font-semibold text-secondary-foreground hover:bg-secondary/80"
-                        >
-                            トップへ戻る
-                        </button>
-                    )}
-                    <button
-                        type="button"
-                        onClick={onDismiss}
-                        className="w-full rounded-lg border border-border bg-card py-2 text-sm font-semibold text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                        盤面を見る
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-// ─── OnlineAiPanel ───────────────────────────────────────────────────────────
-
-interface OnlineAiPanelProps {
-    aiSupport?: AiSupportSettings;
-    seat: Seat;
-    myAnalysisRemaining: number | null;
-    isAnalyzing: boolean;
-    topMoves: AnalysisMoveResult[];
-    canAnalyze: boolean;
-    analyzeHint: string;
-    onAnalyze: () => void;
-    analysisBoard: BoardState | null;
-    analysisTurn: "b" | "w";
-    nnueSelection: NnueSelection;
-    onNnueSelectionChange: (sel: NnueSelection) => void;
-    onOpenNnueManager: () => void;
-    onApplyMove?: (usiMove: string) => Promise<unknown>;
-    onPreviewPv?: (move: AiHintMove) => void;
-}
-
-function OnlineAiPanel({
-    aiSupport,
-    seat,
-    myAnalysisRemaining,
-    isAnalyzing,
-    topMoves,
-    canAnalyze,
-    analyzeHint,
-    onAnalyze,
-    analysisBoard,
-    analysisTurn,
-    nnueSelection,
-    onNnueSelectionChange,
-    onOpenNnueManager,
-    onApplyMove,
-    onPreviewPv,
-}: OnlineAiPanelProps): ReactElement {
-    const mySeatKey = seat === "b" ? "b" : seat === "w" ? "w" : null;
-    const myMode = mySeatKey && aiSupport ? aiSupport[mySeatKey].mode : null;
-    const isLimited = myMode === "limited";
-    const hasNoRemaining = isLimited && myAnalysisRemaining !== null && myAnalysisRemaining <= 0;
-
-    const evalCp = topMoves[0]?.cp ?? null;
-    const evalPercent =
-        evalCp !== null ? Math.min(100, Math.max(0, 50 + (evalCp / 2000) * 50)) : 50;
-    const canClickAnalyze = canAnalyze && !isAnalyzing && !hasNoRemaining;
-    const moves: AiHintMove[] = topMoves.slice(0, 3).map((mv) => ({
-        usi: mv.usi,
-        displayText: analysisBoard
-            ? formatMoveSimple(mv.usi, analysisTurn === "b" ? "sente" : "gote", analysisBoard)
-            : mv.usi,
-        scoreText: `${mv.cp > 0 ? "+" : ""}${mv.cp}`,
-        scoreTone: mv.cp > 0 ? "sente" : mv.cp < 0 ? "gote" : "neutral",
-        pv: mv.pv,
-        evalCp: mv.cp,
-    }));
-
-    return (
-        <AiHintPanel
-            title="AI 解析"
-            remainingLabel={isLimited ? `残り ${myAnalysisRemaining ?? 0} 回` : null}
-            isAnalyzing={isAnalyzing}
-            moves={moves}
-            canAnalyze={canClickAnalyze}
-            analyzeHint={analyzeHint}
-            summary={{
-                percent: evalPercent,
-                senteLabel: evalCp !== null && evalCp > 0 ? `▲ +${evalCp}` : "▲",
-                goteLabel: evalCp !== null && evalCp < 0 ? `△ +${Math.abs(evalCp)}` : "△",
-            }}
-            nnueSelection={nnueSelection}
-            onNnueSelectionChange={onNnueSelectionChange}
-            onOpenNnueManager={onOpenNnueManager}
-            onAnalyze={onAnalyze}
-            onApplyMove={onApplyMove}
-            onPreviewPv={onPreviewPv}
-        />
     );
 }
