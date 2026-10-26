@@ -26,7 +26,7 @@ import {
 } from "./board";
 import { boardToSfen, handsToSfen } from "./position-sfen";
 
-export interface CsaStartPosition {
+interface CsaStartPosition {
     /** 開始局面 (盤・持ち駒・手番)。 */
     position: PositionState;
     /**

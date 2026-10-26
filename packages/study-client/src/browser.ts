@@ -27,7 +27,7 @@ const STUDY_CHANNEL_NAME = "ramu-studies";
  * Web Locks が無い環境では、タブの中だけで直列化する（タブをまたいだ重複送信は起こりうるが、
  * 操作は冪等で、送信中のバッチは同じ `batchId` で再送されるので結果は変わらない）。
  */
-export function createWebLockManager(
+function createWebLockManager(
     lockManager: LockManager | undefined = globalThis.navigator?.locks,
 ): StudyLockManager {
     if (!lockManager) return createInProcessLockManager();
@@ -39,9 +39,7 @@ export function createWebLockManager(
 }
 
 /** BroadcastChannel による通知。使えない環境では null。 */
-export function createBroadcastStudyChannel(
-    name: string = STUDY_CHANNEL_NAME,
-): StudyChannel | null {
+function createBroadcastStudyChannel(name: string = STUDY_CHANNEL_NAME): StudyChannel | null {
     if (typeof BroadcastChannel === "undefined") return null;
     const channel = new BroadcastChannel(name);
     const handlers = new Set<(message: StudyChannelMessage) => void>();
@@ -96,7 +94,7 @@ export function createSessionVerifier(
     };
 }
 
-export interface BrowserStudySyncOptions
+interface BrowserStudySyncOptions
     extends Partial<
         Pick<StudySyncOptions, "flushDelayMs" | "retryBaseMs" | "retryMaxMs" | "verifySession">
     > {

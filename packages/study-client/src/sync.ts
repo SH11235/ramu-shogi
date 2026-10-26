@@ -103,7 +103,7 @@ export type StudySyncEvent =
  */
 export type StudyPullState = "not_needed" | "pending" | "done";
 
-export type StudySyncErrorCode = "not_found" | "merged" | "already_exists";
+type StudySyncErrorCode = "not_found" | "merged" | "already_exists";
 
 export class StudySyncError extends Error {
     readonly code: StudySyncErrorCode;

@@ -1,6 +1,6 @@
 import type { Seat, ServerMessage } from "@shogi/match-protocol";
 
-export type { ClientMessageType, Seat, ServerMessage } from "@shogi/match-protocol";
+export type { ClientMessage, ClientMessageType, Seat, ServerMessage } from "@shogi/match-protocol";
 
 // ─── RoomClient インターフェース ──────────────────────────────────────────
 export interface RoomClient {

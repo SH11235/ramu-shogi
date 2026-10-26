@@ -279,14 +279,14 @@ const defaultBuildWsUrl = (roomId: string): string =>
 
 // ─── フック公開型 ─────────────────────────────────────────────────────────────
 
-export interface UseRoomConnectionOptions {
+interface UseRoomConnectionOptions {
     roomId: string;
     initialName?: string;
     /** WebSocket URL ファクトリ（デフォルト: window.location を使用） */
     buildWsUrl?: (roomId: string) => string;
 }
 
-export interface UseRoomConnectionReturn {
+interface UseRoomConnectionReturn {
     // 参加フォーム
     joinName: string;
     setJoinName: (name: string) => void;

@@ -55,7 +55,7 @@ interface PendingRow {
     op: StudyOp;
 }
 
-export interface IndexedDbStudyStoreOptions {
+interface IndexedDbStudyStoreOptions {
     /** 既定は `globalThis.indexedDB`。 */
     indexedDB?: IDBFactory;
     /** 既定は `ramu-studies`。 */

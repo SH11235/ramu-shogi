@@ -1,5 +1,6 @@
 import { createReconnectManager, getStoredResumeToken, storeResumeToken } from "./reconnect";
 import type {
+    ClientMessage,
     ClientMessageType,
     RoomClient,
     RoomClientOptions,
@@ -70,7 +71,8 @@ export function createRoomClient(
         }
         const currentMsgId = ++msgId;
         try {
-            ws.send(JSON.stringify({ v: 1, t, clientMsgId: currentMsgId, payload }));
+            const message: ClientMessage<T> = { v: 1, t, clientMsgId: currentMsgId, payload };
+            ws.send(JSON.stringify(message));
         } catch (err) {
             console.error(`[RoomClient] Failed to send "${t}":`, err);
         }

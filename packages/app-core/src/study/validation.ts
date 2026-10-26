@@ -37,7 +37,7 @@ export class StudyLimitError extends StudyOpError {
 }
 
 /** 形の決まっていない JSON 値（`layerStacks`、`display` の追加の項目）の入れ子の深さの上限。 */
-export const STUDY_FREE_JSON_MAX_DEPTH = 8;
+const STUDY_FREE_JSON_MAX_DEPTH = 8;
 
 const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
@@ -287,7 +287,7 @@ export function assertStudyLayerDisplay(display: StudyLayerDisplay): void {
 }
 
 /** 表題の上限（Unicode のコードポイントで 200 文字）。 */
-export function assertStudyTitle(title: string): void {
+function assertStudyTitle(title: string): void {
     if (typeof title !== "string") invalid("表題は文字列にします");
     if (Array.from(title).length > STUDY_LIMITS.titleLength) {
         throw new StudyLimitError("titleLength");
@@ -295,7 +295,7 @@ export function assertStudyTitle(title: string): void {
 }
 
 /** コメントの上限（UTF-8 で 4 KiB）。 */
-export function assertStudyComment(comment: string): void {
+function assertStudyComment(comment: string): void {
     if (typeof comment !== "string") invalid("コメントは文字列にします");
     if (exceedsUtf8Bytes(comment, STUDY_LIMITS.commentBytes)) {
         throw new StudyLimitError("commentBytes");
@@ -306,7 +306,7 @@ export function assertStudyComment(comment: string): void {
  * 操作 1 つの入力（文書に依らない部分）を検証する。
  * 文書に依る上限（ノード数、手順の長さ、レイヤー数、JSON の大きさ）は `applyStudyOpsStrict` が見る。
  */
-export function assertStudyOpInput(op: StudyOp): void {
+function assertStudyOpInput(op: StudyOp): void {
     const hashId = (value: unknown, what: string): void => {
         if (!isHashId(value)) invalid(`${op.type}: ${what} は 32 文字の小文字 hex にします`);
     };

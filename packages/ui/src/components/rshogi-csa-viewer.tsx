@@ -39,7 +39,7 @@ import { useIsMobile } from "./shogi-match/hooks/useMediaQuery";
 import type { EngineOption } from "./shogi-match/types";
 import { csaAnnotationsToMoveData } from "./shogi-match/utils/kifuImport";
 
-export interface RshogiCsaViewerProps {
+interface RshogiCsaViewerProps {
     gameId: string;
     engineOptions: EngineOption[];
     manifestUrl: string;
