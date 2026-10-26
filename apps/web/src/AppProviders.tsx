@@ -9,6 +9,7 @@ import { StoredBoardPatternProvider } from "@shogi/ui/components/shogi-match/hoo
 import { NnueProvider } from "@shogi/ui/providers/NnueContext";
 import { Outlet } from "@tanstack/react-router";
 import type { ReactElement } from "react";
+import { AppDialogHost } from "./components/AppDialogs";
 import { StatusBanner } from "./components/StatusBanner";
 import { AuthSessionProvider } from "./hooks/useAuthSession";
 import { useStudySessionSync } from "./hooks/useStudySessionSync";
@@ -61,6 +62,7 @@ function AppProvidersInner(): ReactElement {
                 </div>
             )}
             <Outlet />
+            <AppDialogHost />
         </NnueProvider>
     );
 }
