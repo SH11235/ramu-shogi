@@ -7,7 +7,7 @@ import { PCKifuSection } from "./PCKifuSection";
 let gameMode: GameMode = "reviewing";
 
 vi.mock("../contexts/MatchStateContext", () => ({
-    useMatchState: () => ({ gameMode }),
+    useMatchState: () => ({ gameMode, displaySettings: {} }),
 }));
 vi.mock("../contexts/AnalysisContext", () => ({
     useAnalysis: () => ({
@@ -26,7 +26,6 @@ vi.mock("../contexts/NavigationContext", () => ({
         kifMoves: [],
         displayEvalHistory: [],
         positionHistory: [],
-        displaySettings: {},
         isMatchRunning: gameMode === "playing",
     }),
 }));

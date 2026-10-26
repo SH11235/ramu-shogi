@@ -3,7 +3,7 @@ import type { ReactElement } from "react";
 import { useRef, useState } from "react";
 import { normalizeSoundVoice, type SoundVoice } from "../../../hooks/useShogiSound";
 import { Popover, PopoverContent, PopoverTrigger } from "../../popover";
-import { useNavigation } from "../contexts/NavigationContext";
+import { useMatchState } from "../contexts/MatchStateContext";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
 import { DEFAULT_DISPLAY_SETTINGS } from "../types";
 import { handleMenuKeyDown } from "../utils/menuKeyNavigation";
@@ -101,7 +101,7 @@ function SoundIcon({ mode, className = "h-5 w-5" }: { mode: SoundMode; className
 export function SoundToggle({ size = "md" }: { size?: "md" | "lg" }): ReactElement {
     const sizeClass = SIZE_CLASS[size];
     const buttonClass = cn(BUTTON_BASE_CLASS, sizeClass.button);
-    const { displaySettings, onDisplaySettingsChange } = useNavigation();
+    const { displaySettings, onDisplaySettingsChange } = useMatchState();
     const { soundVoiceSelectable, previewSound } = useShogiMatchConfig();
     const [open, setOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);

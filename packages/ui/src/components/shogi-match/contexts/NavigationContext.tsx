@@ -13,7 +13,6 @@
 import type { KifuTree, PositionState } from "@shogi/app-core";
 import type { ReactNode } from "react";
 import { createContext, useContext } from "react";
-import type { DisplaySettings } from "../types";
 import type { EvalHistory, KifMove } from "../utils/kifFormat";
 import type {
     KifuViewMode,
@@ -56,10 +55,6 @@ interface NavigationProviderProps {
     kifuViewMode: KifuViewMode;
     onViewModeChange: (mode: KifuViewMode) => void;
 
-    // 表示設定
-    displaySettings: DisplaySettings;
-    onDisplaySettingsChange: (updater: (prev: DisplaySettings) => DisplaySettings) => void;
-
     // 手の選択
     handlePlySelect: (ply: number) => void;
     handleCopyKif: () => string;
@@ -92,8 +87,6 @@ export function NavigationProvider({
     handlePreviewPv,
     kifuViewMode,
     onViewModeChange,
-    displaySettings,
-    onDisplaySettingsChange,
     handlePlySelect,
     handleCopyKif,
     handleMoveDetailSelect,
@@ -118,8 +111,6 @@ export function NavigationProvider({
         handlePreviewPv,
         kifuViewMode,
         onViewModeChange,
-        displaySettings,
-        onDisplaySettingsChange,
         handlePlySelect,
         handleCopyKif,
         handleMoveDetailSelect,

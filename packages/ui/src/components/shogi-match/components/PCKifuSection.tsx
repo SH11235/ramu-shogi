@@ -24,7 +24,7 @@ import { TabHeader } from "./TabHeader";
 
 export function PCKifuSection(): ReactElement {
     const [activeTab, setActiveTab] = useState<"kifu" | "ai">("kifu");
-    const { gameMode } = useMatchState();
+    const { gameMode, displaySettings, onDisplaySettingsChange } = useMatchState();
     const { evalGraphPinned, viewerMode } = useShogiMatchConfig();
     // 棋譜を見るだけの画面（ビューア）は、解析も変化の追加もさせない（研究ノートで行う）。
     const readOnly = viewerMode;
@@ -67,8 +67,6 @@ export function PCKifuSection(): ReactElement {
         handleAddPvAsBranch,
         handlePreviewPv,
         onViewModeChange,
-        displaySettings,
-        onDisplaySettingsChange,
         handlePlySelect,
         handleCopyKif,
         handleMoveDetailSelect,

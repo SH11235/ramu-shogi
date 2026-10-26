@@ -2172,6 +2172,7 @@ export function ShogiMatch({
         editFromSquare,
         flipBoard,
         displaySettings,
+        setDisplaySettings,
         onFlipBoardChange: setFlipBoard,
     };
 
@@ -2253,7 +2254,6 @@ export function ShogiMatch({
         handlePreviewPv,
         kifuViewMode,
         setKifuViewMode,
-        setDisplaySettings,
         handlePlySelect,
         handleCopyKif,
         handleMoveDetailSelect,
@@ -2327,7 +2327,6 @@ export function ShogiMatch({
         onOpenAbout: () => setIsAboutOpen(true),
         onImportSfen: importSfenFromPanel,
         onImportKif: importKifFromPanel,
-        onDisplaySettingsChange: setDisplaySettings,
     };
 
     // 研究ノートにできるのは、どの手も研究ノートに入れられる書式の棋譜（パスも入れられる）。指し手が無くても

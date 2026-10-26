@@ -5,7 +5,6 @@
  */
 
 import type { KifuTree, PositionState } from "@shogi/app-core";
-import type { DisplaySettings } from "../types";
 import type { EvalHistory, KifMove } from "../utils/kifFormat";
 
 /**
@@ -84,10 +83,6 @@ export interface NavigationContextValue {
     // 表示モード
     kifuViewMode: KifuViewMode;
     onViewModeChange: (mode: KifuViewMode) => void;
-
-    // 表示設定
-    displaySettings: DisplaySettings;
-    onDisplaySettingsChange: (updater: (prev: DisplaySettings) => DisplaySettings) => void;
 
     // 手の選択
     handlePlySelect: (ply: number) => void;

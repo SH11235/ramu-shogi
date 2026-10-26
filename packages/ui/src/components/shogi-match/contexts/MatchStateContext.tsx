@@ -11,7 +11,7 @@
  */
 
 import type { LastMove, PieceType, Player, PositionState, Square } from "@shogi/app-core";
-import type { ReactNode } from "react";
+import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { createContext, useContext } from "react";
 import type { ShogiBoardCell, ShogiBoardMoveShadow, ShogiBoardPiece } from "../../shogi-board";
 import type { PassDisabledReason } from "../components/PassButton";
@@ -52,6 +52,7 @@ interface MatchStateProviderProps {
     flipBoard: boolean;
     onFlipBoardChange: (flip: boolean) => void;
     displaySettings: DisplaySettings;
+    onDisplaySettingsChange: Dispatch<SetStateAction<DisplaySettings>>;
     passRightsSettings?: PassRightsSettings;
 
     // 手番・プレイヤー情報
@@ -128,6 +129,7 @@ export function MatchStateProvider({
     flipBoard,
     onFlipBoardChange,
     displaySettings,
+    onDisplaySettingsChange,
     passRightsSettings,
     sides,
     moves,
@@ -177,6 +179,7 @@ export function MatchStateProvider({
         flipBoard,
         onFlipBoardChange,
         displaySettings,
+        onDisplaySettingsChange,
         passRightsSettings,
         sides,
         moves,

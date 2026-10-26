@@ -27,7 +27,7 @@ import { PassRightsSettingsDialog } from "../components/PassRightsSettingsDialog
 import { PCBoardSection } from "../components/PCBoardSection";
 import { PCKifuSection } from "../components/PCKifuSection";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
-import { useNavigation } from "../contexts/NavigationContext";
+import { useMatchState } from "../contexts/MatchStateContext";
 import type { DisplaySettings, PassRightsSettings } from "../types";
 import type { ImportKifHandler, ImportSfenHandler } from "../utils/kifuImport";
 
@@ -112,13 +112,11 @@ export function PCLayout({
 }: PCLayoutProps): ReactElement {
     // Context から状態を取得
     const matchSettings = useMatchSettings();
-    const navigation = useNavigation();
 
     // MatchSettingsContext から取得
     const { passRightsSettings, settingsLocked } = matchSettings;
 
-    // NavigationContext から表示設定を取得
-    const { displaySettings: navDisplaySettings } = navigation;
+    const { displaySettings } = useMatchState();
 
     return (
         <section className={matchLayoutClasses}>
@@ -182,7 +180,7 @@ export function PCLayout({
                                 displaySettingsPanel={
                                     isDisplaySettingsOpen ? (
                                         <DisplaySettingsPanel
-                                            settings={navDisplaySettings}
+                                            settings={displaySettings}
                                             onChange={setDisplaySettings}
                                         />
                                     ) : null
