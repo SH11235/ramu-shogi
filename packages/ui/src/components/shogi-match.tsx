@@ -43,6 +43,10 @@ import {
 import { applyDropResult } from "./shogi-match/dnd/dropLogic";
 import type { DropResult } from "./shogi-match/dnd/types";
 import { usePieceDnd } from "./shogi-match/dnd/usePieceDnd";
+import {
+    useInitialAnalysisEntries,
+    useMatchSnapshotReports,
+} from "./shogi-match/hooks/useAnalysisSnapshot";
 import { useBatchAnalysis } from "./shogi-match/hooks/useBatchAnalysis";
 import { useBoardState } from "./shogi-match/hooks/useBoardState";
 import { useClockManager } from "./shogi-match/hooks/useClockManager";
@@ -52,12 +56,13 @@ import { useEngineManager } from "./shogi-match/hooks/useEngineManager";
 import { useEnginePool } from "./shogi-match/hooks/useEnginePool";
 import { useGameControls } from "./shogi-match/hooks/useGameControls";
 import { useImportedKifuPlayers } from "./shogi-match/hooks/useImportedKifuPlayers";
-import { type ReviewMoveEval, useKifuImportExport } from "./shogi-match/hooks/useKifuImportExport";
-import { useKifuKeyboardNavigation } from "./shogi-match/hooks/useKifuKeyboardNavigation";
 import {
-    type RecordedEvalInfoEvent,
-    useKifuNavigation,
-} from "./shogi-match/hooks/useKifuNavigation";
+    type InitialReviewInput,
+    useInitialReviewSync,
+} from "./shogi-match/hooks/useInitialReviewSync";
+import { useKifuImportExport } from "./shogi-match/hooks/useKifuImportExport";
+import { useKifuKeyboardNavigation } from "./shogi-match/hooks/useKifuKeyboardNavigation";
+import { useKifuNavigation } from "./shogi-match/hooks/useKifuNavigation";
 import { useLegalMovePrefetch } from "./shogi-match/hooks/useLegalMovePrefetch";
 import { useMatchNnueDownload } from "./shogi-match/hooks/useMatchNnueDownload";
 import { useMatchPreferences } from "./shogi-match/hooks/useMatchPreferences";
@@ -96,71 +101,16 @@ import type {
 } from "./shogi-match/types/layoutProps";
 import type { KifMove } from "./shogi-match/utils/kifFormat";
 import { buildLegalCacheKey, LegalMoveCache } from "./shogi-match/utils/legalMoveCache";
+import {
+    canEditPosition,
+    resolveMoveDetail,
+    shouldFlipBoardForSides,
+} from "./shogi-match/utils/matchView";
 import { boardToGrid } from "./shogi-match/utils/positionUtils";
 import { clockSettingsForLimits } from "./shogi-match/utils/searchLimits";
 import { TooltipProvider } from "./tooltip";
 
 const EMPTY_ANALYSIS_MARKERS: Array<{ seat: "b" | "w"; ply: number }> = [];
-
-const reviewMoveDataKeyCache = new WeakMap<(ReviewMoveEval | undefined)[], string>();
-
-/**
- * JSON.stringify 用 replacer。素の stringify は ±Infinity をどちらも null に潰して符号を失うため、
- * signature/cache key では手数なし詰み (evalMate=±Infinity) を符号付き文字列として残す。
- */
-const infinitySafeReplacer = (_key: string, value: unknown): unknown =>
-    typeof value === "number" && !Number.isNaN(value) && !Number.isFinite(value)
-        ? value > 0
-            ? "Infinity"
-            : "-Infinity"
-        : value;
-
-export const stringifyReviewMoveData = (
-    moveData: (ReviewMoveEval | undefined)[] | undefined,
-): string => {
-    if (!moveData) return "";
-    const cached = reviewMoveDataKeyCache.get(moveData);
-    if (cached !== undefined) return cached;
-
-    const key = JSON.stringify(moveData, infinitySafeReplacer);
-    reviewMoveDataKeyCache.set(moveData, key);
-    return key;
-};
-
-interface LoadedReviewSignature {
-    sfen: string;
-    movesKey: string;
-    moveDataKey: string;
-}
-
-interface InitialReviewInput {
-    sfen: string;
-    moves: string[];
-    moveData?: (ReviewMoveEval | undefined)[];
-    /**
-     * 最初に取り込んだときに開く局面。`"start"` は開始局面、省略時は最終手（観戦は最新手を追う）。
-     * 取り込んだ後の更新（手が伸びた・評価値が届いた）には効かない。
-     */
-    openAt?: "start";
-}
-
-type InitialReviewSyncMode = "skip" | "import" | "diff";
-
-interface ReviewMoveDataDiffResult {
-    changed: number;
-    applied: number;
-    skipped: number;
-}
-
-export const getInitialReviewSyncMode = (
-    loaded: LoadedReviewSignature | null,
-    next: LoadedReviewSignature,
-): InitialReviewSyncMode => {
-    if (!loaded) return "import";
-    if (loaded.sfen !== next.sfen || loaded.movesKey !== next.movesKey) return "import";
-    if (loaded.moveDataKey !== next.moveDataKey) return "diff";
-    return "skip";
-};
 
 // ライブ探索表示のクリアは複数の effect / callback から呼ばれる。コンポーネント内
 // 関数だと毎レンダー再生成され hook 依存に使えない (biome) ため、ref と setState を
@@ -175,307 +125,6 @@ const clearLiveSearchDisplay = (
     timerRef.current = null;
     setLiveSearchInfo(null);
 };
-
-const isSameReviewMoveEval = (
-    a: ReviewMoveEval | undefined,
-    b: ReviewMoveEval | undefined,
-): boolean =>
-    a?.elapsedMs === b?.elapsedMs && a?.evalCp === b?.evalCp && a?.evalMate === b?.evalMate;
-
-export const applyReviewMoveDataDiff = (
-    navigation: Pick<ReturnType<typeof useKifuNavigation>, "updateMoveEvalAtPly">,
-    moves: string[],
-    previousMoveData: (ReviewMoveEval | undefined)[] | undefined,
-    nextMoveData: (ReviewMoveEval | undefined)[] | undefined,
-): ReviewMoveDataDiffResult => {
-    const result: ReviewMoveDataDiffResult = { changed: 0, applied: 0, skipped: 0 };
-    for (let index = 0; index < moves.length; index++) {
-        const data = nextMoveData?.[index];
-        if (isSameReviewMoveEval(previousMoveData?.[index], data)) continue;
-
-        result.changed++;
-        // 評価値のクリアは diff 経路では非対応。moves 変化時の import 経路で
-        // 棋譜ツリーを再構築し、その際に古い評価値もリセットされる。
-        if (!data) continue;
-        const updateResult = navigation.updateMoveEvalAtPly(
-            index + 1,
-            {
-                elapsedMs: data.elapsedMs,
-                scoreCp: data.evalCp,
-                scoreMate: data.evalMate,
-                pv: data.pv,
-            },
-            {
-                usiMove: moves[index],
-            },
-        );
-        if (updateResult === "missing") {
-            result.skipped++;
-        } else {
-            result.applied++;
-        }
-    }
-    return result;
-};
-
-export const analysisSnapshotEntryToRecordedEvalInfoEvent = (
-    entry: AnalysisSnapshotEntryDraft,
-): RecordedEvalInfoEvent => ({
-    type: "info",
-    scoreCp: entry.evalCp ?? undefined,
-    scoreMate: entry.evalMate ?? undefined,
-    depth: entry.depth ?? undefined,
-    pv: entry.pv ?? undefined,
-    multipv: 1,
-    normalized: true,
-});
-
-/** 保存済み snapshot の multiPv 候補 1 件を再適用用イベントへ変換する (multipv 番号を保持)。 */
-export const analysisSnapshotMultiPvToRecordedEvalInfoEvent = (
-    multiPv: NonNullable<AnalysisSnapshotEntryDraft["multiPv"]>[number],
-): RecordedEvalInfoEvent => ({
-    type: "info",
-    scoreCp: multiPv.evalCp ?? undefined,
-    scoreMate: multiPv.evalMate ?? undefined,
-    depth: multiPv.depth ?? undefined,
-    pv: multiPv.pv ?? undefined,
-    multipv: multiPv.multipv,
-    normalized: true,
-});
-
-/**
- * 保存済み snapshot の 1 entry を棋譜ツリーへ再適用する。ply の評価を一旦クリアし、
- * 主評価 (multipv:1) と各 multiPv 候補を multipv スロットごとに記録する。
- * multiPv に multipv:1 が含まれても、主評価との二重記録は setNodeMultiPvEval の
- * 深さ比較で吸収されるため無害 (multiPv が空/なしの経路のため主評価記録は残す)。
- */
-export const applyAnalysisSnapshotEntryEvals = (
-    entry: AnalysisSnapshotEntryDraft,
-    handlers: {
-        clearEvalByPly: (ply: number) => void;
-        recordEvalByPly: (ply: number, event: RecordedEvalInfoEvent) => void;
-    },
-): void => {
-    handlers.clearEvalByPly(entry.ply);
-    handlers.recordEvalByPly(entry.ply, analysisSnapshotEntryToRecordedEvalInfoEvent(entry));
-    for (const multiPv of entry.multiPv ?? []) {
-        handlers.recordEvalByPly(
-            entry.ply,
-            analysisSnapshotMultiPvToRecordedEvalInfoEvent(multiPv),
-        );
-    }
-};
-
-export function useInitialReviewSync({
-    positionReady,
-    initialReview,
-    navigation,
-    importSfen,
-}: {
-    positionReady: boolean;
-    initialReview: InitialReviewInput | undefined;
-    navigation: ReturnType<typeof useKifuNavigation>;
-    importSfen: (
-        sfen: string,
-        moves: string[],
-        options?: {
-            gotoPly?: number;
-            isStale?: () => boolean;
-            moveData?: (ReviewMoveEval | undefined)[];
-        },
-    ) => Promise<void>;
-}): void {
-    const loadedReviewRef = useRef<LoadedReviewSignature | null>(null);
-    const loadedReviewMoveDataRef = useRef<(ReviewMoveEval | undefined)[] | undefined>(undefined);
-    const importSfenRef = useRef(importSfen);
-    importSfenRef.current = importSfen;
-    const navigationRef = useRef(navigation);
-    navigationRef.current = navigation;
-    const reviewSfen = initialReview?.sfen;
-    const reviewMoves = initialReview?.moves;
-    const reviewMoveData = initialReview?.moveData;
-    const reviewMoveDataKey = stringifyReviewMoveData(reviewMoveData);
-    const getLatestReview = useEffectEvent(() => initialReview);
-    const applyLatestReviewMoveDataDiff = useEffectEvent((moves: string[]) => {
-        const nextMoveData = getLatestReview()?.moveData;
-        const result = applyReviewMoveDataDiff(
-            navigationRef.current,
-            moves,
-            loadedReviewMoveDataRef.current,
-            nextMoveData,
-        );
-        if (result.skipped === 0) {
-            loadedReviewMoveDataRef.current = nextMoveData;
-        }
-        return result;
-    });
-
-    useEffect(() => {
-        if (!positionReady || reviewSfen === undefined || reviewMoves === undefined) {
-            return;
-        }
-        const movesKey = reviewMoves.join(" ");
-        const loaded = loadedReviewRef.current;
-        const nextSignature = {
-            sfen: reviewSfen,
-            movesKey,
-            moveDataKey: reviewMoveDataKey,
-        };
-        const syncMode = getInitialReviewSyncMode(loaded, nextSignature);
-        if (syncMode === "skip") {
-            return;
-        }
-        if (syncMode === "diff") {
-            const result = applyLatestReviewMoveDataDiff(reviewMoves);
-            if (result.skipped === 0) {
-                loadedReviewRef.current = nextSignature;
-            }
-            return;
-        }
-
-        // 再構築前のカーソルを捕捉する。末尾追従中 (currentPly === totalPly) なら
-        // 最新手まで進め、途中検討中ならその ply を維持する。
-        const navState = navigationRef.current.state;
-        const wasFollowingTip = navState.currentPly === navState.totalPly;
-        const restorePly = navState.currentPly;
-        // 最初の取り込みだけ、開始局面から開く指定に従う。
-        const openAtStart = loaded === null && getLatestReview()?.openAt === "start";
-
-        // await 前に確定して StrictMode の二重実行を冪等化する。連続着手で先行 import が
-        // 後着 import に追い越されたら、isStale で古い import の state 適用を中止する。
-        loadedReviewRef.current = nextSignature;
-        const importMoveData = getLatestReview()?.moveData;
-        loadedReviewMoveDataRef.current = importMoveData;
-        void importSfenRef
-            .current(reviewSfen, reviewMoves, {
-                gotoPly: openAtStart ? 0 : wasFollowingTip ? undefined : restorePly,
-                moveData: importMoveData,
-                isStale: () =>
-                    loadedReviewRef.current?.sfen !== reviewSfen ||
-                    loadedReviewRef.current?.movesKey !== movesKey ||
-                    loadedReviewRef.current?.moveDataKey !== reviewMoveDataKey,
-            })
-            .then(() => {
-                // importSfen の resolve 時点では React の commit が未完了のことがあるため、
-                // macrotask (setTimeout 0) に後退させ、commit 後の navigationRef
-                // (updateMoveEvalAtPly の missing 判定が参照するツリー) に対して
-                // import 中に届いたコメント評価値の diff を再適用する。
-                // (.then() 時点では既に非同期コンテキストのため flushSync による
-                // 同期 commit の強制は使えない)
-                setTimeout(() => {
-                    if (
-                        loadedReviewRef.current?.sfen !== reviewSfen ||
-                        loadedReviewRef.current?.movesKey !== movesKey
-                    ) {
-                        return;
-                    }
-                    const latestReview = getLatestReview();
-                    if (
-                        latestReview?.sfen !== reviewSfen ||
-                        latestReview.moves.join(" ") !== movesKey
-                    ) {
-                        return;
-                    }
-                    const latestMoveData = latestReview.moveData;
-                    const result = applyReviewMoveDataDiff(
-                        navigationRef.current,
-                        reviewMoves,
-                        loadedReviewMoveDataRef.current,
-                        latestMoveData,
-                    );
-                    // skipped > 0 (ply 未登録等) の場合は ref を確定せず、
-                    // 次の reviewMoveData 変化時に同じ差分の再適用を試みる (リトライ)。
-                    // 差分適用は冪等なので重複適用の害はない。
-                    if (result.skipped === 0) {
-                        loadedReviewMoveDataRef.current = latestMoveData;
-                        loadedReviewRef.current = {
-                            sfen: reviewSfen,
-                            movesKey,
-                            moveDataKey: stringifyReviewMoveData(latestMoveData),
-                        };
-                    }
-                }, 0);
-            })
-            .catch((err) => {
-                // SFEN 解析失敗などで取り込みが reject したら loaded マークを巻き戻し、
-                // 同一内容の再取り込み (再 snapshot 等) を可能にする。より新しい取り込みが
-                // 先行していれば (参照不一致) リセットしない。
-                if (
-                    loadedReviewRef.current?.sfen === reviewSfen &&
-                    loadedReviewRef.current?.movesKey === movesKey &&
-                    loadedReviewRef.current?.moveDataKey === reviewMoveDataKey
-                ) {
-                    loadedReviewRef.current = null;
-                    loadedReviewMoveDataRef.current = undefined;
-                }
-                console.error("[rshogi] initialReview の取り込みに失敗しました", err);
-            });
-    }, [positionReady, reviewSfen, reviewMoves, reviewMoveDataKey]);
-}
-
-/**
- * 読み筋のウィンドウ（PC）に出す手と、その手が指された後の局面。
- *
- * ウィンドウを開いている間は、見ている手に追従する。指し手と局面は、いま見ている手順の同じ手数
- * から引く（別の変化へ移っても、手と局面が食い違わない）。開始局面（0 手目）には出す手が無い
- * ので、その間だけウィンドウを出さない（手を進めるとまた出る）。
- */
-export function resolveMoveDetail({
-    isOpen,
-    currentPly,
-    kifMoves,
-    positionHistory,
-}: {
-    isOpen: boolean;
-    currentPly: number;
-    kifMoves: readonly KifMove[];
-    /** 「その手が指された後の局面」を 0 始まりで持つ（手数 ply の局面は `ply - 1`）。 */
-    positionHistory: readonly PositionState[];
-}): { move: KifMove; position: PositionState } | null {
-    if (!isOpen || currentPly < 1) return null;
-    const move = kifMoves.find((m) => m.ply === currentPly);
-    const position = positionHistory[currentPly - 1];
-    if (!move || !position) return null;
-    return { move, position };
-}
-
-/**
- * 局面編集の操作（駒のドラッグ、マスを押しての配置、持ち駒の増減、成り・不成の切り替え）を
- * 受け付けてよいか。
- *
- * 棋譜を見るだけの画面（`viewerMode`）は局面編集を出さない。ところが内部の状態は
- * `initialReview` の取り込みが済むまで「編集モード」のままで、取り込みに失敗すると以後も
- * そのまま残る。その間に盤を編集できてしまわないよう、ビューアでは常に受け付けない。
- */
-export function canEditPosition({
-    isEditMode,
-    viewerMode,
-}: {
-    isEditMode: boolean;
-    viewerMode: boolean;
-}): boolean {
-    return isEditMode && !viewerMode;
-}
-
-/**
- * 盤を反転して（後手を手前にして）出すか。対局画面で、後手だけが人間のときに反転する。
- *
- * 先後の担当は対局画面の設定としてブラウザに保存されていて、棋譜を見る画面（棋譜ビューア・
- * 観戦・公開棋譜）もそれを読む。そこで反転すると、対局と関係のない棋譜が後手視点で開いて
- * しまうので、棋譜を見る画面では常に先手を手前にする（利用者は反転ボタンで切り替えられる）。
- */
-export function shouldFlipBoardForSides({
-    reviewMode,
-    senteRole,
-    goteRole,
-}: {
-    reviewMode: boolean;
-    senteRole: SideSetting["role"];
-    goteRole: SideSetting["role"];
-}): boolean {
-    if (reviewMode) return false;
-    return goteRole === "human" && senteRole !== "human";
-}
 
 interface ShogiMatchProps {
     engineOptions: EngineOption[];
@@ -954,22 +603,6 @@ export function ShogiMatch({
 
     // 互換性用のmoves配列
     const moves = navigation.getMovesArray();
-    const movesKey = moves.join(" ");
-
-    const lastSnapshotRef = useRef<{ sfen: string; movesKey: string } | null>(null);
-
-    useEffect(() => {
-        const prev = lastSnapshotRef.current;
-        if (prev && prev.sfen === startSfen && prev.movesKey === movesKey) {
-            return;
-        }
-        lastSnapshotRef.current = { sfen: startSfen, movesKey };
-        onPositionSnapshot?.({
-            sfen: startSfen,
-            moves,
-            label: "現在局面",
-        });
-    }, [moves, movesKey, onPositionSnapshot, startSfen]);
 
     // 棋譜＋評価値データ
     const {
@@ -990,51 +623,14 @@ export function ShogiMatch({
     // "main" モード時は本譜の評価値を表示
     // "branches" や "selectedBranch" モード時は現在の経路（分岐含む）の評価値を表示
     const displayEvalHistory = kifuViewMode === "main" ? mainLineEvalHistory : evalHistory;
-    const analysisSnapshotDraft = (() => {
-        const entries = kifMoves
-            .filter(
-                (move) =>
-                    move.evalCp !== undefined ||
-                    move.evalMate !== undefined ||
-                    move.depth !== undefined ||
-                    move.pv !== undefined ||
-                    move.multiPvEvals !== undefined,
-            )
-            .map((move) => ({
-                ply: move.ply,
-                evalCp: move.evalCp ?? null,
-                evalMate: move.evalMate ?? null,
-                depth: move.depth ?? null,
-                pv: move.pv ?? null,
-                multiPv: move.multiPvEvals ?? null,
-            }));
-
-        if (entries.length === 0) {
-            return null;
-        }
-
-        return {
-            startSfen,
-            lineMoves: kifMoves.map((move) => move.usiMove),
-            analysisSettings,
-            entries,
-        } satisfies AnalysisSnapshotDraft;
-    })();
-    const lastAnalysisSnapshotSignatureRef = useRef<string | null>(null);
-
-    useEffect(() => {
-        // analysisSnapshotDraft は live 由来の手数なし詰み (evalMate=±Infinity) を含みうる。
-        // 素の JSON.stringify は ±Infinity をどちらも null にして符号を潰すため、
-        // signature 比較では符号を保持する infinitySafeReplacer を使う。
-        const signature = analysisSnapshotDraft
-            ? JSON.stringify(analysisSnapshotDraft, infinitySafeReplacer)
-            : null;
-        if (lastAnalysisSnapshotSignatureRef.current === signature) {
-            return;
-        }
-        lastAnalysisSnapshotSignatureRef.current = signature;
-        onAnalysisSnapshotChange?.(analysisSnapshotDraft);
-    }, [analysisSnapshotDraft, onAnalysisSnapshotChange]);
+    useMatchSnapshotReports({
+        startSfen,
+        moves,
+        kifMoves,
+        analysisSettings,
+        onPositionSnapshot,
+        onAnalysisSnapshotChange,
+    });
 
     // 読み筋のウィンドウ（PC）に出す手。開いている間は、見ている手に追従する。
     const selectedMoveDetail = resolveMoveDetail({
@@ -2011,8 +1607,6 @@ export function ShogiMatch({
         setIsMatchRunning,
     });
 
-    const initialAnalysisAppliedRef = useRef<string | null>(null);
-
     // 棋譜読込で読んだ棋譜の対局者名を覚えておく（研究ノートにするときの表題に使う）。
     // 別の棋譜（KIF を含む）を読んだら忘れ、同じ棋譜のままかは開始局面と本譜の手順で見分ける。
     const { importSfenFromPanel, importKifFromPanel, playersFor } = useImportedKifuPlayers({
@@ -2029,25 +1623,12 @@ export function ShogiMatch({
         importSfen,
     });
 
-    useEffect(() => {
-        if (!positionReady || !initialAnalysisEntries || initialAnalysisEntries.length === 0) {
-            return;
-        }
-
-        // 復元済み snapshot は evalMate=±Infinity (手数なし詰み) を含みうる。素の
-        // JSON.stringify は ±Infinity をどちらも null に潰し符号違いの snapshot 切替を
-        // 取りこぼすため、符号を保持する infinitySafeReplacer で署名する。
-        const signature = JSON.stringify(initialAnalysisEntries, infinitySafeReplacer);
-        if (initialAnalysisAppliedRef.current === signature) {
-            return;
-        }
-
-        for (const entry of initialAnalysisEntries) {
-            applyAnalysisSnapshotEntryEvals(entry, { clearEvalByPly, recordEvalByPly });
-        }
-
-        initialAnalysisAppliedRef.current = signature;
-    }, [clearEvalByPly, initialAnalysisEntries, positionReady, recordEvalByPly]);
+    useInitialAnalysisEntries({
+        positionReady,
+        initialAnalysisEntries,
+        clearEvalByPly,
+        recordEvalByPly,
+    });
 
     // 棋譜の手数選択コールバック（巻き戻し・リプレイ用）
     const handlePlySelect = (ply: number) => {
