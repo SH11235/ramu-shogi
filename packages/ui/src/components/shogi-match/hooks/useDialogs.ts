@@ -9,8 +9,8 @@ type NnueManagerOpenReason = "missing-sente" | "missing-gote" | "missing-analysi
  * ダイアログの状態を管理する型
  */
 interface DialogStates {
-    /** 設定モーダル */
-    isSettingsModalOpen: boolean;
+    /** 棋譜/局面インポートのダイアログ */
+    isImportDialogOpen: boolean;
     /** NNUE 管理ダイアログ */
     isNnueManagerOpen: boolean;
     /** NNUE 管理ダイアログを開いた理由 */
@@ -27,12 +27,12 @@ interface DialogStates {
  * ダイアログの状態を操作するアクション
  */
 interface DialogActions {
-    /** 設定モーダルを開く */
-    openSettings: () => void;
-    /** 設定モーダルを閉じる */
-    closeSettings: () => void;
-    /** 設定モーダルの開閉状態を変更 */
-    setIsSettingsModalOpen: (open: boolean) => void;
+    /** 棋譜/局面インポートのダイアログを開く */
+    openImportDialog: () => void;
+    /** 棋譜/局面インポートのダイアログを閉じる */
+    closeImportDialog: () => void;
+    /** 棋譜/局面インポートのダイアログの開閉状態を変更 */
+    setIsImportDialogOpen: (open: boolean) => void;
 
     /** NNUE 管理ダイアログを開く */
     openNnueManager: (reason?: NnueManagerOpenReason | string) => void;
@@ -71,7 +71,7 @@ interface DialogActions {
  * @returns ダイアログの状態とアクション
  */
 export function useDialogs(): DialogStates & DialogActions {
-    const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+    const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
     const [isNnueManagerOpen, setIsNnueManagerOpen] = useState(false);
     const [nnueManagerOpenReason, setNnueManagerOpenReason] =
         useState<NnueManagerOpenReason | null>(null);
@@ -79,8 +79,8 @@ export function useDialogs(): DialogStates & DialogActions {
     const [isAboutOpen, setIsAboutOpen] = useState(false);
     const [isPassRightsSettingsOpen, setIsPassRightsSettingsOpen] = useState(false);
 
-    const openSettings = () => setIsSettingsModalOpen(true);
-    const closeSettings = () => setIsSettingsModalOpen(false);
+    const openImportDialog = () => setIsImportDialogOpen(true);
+    const closeImportDialog = () => setIsImportDialogOpen(false);
 
     const openNnueManager = (reason?: NnueManagerOpenReason | string) => {
         setIsNnueManagerOpen(true);
@@ -112,7 +112,7 @@ export function useDialogs(): DialogStates & DialogActions {
 
     return {
         // States
-        isSettingsModalOpen,
+        isImportDialogOpen,
         isNnueManagerOpen,
         nnueManagerOpenReason,
         isDisplaySettingsOpen,
@@ -120,9 +120,9 @@ export function useDialogs(): DialogStates & DialogActions {
         isPassRightsSettingsOpen,
 
         // Actions
-        openSettings,
-        closeSettings,
-        setIsSettingsModalOpen,
+        openImportDialog,
+        closeImportDialog,
+        setIsImportDialogOpen,
 
         openNnueManager,
         closeNnueManager,
