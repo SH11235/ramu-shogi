@@ -2,14 +2,12 @@ import type {
     BoardState,
     GameResult,
     KifuTree,
-    LastMove,
     NnueSelection,
     Player,
     PositionState,
     Square,
 } from "@shogi/app-core";
 import {
-    applyMoveWithState,
     createDefaultNnueSelection,
     createEmptyHands,
     DEFAULT_PRESET_KEY,
@@ -21,7 +19,6 @@ import {
 } from "@shogi/app-core";
 import type { ReactElement } from "react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
-import { isCpuLosing } from "../hooks/moveSoundScene";
 import type { NnueAccountStore } from "./nnue-library/types";
 import { MatchNnueDownloadDialog } from "./shogi-match/components/MatchNnueDownloadDialog";
 import { SearchInfoPanel } from "./shogi-match/components/SearchInfoPanel";
@@ -53,6 +50,8 @@ import { useKifuNavigation } from "./shogi-match/hooks/useKifuNavigation";
 import { useLegalMovePrefetch } from "./shogi-match/hooks/useLegalMovePrefetch";
 import { useLiveSearchInfo } from "./shogi-match/hooks/useLiveSearchInfo";
 import { useMatchClock } from "./shogi-match/hooks/useMatchClock";
+import { useMatchEnd } from "./shogi-match/hooks/useMatchEnd";
+import { useMatchMoves } from "./shogi-match/hooks/useMatchMoves";
 import { useMatchNnueDownload } from "./shogi-match/hooks/useMatchNnueDownload";
 import { useMatchPreferences } from "./shogi-match/hooks/useMatchPreferences";
 import { useMatchSounds } from "./shogi-match/hooks/useMatchSounds";
@@ -87,7 +86,7 @@ import type {
     PCSpecificProps,
 } from "./shogi-match/types/layoutProps";
 import type { KifMove } from "./shogi-match/utils/kifFormat";
-import { buildLegalCacheKey, LegalMoveCache } from "./shogi-match/utils/legalMoveCache";
+import { LegalMoveCache } from "./shogi-match/utils/legalMoveCache";
 import {
     canEditPosition,
     resolveMoveDetail,
@@ -622,173 +621,32 @@ export function ShogiMatch({
         clearLegalCache();
     };
 
-    // 対局終了処理（エンジン管理フックから呼ばれる）
-    const endMatch = async (result: GameResult) => {
-        if (matchEndedRef.current) return;
-        matchEndedRef.current = true;
-        setGameResult(result);
-        setShowResultDialog(true);
-        playMatchEndSound();
-        setIsMatchRunning(false);
-        setIsPaused(false);
-        stopTicking();
-        try {
-            await stopAllEnginesRef.current();
-        } catch (error) {
-            console.error("エンジン停止に失敗しました:", error);
-            setMessage({
-                text: `対局終了処理でエンジン停止に失敗しました: ${String(error ?? "unknown")}`,
-                type: "error",
-            });
-        }
-    };
-
-    // endMatchRef を更新
-    endMatchRef.current = endMatch;
-
-    // 投了処理
-    const handleResign = async () => {
-        const senteIsHuman = sides.sente.role === "human";
-        const goteIsHuman = sides.gote.role === "human";
-        // 対局画面で人が片方だけなら、投了するのはその人（相手の AI の手番中に押しても、自分の負けにする）。
-        const currentTurn: Player =
-            isPlayScreen && senteIsHuman !== goteIsHuman
-                ? senteIsHuman
-                    ? "sente"
-                    : "gote"
-                : positionRef.current.turn;
-        const result: GameResult = {
-            winner: currentTurn === "sente" ? "gote" : "sente",
-            reason: { kind: "resignation", loser: currentTurn },
-            totalMoves: moves.length,
-        };
-        await endMatch(result);
-    };
-
-    // 詰み検出: 人間の手番で合法手がない場合に自動終局
-    // エンジンの手番は engine-controller が "bestmove none" を検知して処理するためスキップ
-    useEffect(() => {
-        if (!isMatchRunning || !positionReady || matchEndedRef.current) return;
-        if (sides[position.turn].role === "engine") return;
-
-        let cancelled = false;
-        const passRightsOption = passRights.getPassRightsOption();
-        void (async () => {
-            try {
-                const resolver = fetchLegalMoves
-                    ? () => fetchLegalMoves(startSfen, moves, passRightsOption)
-                    : () => getPositionService().getLegalMoves(startSfen, moves, passRightsOption);
-                const legal = await legalCache.getOrResolve(
-                    buildLegalCacheKey(startSfen, moves, passRightsOption),
-                    resolver,
-                );
-                if (cancelled || matchEndedRef.current) return;
-                if (legal.size === 0) {
-                    const loser: Player = position.turn;
-                    const winner: Player = loser === "sente" ? "gote" : "sente";
-                    await endMatchRef.current?.({
-                        winner,
-                        reason: { kind: "checkmate", loser },
-                        totalMoves: moves.length,
-                    });
-                }
-            } catch {
-                // 合法手取得失敗時は無視
-            }
-        })();
-        return () => {
-            cancelled = true;
-        };
-    }, [
-        isMatchRunning,
-        positionReady,
-        moves,
-        startSfen,
-        position.turn,
-        fetchLegalMoves,
+    const { endMatch, handleResign } = useMatchEnd({
+        matchEndedRef,
+        endMatchRef,
+        stopAllEnginesRef,
+        setGameResult,
+        setShowResultDialog,
+        playMatchEndSound,
+        setIsMatchRunning,
+        setIsPaused,
+        stopTicking,
+        setMessage,
+        isPlayScreen,
         sides,
+        positionRef,
+        position,
+        positionReady,
+        isMatchRunning,
+        startSfen,
+        moves,
+        fetchLegalMoves,
         passRights,
         legalCache,
-    ]);
+    });
 
     // 手の処理中フラグ（待った・パス等の連打・競合防止用）
     const moveProcessingRef = useRef(false);
-
-    // 待った処理（2手戻す：相手の手と自分の前の手を戻す）
-    const handleUndo = async () => {
-        // 処理中なら無視（連打・競合防止）
-        if (moveProcessingRef.current) return;
-
-        const moveCount = moves.length;
-        if (moveCount === 0) return;
-        // 対局画面では、この対局で指した手だけを戻す（引き継いだ棋譜の手は戻さない）。戻せる手が
-        // 無ければ、時計やエンジンを止める前に何もせず戻る。
-        if (isPlayScreen && moveCount - playStartPly <= 0) return;
-
-        moveProcessingRef.current = true;
-
-        try {
-            // まず時計を停止（待った処理中に時間が進むのを防ぐ）
-            stopTicking();
-
-            // エンジンの思考を停止（旧局面のbestmoveが適用されるのを防ぐ）
-            await stopAllEnginesRef.current();
-
-            // 2手戻す（自分の前の手まで戻る）
-            // ただし、1手しかない場合は1手だけ戻す
-            // 対局画面の人 対 人では、直前の 1 手だけ戻す（交互に指しているので、2 手戻すと相手の手まで消える）。
-            const bothHumans = sides.sente.role === "human" && sides.gote.role === "human";
-            const wantedUndoCount = isPlayScreen && bothHumans ? 1 : moveCount >= 2 ? 2 : 1;
-            // 対局画面では、この対局で指した手だけを戻す（引き継いだ棋譜の手は戻さない）。
-            const undoCount = isPlayScreen
-                ? Math.min(wantedUndoCount, moveCount - playStartPly)
-                : wantedUndoCount;
-
-            // 待った後の手番を明示的に計算
-            // React のバッチ処理により navigation.goBack() 後の positionRef.current は
-            // 即座に更新されないため、手番を事前に計算する
-            const turnBeforeUndo = positionRef.current.turn;
-            const turnAfterUndo =
-                undoCount % 2 === 1
-                    ? turnBeforeUndo === "sente"
-                        ? "gote"
-                        : "sente"
-                    : turnBeforeUndo;
-
-            // 取り消す手は、直前の手（手番でない側）から交互にさかのぼる。その手で得た加算を返させる。
-            const undone = { sente: 0, gote: 0 };
-            for (let i = 0; i < undoCount; i++) {
-                const mover = (i % 2 === 0) === (turnBeforeUndo === "sente") ? "gote" : "sente";
-                undone[mover] += 1;
-            }
-
-            for (let i = 0; i < undoCount; i++) {
-                navigation.goBack();
-            }
-            // 対局画面では、取り消した手を棋譜から消す（終局後の棋譜や研究ノートに残さない）。
-            if (isPlayScreen) navigation.truncate();
-
-            // 停止で破棄したエンジンを時計再開前に初期化し直す
-            // （初期化時間が秒読みから差し引かれるのを防ぐ）
-            if (!(await prepareEnginesRef.current())) {
-                // 一時停止扱いにして再開操作からやり直せるようにする。
-                // 秒読みは undo 後の手番用にリセットするが、isMatchRunning=false の
-                // 間は時計の interval が動かないため実時間は消費されない
-                setIsMatchRunning(false);
-                setIsPaused(true);
-                updateClocksForNextTurn(turnAfterUndo, { undone });
-                setMessage({ text: "エンジンの初期化に失敗しました。", type: "error" });
-                return;
-            }
-
-            // 待った後の思考時間計測を新しく開始
-            turnStartTimeRef.current = Date.now();
-            // 秒読みをリセット（計算した手番で時計を更新・開始）
-            updateClocksForNextTurn(turnAfterUndo, { undone });
-        } finally {
-            moveProcessingRef.current = false;
-        }
-    };
 
     const handleMoveFromEngineRef = useRef<(move: string) => void>(() => {});
 
@@ -967,39 +825,38 @@ export function ShogiMatch({
         fallback: { analyze: handleAnalyzeHintPly, cancel: cancelAnalysis, isAnalyzing },
     });
 
-    // エンジンの手・パスの適用後の共通処理（盤や持ち駒からの人の手は useMoveExecution が適用する）
-    const applyMoveAndUpdateState = (
-        move: string,
-        nextPosition: PositionState,
-        lastMoveInfo: LastMove | undefined,
-        source?: "human" | "engine",
-    ) => {
-        if (endIfFlaggedBeforeMove(positionRef.current.turn)) return;
-        // サウンドフィードバック（positionRef はまだ指す前の局面）。
-        // 探索結果は bestmove を返した時点の手数（= この手を足す前の moves.length）で onSearchComplete が記録し、
-        // 下の navigation.addMove で棋譜に移すまで残っている。値はエンジン自身から見た評価値。
-        playMoveSound(
-            move,
-            positionRef.current,
-            nextPosition,
-            source === "engine" ? "opponent" : "self",
-            source === "engine" && isCpuLosing(getPendingSearchStats(moves.length)),
-        );
-        // 消費時間を計算
-        const elapsedMs = Date.now() - turnStartTimeRef.current;
-        // 棋譜ナビゲーションに手を追加（局面更新はonPositionChangeで自動実行）
-        const ply = moves.length;
-        const searchStats = source === "engine" ? getPendingSearchStats(ply) : undefined;
-        navigation.addMove(move, nextPosition, { elapsedMs, searchStats });
-        if (source === "engine") deletePendingSearchStats(ply);
-        setLastMove(lastMoveInfo);
-        setSelection(null);
-        setMessage(null);
-        clearLegalCache();
-        // ターン開始時刻をリセット
-        turnStartTimeRef.current = Date.now();
-        updateClocksForNextTurn(nextPosition.turn, { moved: true });
-    };
+    const { handleUndo, handlePassMove } = useMatchMoves({
+        moveProcessingRef,
+        matchEndedRef,
+        positionRef,
+        turnStartTimeRef,
+        stopAllEnginesRef,
+        prepareEnginesRef,
+        handleMoveFromEngineRef,
+        isPlayScreen,
+        playStartPly,
+        sides,
+        startSfen,
+        moves,
+        navigation,
+        passRightsSettings,
+        passRights,
+        fetchLegalMoves,
+        legalCache,
+        clearLegalCache,
+        stopTicking,
+        updateClocksForNextTurn,
+        endIfFlaggedBeforeMove,
+        setIsMatchRunning,
+        setIsPaused,
+        setLastMove,
+        setSelection,
+        setMessage,
+        playMoveSound,
+        getPendingSearchStats,
+        deletePendingSearchStats,
+        logEngineError,
+    });
 
     // キーボード・ホイールナビゲーション用のgoForward（分岐対応）
     const handleKeyboardForward = () => {
@@ -1018,92 +875,6 @@ export function ShogiMatch({
         containerRef: boardSectionRef,
         enableWheelNavigation: displaySettings.enableWheelNavigation,
     });
-
-    // エンジンからの手を受け取って適用するコールバック
-    const handleMoveFromEngine = (move: string) => {
-        // 待った・パス処理中は無視（旧局面への適用防止）
-        if (moveProcessingRef.current) return;
-        if (matchEndedRef.current) return;
-        // 手番チェック: エンジンの手番でない場合は無視
-        // （待った→パス→待った等の連続操作で古いbestmoveが届く競合状態を防止）
-        if (sides[positionRef.current.turn].role !== "engine") {
-            console.warn(
-                `Ignoring engine move "${move}": current turn is ${positionRef.current.turn} (human)`,
-            );
-            return;
-        }
-        const result = applyMoveWithState(positionRef.current, move, {
-            validateTurn: false,
-        });
-        if (!result.ok) {
-            logEngineError(
-                `engine move rejected (${move || "empty"}): ${result.error ?? "unknown"}`,
-            );
-            return;
-        }
-        applyMoveAndUpdateState(move, result.next, result.lastMove, "engine");
-    };
-    handleMoveFromEngineRef.current = handleMoveFromEngine;
-
-    // パス手を処理するコールバック
-    // 人間・エンジン両方のパス手で使用される
-    const handlePassMove = async () => {
-        // 処理中なら無視（待ったとの競合防止）
-        if (moveProcessingRef.current) return;
-        if (matchEndedRef.current) return;
-        if (!passRightsSettings?.enabled) return;
-        const rights = positionRef.current.passRights ?? passRights.ensurePassRightsInitialized();
-        const hasRightsNow = rights ? rights[positionRef.current.turn] > 0 : false;
-        if (!hasRightsNow) {
-            setMessage({ text: "パス権がありません", type: "error" });
-            return;
-        }
-
-        moveProcessingRef.current = true;
-
-        try {
-            // 合法手をチェック（王手中はパスが合法手に含まれない）
-            // エンジン側の can_pass() は王手中のパスを禁止しており、
-            // パスが合法でない場合にloadPositionするとパニックするため、事前にチェック
-            try {
-                const passRightsOption = passRights.getPassRightsOption();
-                const resolver = fetchLegalMoves
-                    ? () => fetchLegalMoves(startSfen, moves, passRightsOption)
-                    : () => getPositionService().getLegalMoves(startSfen, moves, passRightsOption);
-                const movesKey = buildLegalCacheKey(startSfen, moves, passRightsOption);
-                let legal = await legalCache.getOrResolve(movesKey, resolver);
-                if (!legal || !legal.has("pass")) {
-                    // パス権ありでも合法手に含まれない場合はキャッシュをクリアして再取得（パス権オプション漏れ対策）
-                    clearLegalCache();
-                    legal = await legalCache.getOrResolve(movesKey, resolver);
-                    if (!legal || !legal.has("pass")) {
-                        setMessage({ text: "王手されているためパスできません", type: "error" });
-                        return;
-                    }
-                }
-            } catch (error) {
-                setMessage({ text: `合法手の取得に失敗しました: ${String(error)}`, type: "error" });
-                return;
-            }
-
-            // "pass" を applyMoveWithState で適用
-            // validateTurn: false の理由:
-            // - 人間のパスはUI側で手番チェック済み（sides[position.turn].role === "human"）
-            // - エンジンのパスも受け付けるため、ここでは手番検証をスキップ
-            const result = applyMoveWithState(positionRef.current, "pass", {
-                validateTurn: false,
-            });
-
-            if (!result.ok) {
-                setMessage({ text: `パスに失敗しました: ${result.error}`, type: "error" });
-                return;
-            }
-
-            applyMoveAndUpdateState("pass", result.next, result.lastMove);
-        } finally {
-            moveProcessingRef.current = false;
-        }
-    };
 
     useEffect(() => {
         let cancelled = false;
