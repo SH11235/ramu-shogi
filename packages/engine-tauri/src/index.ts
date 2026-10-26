@@ -20,7 +20,6 @@ export {
     type EngineRegistration,
     type EngineRegistryService,
     type OptionValue,
-    type ProbeResult,
     type UsiOptionDef,
 } from "./engine-registry-service";
 // Engine session service

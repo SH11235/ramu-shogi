@@ -33,7 +33,7 @@ export interface InteractiveAnalysisState {
     error: string | null;
 }
 
-export interface InteractiveAnalysisOptions {
+interface InteractiveAnalysisOptions {
     /** この controller が専有する client。通常探索や全体解析と同時使用しない。 */
     createClient: () => EngineClient;
     /** 初回開始時に一度だけ NNUE・Threads・Hash・MultiPV 等を設定する。 */
