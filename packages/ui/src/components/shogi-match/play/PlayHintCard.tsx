@@ -11,6 +11,7 @@ import { cn } from "@shogi/design-system";
 import type { ReactElement, ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { Button } from "../../button";
+import { cardVariants } from "../../card";
 import type { AiHintMove } from "../components/AiHintPanel";
 import { BottomSheet } from "../components/BottomSheet";
 import { useMatchState } from "../contexts/MatchStateContext";
@@ -20,7 +21,7 @@ import { hintPositionKey } from "../hooks/usePlayHintSearch";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
 import { convertPvToDisplay } from "../utils/kifFormat";
 import { formatNodeCount } from "../utils/searchLimits";
-import { PLAY_CARD, PLAY_OUTLINE_BUTTON } from "./playStyles";
+import { PLAY_OUTLINE_BUTTON } from "./playStyles";
 
 /** 読み筋のうち、候補の手のあとに書く手の数。 */
 const PV_SHOWN_MOVES = 7;
@@ -290,7 +291,11 @@ export function PlayHintCard({ compact = false, className }: PlayHintCardProps):
     return (
         <section
             aria-label="ヒント"
-            className={cn("flex flex-col gap-2", !compact && PLAY_CARD, className)}
+            className={cn(
+                "flex flex-col gap-2",
+                !compact && cn(cardVariants({ variant: "washi" }), "p-4"),
+                className,
+            )}
         >
             <div className="flex items-center gap-2">
                 <h2 className="text-sm font-semibold text-wafuu-sumi">ヒント</h2>

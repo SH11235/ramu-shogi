@@ -14,6 +14,7 @@ import type { KifuTree, StudyDocument, StudyHighlightKind } from "@shogi/app-cor
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
 import { useEffect, useRef } from "react";
+import { cardVariants } from "../card";
 import { formatEval } from "../shogi-match/utils/kifFormat";
 import { StudyIconButton } from "./StudyIconButton";
 import { BranchIcon, CommentIcon, TrashIcon } from "./StudyIcons";
@@ -124,7 +125,8 @@ export function StudyMoveList({
         <section
             aria-label="棋譜と変化"
             className={cn(
-                "flex min-h-0 flex-col gap-2 rounded-xl border border-wafuu-border bg-card p-3 shadow-sm",
+                cardVariants({ variant: "wafuu", elevation: "raised" }),
+                "flex min-h-0 flex-col gap-2 p-3",
                 className,
             )}
         >

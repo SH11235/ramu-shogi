@@ -1,6 +1,7 @@
 import type { GameRecordSummary, GetGameResponse, ListGamesResponse } from "@shogi/api-contract";
 import { cn } from "@shogi/design-system";
 import { fetchRshogiGame } from "@shogi/match-client";
+import { cardVariants } from "@shogi/ui/components/card";
 import {
     RshogiCsaGameBrowser,
     type RshogiGameBrowserSearch,
@@ -287,7 +288,10 @@ function OwnGamesPicker({
                 {state.games.map((game) => (
                     <li
                         key={game.id}
-                        className="relative rounded-xl border border-border bg-card p-5 shadow-sm transition-colors hover:bg-muted/20"
+                        className={cn(
+                            cardVariants({ elevation: "raised", interactive: true }),
+                            "relative p-5",
+                        )}
                     >
                         <GameRecordSummaryContent game={game} />
                         {/* 見出しを含む中身はボタンの中に置けないので、カード全体を覆うボタンにする。 */}

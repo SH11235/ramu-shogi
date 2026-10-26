@@ -118,7 +118,8 @@ const preset: Omit<Config, "content"> = {
             },
             boxShadow: {
                 card: "0 20px 25px -5px rgba(15, 23, 42, 0.08), 0 10px 10px -5px rgba(15, 23, 42, 0.04)",
-                // 画面の上に浮く小窓（エンジンのログ、再起動中の表示など）
+                // 盤の脇や上に浮かせる欄・小窓（対局画面の脇の欄、動かせる小窓、再起動中の表示など）。
+                // ページの流れの中に置くカードは Tailwind の shadow-sm を使う（Card の elevation）。
                 panel: "0 14px 28px rgba(0, 0, 0, 0.12)",
                 // ダイアログ
                 modal: "0 24px 70px rgba(0, 0, 0, 0.35)",

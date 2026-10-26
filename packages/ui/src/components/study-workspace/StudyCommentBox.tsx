@@ -32,6 +32,7 @@ import { STUDY_LIMITS } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
 import { useEffect, useRef, useState } from "react";
+import { cardVariants } from "../card";
 
 /** 書きかけの変化（呼び出し側が、手ごとの書きかけの置き場所に反映する）。 */
 export type StudyCommentDraftChange =
@@ -339,7 +340,8 @@ export function StudyCommentBox({
         <section
             aria-label="コメント"
             className={cn(
-                "flex flex-col gap-1 rounded-xl border border-wafuu-border bg-card p-3 shadow-sm",
+                cardVariants({ variant: "wafuu", elevation: "raised" }),
+                "flex flex-col gap-1 p-3",
                 className,
             )}
         >

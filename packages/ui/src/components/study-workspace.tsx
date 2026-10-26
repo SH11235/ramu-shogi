@@ -47,6 +47,7 @@ import {
     AlertDialogTitle,
 } from "./alert-dialog";
 import { Button } from "./button";
+import { cardVariants } from "./card";
 import { Progress } from "./progress";
 import type { PlayFromPosition } from "./rshogi-play-from-position";
 import { EvalGraph, type EvalGraphMarker } from "./shogi-match/components/EvalGraph";
@@ -1455,7 +1456,8 @@ export function StudyWorkspaceView({
         <section
             aria-label="評価値グラフ"
             className={cn(
-                "flex flex-col gap-1 rounded-xl border border-wafuu-border bg-card shadow-sm",
+                cardVariants({ variant: "wafuu", elevation: "raised" }),
+                "flex flex-col gap-1",
                 isMobile ? "px-2 py-1" : "px-3 py-2",
             )}
         >

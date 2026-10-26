@@ -1,4 +1,6 @@
 import type { GameRecordSummary, ListPublicGamesResponse } from "@shogi/api-contract";
+import { cn } from "@shogi/design-system";
+import { cardVariants } from "@shogi/ui/components/card";
 import { getRouteApi, Link } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { useState } from "react";
@@ -66,7 +68,10 @@ export default function PublicGamesPage(): ReactElement {
                                 key={game.publicId ?? game.id}
                                 to="/public/games/$publicId"
                                 params={{ publicId: game.publicId ?? "" }}
-                                className="rounded-xl border border-border bg-card p-5 shadow-sm transition-colors hover:bg-muted/20"
+                                className={cn(
+                                    cardVariants({ elevation: "raised", interactive: true }),
+                                    "p-5",
+                                )}
                             >
                                 <div className="flex flex-col gap-3">
                                     <div className="flex flex-col gap-1">

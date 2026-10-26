@@ -1,4 +1,6 @@
 import type { GameRecordSummary, ListGamesResponse } from "@shogi/api-contract";
+import { cn } from "@shogi/design-system";
+import { cardVariants } from "@shogi/ui/components/card";
 import { getRouteApi, Link } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { useEffect, useRef, useState } from "react";
@@ -138,7 +140,10 @@ export default function GamesPage(): ReactElement {
                                 key={game.id}
                                 to="/games/$gameId"
                                 params={{ gameId: game.id }}
-                                className="rounded-xl border border-border bg-card p-5 shadow-sm transition-colors hover:bg-muted/20"
+                                className={cn(
+                                    cardVariants({ elevation: "raised", interactive: true }),
+                                    "p-5",
+                                )}
                             >
                                 <GameRecordSummaryContent game={game} />
                             </Link>

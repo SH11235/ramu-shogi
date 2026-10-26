@@ -1,3 +1,4 @@
+import { Card } from "../../card";
 import { NativeSelect } from "../../native-select";
 /**
  * KIF形式棋譜表示パネル
@@ -1353,7 +1354,7 @@ export function KifuPanel({
 
     return (
         <TooltipProvider delayDuration={300}>
-            <div className="bg-card border border-border rounded-xl p-3 shadow-lg w-[var(--panel-width)]">
+            <Card elevation="floating" className="w-[var(--panel-width)] p-3">
                 <div className="font-bold mb-1.5 flex justify-between items-center gap-2">
                     <div className="flex items-center gap-2">
                         <span>棋譜</span>
@@ -2064,7 +2065,7 @@ export function KifuPanel({
                         )}
                     </div>
                 )}
-            </div>
+            </Card>
         </TooltipProvider>
     );
 }

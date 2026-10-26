@@ -8,6 +8,7 @@
 import { cn } from "@shogi/design-system";
 import type { MouseEvent, PointerEvent, ReactElement } from "react";
 import { useRef } from "react";
+import { Card } from "../../card";
 import type { EvalHistory } from "../utils/kifFormat";
 
 interface EvalGraphProps {
@@ -779,28 +780,29 @@ export function EvalGraph({
     if (onPlySelect) {
         // 内部にボタンがあるので外側はdiv
         return (
-            <div className="bg-card border border-border rounded-xl p-3 shadow-lg w-[var(--panel-width)]">
+            <Card elevation="floating" className="w-[var(--panel-width)] p-3">
                 {outerContent}
-            </div>
+            </Card>
         );
     }
 
     if (onClick) {
         return (
-            <button
-                type="button"
-                className="bg-card border border-border rounded-xl p-3 shadow-lg w-[var(--panel-width)] text-left cursor-pointer"
-                onClick={onClick}
-                aria-label="評価値グラフを拡大表示"
+            <Card
+                asChild
+                elevation="floating"
+                className="w-[var(--panel-width)] cursor-pointer p-3 text-left"
             >
-                {outerContent}
-            </button>
+                <button type="button" onClick={onClick} aria-label="評価値グラフを拡大表示">
+                    {outerContent}
+                </button>
+            </Card>
         );
     }
 
     return (
-        <div className="bg-card border border-border rounded-xl p-3 shadow-lg w-[var(--panel-width)]">
+        <Card elevation="floating" className="w-[var(--panel-width)] p-3">
             {outerContent}
-        </div>
+        </Card>
     );
 }

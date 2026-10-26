@@ -20,6 +20,7 @@ import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
 import { useState } from "react";
 import { Button } from "../button";
+import { cardVariants } from "../card";
 import { convertPvToDisplay } from "../shogi-match/utils/kifFormat";
 import { StudyIconButton } from "./StudyIconButton";
 import { AddBranchIcon, AnalyzeIcon, PlayIcon } from "./StudyIcons";
@@ -303,7 +304,8 @@ export function StudyCandidatesPanel({
         <section
             aria-label="候補手"
             className={cn(
-                "flex flex-col gap-3 rounded-xl border border-wafuu-border bg-card p-3 shadow-sm",
+                cardVariants({ variant: "wafuu", elevation: "raised" }),
+                "flex flex-col gap-3 p-3",
                 className,
             )}
         >
