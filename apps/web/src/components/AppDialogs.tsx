@@ -8,7 +8,7 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@shogi/ui/components/alert-dialog";
-import { type ReactElement, useSyncExternalStore } from "react";
+import { type ReactElement, useEffect, useRef, useSyncExternalStore } from "react";
 
 interface DialogOptions {
     title: string;
@@ -18,24 +18,50 @@ interface DialogOptions {
 
 interface ConfirmOptions extends DialogOptions {
     cancelLabel?: string;
+    /**
+     * 同じ key の確認がまだ答えを待っているあいだは、新しく出さずにその答えを共有する
+     * （確認中にもう一度「戻る」を押したときなど）。`dismissDialog(key)` で取り下げられる。
+     */
+    key?: string;
 }
 
-type DialogRequest =
-    | { kind: "confirm"; options: ConfirmOptions; resolve: (ok: boolean) => void }
-    | { kind: "alert"; options: DialogOptions; resolve: (ok: boolean) => void };
+interface DialogRequest {
+    kind: "confirm" | "alert";
+    options: ConfirmOptions;
+    resolvers: Array<(ok: boolean) => void>;
+}
 
 /** window.confirm / alert の代わり。順に 1 つずつ出し、答えを Promise で返す。 */
 function createDialogQueue() {
     let queue: DialogRequest[] = [];
     // 閉じる途中（フェードアウト中）も中身を出しておくため、最後に出したものを覚えておく
     let lastShown: DialogRequest | undefined;
+    // Host にはダイアログを開くボタン（Trigger）が無いので、閉じたあとに戻す先を自分で覚える
+    let returnFocus: Element | null = null;
     const listeners = new Set<() => void>();
     const notify = () => {
         for (const listener of listeners) listener();
     };
-    const push = (request: DialogRequest) => {
-        queue = [...queue, request];
-        lastShown = queue[0];
+    const request = (kind: DialogRequest["kind"], options: ConfirmOptions) =>
+        new Promise<boolean>((resolve) => {
+            const pending =
+                options.key === undefined
+                    ? undefined
+                    : queue.find((item) => item.options.key === options.key);
+            if (pending) {
+                pending.resolvers.push(resolve);
+                return;
+            }
+            if (queue.length === 0) returnFocus = document.activeElement;
+            queue = [...queue, { kind, options, resolvers: [resolve] }];
+            lastShown = queue[0];
+            notify();
+        });
+    const settle = (target: DialogRequest, ok: boolean) => {
+        if (!queue.includes(target)) return;
+        queue = queue.filter((item) => item !== target);
+        lastShown = queue[0] ?? target;
+        for (const resolve of target.resolvers) resolve(ok);
         notify();
     };
     return {
@@ -45,20 +71,22 @@ function createDialogQueue() {
         },
         current: (): DialogRequest | undefined => queue[0],
         lastShown: (): DialogRequest | undefined => lastShown,
-        confirm: (options: ConfirmOptions) =>
-            new Promise<boolean>((resolve) => push({ kind: "confirm", options, resolve })),
-        alert: (options: DialogOptions) =>
-            new Promise<void>((resolve) =>
-                push({ kind: "alert", options, resolve: () => resolve() }),
-            ),
+        confirm: (options: ConfirmOptions) => request("confirm", options),
+        alert: async (options: DialogOptions): Promise<void> => {
+            await request("alert", options);
+        },
         // 決定のボタンは押すと閉じる処理（onOpenChange）も呼ぶので、答えた相手を指定して二重に答えない
-        answer: (request: DialogRequest, ok: boolean) => {
-            const [head, ...rest] = queue;
-            if (head !== request) return;
-            queue = rest;
-            lastShown = rest[0] ?? head;
-            head.resolve(ok);
-            notify();
+        answer: settle,
+        /** 答えを待っている同じ key の確認を、false（やめる）として閉じる。 */
+        dismiss: (key: string) => {
+            for (const item of queue.filter((entry) => entry.options.key === key)) {
+                settle(item, false);
+            }
+        },
+        takeReturnFocus: (): Element | null => {
+            const target = returnFocus;
+            returnFocus = null;
+            return target;
         },
     };
 }
@@ -67,12 +95,29 @@ const dialogQueue = createDialogQueue();
 
 export const confirmDialog = dialogQueue.confirm;
 export const alertDialog = dialogQueue.alert;
+export const dismissDialog = dialogQueue.dismiss;
+
+/** 確認は「やめる」、お知らせは「OK」にフォーカスする。 */
+function focusDefaultButton(
+    cancel: HTMLButtonElement | null,
+    action: HTMLButtonElement | null,
+): void {
+    (cancel ?? action)?.focus();
+}
 
 /** confirmDialog / alertDialog の表示先。アプリの根元に 1 つ置く。 */
 export function AppDialogHost(): ReactElement {
     const request = useSyncExternalStore(dialogQueue.subscribe, dialogQueue.current);
     const shown = useSyncExternalStore(dialogQueue.subscribe, dialogQueue.lastShown);
-    const options: ConfirmOptions | undefined = shown?.options;
+    const options = shown?.options;
+    const cancelRef = useRef<HTMLButtonElement>(null);
+    const actionRef = useRef<HTMLButtonElement>(null);
+
+    // 続けて出すときはダイアログを開いたまま中身だけ替わるので、そのたびに既定のボタンへ移す
+    useEffect(() => {
+        if (request) focusDefaultButton(cancelRef.current, actionRef.current);
+    }, [request]);
+
     return (
         <AlertDialog
             open={request !== undefined}
@@ -81,7 +126,18 @@ export function AppDialogHost(): ReactElement {
                 if (!open && request) dialogQueue.answer(request, false);
             }}
         >
-            <AlertDialogContent>
+            <AlertDialogContent
+                // お知らせ（alert）には「やめる」が無く、Radix の既定ではフォーカスが背後に残る
+                onOpenAutoFocus={(event) => {
+                    event.preventDefault();
+                    focusDefaultButton(cancelRef.current, actionRef.current);
+                }}
+                onCloseAutoFocus={(event) => {
+                    event.preventDefault();
+                    const target = dialogQueue.takeReturnFocus();
+                    if (target instanceof HTMLElement && target.isConnected) target.focus();
+                }}
+            >
                 <AlertDialogHeader>
                     <AlertDialogTitle>{options?.title}</AlertDialogTitle>
                     {options?.description && (
@@ -91,12 +147,16 @@ export function AppDialogHost(): ReactElement {
                 <AlertDialogFooter>
                     {shown?.kind === "confirm" && (
                         <AlertDialogCancel
+                            ref={cancelRef}
                             onClick={() => request && dialogQueue.answer(request, false)}
                         >
                             {options?.cancelLabel ?? "やめる"}
                         </AlertDialogCancel>
                     )}
-                    <AlertDialogAction onClick={() => request && dialogQueue.answer(request, true)}>
+                    <AlertDialogAction
+                        ref={actionRef}
+                        onClick={() => request && dialogQueue.answer(request, true)}
+                    >
                         {options?.actionLabel ?? "OK"}
                     </AlertDialogAction>
                 </AlertDialogFooter>

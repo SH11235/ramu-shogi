@@ -1,6 +1,6 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { AppDialogHost, alertDialog, confirmDialog } from "./AppDialogs";
+import { AppDialogHost, alertDialog, confirmDialog, dismissDialog } from "./AppDialogs";
 
 describe("AppDialogs", () => {
     afterEach(cleanup);
@@ -47,5 +47,48 @@ describe("AppDialogs", () => {
         expect(screen.getByText("説明")).toBeTruthy();
         fireEvent.click(screen.getByRole("button", { name: "OK" }));
         await second;
+    });
+
+    it("お知らせは OK に、確認はやめるにフォーカスし、閉じたら開く前の場所へ戻す", async () => {
+        render(
+            <>
+                <button type="button">元の場所</button>
+                <AppDialogHost />
+            </>,
+        );
+        const origin = screen.getByRole("button", { name: "元の場所" });
+        origin.focus();
+        let done: Promise<void> = Promise.resolve();
+        act(() => {
+            done = alertDialog({ title: "お知らせ" });
+        });
+        expect(document.activeElement).toBe(screen.getByRole("button", { name: "OK" }));
+        fireEvent.click(screen.getByRole("button", { name: "OK" }));
+        await done;
+        await waitFor(() => expect(document.activeElement).toBe(origin));
+
+        let answer: Promise<boolean> = Promise.resolve(true);
+        act(() => {
+            answer = confirmDialog({ title: "確認" });
+        });
+        expect(document.activeElement).toBe(screen.getByRole("button", { name: "やめる" }));
+        fireEvent.click(screen.getByRole("button", { name: "やめる" }));
+        await answer;
+        await waitFor(() => expect(document.activeElement).toBe(origin));
+    });
+
+    it("同じ key の確認は 1 つにまとめ、取り下げると false を返して閉じる", async () => {
+        render(<AppDialogHost />);
+        let first: Promise<boolean> = Promise.resolve(true);
+        let second: Promise<boolean> = Promise.resolve(true);
+        act(() => {
+            first = confirmDialog({ title: "確認", key: "k" });
+            second = confirmDialog({ title: "確認", key: "k" });
+        });
+        expect(screen.getAllByRole("alertdialog")).toHaveLength(1);
+        act(() => dismissDialog("k"));
+        await expect(first).resolves.toBe(false);
+        await expect(second).resolves.toBe(false);
+        expect(screen.queryByRole("alertdialog")).toBeNull();
     });
 });
