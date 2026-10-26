@@ -428,7 +428,7 @@ export function MoveDetailWindow({
             // Portal 系と同様に局所テーマを引き継ぐ
             className={cn(
                 surfaceTheme,
-                "fixed flex flex-col overflow-hidden bg-card border border-border rounded-xl shadow-2xl z-[1000]",
+                "fixed flex flex-col overflow-hidden bg-card border border-border rounded-xl shadow-2xl z-window",
             )}
             style={{
                 left: windowPosition.x,

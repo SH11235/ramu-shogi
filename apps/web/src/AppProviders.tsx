@@ -5,6 +5,7 @@ import {
     ensureWasmModule,
     is_nnue_compatible,
 } from "@shogi/engine-wasm";
+import { StoredBoardPatternProvider } from "@shogi/ui/components/shogi-match/hooks/useBoardPattern";
 import { NnueProvider } from "@shogi/ui/providers/NnueContext";
 import { Outlet } from "@tanstack/react-router";
 import type { ReactElement } from "react";
@@ -67,7 +68,9 @@ function AppProvidersInner(): ReactElement {
 export function AppProviders(): ReactElement {
     return (
         <AuthSessionProvider>
-            <AppProvidersInner />
+            <StoredBoardPatternProvider>
+                <AppProvidersInner />
+            </StoredBoardPatternProvider>
         </AuthSessionProvider>
     );
 }

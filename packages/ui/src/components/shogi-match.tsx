@@ -45,6 +45,7 @@ import { applyDropResult } from "./shogi-match/dnd/dropLogic";
 import type { DropResult } from "./shogi-match/dnd/types";
 import { usePieceDnd } from "./shogi-match/dnd/usePieceDnd";
 import { useBatchAnalysis } from "./shogi-match/hooks/useBatchAnalysis";
+import { DISPLAY_SETTINGS_STORAGE_KEY } from "./shogi-match/hooks/useBoardPattern";
 import { useBoardState } from "./shogi-match/hooks/useBoardState";
 import { type ClockSettings, useClockManager } from "./shogi-match/hooks/useClockManager";
 import { useDialogs } from "./shogi-match/hooks/useDialogs";
@@ -177,7 +178,6 @@ const alignTimeToPlayChoices = (
     return { sente: align("sente"), gote: align("gote") };
 };
 
-const DISPLAY_SETTINGS_KEY = "shogi-display-settings";
 /** ライブ観戦用の表示設定 localStorage キー (対局用と分離してチート防止既定を汚さない)。 */
 const SPECTATE_DISPLAY_SETTINGS_KEY = "rshogi-live-display-settings";
 /** ライブ観戦の既定表示設定。棋譜評価値カラムを既定 ON にする。 */
@@ -896,7 +896,9 @@ export function ShogiMatch({
     // ライブ観戦は表示設定を別名前空間で扱い、棋譜評価値カラムを既定 ON にする。
     // 対局用の設定 (チート防止で showKifuEval=OFF 既定) を汚さず、観戦側で明示
     // トグルした値は観戦用キーに永続化されて尊重される。
-    const displaySettingsKey = spectateMode ? SPECTATE_DISPLAY_SETTINGS_KEY : DISPLAY_SETTINGS_KEY;
+    const displaySettingsKey = spectateMode
+        ? SPECTATE_DISPLAY_SETTINGS_KEY
+        : DISPLAY_SETTINGS_STORAGE_KEY;
     const displaySettingsDefaults = spectateMode
         ? SPECTATE_DISPLAY_SETTINGS
         : DEFAULT_DISPLAY_SETTINGS;

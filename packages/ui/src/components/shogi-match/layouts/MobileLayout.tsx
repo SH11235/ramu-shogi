@@ -326,8 +326,8 @@ export function MobileLayout({
                                     ? message.type === "error"
                                         ? "text-destructive"
                                         : message.type === "warning"
-                                          ? "text-yellow-600 dark:text-yellow-500"
-                                          : "text-green-600 dark:text-green-500"
+                                          ? "text-status-warning"
+                                          : "text-status-success"
                                     : ""
                             }`}
                         >

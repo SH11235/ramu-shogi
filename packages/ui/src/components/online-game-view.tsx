@@ -1510,35 +1510,25 @@ export function OnlineGameView({
                 {rightTab === "ai" && aiPanelContent}
             </div>
 
-            {/* 待った: 承認ダイアログ（相手向け） */}
-            {showTakebackApproval && (
-                <div className="fixed inset-0 z-40 flex items-end justify-center pb-8 md:items-center md:pb-0">
-                    <div className="rounded-xl border border-border bg-card p-5 shadow-xl w-[300px]">
-                        <p className="mb-1 text-center font-semibold text-foreground">
-                            待ったの申請
-                        </p>
-                        <p className="mb-4 text-center text-sm text-muted-foreground">
+            {/* 待った: 承認ダイアログ（相手向け）。答えるまで閉じない（Esc や外側のクリックでは閉じない）。 */}
+            <AlertDialog open={showTakebackApproval} onOpenChange={() => {}}>
+                <AlertDialogContent className="w-[min(300px,calc(100%-32px))]">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>待ったの申請</AlertDialogTitle>
+                        <AlertDialogDescription>
                             相手が直前の手を取り消したいと申請しています
-                        </p>
-                        <div className="flex gap-2">
-                            <button
-                                type="button"
-                                onClick={() => handleTakebackResponse(true)}
-                                className="flex-1 rounded-lg bg-primary py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
-                            >
-                                承認する
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => handleTakebackResponse(false)}
-                                className="flex-1 rounded-lg bg-secondary py-2 text-sm font-semibold text-secondary-foreground hover:bg-secondary/80"
-                            >
-                                拒否する
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => handleTakebackResponse(false)}>
+                            拒否する
+                        </AlertDialogCancel>
+                        <AlertDialogAction onClick={() => handleTakebackResponse(true)}>
+                            承認する
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
 
             {/* 対局結果ダイアログ */}
             {gameResult && !endDialogClosed && (
@@ -1757,7 +1747,7 @@ function GameEndDialog({
     const wAnalysisCount = analysisLog.filter((e) => e.seat === "w").length;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+        <div className="fixed inset-0 z-modal flex items-center justify-center bg-overlay p-4">
             <div
                 ref={dialogRef}
                 role="dialog"

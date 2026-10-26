@@ -109,8 +109,7 @@ const OPTION_DEFAULTS: Record<string, string> = Object.fromEntries(
 );
 const THREAD_OPTIONS = buildThreadOptions();
 
-const surfaceClassName =
-    "rounded-xl border border-border bg-card p-4 text-foreground shadow-[0_18px_38px_rgba(0,0,0,0.18)]";
+const surfaceClassName = "rounded-xl border border-border bg-card p-4 text-foreground shadow-panel";
 const gridClassName = "grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(160px,1fr))]";
 const labelClassName = "text-xs text-muted-foreground";
 const inputClassName = "bg-background";
@@ -527,10 +526,7 @@ export function EngineControlPanel({
                             {triggerLabel}
                         </Button>
                     </DialogTrigger>
-                    <DialogContent
-                        overlayClassName="bg-[rgba(8,10,20,0.58)]"
-                        className="w-[min(1040px,calc(100%-24px))]"
-                    >
+                    <DialogContent className="w-[min(1040px,calc(100%-24px))]">
                         <DialogHeader>
                             <DialogTitle>エンジン操作パネル</DialogTitle>
                             <DialogDescription>
@@ -666,12 +662,7 @@ export function EngineControlPanel({
                                 </div>
                             </section>
 
-                            <section
-                                className={cn(
-                                    surfaceClassName,
-                                    "p-3 bg-[linear-gradient(135deg,hsl(var(--card,0_0%_100%)),hsl(210_40%_98%))]",
-                                )}
-                            >
+                            <section className={cn(surfaceClassName, "p-3 bg-muted")}>
                                 <div className="mb-2 font-semibold">デバッグ情報 (開発者向け)</div>
                                 <div className="grid gap-2 text-xs [grid-template-columns:repeat(auto-fit,minmax(140px,1fr))]">
                                     <div className="rounded-md border border-border bg-background p-2">

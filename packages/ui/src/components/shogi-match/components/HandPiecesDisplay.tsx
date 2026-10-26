@@ -88,7 +88,7 @@ function PieceToken({
                     alt={`${owner === "sente" ? "先手" : "後手"}の${PIECE_LABELS[pieceType]}`}
                     className={cn(
                         config.imageSize,
-                        "object-contain drop-shadow-[0_2px_4px_rgba(0,0,0,0.15)]",
+                        "object-contain drop-shadow-piece",
                         shouldRotate && "-rotate-180",
                     )}
                     draggable={false}
@@ -116,10 +116,7 @@ function PieceToken({
             <img
                 src={imagePath}
                 alt={`${owner === "sente" ? "先手" : "後手"}の${PIECE_LABELS[pieceType]}`}
-                className={cn(
-                    config.imageSize,
-                    "object-contain drop-shadow-[0_2px_4px_rgba(0,0,0,0.15)]",
-                )}
+                className={cn(config.imageSize, "object-contain drop-shadow-piece")}
                 draggable={false}
             />
             {/* 個数は読める大きさの丸い札にして、駒の先（細い側）の脇に置く。駒は先が細い五角形なので、

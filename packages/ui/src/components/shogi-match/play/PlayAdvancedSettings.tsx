@@ -9,12 +9,20 @@ import type { Player } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { ReactElement, ReactNode } from "react";
 import { useId, useRef, useState } from "react";
+import { BOARD_PATTERN_OPTIONS, type BoardPattern } from "../../board-appearance";
 import { NativeSelect } from "../../native-select";
 import { PassRightsSettingsDialog } from "../components/PassRightsSettingsDialog";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { useMatchState } from "../contexts/MatchStateContext";
-import type { BoardPattern } from "../hooks/useBoardPattern";
-import { BOARD_PATTERN_OPTIONS, useBoardPattern } from "../hooks/useBoardPattern";
+import {
+    BOARD_PATTERN_LABEL,
+    DISPLAY_TOGGLE_CHECKBOX_CLASS,
+    DISPLAY_TOGGLE_LABELS,
+    type DisplayToggleKey,
+    SQUARE_NOTATION_LABEL,
+    SQUARE_NOTATION_OPTIONS,
+} from "../displaySettingsFields";
+import { useBoardPattern } from "../hooks/useBoardPattern";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
 import type { DisplaySettings, EngineSearchLimit } from "../types";
 import { HINT_MULTI_PV_CHOICES } from "../utils/hintSettings";
@@ -28,9 +36,10 @@ import { buildThreadOptions, clampThreads, threadCapOf } from "../utils/threadOp
 import { PLAY_OUTLINE_BUTTON } from "./playStyles";
 import { usePlaySetup } from "./usePlaySetup";
 
-const DISPLAY_TOGGLES: Array<{ key: keyof DisplaySettings; label: string }> = [
-    { key: "showBoardLabels", label: "盤の外に筋・段を表示" },
-    { key: "highlightLastMove", label: "直前の手を強調" },
+const DISPLAY_TOGGLES: Array<{ key: DisplayToggleKey; label?: string }> = [
+    { key: "showBoardLabels" },
+    { key: "highlightLastMove" },
+    // 対局中は効かないので、対局の設定では効く場面を添える
     { key: "enableWheelNavigation", label: "終局後、盤の上のホイールで棋譜を送る" },
 ];
 
@@ -453,7 +462,7 @@ export function PlayAdvancedSettings({
 
             <Group title="盤の表示">
                 <label className="flex items-center justify-between gap-3 text-sm">
-                    マスの中の座標
+                    {SQUARE_NOTATION_LABEL}
                     <NativeSelect
                         value={displaySettings.squareNotation}
                         onChange={(event) =>
@@ -466,13 +475,15 @@ export function PlayAdvancedSettings({
                         wrapperClassName="w-40"
                         className="min-h-10 text-sm"
                     >
-                        <option value="none">なし</option>
-                        <option value="sfen">SFEN（5e）</option>
-                        <option value="japanese">日本式（５五）</option>
+                        {SQUARE_NOTATION_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                            </option>
+                        ))}
                     </NativeSelect>
                 </label>
                 <label className="flex items-center justify-between gap-3 text-sm">
-                    盤の模様
+                    {BOARD_PATTERN_LABEL}
                     <NativeSelect
                         value={boardPattern}
                         onChange={(event) => setBoardPattern(event.target.value as BoardPattern)}
@@ -500,9 +511,9 @@ export function PlayAdvancedSettings({
                                     [key]: event.target.checked,
                                 })
                             }
-                            className="h-4 w-4 accent-wafuu-shu"
+                            className={DISPLAY_TOGGLE_CHECKBOX_CLASS}
                         />
-                        {label}
+                        {label ?? DISPLAY_TOGGLE_LABELS[key]}
                     </label>
                 ))}
             </Group>

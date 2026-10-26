@@ -1484,7 +1484,7 @@ export function KifuPanel({
                                         type="button"
                                         className={`w-7 h-7 flex items-center justify-center text-[14px] rounded border cursor-pointer transition-colors duration-150 ${
                                             copySuccess
-                                                ? "bg-green-600 text-white border-green-600"
+                                                ? "bg-status-success text-status-success-fg border-status-success"
                                                 : "bg-background text-foreground border-border hover:bg-muted"
                                         }`}
                                         onClick={handleCopy}
