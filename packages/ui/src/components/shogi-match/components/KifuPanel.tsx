@@ -475,6 +475,7 @@ export function KifuPanel({
                                                         }))
                                                     }
                                                     isOnMainLine={isOnMainLine}
+                                                    className="mt-1 mx-1"
                                                 />
                                             </div>
                                         )}
@@ -485,6 +486,7 @@ export function KifuPanel({
                                                     branches={branchesAtPly}
                                                     onBranchClick={handleInlineBranchClick}
                                                     onAnalyzeBranch={onAnalyzeBranch}
+                                                    className="ml-6 my-0.5"
                                                 />
                                             )}
                                     </div>

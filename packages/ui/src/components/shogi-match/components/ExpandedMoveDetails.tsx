@@ -5,6 +5,7 @@ import type {
     PositionState,
     PresetConfig,
 } from "@shogi/app-core";
+import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
 import { NativeSelect } from "../../native-select";
 import type { KifMove, PvEvalInfo } from "../utils/kifFormat";
@@ -20,7 +21,6 @@ import { PvCandidateItem } from "./PvCandidateItem";
 
 /**
  * 展開された指し手の詳細表示コンポーネント
- * EvalPopoverで表示していた内容をインラインで表示する
  */
 export function ExpandedMoveDetails({
     move,
@@ -38,6 +38,7 @@ export function ExpandedMoveDetails({
     presets,
     onCollapse,
     isOnMainLine = true,
+    className,
 }: {
     move: KifMove;
     position: PositionState;
@@ -55,6 +56,7 @@ export function ExpandedMoveDetails({
     onCollapse: () => void;
     /** 現在位置がメインライン上にあるか（falseの場合はPV分岐追加を無効化） */
     isOnMainLine?: boolean;
+    className?: string;
 }): ReactElement {
     // 複数PVがある場合はリストで表示、なければ従来の単一PVを使用
     const pvList: PvEvalInfo[] = (() => {
@@ -101,13 +103,10 @@ export function ExpandedMoveDetails({
 
     return (
         <section
-            className="
-                mt-1 mx-1 p-3 rounded-lg
-                bg-wafuu-washi
-                border border-border
-                shadow-sm
-                animate-[slideDown_0.15s_ease-out]
-            "
+            className={cn(
+                "p-3 rounded-lg bg-wafuu-washi border border-border shadow-sm animate-[slideDown_0.15s_ease-out]",
+                className,
+            )}
             aria-label={`${move.ply}手目の詳細`}
         >
             {/* ヘッダー: 評価値情報と閉じるボタン */}

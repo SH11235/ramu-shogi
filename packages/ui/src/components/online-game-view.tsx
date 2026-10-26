@@ -1338,6 +1338,7 @@ export function OnlineGameView({
                         onToEnd={handleNavEnd}
                         isRewound={isRewound}
                         disabled={!gameResult && !isSpectator}
+                        className="mb-2"
                     />
                 )}
 

@@ -1,3 +1,4 @@
+import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
 import type { BranchSummary } from "../utils/branchTreeUtils";
 
@@ -8,13 +9,15 @@ export function InlineBranchList({
     branches,
     onBranchClick,
     onAnalyzeBranch,
+    className,
 }: {
     branches: BranchSummary[];
     onBranchClick: (branch: BranchSummary) => void;
     onAnalyzeBranch?: (branchNodeId: string) => void;
+    className?: string;
 }): ReactElement {
     return (
-        <div className="ml-6 pl-2 border-l-2 border-wafuu-shu/30 my-0.5">
+        <div className={cn("pl-2 border-l-2 border-wafuu-shu/30", className)}>
             {branches.map((branch, index) => {
                 const isLast = index === branches.length - 1;
                 return (
