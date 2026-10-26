@@ -8,9 +8,8 @@ import { cn } from "@shogi/design-system";
 import { getEngineErrorInfo } from "@shogi/engine-client";
 import type { ReactElement } from "react";
 import { useState } from "react";
+import { Card } from "../../card";
 import { formatEngineEventLog } from "../hooks/formatEngineEvent";
-
-const baseCardClassName = "w-full rounded-xl border border-border bg-card p-3 shadow-panel";
 
 interface EngineLogsPanelProps {
     /** イベントログのリスト */
@@ -129,11 +128,9 @@ export function EngineLogsPanel({
         engineErrorDetails?.sente?.hasError || engineErrorDetails?.gote?.hasError;
 
     return (
-        <div
-            className={cn(
-                baseCardClassName,
-                hasActiveError ? "border-2 border-destructive" : "border-border",
-            )}
+        <Card
+            elevation="floating"
+            className={cn("w-full p-3", hasActiveError && "border-2 border-destructive")}
         >
             <div className="mb-1.5 font-bold">エンジンログ</div>
 
@@ -170,6 +167,6 @@ export function EngineLogsPanel({
             {errorLogs.length ? (
                 <div className="mt-2 text-xs text-destructive">{errorLogs[0].message}</div>
             ) : null}
-        </div>
+        </Card>
     );
 }

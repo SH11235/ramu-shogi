@@ -6,6 +6,7 @@
  */
 
 import type { ReactElement } from "react";
+import { Card } from "../../card";
 import { useKifuTextImport } from "../hooks/useKifuTextImport";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
 import {
@@ -34,7 +35,7 @@ export function KifuImportPanel({
 
     return (
         // 要素どうしの間隔は親の gap で決める (子に margin を持たせない)。
-        <div className="flex w-full flex-col gap-3 rounded-xl border border-border bg-card p-3 shadow-lg">
+        <Card elevation="floating" className="flex w-full flex-col gap-3 p-3">
             <div className="flex flex-col gap-2">
                 <div className="font-bold">インポート（SFEN / KIF / CSA）</div>
 
@@ -94,6 +95,6 @@ export function KifuImportPanel({
             </label>
 
             {kifuImportExtra}
-        </div>
+        </Card>
     );
 }

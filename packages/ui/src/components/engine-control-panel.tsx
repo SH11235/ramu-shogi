@@ -10,6 +10,7 @@ import type {
 import type { ReactElement } from "react";
 import { useEffect, useReducer, useRef, useState } from "react";
 import { Button } from "./button";
+import { Card, cardVariants } from "./card";
 import {
     Dialog,
     DialogContent,
@@ -109,7 +110,7 @@ const OPTION_DEFAULTS: Record<string, string> = Object.fromEntries(
 );
 const THREAD_OPTIONS = buildThreadOptions();
 
-const surfaceClassName = "rounded-xl border border-border bg-card p-4 text-foreground shadow-panel";
+const surfaceClassName = cn(cardVariants({ elevation: "floating" }), "p-4 text-foreground");
 const gridClassName = "grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(160px,1fr))]";
 const labelClassName = "text-xs text-muted-foreground";
 const inputClassName = "bg-background";
@@ -665,7 +666,7 @@ export function EngineControlPanel({
                             <section className={cn(surfaceClassName, "p-3 bg-muted")}>
                                 <div className="mb-2 font-semibold">デバッグ情報 (開発者向け)</div>
                                 <div className="grid gap-2 text-xs [grid-template-columns:repeat(auto-fit,minmax(140px,1fr))]">
-                                    <div className="rounded-md border border-border bg-background p-2">
+                                    <Card variant="inset" className="p-2">
                                         <div className={labelClassName}>アクティブスレッド</div>
                                         <div
                                             className={cn(
@@ -677,20 +678,20 @@ export function EngineControlPanel({
                                         >
                                             {threadInfo?.activeThreads ?? "-"}
                                         </div>
-                                    </div>
-                                    <div className="rounded-md border border-border bg-background p-2">
+                                    </Card>
+                                    <Card variant="inset" className="p-2">
                                         <div className={labelClassName}>最大スレッド</div>
                                         <div className="text-base font-semibold">
                                             {threadInfo?.maxThreads ?? "-"}
                                         </div>
-                                    </div>
-                                    <div className="rounded-md border border-border bg-background p-2">
+                                    </Card>
+                                    <Card variant="inset" className="p-2">
                                         <div className={labelClassName}>ハードウェア並列数</div>
                                         <div className="text-base font-semibold">
                                             {threadInfo?.hardwareConcurrency ?? "-"}
                                         </div>
-                                    </div>
-                                    <div className="rounded-md border border-border bg-background p-2">
+                                    </Card>
+                                    <Card variant="inset" className="p-2">
                                         <div className={labelClassName}>スレッド利用可能</div>
                                         <div
                                             className={cn(
@@ -702,14 +703,14 @@ export function EngineControlPanel({
                                         >
                                             {threadInfo?.threadedAvailable ? "Yes" : "No"}
                                         </div>
-                                    </div>
-                                    <div className="rounded-md border border-border bg-background p-2">
+                                    </Card>
+                                    <Card variant="inset" className="p-2">
                                         <div className={labelClassName}>最新 NPS</div>
                                         <div className="text-base font-semibold">
                                             {latestNps !== null ? latestNps.toLocaleString() : "-"}
                                         </div>
-                                    </div>
-                                    <div className="rounded-md border border-border bg-background p-2">
+                                    </Card>
+                                    <Card variant="inset" className="p-2">
                                         <div className={labelClassName}>crossOriginIsolated</div>
                                         <div
                                             className={cn(
@@ -726,7 +727,7 @@ export function EngineControlPanel({
                                                     : "false"
                                                 : "N/A"}
                                         </div>
-                                    </div>
+                                    </Card>
                                 </div>
                                 <div className="mt-2 text-[11px] text-muted-foreground">
                                     スレッド利用には crossOriginIsolated=true と SharedArrayBuffer

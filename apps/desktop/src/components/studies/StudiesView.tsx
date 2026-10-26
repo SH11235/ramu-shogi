@@ -5,6 +5,7 @@
  * 新しいノートを作る。保存はこの端末の中だけ（ログインとクラウド同期は未対応）。
  */
 
+import { cn } from "@shogi/design-system";
 import type { StudyLocalSummary, StudySync } from "@shogi/study-client";
 import {
     AlertDialog,
@@ -17,6 +18,7 @@ import {
     AlertDialogTitle,
 } from "@shogi/ui/components/alert-dialog";
 import { Button } from "@shogi/ui/components/button";
+import { cardVariants } from "@shogi/ui/components/card";
 import { StudyImportForm } from "@shogi/ui/components/study-workspace/StudyImportForm";
 import { createStudyFromKifuSource } from "@shogi/ui/components/study-workspace/studyEntry";
 import type { StudyKifuSource } from "@shogi/ui/components/study-workspace/studyImport";
@@ -102,7 +104,7 @@ export function StudiesView({
                 </span>
             </div>
 
-            <section className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
+            <section className={cn(cardVariants(), "flex flex-col gap-3 p-4")}>
                 <h2 className="text-base font-semibold text-foreground">
                     棋譜を取り込んで、研究ノートを作る
                 </h2>
@@ -134,7 +136,10 @@ export function StudiesView({
                             return (
                                 <li
                                     key={item.id}
-                                    className="flex items-stretch gap-2 rounded-xl border border-border bg-card pr-2 shadow-sm transition-colors hover:bg-muted/20"
+                                    className={cn(
+                                        cardVariants({ elevation: "raised", interactive: true }),
+                                        "flex items-stretch gap-2 pr-2",
+                                    )}
                                 >
                                     <button
                                         type="button"

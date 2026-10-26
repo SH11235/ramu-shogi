@@ -1,3 +1,4 @@
+import { Card } from "../../card";
 import { ChevronIcon } from "../../chevron-icon";
 /**
  * 評価値パネル（折りたたみ可能）
@@ -57,7 +58,7 @@ export function EvalPanel({
     };
 
     return (
-        <div className="bg-card border border-border rounded-xl shadow-lg w-[var(--panel-width)] overflow-hidden">
+        <Card elevation="floating" className="w-[var(--panel-width)] overflow-hidden">
             {collapsible ? (
                 <button
                     type="button"
@@ -110,6 +111,6 @@ export function EvalPanel({
                 open={showEvalModal}
                 onClose={handleModalClose}
             />
-        </div>
+        </Card>
     );
 }

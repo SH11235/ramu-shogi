@@ -1,3 +1,5 @@
+import { cn } from "@shogi/design-system";
+import { cardVariants } from "@shogi/ui/components/card";
 import { Link } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { buildLoginHref } from "../lib/loginReturn";
@@ -18,7 +20,7 @@ export function AuthRequiredCard({
     const authHref = buildLoginHref(nextPath);
 
     return (
-        <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
+        <section className={cn(cardVariants({ elevation: "raised" }), "p-5")}>
             <div className="flex flex-col gap-4">
                 <h2 className="text-lg font-semibold text-foreground">{title}</h2>
 

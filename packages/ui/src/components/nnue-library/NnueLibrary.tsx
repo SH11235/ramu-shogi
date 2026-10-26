@@ -22,6 +22,7 @@ import {
     AlertDialogTitle,
 } from "../alert-dialog";
 import { Button } from "../button";
+import { cardVariants } from "../card";
 import { NnueErrorAlert } from "../nnue/NnueErrorAlert";
 import { NnueFvScaleInputDialog } from "../nnue/NnueFvScaleInputDialog";
 import { Progress } from "../progress";
@@ -824,7 +825,12 @@ function PresetRow({
     const percent =
         progress && progress.total > 0 ? Math.round((progress.loaded / progress.total) * 100) : 0;
     return (
-        <li className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-sm sm:flex-row sm:items-center">
+        <li
+            className={cn(
+                cardVariants({ elevation: "raised" }),
+                "flex flex-col gap-3 p-4 sm:flex-row sm:items-center",
+            )}
+        >
             <div className="flex min-w-0 flex-1 items-start gap-3">
                 {iconUrl && (
                     <img

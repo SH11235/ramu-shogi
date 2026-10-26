@@ -1,4 +1,5 @@
 import { cn } from "@shogi/design-system";
+import { cardVariants } from "@shogi/ui/components/card";
 import type { ReactElement, ReactNode } from "react";
 
 interface SectionProps {
@@ -12,7 +13,8 @@ export function Section({ title, className, children }: SectionProps): ReactElem
     return (
         <section
             className={cn(
-                "flex flex-col gap-3 rounded-xl border border-border bg-card p-5 shadow-sm",
+                cardVariants({ elevation: "raised" }),
+                "flex flex-col gap-3 p-5",
                 className,
             )}
         >

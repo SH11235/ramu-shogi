@@ -1,4 +1,5 @@
 import type { StudyMeta, StudyOrigin } from "@shogi/app-core";
+import { cn } from "@shogi/design-system";
 import {
     createSessionVerifier,
     createStudyApiClient,
@@ -17,6 +18,7 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@shogi/ui/components/alert-dialog";
+import { cardVariants } from "@shogi/ui/components/card";
 import { StudyImportForm } from "@shogi/ui/components/study-workspace/StudyImportForm";
 import type { StudyKifuSource } from "@shogi/ui/components/study-workspace/studyImport";
 import {
@@ -423,7 +425,13 @@ export default function StudiesPage({ api, verifySession }: StudiesPageProps): R
                                 return (
                                     <li
                                         key={item.id}
-                                        className="flex items-stretch gap-2 rounded-xl border border-border bg-card pr-2 shadow-sm transition-colors hover:bg-muted/20"
+                                        className={cn(
+                                            cardVariants({
+                                                elevation: "raised",
+                                                interactive: true,
+                                            }),
+                                            "flex items-stretch gap-2 pr-2",
+                                        )}
                                     >
                                         <Link
                                             to="/studies/$studyId"

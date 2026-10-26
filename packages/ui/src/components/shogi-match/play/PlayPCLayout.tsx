@@ -8,9 +8,11 @@
  * Context の前提: MatchSettings / Analysis / MatchState / Navigation を親で Provider 済み。
  */
 
+import { cn } from "@shogi/design-system";
 import type { Dispatch, ReactElement, ReactNode, SetStateAction } from "react";
 import { useState } from "react";
 import { Button } from "../../button";
+import { cardVariants } from "../../card";
 import {
     Dialog,
     DialogClose,
@@ -42,7 +44,7 @@ import { PlayPlayerBar } from "./PlayPlayerBar";
 import { PlayResultCard } from "./PlayResult";
 import { PlayResultDialog } from "./PlayResultDialog";
 import { PlaySetupPanel } from "./PlaySetupPanel";
-import { PLAY_CARD, PLAY_OUTLINE_BUTTON } from "./playStyles";
+import { PLAY_OUTLINE_BUTTON } from "./playStyles";
 
 interface PlayPCLayoutProps {
     matchLayoutClasses: string;
@@ -213,11 +215,14 @@ export function PlayPCLayout({
                                 // 下の余白の分。終局後は、ヒントの代わりに出す結果の欄が約 45px 高いので引く
                                 // （それらの欄の高さを変えたら、この値も見直す）。AI の読みの欄を足しても、
                                 // 縮むのは棋譜の一覧だけにする。
-                                className={`flex min-h-0 flex-col gap-2 ${PLAY_CARD} ${
+                                className={cn(
+                                    "flex min-h-0 flex-col gap-2",
+                                    cardVariants({ variant: "washi" }),
+                                    "p-4",
                                     phase === "finished"
                                         ? "max-h-[max(182px,calc(100dvh-383px))]"
-                                        : "max-h-[max(182px,calc(100dvh-338px))]"
-                                }`}
+                                        : "max-h-[max(182px,calc(100dvh-338px))]",
+                                )}
                             >
                                 <h2 className="text-sm font-semibold text-wafuu-sumi">棋譜</h2>
                                 {hasEngine && displaySettings.showEngineReading && (
