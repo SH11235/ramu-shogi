@@ -10,7 +10,6 @@ import type { ReactElement, RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "../../button";
 import { Dialog, DialogContent } from "../../dialog";
-import { useSurfaceTheme } from "../../surface-theme";
 import { useMatchState } from "../contexts/MatchStateContext";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
 import { isSelfResignation } from "./PlayEndStamp";
@@ -57,7 +56,6 @@ interface PlayResultDialogProps {
 export function PlayResultDialog({ variant }: PlayResultDialogProps): ReactElement | null {
     const { play } = useShogiMatchConfig();
     const { sides } = useMatchState();
-    const surfaceTheme = useSurfaceTheme();
     const primaryRef = useRef<HTMLButtonElement>(null);
     const result = play?.gameResult ?? null;
     const immediate =
@@ -106,10 +104,7 @@ export function PlayResultDialog({ variant }: PlayResultDialogProps): ReactEleme
                     aria-describedby={undefined}
                     onOpenAutoFocus={focusPrimary}
                     onCloseAutoFocus={focusHeading}
-                    className={cn(
-                        surfaceTheme,
-                        "fixed inset-x-0 bottom-0 z-modal max-h-[calc(100dvh-16px)] overflow-y-auto rounded-t-2xl border-t border-wafuu-border bg-background px-4 pb-[max(env(safe-area-inset-bottom),16px)] pt-2 text-foreground shadow-xl outline-none duration-300 data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom motion-reduce:animate-none",
-                    )}
+                    className="fixed inset-x-0 bottom-0 z-modal max-h-[calc(100dvh-16px)] overflow-y-auto rounded-t-2xl border-t border-wafuu-border bg-background px-4 pb-[max(env(safe-area-inset-bottom),16px)] pt-2 text-foreground shadow-xl outline-none duration-300 data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom motion-reduce:animate-none"
                 >
                     <div className="flex flex-col gap-2">
                         <div

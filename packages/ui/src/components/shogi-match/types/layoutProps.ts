@@ -249,7 +249,7 @@ export interface BoardHandlersProps {
     enterEditModeFromPaused: () => void;
     handleResign: () => void;
     handleUndo: () => void;
-    setIsSettingsModalOpen: (open: boolean) => void;
+    setIsImportDialogOpen: (open: boolean) => void;
     shouldRenderPassButton: boolean;
     canMakePassMove: boolean;
     passButtonDisabledReason?: import("../components/PassButton").PassDisabledReason;
@@ -261,7 +261,7 @@ export interface BoardHandlersProps {
 
 /**
  * PC専用propsグループ
- * - 設定モーダル
+ * - 棋譜/局面インポートのダイアログ
  * - 棋譜インポート
  * - エンジンログパネル
  * - 表示設定ダイアログ
@@ -269,7 +269,7 @@ export interface BoardHandlersProps {
 export interface PCSpecificProps {
     matchLayoutClasses: string;
     candidateNote: string | null;
-    isSettingsModalOpen: boolean;
+    isImportDialogOpen: boolean;
     importSfen: import("../utils/kifuImport").ImportSfenHandler;
     importKif: import("../utils/kifuImport").ImportKifHandler;
     positionReady: boolean;
@@ -304,9 +304,6 @@ export interface PCSpecificProps {
 export interface MobileSpecificProps {
     searchInfo?: import("react").ReactNode;
     isReviewMode: boolean;
-    /** ページレベルの検討/観戦モード(外部 prop)。isReviewMode は対局準備中も
-        true になる導出値のため、墨地サーフェス等「検討室」の意匠はこちらで判定する */
-    reviewMode?: boolean;
     onOpenAbout: () => void;
     onImportSfen: import("../utils/kifuImport").ImportSfenHandler;
     onImportKif: import("../utils/kifuImport").ImportKifHandler;

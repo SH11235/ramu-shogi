@@ -286,7 +286,7 @@ test.describe("オンライン対局", () => {
 
         for (const page of [match.b, match.w]) {
             await expectPly(page, 6, 6);
-            await page.getByRole("button", { name: "棋譜", exact: true }).click();
+            await page.getByRole("tab", { name: "棋譜", exact: true }).click();
             await expect(page.getByRole("button", { name: /^\d+\./ })).toHaveCount(6);
             await expect(page.getByRole("button", { name: /^1\./ })).toContainText("7六歩");
             await expect(page.getByRole("button", { name: /^6\./ })).toContainText("8五歩");
@@ -611,7 +611,7 @@ test.describe("オンライン対局", () => {
         await expectSquare(match.b, "3d", "後手の歩");
         await expectSquare(match.b, "8d", "後手の歩");
         await expectPly(match.b, 4, 4);
-        await match.b.getByRole("button", { name: "棋譜", exact: true }).click();
+        await match.b.getByRole("tab", { name: "棋譜", exact: true }).click();
         await expect(match.b.getByRole("button", { name: /^\d+\./ })).toHaveCount(4);
         await expect(match.b.getByRole("button", { name: /^4\./ })).toContainText("8四歩");
 

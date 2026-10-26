@@ -14,10 +14,8 @@ import type {
     PositionState,
     PresetConfig,
 } from "@shogi/app-core";
-import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
 import { useEffect } from "react";
-import { useSurfaceTheme } from "../../surface-theme";
 import { useDraggableWindow } from "../hooks/useDraggableWindow";
 import {
     comparePvWithMainLine,
@@ -140,7 +138,7 @@ function PvCandidateItem({
         <div
             className="
                 border border-border rounded-lg p-2
-                bg-wafuu-washi/30 dark:bg-muted/30
+                bg-wafuu-washi/30
             "
         >
             {/* ヘッダー: 候補番号 + 評価値 */}
@@ -330,7 +328,6 @@ export function MoveDetailWindow({
     isOnMainLine = true,
     showSearchInfo = false,
 }: MoveDetailWindowProps): ReactElement {
-    const surfaceTheme = useSurfaceTheme();
     const { geometry, handlers } = useDraggableWindow(
         {
             x:
@@ -424,12 +421,7 @@ export function MoveDetailWindow({
 
     return (
         <div
-            // fixed 配置で reviewMode の dark div の外(ShogiMatchLayout 階層)に出るため、
-            // Portal 系と同様に局所テーマを引き継ぐ
-            className={cn(
-                surfaceTheme,
-                "fixed flex flex-col overflow-hidden bg-card border border-border rounded-xl shadow-2xl z-window",
-            )}
+            className="fixed flex flex-col overflow-hidden bg-card border border-border rounded-xl shadow-2xl z-window"
             style={{
                 left: windowPosition.x,
                 top: windowPosition.y,
@@ -468,7 +460,7 @@ export function MoveDetailWindow({
             {/* コンテンツ */}
             <div className="flex-1 overflow-auto p-3">
                 {/* 評価値サマリー */}
-                <div className="flex items-center gap-2 mb-3 p-2 bg-wafuu-washi dark:bg-muted/50 rounded-lg">
+                <div className="flex items-center gap-2 mb-3 p-2 bg-wafuu-washi rounded-lg">
                     <span
                         className={`font-medium text-[14px] ${
                             evalInfo.advantage === "sente"

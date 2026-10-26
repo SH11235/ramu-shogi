@@ -1,5 +1,6 @@
 import type { PlayFromPosition } from "@shogi/ui";
 import { useNavigate } from "@tanstack/react-router";
+import { alertDialog } from "../components/AppDialogs";
 import { savePlayHandoff } from "../lib/playHandoff";
 
 /**
@@ -11,7 +12,10 @@ export function usePlayFromPosition(): (position: PlayFromPosition) => boolean {
     const navigate = useNavigate();
     return (position) => {
         if (!savePlayHandoff(position)) {
-            window.alert("局面を引き継げませんでした（ブラウザの保存領域が使えません）。");
+            void alertDialog({
+                title: "局面を引き継げませんでした",
+                description: "ブラウザの保存領域が使えません。",
+            });
             return false;
         }
         void navigate({ to: "/play" });

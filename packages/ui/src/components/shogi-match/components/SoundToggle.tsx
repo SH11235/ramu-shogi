@@ -1,11 +1,12 @@
 import { cn } from "@shogi/design-system";
-import type { KeyboardEvent, ReactElement } from "react";
+import type { ReactElement } from "react";
 import { useRef, useState } from "react";
 import { normalizeSoundVoice, type SoundVoice } from "../../../hooks/useShogiSound";
 import { Popover, PopoverContent, PopoverTrigger } from "../../popover";
 import { useNavigation } from "../contexts/NavigationContext";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
 import { DEFAULT_DISPLAY_SETTINGS } from "../types";
+import { handleMenuKeyDown } from "../utils/menuKeyNavigation";
 
 type SoundMode = SoundVoice | "off";
 
@@ -23,15 +24,6 @@ const MODE_OPTIONS: Array<{ mode: SoundMode; label: string }> = [
     { mode: "standard", label: "通常" },
     { mode: "off", label: "OFF" },
 ];
-
-const KIFU_NAVIGATION_KEYS = new Set([
-    "ArrowUp",
-    "ArrowDown",
-    "ArrowLeft",
-    "ArrowRight",
-    "Home",
-    "End",
-]);
 
 const ICON_PROPS = {
     fill: "none",
@@ -155,24 +147,6 @@ export function SoundToggle({ size = "md" }: { size?: "md" | "lg" }): ReactEleme
         if (next !== "off") previewSound?.(next);
     };
 
-    const moveFocus = (event: KeyboardEvent<HTMLDivElement>) => {
-        // 棋譜の矢印キー送りは document で聞いているので、メニューを開いている間は背後の局面を動かさない
-        if (KIFU_NAVIGATION_KEYS.has(event.key)) event.stopPropagation();
-        const items = [
-            ...event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitemradio"]'),
-        ];
-        const index = items.indexOf(document.activeElement as HTMLElement);
-        const target = {
-            ArrowDown: items[(index + 1) % items.length],
-            ArrowUp: items[(index - 1 + items.length) % items.length],
-            Home: items[0],
-            End: items[items.length - 1],
-        }[event.key];
-        if (!target) return;
-        event.preventDefault();
-        target.focus();
-    };
-
     return (
         <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
@@ -199,7 +173,12 @@ export function SoundToggle({ size = "md" }: { size?: "md" | "lg" }): ReactEleme
                     ref={menuRef}
                     role="menu"
                     aria-label="着手音"
-                    onKeyDown={moveFocus}
+                    onKeyDown={(event) =>
+                        handleMenuKeyDown(event, {
+                            itemSelector: '[role="menuitemradio"]',
+                            onClose: () => setOpen(false),
+                        })
+                    }
                     className="flex flex-col gap-0.5"
                 >
                     {MODE_OPTIONS.map((option) => {
@@ -209,6 +188,7 @@ export function SoundToggle({ size = "md" }: { size?: "md" | "lg" }): ReactEleme
                                 key={option.mode}
                                 type="button"
                                 role="menuitemradio"
+                                tabIndex={-1}
                                 aria-checked={checked}
                                 onClick={() => select(option.mode)}
                                 className={cn(

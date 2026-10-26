@@ -56,9 +56,6 @@ interface MobileLayoutProps {
     /** 検討モードか（対局中でも棋譜がある状態でもない）。対局準備中も true になる導出値 */
     isReviewMode: boolean;
 
-    /** ページレベルの検討/観戦モード(外部 prop)。墨地サーフェスの判定に使う */
-    reviewMode?: boolean;
-
     /** Aboutダイアログを開く */
     onOpenAbout?: () => void;
 

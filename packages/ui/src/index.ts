@@ -87,9 +87,6 @@ export { StudyWorkspace } from "./components/study-workspace";
 export type { StudyCommentDraftChange } from "./components/study-workspace/StudyCommentBox";
 export type { StudyWorkspaceSaveStatus } from "./components/study-workspace/StudySaveStatus";
 export type { StudyEngineIdentity } from "./components/study-workspace/useStudyAnalysis";
-// surface-theme (Portal 脱出 UI への局所テーマ伝搬)
-export type { SurfaceTheme } from "./components/surface-theme";
-export { SurfaceThemeProvider, useSurfaceTheme } from "./components/surface-theme";
 
 // progress
 // shogi-board

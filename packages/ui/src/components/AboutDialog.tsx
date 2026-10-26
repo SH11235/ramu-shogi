@@ -5,6 +5,7 @@
  */
 
 import type { ReactElement } from "react";
+import { CloseIconButton } from "./close-icon-button";
 import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "./dialog";
 
 interface AboutDialogProps {
@@ -30,27 +31,7 @@ export function AboutDialog({ open, onOpenChange }: AboutDialogProps): ReactElem
                 <DialogHeader className="flex flex-row items-center justify-between">
                     <DialogTitle>このアプリについて</DialogTitle>
                     <DialogClose asChild>
-                        <button
-                            type="button"
-                            className="p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                            aria-label="閉じる"
-                        >
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                width="20"
-                                height="20"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                aria-hidden="true"
-                            >
-                                <line x1="18" y1="6" x2="6" y2="18" />
-                                <line x1="6" y1="6" x2="18" y2="18" />
-                            </svg>
-                        </button>
+                        <CloseIconButton />
                     </DialogClose>
                 </DialogHeader>
 

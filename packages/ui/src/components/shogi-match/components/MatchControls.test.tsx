@@ -20,7 +20,7 @@ function renderControls(gameMode: GameMode, viewerMode?: boolean) {
             isMatchRunning={false}
             gameMode={gameMode}
             message={null}
-            onOpenSettings={noop}
+            onOpenImport={noop}
             viewerMode={viewerMode}
         />,
     );

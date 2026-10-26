@@ -2,6 +2,7 @@ import type { EngineOption } from "@shogi/ui";
 import { EngineControlPanel, ShogiMatch, useDevMode } from "@shogi/ui";
 import { Link, useBlocker, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { alertDialog, confirmDialog, dismissDialog } from "./components/AppDialogs";
 import { HeaderNav } from "./components/HeaderNav";
 import { PageHeader } from "./components/PageHeader";
 import { useAccountNnue } from "./hooks/useAccountNnue";
@@ -19,6 +20,8 @@ const engineOptions: EngineOption[] = [
 ];
 
 const panelEngine = createWebWasmEngineClient();
+
+const LEAVE_MATCH_DIALOG_KEY = "leave-match";
 
 // NNUE プリセット manifest.json の URL（環境変数で設定、必須）
 const nnueManifestUrl = import.meta.env.VITE_NNUE_MANIFEST_URL as string;
@@ -44,11 +47,19 @@ function App() {
     // （ヘッダーのリンクの押し間違いで一局を失わないようにする）。
     const [isInMatch, setIsInMatch] = useState(false);
     useBlocker({
-        shouldBlockFn: () =>
+        shouldBlockFn: async () =>
             isInMatch &&
-            !window.confirm("対局中です。このページを離れると、この対局は残りません。離れますか？"),
+            !(await confirmDialog({
+                title: "対局中です",
+                description: "このページを離れると、この対局は残りません。離れますか？",
+                actionLabel: "離れる",
+                cancelLabel: "対局に戻る",
+                key: LEAVE_MATCH_DIALOG_KEY,
+            })),
         enableBeforeUnload: () => isInMatch,
     });
+    // ページを離れたあとに、答えを待っていた確認を残さない（古い移動を後から進めない）
+    useEffect(() => () => dismissDialog(LEAVE_MATCH_DIALOG_KEY), []);
 
     return (
         <>
@@ -109,11 +120,11 @@ function App() {
                             )
                             .catch((error: unknown) => {
                                 console.error("[study] 研究ノートを作れませんでした", error);
-                                window.alert(
-                                    `研究ノートを作れませんでした: ${
-                                        error instanceof Error ? error.message : String(error)
-                                    }`,
-                                );
+                                void alertDialog({
+                                    title: "研究ノートを作れませんでした",
+                                    description:
+                                        error instanceof Error ? error.message : String(error),
+                                });
                             });
                     }}
                 />

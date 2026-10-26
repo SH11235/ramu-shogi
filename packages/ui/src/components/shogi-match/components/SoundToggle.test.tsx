@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ShogiMatchProvider } from "../ShogiMatchContext";
@@ -42,6 +42,18 @@ describe("SoundToggle", () => {
             );
             return previewSound;
         }
+
+        it("closes the menu on Tab and returns focus to the button", async () => {
+            renderMenu();
+            const button = screen.getByRole("button", { name: "着手音: 犬" });
+            fireEvent.click(button);
+            for (const item of screen.getAllByRole("menuitemradio")) {
+                expect(item.tabIndex).toBe(-1);
+            }
+            fireEvent.keyDown(document.activeElement as HTMLElement, { key: "Tab" });
+            expect(screen.queryByRole("menu")).toBeNull();
+            await waitFor(() => expect(document.activeElement).toBe(button));
+        });
 
         it("defaults to the dog voice and can be turned off in one choice", () => {
             const previewSound = renderMenu();
