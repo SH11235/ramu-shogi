@@ -1,5 +1,7 @@
 import type { ReactElement } from "react";
 import { NativeSelect } from "../../native-select";
+import type { BoardPattern } from "../hooks/useBoardPattern";
+import { BOARD_PATTERN_OPTIONS, useBoardPattern } from "../hooks/useBoardPattern";
 import type { DisplaySettings } from "../types";
 
 interface DisplaySettingsPanelProps {
@@ -19,6 +21,7 @@ export function DisplaySettingsPanel({
     settings,
     onChange,
 }: DisplaySettingsPanelProps): ReactElement {
+    const [boardPattern, setBoardPattern] = useBoardPattern();
     return (
         <section
             id="board-display-settings"
@@ -39,6 +42,19 @@ export function DisplaySettingsPanel({
                     <option value="none">なし</option>
                     <option value="sfen">SFEN (5e)</option>
                     <option value="japanese">日本式 (５五)</option>
+                </NativeSelect>
+            </label>
+            <label className="flex flex-col gap-2 text-sm">
+                <span>盤の模様</span>
+                <NativeSelect
+                    value={boardPattern}
+                    onChange={(event) => setBoardPattern(event.target.value as BoardPattern)}
+                >
+                    {BOARD_PATTERN_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                        </option>
+                    ))}
                 </NativeSelect>
             </label>
             {toggles.map(({ key, label }) => (

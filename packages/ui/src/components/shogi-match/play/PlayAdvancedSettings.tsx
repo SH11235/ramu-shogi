@@ -13,6 +13,8 @@ import { NativeSelect } from "../../native-select";
 import { PassRightsSettingsDialog } from "../components/PassRightsSettingsDialog";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { useMatchState } from "../contexts/MatchStateContext";
+import type { BoardPattern } from "../hooks/useBoardPattern";
+import { BOARD_PATTERN_OPTIONS, useBoardPattern } from "../hooks/useBoardPattern";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
 import type { DisplaySettings, EngineSearchLimit } from "../types";
 import { HINT_MULTI_PV_CHOICES } from "../utils/hintSettings";
@@ -132,6 +134,7 @@ export function PlayAdvancedSettings({
     onDisplaySettingsChange,
     devTools,
 }: PlayAdvancedSettingsProps): ReactElement {
+    const [boardPattern, setBoardPattern] = useBoardPattern();
     const setup = usePlaySetup();
     const {
         sides,
@@ -466,6 +469,21 @@ export function PlayAdvancedSettings({
                         <option value="none">なし</option>
                         <option value="sfen">SFEN（5e）</option>
                         <option value="japanese">日本式（５五）</option>
+                    </NativeSelect>
+                </label>
+                <label className="flex items-center justify-between gap-3 text-sm">
+                    盤の模様
+                    <NativeSelect
+                        value={boardPattern}
+                        onChange={(event) => setBoardPattern(event.target.value as BoardPattern)}
+                        wrapperClassName="w-40"
+                        className="min-h-10 text-sm"
+                    >
+                        {BOARD_PATTERN_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                            </option>
+                        ))}
                     </NativeSelect>
                 </label>
                 {DISPLAY_TOGGLES.map(({ key, label }) => (

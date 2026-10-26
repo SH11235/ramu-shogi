@@ -2,6 +2,7 @@ import type { PieceType } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { useRef } from "react";
+import { useBoardPattern } from "./shogi-match/hooks/useBoardPattern";
 import type { SquareNotation } from "./shogi-match/types";
 import { getPieceImagePath, PIECE_LABELS } from "./shogi-match/utils/constants";
 import { formatSquare, getBoardLabels } from "./shogi-match/utils/coordinateFormat";
@@ -93,6 +94,7 @@ export function ShogiBoard({
     hintMove = null,
     overlay,
 }: ShogiBoardProps): ReactElement {
+    const [boardPattern] = useBoardPattern();
     const lastPointerTypeRef = useRef<"mouse" | "touch" | "pen" | null>(null);
     const { files, ranks } = getBoardLabels(flipBoard);
 
@@ -151,10 +153,10 @@ export function ShogiBoard({
                             const isHintTo = hintMove?.to === cell.id;
                             const isHintFrom = hintMove?.from === cell.id;
 
-                            // 背景色: ハイライト時は上書き、通常時はチェッカーパターン
+                            // 背景色: ハイライト時は上書き、通常時は設定の模様（市松 / 無地）
                             const isHighlighted = isLastMoveTo || isLastMoveFrom || isSelected;
                             const baseTone =
-                                (rowIndex + columnIndex) % 2 === 0
+                                boardPattern === "plain" || (rowIndex + columnIndex) % 2 === 0
                                     ? "bg-shogi-cell-light"
                                     : "bg-shogi-cell-dark";
 
