@@ -37,7 +37,6 @@ import { SearchInfoPanel } from "./shogi-match/components/SearchInfoPanel";
 import {
     DEFAULT_BYOYOMI_MS,
     DEFAULT_MAX_LOGS,
-    ENGINE_THREADS_STORAGE_KEY,
     MATCH_LAYOUT_CLASSES,
     TOOLTIP_DELAY_DURATION_MS,
 } from "./shogi-match/constants";
@@ -45,9 +44,8 @@ import { applyDropResult } from "./shogi-match/dnd/dropLogic";
 import type { DropResult } from "./shogi-match/dnd/types";
 import { usePieceDnd } from "./shogi-match/dnd/usePieceDnd";
 import { useBatchAnalysis } from "./shogi-match/hooks/useBatchAnalysis";
-import { DISPLAY_SETTINGS_STORAGE_KEY } from "./shogi-match/hooks/useBoardPattern";
 import { useBoardState } from "./shogi-match/hooks/useBoardState";
-import { type ClockSettings, useClockManager } from "./shogi-match/hooks/useClockManager";
+import { useClockManager } from "./shogi-match/hooks/useClockManager";
 import { useDialogs } from "./shogi-match/hooks/useDialogs";
 import { useEditModeActions } from "./shogi-match/hooks/useEditModeActions";
 import { useEngineManager } from "./shogi-match/hooks/useEngineManager";
@@ -61,46 +59,31 @@ import {
     useKifuNavigation,
 } from "./shogi-match/hooks/useKifuNavigation";
 import { useLegalMovePrefetch } from "./shogi-match/hooks/useLegalMovePrefetch";
-import { useLocalStorage } from "./shogi-match/hooks/useLocalStorage";
 import { useMatchNnueDownload } from "./shogi-match/hooks/useMatchNnueDownload";
+import { useMatchPreferences } from "./shogi-match/hooks/useMatchPreferences";
 import { useIsMobile } from "./shogi-match/hooks/useMediaQuery";
 import { ILLEGAL_MOVE_MESSAGE, useMoveExecution } from "./shogi-match/hooks/useMoveExecution";
 import { useMoveShadow } from "./shogi-match/hooks/useMoveShadow";
 import { useNnueManager } from "./shogi-match/hooks/useNnueManager";
-import { useNormalizedSettings } from "./shogi-match/hooks/useNormalizedSettings";
 import { usePassRights } from "./shogi-match/hooks/usePassRights";
 import { usePlayHintSearch } from "./shogi-match/hooks/usePlayHintSearch";
 import { useUIState } from "./shogi-match/hooks/useUIState";
 import { ShogiMatchLayout } from "./shogi-match/layouts/ShogiMatchLayout";
 import { isHirateStart } from "./shogi-match/play/startPositions";
 import {
-    AI_MATCH_TIME_CHOICES,
-    AI_TIME_CHOICES,
-    MY_TIME_CHOICES,
-    matchesChoice,
-} from "./shogi-match/play/usePlaySetup";
-import {
     type PlayPhase,
     type PlayScreenConfig,
     ShogiMatchProvider,
 } from "./shogi-match/ShogiMatchContext";
 import type {
-    AnalysisSettings,
     AnalysisSnapshotDraft,
     AnalysisSnapshotEntryDraft,
-    DisplaySettings,
     EngineOption,
-    EngineSearchLimits,
-    EngineThreadSettings,
     GameMode,
     PassRightsSettings,
     SideSetting,
 } from "./shogi-match/types";
-import {
-    DEFAULT_ANALYSIS_SETTINGS,
-    DEFAULT_DISPLAY_SETTINGS,
-    DEFAULT_PASS_RIGHTS_SETTINGS,
-} from "./shogi-match/types";
+import { DEFAULT_DISPLAY_SETTINGS } from "./shogi-match/types";
 import type {
     AnalysisProps,
     BoardHandlersProps,
@@ -111,80 +94,13 @@ import type {
     NavigationProps,
     PCSpecificProps,
 } from "./shogi-match/types/layoutProps";
-import { DEFAULT_HINT_MULTI_PV, normalizeHintMultiPv } from "./shogi-match/utils/hintSettings";
 import type { KifMove } from "./shogi-match/utils/kifFormat";
 import { buildLegalCacheKey, LegalMoveCache } from "./shogi-match/utils/legalMoveCache";
-import {
-    isSamePassRightsSettings,
-    normalizePassRightsSettings,
-} from "./shogi-match/utils/passRightsSettings";
 import { boardToGrid } from "./shogi-match/utils/positionUtils";
-import {
-    clockSettingsForLimits,
-    DEFAULT_ENGINE_SEARCH_LIMITS,
-    normalizeEngineSearchLimits,
-} from "./shogi-match/utils/searchLimits";
-import { isSameTimeSettings, normalizeTimeSettings } from "./shogi-match/utils/timeSettings";
+import { clockSettingsForLimits } from "./shogi-match/utils/searchLimits";
 import { TooltipProvider } from "./tooltip";
 
 const EMPTY_ANALYSIS_MARKERS: Array<{ seat: "b" | "w"; ply: number }> = [];
-
-const MATCH_SIDES_KEY = "shogi-match-sides";
-const PLAY_SIDES_KEY = "shogi-play-sides";
-
-type MatchSides = { sente: SideSetting; gote: SideSetting };
-
-/**
- * 対局画面を初めて開いたとき（先後をまだ PLAY_SIDES_KEY に保存していない）の先後。
- * 共有のキーの先後は、ほかの画面の既定値（観戦の人 対 人）や、AI 同士の保存値のこともあるので、
- * 引き継ぐのは「人 対 AI」のときだけ。引き継がないときは `alignTime` を立て、時間設定を
- * 対局画面の選択肢にそろえる。
- */
-const readFirstPlaySides = (
-    defaults: MatchSides,
-): { sides: MatchSides; alignTime: boolean } | null => {
-    if (typeof window === "undefined") return null;
-    try {
-        if (localStorage.getItem(PLAY_SIDES_KEY) !== null) return null;
-        const raw = localStorage.getItem(MATCH_SIDES_KEY);
-        const legacy = raw === null ? null : (JSON.parse(raw) as Partial<MatchSides> | null);
-        const roles = [legacy?.sente?.role, legacy?.gote?.role];
-        if (legacy?.sente && legacy.gote && roles.includes("human") && roles.includes("engine")) {
-            return { sides: { sente: legacy.sente, gote: legacy.gote }, alignTime: false };
-        }
-    } catch {
-        // 読めない保存値は、引き継がずに既定値で始める。
-    }
-    return { sides: defaults, alignTime: true };
-};
-
-/**
- * 人の側は MY_TIME_CHOICES、AI の側は AI の選択肢のどれにも当たらない時計を既定値にする
- * （AI 同士の 1 手 10 秒が自分の持ち時間に残る、観戦の「時間なし」が AI の考慮時間に残る、を防ぐ）。
- */
-const alignTimeToPlayChoices = (
-    settings: ClockSettings,
-    sides: MatchSides,
-    defaultClockFor: (role: SideSetting["role"]) => ClockSettings[Player],
-): ClockSettings => {
-    const align = (side: Player) => {
-        const role = sides[side].role;
-        const choices =
-            role === "human" ? MY_TIME_CHOICES : [...AI_TIME_CHOICES, ...AI_MATCH_TIME_CHOICES];
-        return choices.some((choice) => matchesChoice(settings[side], choice))
-            ? settings[side]
-            : defaultClockFor(role);
-    };
-    return { sente: align("sente"), gote: align("gote") };
-};
-
-/** ライブ観戦用の表示設定 localStorage キー (対局用と分離してチート防止既定を汚さない)。 */
-const SPECTATE_DISPLAY_SETTINGS_KEY = "rshogi-live-display-settings";
-/** ライブ観戦の既定表示設定。棋譜評価値カラムを既定 ON にする。 */
-const SPECTATE_DISPLAY_SETTINGS: DisplaySettings = {
-    ...DEFAULT_DISPLAY_SETTINGS,
-    showKifuEval: true,
-};
 
 const reviewMoveDataKeyCache = new WeakMap<(ReviewMoveEval | undefined)[], string>();
 
@@ -721,15 +637,33 @@ export function ShogiMatch({
     const emptyBoard: BoardState = Object.fromEntries(
         getAllSquares().map((sq) => [sq, null]),
     ) as BoardState;
-    // 観戦・公開棋譜の画面も ShogiMatch を人 対 人で開き、その既定値を保存する。対局画面は別のキーに
-    // 持ち、その保存で「自分 対 AI」の既定値が上書きされないようにする。
-    const [firstPlaySides] = useState(() =>
-        screen === "play" ? readFirstPlaySides(defaultSides) : null,
-    );
-    const [sides, setSides] = useLocalStorage<MatchSides>(
-        screen === "play" ? PLAY_SIDES_KEY : MATCH_SIDES_KEY,
-        firstPlaySides?.sides ?? defaultSides,
-    );
+    const {
+        sides,
+        setSides,
+        timeSettings,
+        setTimeSettings,
+        hintMultiPv,
+        setHintMultiPv,
+        displaySettings,
+        setDisplaySettings,
+        analysisSettings,
+        setAnalysisSettings,
+        analysisEngineId,
+        setAnalysisEngineId,
+        passRightsSettings,
+        setPassRightsSettings,
+        engineThreads,
+        setEngineThreads,
+        engineSearchLimits,
+        setEngineSearchLimits,
+    } = useMatchPreferences({
+        screen,
+        spectateMode,
+        defaultSides,
+        initialMainTimeMs,
+        initialByoyomiMs,
+        engineOptions,
+    });
 
     // 盤面状態管理（統合フック）
     const {
@@ -773,73 +707,12 @@ export function ShogiMatch({
         },
     });
     const initializeBoardEvent = useEffectEvent(initializeBoard);
-    const defaultTimeSettings = {
-        sente: {
-            mainMs: initialMainTimeMs,
-            byoyomiMs: initialByoyomiMs,
-            incrementMs: 0,
-            enabled: defaultSides.sente.role !== "human",
-        },
-        gote: {
-            mainMs: initialMainTimeMs,
-            byoyomiMs: initialByoyomiMs,
-            incrementMs: 0,
-            enabled: defaultSides.gote.role !== "human",
-        },
-    };
-    const [timeSettings, setTimeSettings] = useNormalizedSettings(
-        "shogi-match-time-settings",
-        defaultTimeSettings,
-        normalizeTimeSettings,
-        isSameTimeSettings,
-    );
-    // 初めて開いた対局画面では、利用者が秒を指定するまで、時間設定をいまの先後の選択肢にそろえ続ける。
-    // 1 度だけでは足りない（ログイン中は、サーバーに保存した時間設定があとから届いて書き戻される）。
-    const alignTimeRef = useRef(firstPlaySides?.alignTime === true);
-    // 先後は時計より先に書き込まれる（usePlaySetup）。時計を書くときは、その先後で選択肢を判定する。
-    const latestSidesRef = useRef(sides);
-    const alignToPlayChoices = (settings: ClockSettings, currentSides: MatchSides) =>
-        alignTimeToPlayChoices(settings, currentSides, (role) => ({
-            mainMs: initialMainTimeMs,
-            byoyomiMs: initialByoyomiMs,
-            incrementMs: 0,
-            enabled: role !== "human",
-        }));
-    const alignTimeForFirstPlay = useEffectEvent(
-        (current: ClockSettings, currentSides: MatchSides) => {
-            latestSidesRef.current = currentSides;
-            if (!alignTimeRef.current) return;
-            const aligned = alignToPlayChoices(current, currentSides);
-            if (!isSameTimeSettings(aligned, current)) {
-                setTimeSettings((latest) => alignToPlayChoices(latest, currentSides), "automatic");
-            }
-        },
-    );
-    useEffect(() => {
-        alignTimeForFirstPlay(timeSettings, sides);
-    }, [timeSettings, sides]);
-    // 先後や時間の選択肢を選んだときの書き込みは、そろえ続けても変わらない。止めるのは、その役割の
-    // 選択肢に当たらない時計（詳細設定で指定した秒）を書いたときだけ。
-    const changeTimeSettings: typeof setTimeSettings = (next) => {
-        if (
-            typeof next === "function" ||
-            !isSameTimeSettings(alignToPlayChoices(next, latestSidesRef.current), next)
-        ) {
-            alignTimeRef.current = false;
-        }
-        setTimeSettings(next);
-    };
     const [isMatchRunning, setIsMatchRunning] = useState(false);
     const [isEditMode, setIsEditMode] = useState(true);
     const isPlayScreen = screen === "play";
     // 対局画面では、利用者が「局面を変えて指す」を開いている間だけ盤を編集できる。
     const [positionEditOpen, setPositionEditOpen] = useState(false);
     const [hintCount, setHintCount] = useState(0);
-    const [storedHintMultiPv, setHintMultiPv] = useLocalStorage<number>(
-        "shogi-play-hint-multipv",
-        DEFAULT_HINT_MULTI_PV,
-    );
-    const hintMultiPv = normalizeHintMultiPv(storedHintMultiPv);
     const [pendingOpenStudy, setPendingOpenStudy] = useState(false);
     const [pendingRematch, setPendingRematch] = useState(false);
     const editAllowed =
@@ -893,21 +766,6 @@ export function ShogiMatch({
     // 検討モード: 編集モードでも対局中でも一時停止中でもない状態
     // 自由に棋譜を閲覧し、分岐を作成できる
     const isReviewMode = !isEditMode && !isMatchRunning && !isPaused;
-    // ライブ観戦は表示設定を別名前空間で扱い、棋譜評価値カラムを既定 ON にする。
-    // 対局用の設定 (チート防止で showKifuEval=OFF 既定) を汚さず、観戦側で明示
-    // トグルした値は観戦用キーに永続化されて尊重される。
-    const displaySettingsKey = spectateMode
-        ? SPECTATE_DISPLAY_SETTINGS_KEY
-        : DISPLAY_SETTINGS_STORAGE_KEY;
-    const displaySettingsDefaults = spectateMode
-        ? SPECTATE_DISPLAY_SETTINGS
-        : DEFAULT_DISPLAY_SETTINGS;
-    const [storedDisplaySettings, setDisplaySettings] = useLocalStorage<DisplaySettings>(
-        displaySettingsKey,
-        displaySettingsDefaults,
-    );
-    // 既存の localStorage データに新フィールド（enableSound 等）がない場合のマージ
-    const displaySettings = { ...displaySettingsDefaults, ...storedDisplaySettings };
     const { playSound, playEndSound } = useShogiSound({ dogSoundBaseUrl });
     const isCpuGame = sides.sente.role === "engine" || sides.gote.role === "engine";
     // 人の手は合法手の確認を待ってから適用されるので、鳴らすかどうか・鳴らし方はその時点の設定で決める。
@@ -944,59 +802,6 @@ export function ShogiMatch({
             cpuLosing,
         });
     };
-    // 解析設定（古いlocalStorageデータとの互換性のためデフォルト値とマージ）
-    const [storedAnalysisSettings, setAnalysisSettings] = useLocalStorage<AnalysisSettings>(
-        "shogi-analysis-settings",
-        DEFAULT_ANALYSIS_SETTINGS,
-    );
-    const analysisSettings = { ...DEFAULT_ANALYSIS_SETTINGS, ...storedAnalysisSettings };
-    const [analysisEngineId, setAnalysisEngineId] = useLocalStorage<string>(
-        "shogi-analysis-engine",
-        engineOptions[0]?.id ?? "wasm",
-    );
-    // パス権設定
-    const [passRightsSettings, setPassRightsSettings] = useNormalizedSettings(
-        "shogi-pass-rights-settings",
-        DEFAULT_PASS_RIGHTS_SETTINGS,
-        normalizePassRightsSettings,
-        isSamePassRightsSettings,
-    );
-    const [storedEngineThreads, setStoredEngineThreads] = useLocalStorage<
-        EngineThreadSettings | number
-    >(ENGINE_THREADS_STORAGE_KEY, { sente: 0, gote: 0 });
-    const engineThreads = (() => {
-        // 0 は自動。旧 UI で選べた 32 超の値が localStorage に残っていると
-        // 現在の選択肢 (1〜32) に一致せず表示が壊れるため clamp する
-        const normalize = (value: number | undefined) =>
-            typeof value === "number" && Number.isFinite(value)
-                ? Math.min(32, Math.max(0, Math.trunc(value)))
-                : 0;
-        if (typeof storedEngineThreads === "number") {
-            const normalized = normalize(storedEngineThreads);
-            return { sente: normalized, gote: normalized };
-        }
-        if (!storedEngineThreads || typeof storedEngineThreads !== "object") {
-            return { sente: 0, gote: 0 };
-        }
-        return {
-            sente: normalize(storedEngineThreads.sente),
-            gote: normalize(storedEngineThreads.gote),
-        };
-    })();
-    const setEngineThreads = (next: EngineThreadSettings) => {
-        setStoredEngineThreads({
-            sente: Math.max(0, Math.trunc(next.sente)),
-            gote: Math.max(0, Math.trunc(next.gote)),
-        });
-    };
-    const [storedEngineSearchLimits, setEngineSearchLimits] = useLocalStorage<EngineSearchLimits>(
-        "shogi-match-engine-search-limits",
-        DEFAULT_ENGINE_SEARCH_LIMITS,
-    );
-    const engineSearchLimits = useMemo(
-        () => normalizeEngineSearchLimits(storedEngineSearchLimits),
-        [storedEngineSearchLimits],
-    );
     // UI状態管理（統合フック）
     const {
         flipBoard,
@@ -1647,7 +1452,6 @@ export function ShogiMatch({
                 void disposeEngine(side);
             }
         }
-        latestSidesRef.current = newSides;
         setSides(newSides);
     };
 
@@ -2307,13 +2111,6 @@ export function ShogiMatch({
         viewerMode || (isPlayScreen && (playPhase === "setup" || playPhase === "finished"));
     const internalEngineId = engineOptions[0]?.id ?? "wasm";
 
-    useEffect(() => {
-        if (engineOptions.some((option) => option.id === analysisEngineId)) {
-            return;
-        }
-        setAnalysisEngineId(engineOptions[0]?.id ?? "wasm");
-    }, [analysisEngineId, engineOptions, setAnalysisEngineId]);
-
     // Props グループ化: 対局設定
     const matchSettings: MatchSettingsProps = {
         sides,
@@ -2321,7 +2118,7 @@ export function ShogiMatch({
         analysisEngineId,
         setAnalysisEngineId,
         timeSettings,
-        setTimeSettings: changeTimeSettings,
+        setTimeSettings,
         passRightsSettings,
         handlePassRightsSettingsChange,
         settingsLocked,
