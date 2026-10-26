@@ -19,6 +19,7 @@ const COLOR_PREFIXES = [
     "bg",
     "text",
     "border",
+    // 正規表現のまま使う（border-t / border-x / border-s などの片側の枠）
     "border-[trblxyse]",
     "ring",
     "ring-offset",
@@ -63,6 +64,9 @@ export function collectCssVariables(css) {
 /** 入れ子の色 `{ wafuu: { sumi, DEFAULT } }` を `wafuu-sumi` / `wafuu` に平たくする */
 function flattenColors(colors, prefix = "") {
     return Object.entries(colors).flatMap(([key, value]) => {
+        if (key === "DEFAULT" && prefix === "") {
+            throw new Error("colors の一番上の DEFAULT は、クラス名が決まらないので扱えない");
+        }
         const name = key === "DEFAULT" ? prefix : prefix ? `${prefix}-${key}` : key;
         return typeof value === "object" ? flattenColors(value, name) : [[name, value]];
     });
@@ -111,6 +115,7 @@ export function stripComments(text, fileName) {
  */
 export function tokenUsagePattern({ group, name }, boxShadowNames = new Set()) {
     const escaped = escapeRegExp(name);
+    // keyframes はクラスの接頭辞を持たず、animation の値か animate-[名前_…] から名前で参照される
     if (group === "keyframes") {
         return new RegExp(`(?:animate-\\[|["'\`\\s])${escaped}(?=[_\\s"'\`])`);
     }
