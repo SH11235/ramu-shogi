@@ -102,7 +102,7 @@ interface UseMoveExecutionProps {
 /**
  * useMoveExecution の返り値
  */
-interface UseMoveExecutionReturn {
+export interface UseMoveExecutionReturn {
     /** マス選択のメインハンドラ */
     handleSquareSelect: (square: string, shiftKey?: boolean) => Promise<void>;
     /** 成り選択ハンドラ */

@@ -1,10 +1,12 @@
 import { expect, type Locator, type Page, type Route, test } from "@playwright/test";
 
-// サーバー（API）が無くても描ける画面を、PC とスマホで撮る。
+// サーバー（API）が無くても描ける画面を、PC とスマホで撮る。タブレットは配置が変わる画面だけ撮る。
 const VIEWPORTS = {
     pc: { width: 1280, height: 800 },
     mobile: { width: 375, height: 812 },
+    tablet: { width: 900, height: 1100 },
 } as const;
+const DEFAULT_DEVICES: readonly (keyof typeof VIEWPORTS)[] = ["pc", "mobile"];
 
 // 駒の取り合いがあり、両者に持ち駒がある短い棋譜。
 const KIFU_WITH_HANDS = "+7776FU\n-3334FU\n+8822UM\n-3122GI\n+0055KA";
@@ -211,7 +213,8 @@ const SCENES: Scene[] = [
             p.getByRole("button", { name: "研究ノートにする" }).waitFor(),
         ),
     },
-    { name: "study-note", open: openStudyAtEnd },
+    // 研究ノートは 768〜1023px で盤を小さくした 2 列の配置になる。
+    { name: "study-note", open: openStudyAtEnd, devices: ["pc", "mobile", "tablet"] },
     { name: "study-pv", open: openStudyPv(false) },
     { name: "study-pv-flipped", open: openStudyPv(true), devices: ["pc"] },
     { name: "book-viewer", open: openBookViewer(false) },
@@ -284,7 +287,8 @@ const SCENES: Scene[] = [
 
 for (const [device, viewport] of Object.entries(VIEWPORTS)) {
     for (const scene of SCENES) {
-        if (scene.devices && !scene.devices.includes(device as keyof typeof VIEWPORTS)) continue;
+        if (!(scene.devices ?? DEFAULT_DEVICES).includes(device as keyof typeof VIEWPORTS))
+            continue;
         test(`${scene.name} ${device}`, async ({ page }) => {
             await page.setViewportSize(viewport);
             await scene.open(page);
