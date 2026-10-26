@@ -300,8 +300,6 @@ export function useMatchPreferences({
         setPassRightsSettings,
         engineThreads: normalizeEngineThreads(storedEngineThreads),
         setEngineThreads,
-        // 時計に渡す設定の同一性に効く（時計は設定が替わるたびに残り時間を戻す）ので、
-        // 保存値が同じ間は同じものを返す（このフックは React Compiler がメモ化する）。
         engineSearchLimits: normalizeEngineSearchLimits(storedEngineSearchLimits),
         setEngineSearchLimits,
     };

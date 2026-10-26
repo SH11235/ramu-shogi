@@ -1,8 +1,16 @@
 import type { GameResult, Player } from "@shogi/app-core";
-import { useEffect, useRef } from "react";
+import { useEffect, useEffectEvent, useRef } from "react";
 import type { EngineSearchLimits, Message, SideSetting } from "../types";
 import { clockSettingsForLimits } from "../utils/searchLimits";
 import { type ClockSettings, useClockManager } from "./useClockManager";
+
+const clockSettingsKey = (settings: ClockSettings): string =>
+    (["sente", "gote"] as const)
+        .map((side) => {
+            const { mainMs, byoyomiMs, incrementMs, enabled } = settings[side];
+            return `${mainMs}/${byoyomiMs}/${incrementMs}/${enabled}`;
+        })
+        .join("|");
 
 /**
  * 対局時計。時間設定と AI の読む量から時計の設定を作り、時間切れを終局につなぐ。
@@ -48,8 +56,6 @@ export function useMatchClock({
         await endMatchRef.current?.(result);
     };
 
-    // 時計に渡す設定は、中身が同じ間は同じものにする（時計は設定が替わるたびに残り時間を戻す）。
-    // このフックは React Compiler がメモ化するので、入力が同じ間は同じものになる。
     const clockTimeSettings = clockSettingsForLimits(timeSettings, sides, engineSearchLimits);
     const clock = useClockManager({
         timeSettings: clockTimeSettings,
@@ -61,6 +67,7 @@ export function useMatchClock({
         },
     });
     const { clocksRef, hasExpiredAtMove, resetClocks } = clock;
+    const resetClocksBeforeMatch = useEffectEvent(() => resetClocks(false));
 
     /** 指す前に時間が切れていた手、終局後に届いた手なら、手を適用しない（true を返す）。 */
     const endIfFlaggedBeforeMove = (mover: Player): boolean => {
@@ -86,19 +93,20 @@ export function useMatchClock({
         return mainLeft + byoyomiLeft;
     };
 
-    // 対局前に timeSettings が変更されたら clocks を同期
-    // （resetClocks は timeSettings に依存しているため、resetClocks の変更で検知可能）
+    // 対局前に時間設定が変わったら時計を合わせる。
     // 一時停止中は戻さない（戻すと、止めるたびに持ち時間・秒読みが元に戻ってしまう）。
     // ただし、一時停止中に時間設定そのものを変えたときは、新しい設定に合わせ直す。
     // 読む量（ノード数・深さ）を替えたときも時計の設定が替わるので、時計に渡す設定で比べる。
-    const syncedTimeSettingsRef = useRef(clockTimeSettings);
+    // 設定は中身の値で比べる（設定のオブジェクトが作り直されただけで時計を戻さない）。
+    const settingsKey = clockSettingsKey(clockTimeSettings);
+    const syncedSettingsKeyRef = useRef(settingsKey);
     useEffect(() => {
-        const settingsChanged = syncedTimeSettingsRef.current !== clockTimeSettings;
-        syncedTimeSettingsRef.current = clockTimeSettings;
+        const settingsChanged = syncedSettingsKeyRef.current !== settingsKey;
+        syncedSettingsKeyRef.current = settingsKey;
         if (!isMatchRunning && (!isPaused || settingsChanged)) {
-            resetClocks(false);
+            resetClocksBeforeMatch();
         }
-    }, [isMatchRunning, isPaused, resetClocks, clockTimeSettings]);
+    }, [isMatchRunning, isPaused, settingsKey]);
 
     return { ...clock, endIfFlaggedBeforeMove, getRemainingTimeMs };
 }
