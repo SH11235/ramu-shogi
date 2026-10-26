@@ -1,10 +1,7 @@
 import {
     applyMoveWithState,
-    type BoardState,
     deriveLastMove,
     getPositionService,
-    type NnueSelection,
-    NONE_NNUE_SELECTION,
     type PieceType,
     type Player,
     type PositionState,
@@ -19,34 +16,26 @@ import type {
 } from "@shogi/match-client";
 import type { ReactElement } from "react";
 import { useEffect, useEffectEvent, useReducer, useRef, useState } from "react";
-import { useLazyNnueLoader } from "../hooks/useLazyNnueLoader";
 import { useScreenWakeLock } from "../hooks/useScreenWakeLock";
 import { useShogiSound } from "../hooks/useShogiSound";
-import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-    AlertDialogTrigger,
-} from "./alert-dialog";
-import { ConnectionLostNotice } from "./connection-lost-notice";
 import { NnueLibraryDialog } from "./nnue-library/NnueLibraryDialog";
 import type { NnueAccountStore } from "./nnue-library/types";
 import { exportGameKif } from "./online-game-state";
+import { AnalysisSummaryBar } from "./online-game-view/AnalysisSummaryBar";
+import { ConnectionNotices } from "./online-game-view/ConnectionNotices";
 import { GameEndDialog } from "./online-game-view/GameEndDialog";
 import { GameResultStrip } from "./online-game-view/GameResultStrip";
 import { formatGameEndReason, formatGameResultTitle } from "./online-game-view/gameResultText";
 import { OnlineAiPanel } from "./online-game-view/OnlineAiPanel";
 import { OnlineKifuList } from "./online-game-view/OnlineKifuList";
 import type { OnlineAnalysis } from "./online-game-view/onlineAnalysis";
+import { INITIAL_UI_STATE, uiReducer } from "./online-game-view/onlineGameUiState";
 import { PlayerHeader } from "./online-game-view/PlayerHeader";
+import { ResignButton } from "./online-game-view/ResignButton";
+import { TakebackApprovalDialog, TakebackPendingBanner } from "./online-game-view/TakebackPrompts";
+import { useOnlineAiAnalysis } from "./online-game-view/useOnlineAiAnalysis";
 import { useOnlineClock } from "./online-game-view/useOnlineClock";
 import { useOnlineGameRoom } from "./online-game-view/useOnlineGameRoom";
-import type { AiHintMove } from "./shogi-match/components/AiHintPanel";
 import { BottomSheet } from "./shogi-match/components/BottomSheet";
 import { KifuNavigationToolbar } from "./shogi-match/components/KifuNavigationToolbar";
 import { type HandInfo, MobileBoardSection } from "./shogi-match/components/MobileBoardSection";
@@ -58,8 +47,6 @@ import type { PromotionSelection } from "./shogi-match/types";
 import { computeMoveShadow } from "./shogi-match/utils/moveShadow";
 import { boardToGrid } from "./shogi-match/utils/positionUtils";
 import { determinePromotion } from "./shogi-match/utils/promotionLogic";
-
-// ─── 型定義 ───────────────────────────────────────────────────────────────────
 
 const BOARD_DISPLAY_SETTINGS = {
     highlightLastMove: true,
@@ -82,77 +69,6 @@ function rejectedCommandNotice(code: ErrorCode, seat: Seat): string | null {
 
 const CHECKMATE_REJECTED_NOTICE =
     "サーバーではこの局面を詰みと判定しませんでした。指せる手が表示されないときは、投了で対局を終えてください。";
-
-// ─── UI インタラクション状態管理 ───────────────────────────────────────────────
-
-interface UIState {
-    selectedSquare: string | null;
-    selectedHand: PieceType | null;
-    legalMoves: string[];
-    promoteDialog: { from: string; to: string; usi: string } | null;
-    navIndex: number | null;
-    aiSheetOpen: boolean;
-    kifuSheetOpen: boolean;
-    endDialogClosed: boolean;
-}
-
-type UIAction =
-    | { type: "move_received" } // selectedSquare, selectedHand, legalMoves を一括リセット
-    | { type: "resync_received" } // 選択・成り選択・合法手・navIndex を一括リセット
-    | { type: "clear_selection" } // selectedSquare, selectedHand を一括リセット
-    | { type: "select_square"; squareId: string | null }
-    | { type: "select_hand"; pieceType: PieceType | null }
-    | { type: "set_legal_moves"; moves: string[] }
-    | { type: "set_promote_dialog"; dialog: { from: string; to: string; usi: string } | null }
-    | { type: "set_nav_index"; index: number | null }
-    | { type: "set_ai_sheet_open"; open: boolean }
-    | { type: "set_kifu_sheet_open"; open: boolean }
-    | { type: "set_end_dialog_closed"; closed: boolean };
-
-const INITIAL_UI_STATE: UIState = {
-    selectedSquare: null,
-    selectedHand: null,
-    legalMoves: [],
-    promoteDialog: null,
-    navIndex: null,
-    aiSheetOpen: false,
-    kifuSheetOpen: false,
-    endDialogClosed: false,
-};
-
-function uiReducer(state: UIState, action: UIAction): UIState {
-    switch (action.type) {
-        case "move_received":
-            return { ...state, selectedSquare: null, selectedHand: null, legalMoves: [] };
-        case "resync_received":
-            return {
-                ...state,
-                selectedSquare: null,
-                selectedHand: null,
-                legalMoves: [],
-                promoteDialog: null,
-                navIndex: null,
-            };
-        case "clear_selection":
-            return { ...state, selectedSquare: null, selectedHand: null };
-        case "select_square":
-            return { ...state, selectedSquare: action.squareId };
-        case "select_hand":
-            return { ...state, selectedHand: action.pieceType };
-        case "set_legal_moves":
-            return { ...state, legalMoves: action.moves };
-        case "set_promote_dialog":
-            return { ...state, promoteDialog: action.dialog };
-        case "set_nav_index":
-            return { ...state, navIndex: action.index };
-        case "set_ai_sheet_open":
-            return { ...state, aiSheetOpen: action.open };
-        case "set_kifu_sheet_open":
-            return { ...state, kifuSheetOpen: action.open };
-        case "set_end_dialog_closed":
-            return { ...state, endDialogClosed: action.closed };
-    }
-}
 
 // ─── メインコンポーネント ──────────────────────────────────────────────────────
 
@@ -187,7 +103,7 @@ export function OnlineGameView({
     onExit,
     requestFullSnapshot,
 }: OnlineGameViewProps): ReactElement {
-    // ─── AI サポート設定（makeInitialGameState の引数として使用するため先に定義） ──
+    // ─── AI サポート設定 ─────────────────────────────────────────────────────
     const aiSupport = snapshot.settings.aiSupport as AiSupportSettings | null;
     const myAiSettings = seat !== "s" && aiSupport ? aiSupport[seat === "b" ? "b" : "w"] : null;
 
@@ -286,10 +202,6 @@ export function OnlineGameView({
     // analysis prop から分解（undefined 時のデフォルト値）
     const isAnalyzing = analysis?.isAnalyzing ?? false;
     const topMoves = analysis?.topMoves ?? [];
-    // ミニサマリバー用評価値（先手視点 cp）
-    const summaryEvalCp = topMoves[0]?.cp ?? null;
-    const summaryEvalPercent =
-        summaryEvalCp !== null ? Math.min(100, Math.max(0, 50 + (summaryEvalCp / 2000) * 50)) : 50;
 
     // 自分の手番か
     const myPlayer: Player | null = seat === "b" ? "sente" : seat === "w" ? "gote" : null;
@@ -506,9 +418,6 @@ export function OnlineGameView({
         client.resign({ eventId: appliedEventIdRef.current });
     }
 
-    // 投了は取り消せないので、確かめてから送る（スマホでは隣の「棋譜」「待った」と押し間違えやすい）。
-    const [isResignConfirmOpen, setIsResignConfirmOpen] = useState(false);
-
     // ─── 待った ───────────────────────────────────────────────────────────────
 
     function handleTakebackRequest(): void {
@@ -523,54 +432,30 @@ export function OnlineGameView({
         client.takebackCancel({ eventId: appliedEventIdRef.current });
     }
 
-    // ─── AI 解析トリガー ─────────────────────────────────────────────────────
+    // ─── AI 解析 ─────────────────────────────────────────────────────────────
 
-    // 解析を開始した局面の board/turn を保存（formatMoveSimple に渡すため）
-    const [analysisBoard, setAnalysisBoard] = useState<BoardState | null>(null);
-    const [analysisTurn, setAnalysisTurn] = useState<"b" | "w">("b");
-    // PVプレビュー用に局面と手数も保存
-    const [analysisPosition, setAnalysisPosition] = useState<PositionState | null>(null);
-    const [analysisPly, setAnalysisPly] = useState<number>(0);
-    // PVプレビューダイアログ
-    const [pvPreviewMove, setPvPreviewMove] = useState<AiHintMove | null>(null);
-
-    // 制限モードは use_analysis を先送信してからエンジン解析（観戦者はスキップ）
-    const analysisNeedsServer = myAiSettings?.mode === "limited" && seat !== "s";
-
-    const handleAnalyze = async () => {
-        if (!position || (analysisNeedsServer && !canSend)) return;
-        if (analysisNeedsServer) {
-            const ply = movesRef.current.length;
-            client.consumeAnalysis({ eventId: appliedEventIdRef.current, ply });
-            // analysis_used 受信後に自動で残り回数が更新される
-        }
-        if (analysis) {
-            setAnalysisBoard(position.board);
-            setAnalysisTurn(turn);
-            setAnalysisPosition(position);
-            setAnalysisPly(movesRef.current.length);
-            void analysis.startAnalysis(startSfenRef.current, movesRef.current);
-        }
-    };
-
-    // ─── NNUE 管理 ───────────────────────────────────────────────────────────
-
-    const [nnueSelection, setNnueSelection] = useState<NnueSelection>(NONE_NNUE_SELECTION);
-    const [nnueManagerOpen, setNnueManagerOpen] = useState(false);
-    const { resolveNnue } = useLazyNnueLoader();
-    const isMobile = useIsMobile();
-
-    const loadNnueEvent = useEffectEvent((sel: NnueSelection) => {
-        if (!analysis?.loadNnue) return;
-        resolveNnue(sel)
-            .then((resolved) =>
-                analysis.loadNnue?.(resolved?.nnueId ?? null, resolved?.layerStacks),
-            )
-            .catch(console.error);
+    const {
+        analysisNeedsServer,
+        requestAnalysis,
+        analyzedPosition,
+        pvPreviewMove,
+        setPvPreviewMove,
+        nnueSelection,
+        setNnueSelection,
+    } = useOnlineAiAnalysis({
+        analysis,
+        client,
+        seat,
+        myAiSettings,
+        canSend,
+        position,
+        turn,
+        startSfenRef,
+        movesRef,
+        appliedEventIdRef,
     });
-    useEffect(() => {
-        loadNnueEvent(nnueSelection);
-    }, [nnueSelection]);
+    const [nnueManagerOpen, setNnueManagerOpen] = useState(false);
+    const isMobile = useIsMobile();
 
     // ─── AI 手の盤面適用 ──────────────────────────────────────────────────────
 
@@ -717,9 +602,9 @@ export function OnlineGameView({
                 topMoves={topMoves}
                 canAnalyze={canAnalyzeNow}
                 analyzeHint={analyzeHintText}
-                onAnalyze={() => void handleAnalyze()}
-                analysisBoard={analysisBoard}
-                analysisTurn={analysisTurn}
+                onAnalyze={requestAnalysis}
+                analysisBoard={analyzedPosition?.position.board ?? null}
+                analysisTurn={analyzedPosition?.turn ?? "b"}
                 nnueSelection={nnueSelection}
                 onNnueSelectionChange={setNnueSelection}
                 onOpenNnueManager={() => setNnueManagerOpen(true)}
@@ -728,7 +613,7 @@ export function OnlineGameView({
                         ? (usiMove) => Promise.resolve(handleApplyAiMove(usiMove))
                         : undefined
                 }
-                onPreviewPv={analysisPosition ? setPvPreviewMove : undefined}
+                onPreviewPv={analyzedPosition ? setPvPreviewMove : undefined}
             />
         ) : null;
 
@@ -747,42 +632,12 @@ export function OnlineGameView({
             {/* 左サイドバー: 対局後検討・NNUE設定など（PC のみ表示） */}
             <div className="hidden md:flex w-64 flex-col gap-3" />
 
-            {/* 接続の通知: 盤面の上に重ね、出し入れで盤面が動かないようにする */}
-            <div className="pointer-events-none fixed top-4 left-1/2 -translate-x-1/2 z-50 flex w-[min(90vw,420px)] flex-col items-center gap-2">
-                {offlineSeats.size > 0 && (
-                    <div className="rounded-lg bg-destructive px-4 py-2 text-sm text-destructive-foreground shadow-lg">
-                        {Array.from(offlineSeats).map((s) => (
-                            <span key={s}>{s === "b" ? "先手" : "後手"}が切断しました</span>
-                        ))}
-                    </div>
-                )}
-                {!gameResult && connection.state === "reconnecting" && (
-                    <output className="rounded-lg border border-border bg-card px-4 py-2 text-sm text-muted-foreground shadow-lg">
-                        再接続中...
-                    </output>
-                )}
-                {!gameResult && connection.state === "lost" && (
-                    <ConnectionLostNotice
-                        reason={connection.canResume ? "seat" : "reload"}
-                        className="pointer-events-auto w-full shadow-lg"
-                    />
-                )}
-                {!gameResult &&
-                    connection.state === "rejected" &&
-                    (connection.finished && onExit ? (
-                        <ConnectionLostNotice
-                            reason="finished"
-                            onExit={onExit}
-                            className="pointer-events-auto w-full shadow-lg"
-                        />
-                    ) : (
-                        // 戻り先を渡されていなければ、終局していても再読み込みで画面を出し直してもらう
-                        <ConnectionLostNotice
-                            reason={connection.finished ? "reload" : "session"}
-                            className="pointer-events-auto w-full shadow-lg"
-                        />
-                    ))}
-            </div>
+            <ConnectionNotices
+                offlineSeats={offlineSeats}
+                connection={connection}
+                isGameOver={gameResult !== null}
+                onExit={onExit}
+            />
 
             {/* メインコンテンツ */}
             <div className={`flex flex-col gap-3 ${isMobile ? "items-center" : "flex-1"}`}>
@@ -898,21 +753,8 @@ export function OnlineGameView({
                     />
                 )}
 
-                {/* 待った: 申請中バナー（申請者向け） */}
                 {pendingTakeback && pendingTakeback.seat === seat && !isSpectator && (
-                    <div className="flex items-center justify-between rounded-lg border border-wafuu-kincha/40 bg-wafuu-kincha/10 px-3 py-2 text-sm">
-                        <span className="text-wafuu-kincha">
-                            待った申請中... 相手の応答を待っています
-                        </span>
-                        <button
-                            type="button"
-                            onClick={handleTakebackCancel}
-                            disabled={!canSend}
-                            className="ml-3 text-xs text-muted-foreground underline hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            取り消す
-                        </button>
-                    </div>
+                    <TakebackPendingBanner canCancel={canSend} onCancel={handleTakebackCancel} />
                 )}
 
                 {(loadFailed || commandNotice) && (
@@ -951,41 +793,12 @@ export function OnlineGameView({
                             </button>
                         )}
                     {!isSpectator && !gameResult && (
-                        <AlertDialog
-                            // 終局したらボタンごと消えるので、確かめている途中でも閉じる（相手の投了・時間切れ）。
-                            open={isResignConfirmOpen}
-                            onOpenChange={setIsResignConfirmOpen}
-                        >
-                            <AlertDialogTrigger asChild>
-                                <button
-                                    type="button"
-                                    disabled={!canSend}
-                                    className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    投了
-                                </button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                                <AlertDialogHeader>
-                                    <AlertDialogTitle>投了しますか？</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                        {/* 切れている間（自分の手番でも押せない）は、上の接続の案内に任せる。 */}
-                                        {isMyTurn
-                                            ? "対局を終了します。取り消せません。"
-                                            : "相手の手番の間は投了できません。自分の手番になってから投了してください。"}
-                                    </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                    <AlertDialogCancel>キャンセル</AlertDialogCancel>
-                                    <AlertDialogAction
-                                        onClick={handleResign}
-                                        disabled={!canPlay || !position}
-                                    >
-                                        投了する
-                                    </AlertDialogAction>
-                                </AlertDialogFooter>
-                            </AlertDialogContent>
-                        </AlertDialog>
+                        <ResignButton
+                            disabled={!canSend}
+                            isMyTurn={isMyTurn}
+                            canResign={canPlay && position !== null}
+                            onResign={handleResign}
+                        />
                     )}
                     <button
                         type="button"
@@ -1014,31 +827,11 @@ export function OnlineGameView({
                     </p>
                 )}
 
-                {/* AI解析ミニサマリバー（モバイルのみ・シート閉じているとき） */}
                 {(aiSupport || analysis) && topMoves.length > 0 && (
-                    <button
-                        type="button"
-                        onClick={() => dispatchUI({ type: "set_ai_sheet_open", open: true })}
-                        className="md:hidden flex items-center gap-2 rounded-md border border-border bg-card/80 px-3 py-1.5 text-xs w-full"
-                    >
-                        <span className="text-muted-foreground shrink-0">🤖</span>
-                        <div className="flex-1 h-1.5 rounded-full bg-wafuu-ai overflow-hidden">
-                            <div
-                                className="h-full bg-wafuu-shu transition-all duration-300"
-                                style={{ width: `${summaryEvalPercent}%` }}
-                            />
-                        </div>
-                        <span
-                            className={`font-mono tabular-nums shrink-0 ${summaryEvalCp !== null && summaryEvalCp < 0 ? "text-wafuu-ai" : "text-wafuu-shu"}`}
-                        >
-                            {summaryEvalCp !== null
-                                ? summaryEvalCp > 0
-                                    ? `+${summaryEvalCp}`
-                                    : String(summaryEvalCp)
-                                : "---"}
-                        </span>
-                        <span className="text-muted-foreground shrink-0">詳細 ›</span>
-                    </button>
+                    <AnalysisSummaryBar
+                        evalCp={topMoves[0]?.cp ?? null}
+                        onOpen={() => dispatchUI({ type: "set_ai_sheet_open", open: true })}
+                    />
                 )}
 
                 {/* 観戦者数 */}
@@ -1068,25 +861,10 @@ export function OnlineGameView({
                 {rightTab === "ai" && aiPanelContent}
             </div>
 
-            {/* 待った: 承認ダイアログ（相手向け）。答えるまで閉じない（Esc や外側のクリックでは閉じない）。 */}
-            <AlertDialog open={showTakebackApproval} onOpenChange={() => {}}>
-                <AlertDialogContent className="w-[min(300px,calc(100%-32px))]">
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>待ったの申請</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            相手が直前の手を取り消したいと申請しています
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel onClick={() => handleTakebackResponse(false)}>
-                            拒否する
-                        </AlertDialogCancel>
-                        <AlertDialogAction onClick={() => handleTakebackResponse(true)}>
-                            承認する
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
+            <TakebackApprovalDialog
+                open={showTakebackApproval}
+                onRespond={handleTakebackResponse}
+            />
 
             {/* 対局結果ダイアログ */}
             {gameResult && (
@@ -1138,12 +916,12 @@ export function OnlineGameView({
             )}
 
             {/* PVプレビューダイアログ */}
-            {pvPreviewMove && analysisPosition && (
+            {pvPreviewMove && analyzedPosition && (
                 <PvPreviewDialog
                     onClose={() => setPvPreviewMove(null)}
                     pv={pvPreviewMove.pv ?? []}
-                    startPosition={analysisPosition}
-                    ply={analysisPly}
+                    startPosition={analyzedPosition.position}
+                    ply={analyzedPosition.ply}
                     evalCp={pvPreviewMove.evalCp}
                     squareNotation={BOARD_DISPLAY_SETTINGS.squareNotation}
                     showBoardLabels={BOARD_DISPLAY_SETTINGS.showBoardLabels}

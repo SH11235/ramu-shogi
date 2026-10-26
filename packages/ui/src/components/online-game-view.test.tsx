@@ -593,6 +593,23 @@ describe("OnlineGameView", () => {
             expect(screen.getByRole("button", { name: "結果を表示" })).toBeTruthy();
         });
 
+        it("結果ダイアログは外側を押しても閉じない", async () => {
+            render(
+                <OnlineGameView
+                    client={makeMockClient()}
+                    snapshot={makeFinishedSnapshot({ result: RESIGN_RESULT })}
+                    seat="b"
+                    roomId="test-room"
+                />,
+            );
+            // 外側の押下は、開いた次のタスクから受け付けられる
+            await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+
+            fireEvent.pointerDown(document.body);
+
+            expect(screen.getByRole("dialog", { name: "Alice の勝ち" })).toBeTruthy();
+        });
+
         it("結果ダイアログを閉じた後に同じ結果の game_end が届いても開き直さない", async () => {
             const { client, emit } = makeSubscribableClient();
             render(
