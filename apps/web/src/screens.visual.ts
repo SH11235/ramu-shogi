@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, type Route, test } from "@playwright/test";
 
 // サーバー（API）が無くても描ける画面を、PC とスマホで撮る。
 const VIEWPORTS = {
@@ -130,6 +130,32 @@ const openPublicGame = async (page: Page): Promise<void> => {
     await page.getByRole("button", { name: "研究ノートで開く" }).first().waitFor();
 };
 
+// 棋譜の一覧（自分の棋譜・公開棋譜）に並べる 1 局。終了日時は固定し、撮るたびに変わらないようにする。
+const GAME_SUMMARY = {
+    id: "00000000-0000-4000-8000-000000000001",
+    roomId: null,
+    source: "online_room",
+    visibility: "public",
+    publicId: "visual-summary",
+    status: "finished",
+    result: { winner: "b", reason: "resign" },
+    participants: [
+        { seat: "b", displayNameSnapshot: "先手さん" },
+        { seat: "w", displayNameSnapshot: "後手さん" },
+    ],
+    createdAt: "2026-01-01T00:00:00Z",
+    finishedAt: "2026-01-01T01:00:00Z",
+    metadata: null,
+};
+
+const openGamesList =
+    (path: string, api: string, response: Parameters<Route["fulfill"]>[0]) =>
+    async (page: Page): Promise<void> => {
+        await page.route(api, (route) => route.fulfill(response));
+        await page.goto(path);
+        await page.getByRole("heading", { level: 2 }).first().waitFor();
+    };
+
 const SCENES: Scene[] = [
     {
         name: "landing",
@@ -219,6 +245,35 @@ const SCENES: Scene[] = [
     {
         name: "dog-sounds",
         open: gotoAndWait("/dog-sounds", (p) => p.getByRole("heading").first().waitFor()),
+    },
+    {
+        name: "studies-list",
+        open: async (page) => {
+            await openStudyAtEnd(page);
+            await page.goto("/studies");
+            await page
+                .getByRole("button", { name: /を削除$/ })
+                .first()
+                .waitFor();
+        },
+        // 一覧の更新日時は作った時刻で変わる。
+        mask: (page) => [page.getByText(/^更新 /)],
+    },
+    {
+        name: "games-auth",
+        open: openGamesList("/games", "**/api/games", { status: 401, json: {} }),
+    },
+    {
+        name: "games-list",
+        open: openGamesList("/games", "**/api/games", {
+            json: { games: [GAME_SUMMARY], nextCursor: null },
+        }),
+    },
+    {
+        name: "public-games",
+        open: openGamesList("/public/games", "**/api/public/games", {
+            json: { games: [GAME_SUMMARY], nextCursor: null },
+        }),
     },
     { name: "auth", open: gotoAndWait("/auth", (p) => p.getByRole("heading").first().waitFor()) },
     {
