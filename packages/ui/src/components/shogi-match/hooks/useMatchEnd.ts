@@ -5,7 +5,7 @@ import type { Message, SideSetting } from "../types";
 import { buildLegalCacheKey, type LegalMoveCache } from "../utils/legalMoveCache";
 import type { UsePassRightsResult } from "./usePassRights";
 
-type LegalMovesFetcher = (
+export type LegalMovesFetcher = (
     sfen: string,
     moves: string[],
     options?: { passRights?: { sente: number; gote: number } },

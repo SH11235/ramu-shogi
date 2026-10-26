@@ -6,14 +6,10 @@ import { buildLegalCacheKey, type LegalMoveCache } from "../utils/legalMoveCache
 import type { ClockTurnOptions } from "./useClockManager";
 import type { UseKifuNavigationResult } from "./useKifuNavigation";
 import type { useLiveSearchInfo } from "./useLiveSearchInfo";
+import type { LegalMovesFetcher } from "./useMatchEnd";
 import type { useMatchSounds } from "./useMatchSounds";
 import type { UsePassRightsResult } from "./usePassRights";
 
-type LegalMovesFetcher = (
-    sfen: string,
-    moves: string[],
-    options?: { passRights?: { sente: number; gote: number } },
-) => Promise<string[]>;
 type LiveSearch = ReturnType<typeof useLiveSearchInfo>;
 
 /**

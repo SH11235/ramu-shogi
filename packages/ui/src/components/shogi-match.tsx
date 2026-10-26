@@ -705,10 +705,11 @@ export function ShogiMatch({
 
     // fatal なエンジンエラーは対局停止 (isMatchRunning=false) に遷移しないため、
     // error 状態を直接監視してライブ探索表示を消す
+    const clearLiveSearchOnEngineError = useEffectEvent(() => clearLiveSearchDisplay());
     useEffect(() => {
         if (engineStatus.sente !== "error" && engineStatus.gote !== "error") return;
-        clearLiveSearchDisplay();
-    }, [engineStatus.sente, engineStatus.gote, clearLiveSearchDisplay]);
+        clearLiveSearchOnEngineError();
+    }, [engineStatus.sente, engineStatus.gote]);
     restartEngineForNnueRef.current = restartEngineForNnue;
 
     // role変更時にエンジンを破棄するラッパー
