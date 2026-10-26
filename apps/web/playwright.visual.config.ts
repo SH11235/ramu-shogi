@@ -10,7 +10,7 @@
 
 import { defineConfig, devices } from "@playwright/test";
 
-const PORT = 5199;
+const PORT = Number(process.env.VISUAL_PORT ?? 5289);
 
 export default defineConfig({
     testDir: "./src",
@@ -20,7 +20,14 @@ export default defineConfig({
     reporter: [["list"], ["html", { open: "never" }]],
     timeout: 60_000,
     expect: {
-        toHaveScreenshot: { animations: "disabled", caret: "hide", maxDiffPixels: 0 },
+        // threshold は色の近さの許容。既定（0.2）だと市松の濃淡のような近い色の違いを見逃す。
+        // 0 にすると、角の丸みのにじみが撮るたびに数ピクセル揺れて落ちる。
+        toHaveScreenshot: {
+            animations: "disabled",
+            caret: "hide",
+            maxDiffPixels: 0,
+            threshold: 0.05,
+        },
     },
     use: {
         baseURL: `http://localhost:${PORT}`,
@@ -29,7 +36,8 @@ export default defineConfig({
     webServer: {
         command: `pnpm exec vite --port ${PORT} --strictPort`,
         port: PORT,
-        reuseExistingServer: true,
+        // 同じポートで別の作業ツリーのサーバーが動いていると、その画面を撮ってしまう。必ず自分で起動する。
+        reuseExistingServer: false,
         timeout: 120_000,
     },
 });

@@ -9,10 +9,11 @@ const VIEWPORTS = {
 // 駒の取り合いがあり、両者に持ち駒がある短い棋譜。
 const KIFU_WITH_HANDS = "+7776FU\n-3334FU\n+8822UM\n-3122GI\n+0055KA";
 
+// AI の一覧（/nnue）や棋譜の一覧は API の応答で中身が変わるので、ここでは撮らない。
 interface Scene {
     name: string;
     open: (page: Page) => Promise<void>;
-    /** 端末ごとに変わる部分（ブラウザの保存容量など）。塗りつぶして比べる。 */
+    /** 端末ごとに変わる部分。塗りつぶして比べる。 */
     mask?: (page: Page) => Locator[];
 }
 
@@ -56,11 +57,6 @@ const SCENES: Scene[] = [
         ),
     },
     { name: "study-note", open: openStudyAtEnd },
-    {
-        name: "nnue",
-        open: gotoAndWait("/nnue", (p) => p.getByRole("heading", { name: /^RAMU / }).waitFor()),
-        mask: (p) => [p.getByText(/このブラウザに保存している AI/)],
-    },
     {
         name: "privacy",
         open: gotoAndWait("/privacy", (p) => p.getByRole("heading").first().waitFor()),
