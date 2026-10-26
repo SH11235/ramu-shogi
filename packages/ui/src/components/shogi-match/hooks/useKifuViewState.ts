@@ -47,11 +47,11 @@ export function useKifuViewState({
     };
 
     const selectBranch = (branch: BranchSummary) => {
-        setViewState((prev) => ({
-            ...prev,
+        setViewState({
+            viewMode: "selectedBranch",
             selectedBranch: { nodeId: branch.nodeId, tabLabel: branch.tabLabel },
-        }));
-        changeViewMode("selectedBranch");
+        });
+        onViewModeChange?.("selectedBranch");
     };
 
     // 同じ追加情報で何度も遷移しないよう、処理済みのものを覚えておく
