@@ -48,7 +48,7 @@ interface ShogiBoardProps {
     promotionSquare?: string | null;
     onSelect?: (square: string, shiftKey?: boolean) => void;
     onPromotionChoice?: (promote: boolean) => void;
-    /** 盤面を反転表示するか（後手視点） */
+    /** 盤面を反転表示するか（後手視点）。駒の向きと筋・段の表示だけを変え、grid の並びは呼び出し側が反転して渡す */
     flipBoard?: boolean;
     /** 駒の PointerDown イベント（DnD 用） */
     onPiecePointerDown?: (

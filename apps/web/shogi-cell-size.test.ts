@@ -19,6 +19,8 @@ describe("--shogi-cell-size の既定値", () => {
         const board = readFileSync(path.join(uiSrcDir, "components/shogi-board.tsx"), "utf8");
         const expected = board.match(/export const DEFAULT_SHOGI_CELL_SIZE = (\d+);/)?.[1];
         expect(expected).toBeDefined();
+        // ui の置き場所が変わって 1 つも読めていないのに通る、ということが無いように
+        expect(sourceFiles.length).toBeGreaterThan(0);
         const mismatches = sourceFiles.flatMap((file) =>
             [...readFileSync(file, "utf8").matchAll(/--shogi-cell-size,\s*(\d+)px/g)]
                 .filter((match) => match[1] !== expected)
