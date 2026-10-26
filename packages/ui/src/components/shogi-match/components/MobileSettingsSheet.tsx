@@ -7,6 +7,8 @@ import { useEffect, useState } from "react";
 import { ChevronIcon } from "../../chevron-icon";
 import { NativeSelect } from "../../native-select";
 import { Switch } from "../../switch";
+import type { BoardPattern } from "../hooks/useBoardPattern";
+import { BOARD_PATTERN_OPTIONS, useBoardPattern } from "../hooks/useBoardPattern";
 import type { ClockSettings } from "../hooks/useClockManager";
 import { useKifuTextImport } from "../hooks/useKifuTextImport";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
@@ -266,6 +268,7 @@ export function MobileSettingsSheet({
     positionReady = true,
     viewerMode = false,
 }: MobileSettingsSheetProps): ReactElement {
+    const [boardPattern, setBoardPattern] = useBoardPattern();
     const threadOptionsFor = (side: "sente" | "gote") =>
         buildThreadOptions({ maxThreads: threadCapOf(engineOptions, [sides[side].engineId]) });
     const externalEngines = engineOptions?.filter((engine) => engine.kind === "external") ?? [];
@@ -915,6 +918,22 @@ export function MobileSettingsSheet({
                         className="text-sm"
                     >
                         {NOTATION_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                            </option>
+                        ))}
+                    </NativeSelect>
+                </label>
+
+                <label htmlFor="mobile-board-pattern" className={labelClassName}>
+                    <span className="text-xs text-muted-foreground">盤の模様</span>
+                    <NativeSelect
+                        id="mobile-board-pattern"
+                        value={boardPattern}
+                        onChange={(e) => setBoardPattern(e.target.value as BoardPattern)}
+                        className="text-sm"
+                    >
+                        {BOARD_PATTERN_OPTIONS.map((opt) => (
                             <option key={opt.value} value={opt.value}>
                                 {opt.label}
                             </option>

@@ -1,6 +1,6 @@
 import { fireEvent, render } from "@testing-library/react";
 import { Profiler, type ReactElement } from "react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { ShogiBoard, type ShogiBoardCell, type ShogiBoardMoveShadow } from "./shogi-board";
 
 const FILES = ["9", "8", "7", "6", "5", "4", "3", "2", "1"];
@@ -99,5 +99,23 @@ describe("ShogiBoard の駒の影", () => {
             }
         }
         expect(commits).toBe(1);
+    });
+});
+
+describe("ShogiBoard の盤の模様", () => {
+    afterEach(() => localStorage.clear());
+
+    const darkCellCount = (container: HTMLElement): number =>
+        container.querySelectorAll(".bg-shogi-cell-dark").length;
+
+    it("既定は市松で、濃いマスが交互に入る", () => {
+        const { container } = render(<ShogiBoard grid={grid} />);
+        expect(darkCellCount(container)).toBe(40);
+    });
+
+    it("無地を選んでいると、濃いマスが無い", () => {
+        localStorage.setItem("shogi-board-pattern", JSON.stringify("plain"));
+        const { container } = render(<ShogiBoard grid={grid} />);
+        expect(darkCellCount(container)).toBe(0);
     });
 });
