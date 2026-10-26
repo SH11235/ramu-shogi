@@ -17,7 +17,7 @@ import type {
     EngineErrorDetails,
 } from "@shogi/app-controller";
 import type { Player } from "@shogi/app-core";
-import type { Dispatch, ReactElement, ReactNode, SetStateAction } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { DisplaySettingsPanel } from "../components/DisplaySettingsPanel";
 import { EngineLogsPanel } from "../components/EngineLogsPanel";
 import { ImportDialog } from "../components/ImportDialog";
@@ -28,7 +28,7 @@ import { PCBoardSection } from "../components/PCBoardSection";
 import { PCKifuSection } from "../components/PCKifuSection";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { useMatchState } from "../contexts/MatchStateContext";
-import type { DisplaySettings, PassRightsSettings } from "../types";
+import type { PassRightsSettings } from "../types";
 import type { ImportKifHandler, ImportSfenHandler } from "../utils/kifuImport";
 
 /**
@@ -69,7 +69,6 @@ interface PCLayoutProps {
     /** サイドバーの表示設定 */
     isDisplaySettingsOpen: boolean;
     onDisplaySettingsOpenChange: (open: boolean) => void;
-    setDisplaySettings: Dispatch<SetStateAction<DisplaySettings>>;
 
     /** パス権設定ダイアログ */
     isPassRightsSettingsOpen: boolean;
@@ -102,7 +101,6 @@ export function PCLayout({
     isRetrying,
     isDisplaySettingsOpen,
     onDisplaySettingsOpenChange,
-    setDisplaySettings,
     isPassRightsSettingsOpen,
     onPassRightsSettingsOpenChange,
     handlePassRightsSettingsChange,
@@ -116,7 +114,7 @@ export function PCLayout({
     // MatchSettingsContext から取得
     const { passRightsSettings, settingsLocked } = matchSettings;
 
-    const { displaySettings } = useMatchState();
+    const { displaySettings, onDisplaySettingsChange } = useMatchState();
 
     return (
         <section className={matchLayoutClasses}>
@@ -181,7 +179,7 @@ export function PCLayout({
                                     isDisplaySettingsOpen ? (
                                         <DisplaySettingsPanel
                                             settings={displaySettings}
-                                            onChange={setDisplaySettings}
+                                            onChange={onDisplaySettingsChange}
                                         />
                                     ) : null
                                 }

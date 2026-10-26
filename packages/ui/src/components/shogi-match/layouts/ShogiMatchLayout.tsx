@@ -477,7 +477,6 @@ export function ShogiMatchLayout({
                                 {isPlayScreen ? (
                                     <PlayMobileLayout
                                         candidateNote={candidateNote}
-                                        onDisplaySettingsChange={setDisplaySettings}
                                         devTools={playDevTools}
                                     />
                                 ) : (
@@ -489,7 +488,6 @@ export function ShogiMatchLayout({
                                         onImportSfen={onImportSfen}
                                         onImportKif={onImportKif}
                                         positionReady={positionReady}
-                                        onDisplaySettingsChange={setDisplaySettings}
                                     />
                                 )}
                             </NavigationProvider>
@@ -621,7 +619,6 @@ export function ShogiMatchLayout({
                                     <PlayPCLayout
                                         matchLayoutClasses={matchLayoutClasses}
                                         candidateNote={candidateNote}
-                                        setDisplaySettings={setDisplaySettings}
                                         devTools={playDevTools}
                                     />
                                 ) : (
@@ -641,7 +638,6 @@ export function ShogiMatchLayout({
                                         isRetrying={isRetrying}
                                         isDisplaySettingsOpen={isDisplaySettingsOpen}
                                         onDisplaySettingsOpenChange={onDisplaySettingsOpenChange}
-                                        setDisplaySettings={setDisplaySettings}
                                         isPassRightsSettingsOpen={isPassRightsSettingsOpen}
                                         onPassRightsSettingsOpenChange={
                                             onPassRightsSettingsOpenChange

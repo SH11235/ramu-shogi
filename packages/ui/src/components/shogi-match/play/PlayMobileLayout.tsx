@@ -18,7 +18,6 @@ import { MobileBoardSection } from "../components/MobileBoardSection";
 import { useMatchState } from "../contexts/MatchStateContext";
 import { useNavigation } from "../contexts/NavigationContext";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
-import type { DisplaySettings } from "../types";
 import { PlayAdvancedSettings } from "./PlayAdvancedSettings";
 import {
     PlayBoardTools,
@@ -40,15 +39,10 @@ import { useStableBoardMaxWidth } from "./useStableBoardMaxWidth";
 
 interface PlayMobileLayoutProps {
     candidateNote: string | null;
-    onDisplaySettingsChange: (settings: DisplaySettings) => void;
     devTools?: ReactNode;
 }
 
-export function PlayMobileLayout({
-    candidateNote,
-    onDisplaySettingsChange,
-    devTools,
-}: PlayMobileLayoutProps): ReactElement {
+export function PlayMobileLayout({ candidateNote, devTools }: PlayMobileLayoutProps): ReactElement {
     const { play } = useShogiMatchConfig();
     const {
         grid,
@@ -61,6 +55,7 @@ export function PlayMobileLayout({
         isMatchRunning,
         editFromSquare,
         displaySettings,
+        onDisplaySettingsChange,
         getHandInfo,
         boardSectionRef,
         isDraggingPiece,

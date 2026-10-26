@@ -9,7 +9,7 @@
  */
 
 import { cn } from "@shogi/design-system";
-import type { Dispatch, ReactElement, ReactNode, SetStateAction } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { useState } from "react";
 import { Button } from "../../button";
 import { cardVariants } from "../../card";
@@ -26,7 +26,6 @@ import { PCBoardContent } from "../components/PCBoardContent";
 import { useMatchState } from "../contexts/MatchStateContext";
 import { useNavigation } from "../contexts/NavigationContext";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
-import type { DisplaySettings } from "../types";
 import { PlayAdvancedSettings } from "./PlayAdvancedSettings";
 import {
     PlayBoardTools,
@@ -49,14 +48,12 @@ import { PLAY_OUTLINE_BUTTON } from "./playStyles";
 interface PlayPCLayoutProps {
     matchLayoutClasses: string;
     candidateNote: string | null;
-    setDisplaySettings: Dispatch<SetStateAction<DisplaySettings>>;
     devTools?: ReactNode;
 }
 
 export function PlayPCLayout({
     matchLayoutClasses,
     candidateNote,
-    setDisplaySettings,
     devTools,
 }: PlayPCLayoutProps): ReactElement {
     const { play } = useShogiMatchConfig();
@@ -72,6 +69,7 @@ export function PlayPCLayout({
         selection,
         moveShadow,
         displaySettings,
+        onDisplaySettingsChange,
         grid,
         editFromSquare,
         lastMove,
@@ -252,7 +250,7 @@ export function PlayPCLayout({
                             <DialogDescription>ふだんは変えなくてよい設定です。</DialogDescription>
                         </DialogHeader>
                         <PlayAdvancedSettings
-                            onDisplaySettingsChange={setDisplaySettings}
+                            onDisplaySettingsChange={onDisplaySettingsChange}
                             devTools={devTools}
                         />
                         <DialogClose asChild>
