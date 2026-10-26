@@ -1,8 +1,6 @@
 /**
  * いくつかの中から 1 つを選ぶボタンの並び。
- *
  * 見出しは呼び出し側の fieldset / legend で付ける（見出しの置き方が画面ごとに違うため）。
- * 各ボタンは aria-pressed の切り替えボタンで、Tab で順に移り Enter / Space で選ぶ。
  */
 
 import { cn } from "@shogi/design-system";
@@ -18,7 +16,6 @@ const choiceButtonVariants = cva(
                 sm: "px-3 py-1.5 text-sm",
                 md: "min-h-10 px-2.5 text-sm font-medium md:min-h-9 [@media(max-height:760px)]:md:min-h-8",
                 lg: "inline-flex min-h-11 items-center justify-center gap-2 px-2.5 text-sm font-medium",
-                /** 見出しと説明の 2 行を持つ、縦に並べる項目。 */
                 card: "flex flex-col items-start gap-0.5 rounded-lg px-3 py-2 text-left",
             },
             // 選んでいる項目は墨で示す。朱・藍は先手・後手の色に取っておくので、選択には使わない。
@@ -32,7 +29,6 @@ const choiceButtonVariants = cva(
 
 const layoutClasses = {
     wrap: "flex flex-wrap gap-1.5",
-    /** 幅を等分して並べる。 */
     fill: "flex flex-wrap gap-1.5",
     stack: "flex flex-col gap-1.5",
 } as const;
