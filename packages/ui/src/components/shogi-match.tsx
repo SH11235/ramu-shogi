@@ -21,8 +21,7 @@ import {
     resolveWorkerCount,
 } from "@shogi/app-core";
 import type { ReactElement } from "react";
-// biome-ignore lint/style/noRestrictedImports: ShogiMatch は React Compiler がコンパイルを見送る（memo が入らない）ので、effect の依存に渡す値の同一性を useMemo で保つ
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { isCpuLosing } from "../hooks/moveSoundScene";
 import type { NnueAccountStore } from "./nnue-library/types";
 import { MatchNnueDownloadDialog } from "./shogi-match/components/MatchNnueDownloadDialog";
@@ -42,7 +41,6 @@ import {
 } from "./shogi-match/hooks/useAnalysisSnapshot";
 import { useBatchAnalysis } from "./shogi-match/hooks/useBatchAnalysis";
 import { useBoardState } from "./shogi-match/hooks/useBoardState";
-import { useClockManager } from "./shogi-match/hooks/useClockManager";
 import { useDialogs } from "./shogi-match/hooks/useDialogs";
 import { useEditModeActions } from "./shogi-match/hooks/useEditModeActions";
 import { useEngineManager } from "./shogi-match/hooks/useEngineManager";
@@ -58,6 +56,7 @@ import { useKifuKeyboardNavigation } from "./shogi-match/hooks/useKifuKeyboardNa
 import { useKifuNavigation } from "./shogi-match/hooks/useKifuNavigation";
 import { useLegalMovePrefetch } from "./shogi-match/hooks/useLegalMovePrefetch";
 import { useLiveSearchInfo } from "./shogi-match/hooks/useLiveSearchInfo";
+import { useMatchClock } from "./shogi-match/hooks/useMatchClock";
 import { useMatchNnueDownload } from "./shogi-match/hooks/useMatchNnueDownload";
 import { useMatchPreferences } from "./shogi-match/hooks/useMatchPreferences";
 import { useMatchSounds } from "./shogi-match/hooks/useMatchSounds";
@@ -98,7 +97,6 @@ import {
     shouldFlipBoardForSides,
 } from "./shogi-match/utils/matchView";
 import { boardToGrid } from "./shogi-match/utils/positionUtils";
-import { clockSettingsForLimits } from "./shogi-match/utils/searchLimits";
 import { TooltipProvider } from "./tooltip";
 
 const EMPTY_ANALYSIS_MARKERS: Array<{ seat: "b" | "w"; ply: number }> = [];
@@ -578,74 +576,30 @@ export function ShogiMatch({
     // endMatch のための ref（循環依存を回避）
     const endMatchRef = useRef<((result: GameResult) => Promise<void>) | null>(null);
 
-    const handleClockError = (text: string) => {
-        setMessage({ text, type: "error" });
-    };
-
     const stopAllEnginesRef = useRef<() => Promise<void>>(async () => {});
     const prepareEnginesRef = useRef<() => Promise<boolean>>(async () => true);
 
-    // 対局画面では、AI の「1 手◯秒」は考える長さの目安で、切れても負けにしない
-    // （端末が重いと、AI が制限ぎりぎりまで考えて時計だけ先に 0 になることがある）。
-    // 持ち時間のある決まり（秒読み・加算・切れ負け）は時計どおりに負けにする。
-    const isTimeExemptAi = (side: Player): boolean =>
-        isPlayScreen && sides[side].role === "engine" && timeSettings[side].mainMs === 0;
-    const handleTimeExpired = async (side: Player) => {
-        if (isTimeExemptAi(side)) return;
-        const winner: Player = side === "sente" ? "gote" : "sente";
-        const result: GameResult = {
-            winner,
-            reason: { kind: "time_expired", loser: side },
-            totalMoves: moves.length,
-        };
-        await endMatchRef.current?.(result);
-    };
-
-    // 時計に渡す設定は、中身が同じ間は同じものにする（時計は設定が替わるたびに残り時間を戻す）。
-    const clockTimeSettings = useMemo(
-        () => clockSettingsForLimits(timeSettings, sides, engineSearchLimits),
-        [timeSettings, sides, engineSearchLimits],
-    );
-    // 時計管理フックを使用
     const {
         clocks,
         clocksRef,
         resetClocks,
         updateClocksForNextTurn,
-        hasExpiredAtMove,
         stopTicking,
         startTicking,
-    } = useClockManager({
-        timeSettings: clockTimeSettings,
+        endIfFlaggedBeforeMove,
+        getRemainingTimeMs,
+    } = useMatchClock({
+        isPlayScreen,
+        sides,
+        timeSettings,
+        engineSearchLimits,
+        totalMoves: moves.length,
         isMatchRunning,
-        onTimeExpired: handleTimeExpired,
+        isPaused,
         matchEndedRef,
-        onClockError: handleClockError,
+        endMatchRef,
+        setMessage,
     });
-
-    /** 指す前に時間が切れていた手、終局後に届いた手なら、手を適用しない（true を返す）。 */
-    const endIfFlaggedBeforeMove = (mover: Player): boolean => {
-        // 合法手を調べている間などに終局していたら、その手は受け付けない。
-        if (matchEndedRef.current) return true;
-        if (isTimeExemptAi(mover) || !hasExpiredAtMove(mover)) return false;
-        void handleTimeExpired(mover);
-        return true;
-    };
-
-    const getRemainingTimeMs = (side: Player) => {
-        const clock = clocksRef.current;
-        const state = clock[side];
-        if (!state) return 0;
-        const isTicking = clock.ticking === side;
-        const elapsed = isTicking ? Date.now() - clock.lastUpdatedAt : 0;
-        const mainLeft = Math.max(0, state.mainMs - elapsed);
-        const overMain = Math.max(0, elapsed - state.mainMs);
-        const byoyomiLeft =
-            state.mainMs === 0 && isTicking
-                ? Math.max(0, state.byoyomiMs - elapsed)
-                : Math.max(0, state.byoyomiMs - overMain);
-        return mainLeft + byoyomiLeft;
-    };
 
     // パス権管理フック
     const passRights = usePassRights({
@@ -670,20 +624,6 @@ export function ShogiMatch({
         setPassRightsSettings(newSettings);
         clearLegalCache();
     };
-
-    // 対局前に timeSettings が変更されたら clocks を同期
-    // （resetClocks は timeSettings に依存しているため、resetClocks の変更で検知可能）
-    // 一時停止中は戻さない（戻すと、止めるたびに持ち時間・秒読みが元に戻ってしまう）。
-    // ただし、一時停止中に時間設定そのものを変えたときは、新しい設定に合わせ直す。
-    // 読む量（ノード数・深さ）を替えたときも時計の設定が替わるので、時計に渡す設定で比べる。
-    const syncedTimeSettingsRef = useRef(clockTimeSettings);
-    useEffect(() => {
-        const settingsChanged = syncedTimeSettingsRef.current !== clockTimeSettings;
-        syncedTimeSettingsRef.current = clockTimeSettings;
-        if (!isMatchRunning && (!isPaused || settingsChanged)) {
-            resetClocks(false);
-        }
-    }, [isMatchRunning, isPaused, resetClocks, clockTimeSettings]);
 
     // 対局終了処理（エンジン管理フックから呼ばれる）
     const endMatch = async (result: GameResult) => {
