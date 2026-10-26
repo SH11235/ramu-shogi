@@ -51,7 +51,9 @@ const rshogiCoreVersion = readRshogiCoreVersion(
 const UI_PRIMITIVES = [
     "alert-dialog",
     "button",
+    "card",
     "chevron-icon",
+    "close-icon-button",
     "dialog",
     "input",
     "native-select",
