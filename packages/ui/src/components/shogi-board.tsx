@@ -10,6 +10,12 @@ import { formatSquare, getBoardLabels } from "./shogi-match/utils/coordinateForm
 type ShogiBoardOwner = "sente" | "gote";
 
 /**
+ * `--shogi-cell-size` を指定しないときのマスの大きさ（px）。Tailwind のクラスは文字列のまま書く必要が
+ * あるので、`var(--shogi-cell-size,48px)` の 48 は各所に直接書く（apps/web の shogi-cell-size.test.ts で値をそろえる）。
+ */
+export const DEFAULT_SHOGI_CELL_SIZE = 48;
+
+/**
  * 影を出すマスに付けるクラス。疑似要素に、盤のルートで渡した駒の画像（CSS 変数）を敷き、
  * `:hover` のときだけ半透明で見せる。
  */

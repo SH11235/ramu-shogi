@@ -114,6 +114,19 @@ const SCENES: Scene[] = [
         },
     },
     {
+        // 人どうしの対局はエンジンを使わないので、始めた直後の盤（空の持ち駒の段）を毎回同じに撮れる。
+        name: "play-human",
+        open: async (page) => {
+            await page.goto("/play");
+            await page.getByRole("button", { name: "人 対 人", exact: true }).click();
+            await page.getByRole("button", { name: "対局開始", exact: true }).click();
+            await page.locator("[data-square='5i']").first().waitFor();
+            await page.getByRole("button", { name: "対局開始", exact: true }).waitFor({
+                state: "detached",
+            });
+        },
+    },
+    {
         name: "studies",
         open: gotoAndWait("/studies", (p) =>
             p.getByRole("button", { name: "研究ノートにする" }).waitFor(),

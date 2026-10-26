@@ -4,25 +4,17 @@ import {
     type PositionState,
     positionToBookKey,
 } from "@shogi/app-core";
-import { type CSSProperties, useEffect, useState } from "react";
 import { Button } from "../button";
-import { ShogiBoard } from "../shogi-board";
-import { HandPiecesDisplay } from "../shogi-match/components/HandPiecesDisplay";
-import { cellSizeForWidth } from "../shogi-match/hooks/useMobileCellSize";
+import { DEFAULT_SHOGI_CELL_SIZE } from "../shogi-board";
 import { formatMoveSimple } from "../shogi-match/utils/kifFormat";
-import { boardToGrid } from "../shogi-match/utils/positionUtils";
+import { StaticBoardView } from "../static-board-view";
 
-/** 盤の既定のマスの大きさ（`--shogi-cell-size` を指定しないときの値）。 */
-const DEFAULT_CELL_SIZE = 48;
-/** 320px 幅の画面でも盤がはみ出さない下限。 */
-const MIN_CELL_SIZE = 22;
-/** 幅を測る前の見積もりに使う、ページの左右の余白（ページ本文の px-4 × 2）。測ったあとは使わない。 */
-const PAGE_PADDING_WIDTH = 32;
-/** 画面の幅が分からないとき（サーバー側など）の見積もり。既定の大きさの盤が収まる幅。 */
-const DEFAULT_BOARD_WIDTH = 560;
-/** 持ち駒を medium / normal で 7 種類並べられる幅。これより狭ければ 1 段小さくする。 */
-const MEDIUM_HAND_MIN_WIDTH = 330;
-const NORMAL_HAND_MIN_WIDTH = 560;
+/**
+ * 盤のマスは置き場所の幅に合わせる（スマホの幅で既定の大きさの盤が右へはみ出して欠けないように）。
+ * 下限は 320px 幅の画面でもはみ出さない大きさ、上限は既定の大きさ。測る前の見積もりでは、
+ * ページ本文の左右の余白（px-4 × 2）を画面の幅から引く。
+ */
+const BOARD_FIT = { minCellSize: 22, maxCellSize: DEFAULT_SHOGI_CELL_SIZE, viewportInset: 32 };
 
 export function BookPositionDetails({
     position,
@@ -48,65 +40,18 @@ export function BookPositionDetails({
     advance: (move: string) => void;
 }) {
     const key = positionToBookKey(position);
-    const topOwner = flip ? "sente" : "gote";
-    const bottomOwner = flip ? "gote" : "sente";
-    // 盤のマスは、置き場所の幅に合わせる。合わせないと、スマホの幅では既定の大きさ（48px）の
-    // 盤が右へはみ出して欠ける。広い画面では既定の大きさを上限にする。
-    const [boardArea, setBoardArea] = useState<HTMLDivElement | null>(null);
-    const [boardAreaWidth, setBoardAreaWidth] = useState<number | null>(null);
-    useEffect(() => {
-        if (!boardArea) return;
-        const update = () => setBoardAreaWidth(boardArea.clientWidth);
-        update();
-        const observer = new ResizeObserver(update);
-        observer.observe(boardArea);
-        return () => observer.disconnect();
-    }, [boardArea]);
-    // 測る前は、画面の幅からの見積もりで描く（測るまでの 1 コマ、盤がはみ出さないように）。
-    const areaWidth =
-        boardAreaWidth ??
-        (typeof document === "undefined"
-            ? DEFAULT_BOARD_WIDTH
-            : document.documentElement.clientWidth - PAGE_PADDING_WIDTH);
-    const cellSize = Math.min(cellSizeForWidth(areaWidth, MIN_CELL_SIZE), DEFAULT_CELL_SIZE);
-    // 持ち駒は 7 種類を常に並べるので、幅が足りないときは小さい表示にする。
-    const handSize =
-        areaWidth < MEDIUM_HAND_MIN_WIDTH
-            ? "compact"
-            : areaWidth < NORMAL_HAND_MIN_WIDTH
-              ? "medium"
-              : "normal";
     return (
         <>
-            <div
-                ref={setBoardArea}
-                className="flex min-w-0 flex-col gap-2"
-                style={{ "--shogi-cell-size": `${cellSize}px` } as CSSProperties}
-            >
-                <HandPiecesDisplay
-                    owner={topOwner}
-                    hand={position.hands[topOwner]}
-                    selectedPiece={null}
-                    isActive={false}
-                    onHandSelect={() => {}}
-                    flipBoard={flip}
-                    size={handSize}
-                />
-                <ShogiBoard
-                    grid={boardToGrid(position.board)}
+            <div className="flex min-w-0 flex-col gap-2">
+                <StaticBoardView
+                    position={position}
                     flipBoard={flip}
                     lastMove={deriveLastMove(
                         steps.length > 1 ? steps[steps.length - 1].move : undefined,
                     )}
-                />
-                <HandPiecesDisplay
-                    owner={bottomOwner}
-                    hand={position.hands[bottomOwner]}
-                    selectedPiece={null}
-                    isActive={false}
-                    onHandSelect={() => {}}
-                    flipBoard={flip}
-                    size={handSize}
+                    handSize="auto"
+                    fit={BOARD_FIT}
+                    className="gap-2"
                 />
                 <Button variant="outline" aria-pressed={flip} onClick={() => onFlip()}>
                     盤を反転

@@ -15,6 +15,33 @@ export function cellSizeForWidth(width: number, minCellSize = MIN_CELL_SIZE): nu
     );
 }
 
+/** 要素の幅（clientWidth）が変わるたびに `onWidth` を呼ぶ。返り値で監視をやめる。 */
+function observeWidth(element: HTMLElement, onWidth: (width: number) => void): () => void {
+    const update = () => {
+        // 隠している間（display:none）は幅 0 になる。そのまま渡すと最小のマスになり、
+        // 表示した瞬間に盤が小さく出てから広がるので、見えるまでは前の幅を保つ。
+        if (element.clientWidth === 0) return;
+        onWidth(element.clientWidth);
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+}
+
+/**
+ * 要素の幅を測る。測るまでは null。要素を state（コールバック ref）で受けるのは、ダイアログの中身のように
+ * あとから現れる要素でも、現れたときに測り始めるため（ref だと effect が走り直さない）。
+ */
+export function useElementWidth(element: HTMLElement | null): number | null {
+    const [width, setWidth] = useState<number | null>(null);
+    useEffect(() => {
+        if (!element) return;
+        return observeWidth(element, setWidth);
+    }, [element]);
+    return width;
+}
+
 /** 盤の親コンテナの幅に合わせる。高さが足りない画面ではページをスクロールする。 */
 export function useMobileCellSize(
     boardRef: RefObject<HTMLElement | null>,
@@ -29,16 +56,9 @@ export function useMobileCellSize(
     useEffect(() => {
         const container = boardRef.current?.parentElement;
         if (!container) return;
-        const update = () => {
-            // 隠している間（display:none）は幅 0 になる。そのまま測ると最小のマスになり、
-            // 表示した瞬間に盤が小さく出てから広がるので、見えるまでは前の大きさを保つ。
-            if (container.clientWidth === 0) return;
-            setCellSize(cellSizeForWidth(container.clientWidth, minCellSize));
-        };
-        update();
-        const observer = new ResizeObserver(update);
-        observer.observe(container);
-        return () => observer.disconnect();
+        return observeWidth(container, (width) =>
+            setCellSize(cellSizeForWidth(width, minCellSize)),
+        );
     }, [boardRef, minCellSize]);
 
     return cellSize;

@@ -1588,6 +1588,7 @@ export function OnlineGameView({
                     evalCp={pvPreviewMove.evalCp}
                     squareNotation={BOARD_DISPLAY_SETTINGS.squareNotation}
                     showBoardLabels={BOARD_DISPLAY_SETTINGS.showBoardLabels}
+                    flipBoard={flipBoard}
                 />
             )}
 

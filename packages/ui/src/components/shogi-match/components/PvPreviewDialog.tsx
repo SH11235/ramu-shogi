@@ -4,18 +4,15 @@
  * 読み筋（PV）を独立した将棋盤で再生できるモーダル
  */
 
-import type { BoardState, PositionState, Square } from "@shogi/app-core";
-import { applyMoveAllowingStudyPass, boardToMatrix } from "@shogi/app-core";
+import type { PositionState, Square } from "@shogi/app-core";
+import { applyMoveAllowingStudyPass } from "@shogi/app-core";
 import type { ReactElement } from "react";
 import { useEffect, useEffectEvent, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../../dialog";
-import type { ShogiBoardCell } from "../../shogi-board";
-import { ShogiBoard } from "../../shogi-board";
-import { cellSizeForWidth } from "../hooks/useMobileCellSize";
+import { StaticBoardView } from "../../static-board-view";
 import type { SquareNotation } from "../types";
 import type { PvDisplayMove } from "../utils/kifFormat";
 import { convertPvToDisplay } from "../utils/kifFormat";
-import { HandPiecesDisplay } from "./HandPiecesDisplay";
 
 interface PvPreviewDialogProps {
     /** 閉じるコールバック */
@@ -34,6 +31,8 @@ interface PvPreviewDialogProps {
     squareNotation?: SquareNotation;
     /** 盤外ラベル表示 */
     showBoardLabels?: boolean;
+    /** 後手を手前にする（開いた画面の盤の向きに合わせる） */
+    flipBoard?: boolean;
     /** 読み上げ用の説明（画面には出さない）。渡したときだけ付け、ダイアログに関連付ける。 */
     description?: string;
     /**
@@ -52,8 +51,6 @@ const MAX_PREVIEW_CELL_SIZE = 40;
 const MIN_PREVIEW_CELL_SIZE = 22;
 /** 画面の幅のうち、盤に使えない分。ダイアログの外側の余白 24 + 枠 2 + 内側の余白 24（スマホ）。 */
 const DIALOG_CHROME_WIDTH = 50;
-/** 持ち駒をスマホ用の大きさ（medium）で 1 行に出せる幅。これより狭ければ compact にする。 */
-const MEDIUM_HAND_MIN_WIDTH = 330;
 /**
  * 盤のほかに縦に要る高さ（題・持ち駒 2 段・送りのボタン・読み筋の 1 行・余白）と、ダイアログの外の余白。
  * 背の低いスマホ（375x553 など）では、幅でなく高さで盤の大きさが決まる。
@@ -62,22 +59,6 @@ const DIALOG_CHROME_HEIGHT = 250;
 const DIALOG_OUTER_MARGIN = 24;
 /** 盤の高さはマスの約 10.4 倍（9 マスと筋・段の見出し・枠）。 */
 const BOARD_HEIGHT_PER_CELL = 10.4;
-
-function boardToGrid(board: BoardState): ShogiBoardCell[][] {
-    const matrix = boardToMatrix(board);
-    return matrix.map((row) =>
-        row.map((cell) => ({
-            id: cell.square,
-            piece: cell.piece
-                ? {
-                      owner: cell.piece.owner,
-                      type: cell.piece.type,
-                      promoted: cell.piece.promoted,
-                  }
-                : null,
-        })),
-    );
-}
 
 export function PvPreviewDialog({
     onClose,
@@ -88,30 +69,10 @@ export function PvPreviewDialog({
     evalMate,
     squareNotation = "none",
     showBoardLabels = false,
+    flipBoard = false,
     description,
     firstMoveLabel,
 }: PvPreviewDialogProps): ReactElement {
-    // 盤のマスの大きさは、ダイアログの中身の幅に合わせる。ダイアログは body 直下へ出るので、
-    // 開いた画面の `--shogi-cell-size` は届かない。合わせないと、狭い画面で盤が既定の大きさの
-    // まま押しつぶされ、マスが縦長になって駒が欠ける。
-    // ダイアログの中身は開いたあとに現れる。ref だと現れても effect が走り直さないので、
-    // 要素を state で受けて、現れたときに幅を測り始める。
-    const [boardArea, setBoardArea] = useState<HTMLDivElement | null>(null);
-    const [boardAreaWidth, setBoardAreaWidth] = useState<number | null>(null);
-    useEffect(() => {
-        if (!boardArea) return;
-        const update = () => setBoardAreaWidth(boardArea.clientWidth);
-        update();
-        const observer = new ResizeObserver(update);
-        observer.observe(boardArea);
-        return () => observer.disconnect();
-    }, [boardArea]);
-    // 測る前は、画面の幅からの見積もりで描く。
-    const areaWidth =
-        boardAreaWidth ??
-        (typeof document === "undefined"
-            ? 0
-            : document.documentElement.clientWidth - DIALOG_CHROME_WIDTH);
     const [viewportHeight, setViewportHeight] = useState(() =>
         typeof window === "undefined" ? 0 : window.innerHeight,
     );
@@ -123,20 +84,13 @@ export function PvPreviewDialog({
     const cellSizeForHeight = Math.floor(
         (viewportHeight - DIALOG_OUTER_MARGIN - DIALOG_CHROME_HEIGHT) / BOARD_HEIGHT_PER_CELL,
     );
-    const cellSize = Math.max(
-        MIN_PREVIEW_CELL_SIZE,
-        Math.min(
-            cellSizeForWidth(areaWidth, MIN_PREVIEW_CELL_SIZE),
-            cellSizeForHeight,
-            MAX_PREVIEW_CELL_SIZE,
-        ),
-    );
-    // 持ち駒は 7 種すべてを 1 行に出す。PC 用の大きさ（normal）は約 540px、スマホ用（medium）でも
-    // 約 320px になるので、幅が足りない端末（360px 幅など）ではさらに小さい表示にする。
-    const handSize = areaWidth < MEDIUM_HAND_MIN_WIDTH ? "compact" : "medium";
-    // 持っていない駒は盤面の画面と同じく出さない。持ち駒が無い段も同じ高さを取り、手を送るたびに盤が上下に動かないようにする。
-    // 下限の 34px は駒がある段の高さ（compact でも、駒の 24px に余白と枠が付いて 34px になる）。
-    const handZoneClass = "w-full min-h-[max(34px,calc(var(--shogi-cell-size)*0.8+15px))]";
+    // 盤のマスの大きさは、ダイアログの中身の幅に合わせる。ダイアログは body 直下へ出るので、
+    // 開いた画面の `--shogi-cell-size` は届かない。背の低い画面では高さからも抑える。
+    const boardFit = {
+        minCellSize: MIN_PREVIEW_CELL_SIZE,
+        maxCellSize: Math.min(MAX_PREVIEW_CELL_SIZE, cellSizeForHeight),
+        viewportInset: DIALOG_CHROME_WIDTH,
+    };
 
     // 現在のプレビュー位置（0 = 開始局面、1 = PVの1手目後、...）
     const [previewIndex, setPreviewIndex] = useState(0);
@@ -200,9 +154,6 @@ export function PvPreviewDialog({
 
     // 現在の局面
     const currentPosition = positions[previewIndex] ?? startPosition;
-
-    // 盤面グリッド
-    const grid = boardToGrid(currentPosition.board);
 
     // キーボード操作
     const handleKeyDown = useEffectEvent((e: KeyboardEvent) => {
@@ -299,52 +250,20 @@ export function PvPreviewDialog({
                 </button>
 
                 <div className="flex flex-col gap-1.5">
-                    {/* 将棋盤と持ち駒 */}
-                    <div
-                        ref={setBoardArea}
-                        className="flex w-full flex-col items-center gap-1"
-                        style={{ "--shogi-cell-size": `${cellSize}px` } as React.CSSProperties}
-                    >
-                        {/* 後手の持ち駒 */}
-                        <div className={handZoneClass}>
-                            <HandPiecesDisplay
-                                owner="gote"
-                                hand={currentPosition.hands.gote}
-                                selectedPiece={null}
-                                isActive={false}
-                                onHandSelect={() => {}}
-                                flipBoard={false}
-                                size={handSize}
-                                hideEmptyPieces
-                            />
-                        </div>
-
-                        {/* 将棋盤 */}
-                        <ShogiBoard
-                            grid={grid}
-                            selectedSquare={null}
-                            lastMove={lastMove}
-                            promotionSquare={null}
-                            onSelect={() => {}}
-                            flipBoard={false}
-                            squareNotation={squareNotation}
-                            showBoardLabels={showBoardLabels}
-                        />
-
-                        {/* 先手の持ち駒 */}
-                        <div className={handZoneClass}>
-                            <HandPiecesDisplay
-                                owner="sente"
-                                hand={currentPosition.hands.sente}
-                                selectedPiece={null}
-                                isActive={false}
-                                onHandSelect={() => {}}
-                                flipBoard={false}
-                                size={handSize}
-                                hideEmptyPieces
-                            />
-                        </div>
-                    </div>
+                    {/* 持っていない駒は盤面の画面と同じく出さない。持ち駒が無い段も同じ高さを取り、
+                        手を送るたびに盤が上下に動かないようにする。 */}
+                    <StaticBoardView
+                        position={currentPosition}
+                        flipBoard={flipBoard}
+                        lastMove={lastMove}
+                        squareNotation={squareNotation}
+                        showBoardLabels={showBoardLabels}
+                        handSize="auto"
+                        hideEmptyHandPieces
+                        reserveHandHeight
+                        fit={boardFit}
+                        className="w-full items-center gap-1"
+                    />
 
                     {/* ナビゲーション: 手数表示とボタンを1行に */}
                     <div className="flex items-center justify-center gap-1.5">

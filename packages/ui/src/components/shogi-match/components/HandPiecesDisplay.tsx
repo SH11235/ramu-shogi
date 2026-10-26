@@ -13,7 +13,7 @@ type HandPieceSize = "compact" | "edit" | "medium" | "normal";
  * 個数の文字は盤のマスに合わせる。下限は 9px（スマホの盤の横の駒台では駒が 20px 前後になり、
  * それより大きい札は駒を隠してしまう）。
  */
-const CELL_BADGE_SIZE = "text-[max(9px,calc(var(--shogi-cell-size,40px)*0.26))]";
+const CELL_BADGE_SIZE = "text-[max(9px,calc(var(--shogi-cell-size,48px)*0.26))]";
 
 const SIZE_CONFIG = {
     compact: {
@@ -27,7 +27,7 @@ const SIZE_CONFIG = {
         // （欄が狭いときに、駒の画像だけが押しつぶされないように）。狭い欄では ± を駒の下に置く。
         // ± を横に置く広い欄では、± の幅（約 17px）も 1 駒ぶんから引く。
         imageSize:
-            "h-[min(calc(var(--shogi-cell-size,40px)*0.8),calc((100cqw-32px)/7-8px))] w-[min(calc(var(--shogi-cell-size,40px)*0.8),calc((100cqw-32px)/7-8px))] @min-[27rem]:h-[min(calc(var(--shogi-cell-size,40px)*0.8),calc((100cqw-32px)/7-25px))] @min-[27rem]:w-[min(calc(var(--shogi-cell-size,40px)*0.8),calc((100cqw-32px)/7-25px))] shrink-0",
+            "h-[min(calc(var(--shogi-cell-size,48px)*0.8),calc((100cqw-32px)/7-8px))] w-[min(calc(var(--shogi-cell-size,48px)*0.8),calc((100cqw-32px)/7-8px))] @min-[27rem]:h-[min(calc(var(--shogi-cell-size,48px)*0.8),calc((100cqw-32px)/7-25px))] @min-[27rem]:w-[min(calc(var(--shogi-cell-size,48px)*0.8),calc((100cqw-32px)/7-25px))] shrink-0",
         // 狭い欄では駒が 25px 前後まで小さくなるので、札は小さめにして駒を隠しすぎない。
         badgeSize: "text-[10px]",
         badgePos: "-top-1 -right-1.5",
@@ -35,9 +35,8 @@ const SIZE_CONFIG = {
     },
     medium: {
         // 盤のマスに合わせる（マスが大きい画面で、持ち駒だけ小さく見えないように）。
-        // 既定のマス 40px で、これまでと同じ 32px 相当になる。
         imageSize:
-            "h-[calc(var(--shogi-cell-size,40px)*0.8)] w-[calc(var(--shogi-cell-size,40px)*0.8)]",
+            "h-[calc(var(--shogi-cell-size,48px)*0.8)] w-[calc(var(--shogi-cell-size,48px)*0.8)]",
         badgeSize: CELL_BADGE_SIZE,
         badgePos: "-top-1 -right-1.5",
         badgePosRotated: "-left-1.5 -top-1 rotate-180",
@@ -97,7 +96,7 @@ function PieceToken({
                     <span
                         // 個数は駒ボタンの名前で読み上げる（数字は見た目だけ）。
                         aria-hidden="true"
-                        className="text-[max(10px,calc(var(--shogi-cell-size,40px)*0.3))] font-bold leading-none tabular-nums text-wafuu-sumi"
+                        className="text-[max(10px,calc(var(--shogi-cell-size,48px)*0.3))] font-bold leading-none tabular-nums text-wafuu-sumi"
                     >
                         {count}
                     </span>
@@ -143,6 +142,17 @@ function PieceToken({
     );
 }
 
+export type HandFrame = "muted" | "outline";
+
+/**
+ * `reserveHeight` で取る 1 段分の高さ。駒がある段の枠（駒・駒の枠・欄の余白と線）より少し高い。
+ * compact でも 34px（24px の駒に余白と線）は要る。
+ */
+const RESERVED_ROW_HEIGHT: Record<HandFrame, string> = {
+    muted: "min-h-[max(34px,calc(var(--shogi-cell-size,48px)*0.8+15px))]",
+    outline: "min-h-[calc(var(--shogi-cell-size,48px)*0.8+16px)]",
+};
+
 // コンテナ用のサイズ設定
 const CONTAINER_SIZE_CONFIG = {
     compact: {
@@ -181,11 +191,11 @@ interface HandPiecesDisplayProps {
     /** 持ち駒の状態 */
     hand: PositionState["hands"][Player];
     /** 選択中の持ち駒 */
-    selectedPiece: PieceType | null;
-    /** クリック可能かどうか */
-    isActive: boolean;
+    selectedPiece?: PieceType | null;
+    /** 駒を選べるかどうか（省くと見るだけ） */
+    isActive?: boolean;
     /** 持ち駒クリック時のコールバック */
-    onHandSelect: (piece: PieceType) => void;
+    onHandSelect?: (piece: PieceType) => void;
     /** DnD 用 PointerDown ハンドラ（編集モード時） */
     onPiecePointerDown?: (owner: Player, pieceType: PieceType, e: React.PointerEvent) => void;
     /** 編集モードかどうか */
@@ -208,13 +218,23 @@ interface HandPiecesDisplayProps {
     vertical?: boolean;
     /** 縦の駒台で、駒を上（start）と下（end）のどちらに寄せるか。`vertical` のときだけ効く */
     verticalAlign?: "start" | "end";
+    /**
+     * 駒台の枠の見た目。"muted" は薄い地の枠、"outline" は地を付けず和の配色の線だけの枠
+     * （対局画面・研究ノート）。"outline" で `reserveHeight` のときは、空の段を破線の枠で見せる。
+     */
+    frame?: HandFrame;
+    /**
+     * 横長の段で、持ち駒が無くても 1 段分の高さを取る（駒を取った・打ったときに盤が上下に動かないように）。
+     * 縦の駒台は盤の高さに合わせるので効かない。
+     */
+    reserveHeight?: boolean;
 }
 
 export function HandPiecesDisplay({
     owner,
     hand,
-    selectedPiece,
-    isActive,
+    selectedPiece = null,
+    isActive = false,
     onHandSelect,
     onPiecePointerDown,
     isEditMode = false,
@@ -227,6 +247,8 @@ export function HandPiecesDisplay({
     isAI = false,
     vertical = false,
     verticalAlign = "start",
+    frame = "muted",
+    reserveHeight = false,
 }: HandPiecesDisplayProps): ReactElement | null {
     const containerConfig = CONTAINER_SIZE_CONFIG[size];
     const isCompactLayout = vertical || size === "compact" || size === "edit" || size === "medium";
@@ -252,14 +274,30 @@ export function HandPiecesDisplay({
 
     // compact/medium レイアウトでは全駒0なら行ごと非表示（モバイルはスペースが限られるため）
     // 縦の駒台は枠を固定で見せるので、空でも外さない。
-    if (shouldHideEmptyPieces && allPiecesEmpty && isCompactLayout && !vertical) {
+    const isRowHidden = shouldHideEmptyPieces && allPiecesEmpty && isCompactLayout && !vertical;
+    const reservesHeight = reserveHeight && !vertical;
+    if (isRowHidden && !reservesHeight) {
         return null;
     }
+    if (isRowHidden) {
+        return (
+            <div
+                className={cn(
+                    "w-full",
+                    RESERVED_ROW_HEIGHT[frame],
+                    frame === "outline" && "rounded-md border border-dashed border-wafuu-border",
+                )}
+            />
+        );
+    }
 
-    return (
+    const content = (
         <div
             className={cn(
-                "rounded-md border border-border/50 bg-muted/30",
+                "rounded-md border",
+                frame === "outline"
+                    ? "border-wafuu-border bg-transparent"
+                    : "border-border/50 bg-muted/30",
                 vertical
                     ? cn(
                           "flex h-full w-full items-center gap-1 px-0.5 py-1",
@@ -380,7 +418,7 @@ export function HandPiecesDisplay({
                                             e.preventDefault();
                                             return;
                                         }
-                                        onHandSelect(piece);
+                                        onHandSelect?.(piece);
                                     }}
                                     disabled={isDisabled}
                                     className={cn(
@@ -477,5 +515,10 @@ export function HandPiecesDisplay({
                 </div>
             </div>
         </div>
+    );
+    return reservesHeight ? (
+        <div className={cn("w-full", RESERVED_ROW_HEIGHT[frame])}>{content}</div>
+    ) : (
+        content
     );
 }

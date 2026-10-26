@@ -22,16 +22,3 @@ export const PLAY_HEADING = "font-display text-2xl font-semibold text-wafuu-sumi
 /** 文中のリンク。 */
 export const PLAY_TEXT_LINK =
     "inline-flex min-h-10 items-center rounded-sm underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-0";
-
-/**
- * 盤の上下の持ち駒の欄（`data-zone="hand-…"`。`PCBoardContent` / `MobileBoardSection` が描く）の見た目。
- * 盤を包む要素に付ける。
- * - 駒の大きさに合わせた高さを最初から確保する（駒を取ったときに、盤や操作が動かないように）。
- * - 空のときは破線の枠だけを見せる。駒があるときの枠は和の配色に寄せ、地は付けない。
- *
- * 持ち駒の欄の部品（`HandPiecesDisplay`）は、横長の欄では空のとき何も描かず、駒があるときは枠付きの div を 1 つ描く。
- * 盤の横の縦の駒台（PC）は、空でも枠を描く（盤と同じ高さの枠を固定で見せ、駒の有無で枠の線を変えない）ので、
- * 破線の指定はかからない。部品の作りを変えるときはここも見直す。
- */
-export const PLAY_HAND_ZONES =
-    "[&_[data-zone^=hand-]]:min-h-[calc(var(--shogi-cell-size)*0.8+16px)] [&_[data-zone^=hand-]:empty]:rounded-md [&_[data-zone^=hand-]:empty]:border [&_[data-zone^=hand-]:empty]:border-dashed [&_[data-zone^=hand-]:empty]:border-wafuu-border [&_[data-zone^=hand-]>div]:border-wafuu-border [&_[data-zone^=hand-]>div]:bg-transparent";

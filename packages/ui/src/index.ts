@@ -70,14 +70,13 @@ export type { ShogiBoardCell, ShogiBoardPiece } from "./components/shogi-board";
 // shogi-board (online game 用)
 export { ShogiBoard } from "./components/shogi-board";
 export { BottomSheet } from "./components/shogi-match/components/BottomSheet";
-export { HandPiecesDisplay } from "./components/shogi-match/components/HandPiecesDisplay";
 export { KifuNavigationToolbar } from "./components/shogi-match/components/KifuNavigationToolbar";
 export { StoredBoardPatternProvider } from "./components/shogi-match/hooks/useBoardPattern";
 export {
     decodeSnapshotEvalMateReviver,
     encodeSnapshotEvalMateReplacer,
 } from "./components/shogi-match/utils/kifFormat";
-export { boardToGrid } from "./components/shogi-match/utils/positionUtils";
+export { StaticBoardView } from "./components/static-board-view";
 // study-workspace（研究ノートの画面）
 export type {
     StudyCommentDraft,

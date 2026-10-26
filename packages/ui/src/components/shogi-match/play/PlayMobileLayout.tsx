@@ -35,7 +35,7 @@ import { PlayMyStatus, PlayPlayerBar } from "./PlayPlayerBar";
 import { PlayResultCard, PlayResultHeadline } from "./PlayResult";
 import { PlayResultDialog } from "./PlayResultDialog";
 import { PlaySetupPanel } from "./PlaySetupPanel";
-import { PLAY_HAND_ZONES, PLAY_HEADING } from "./playStyles";
+import { PLAY_HEADING } from "./playStyles";
 import { useStableBoardMaxWidth } from "./useStableBoardMaxWidth";
 
 interface PlayMobileLayoutProps {
@@ -101,7 +101,7 @@ export function PlayMobileLayout({
             // ブラウザのバー込みで高さ 553px の端末（iPhone SE など）でも縦にはみ出さない大きさ。
             // CSS の上限は、測れない環境での代わり。
             // 設定中は隠すだけにして、対局を始めたときに盤を作り直さない。
-            className={`relative mx-auto w-full ${isEditing ? "max-w-[max(260px,calc(100svh-430px))]" : "max-w-[max(267px,calc(100svh-307px))]"} justify-center ${PLAY_HAND_ZONES} ${phase === "setup" ? "hidden" : "flex"}`}
+            className={`relative mx-auto w-full ${isEditing ? "max-w-[max(260px,calc(100svh-430px))]" : "max-w-[max(267px,calc(100svh-307px))]"} justify-center ${phase === "setup" ? "hidden" : "flex"}`}
             style={isEditing ? undefined : { maxWidth: boardMaxWidth }}
         >
             <MobileBoardSection
@@ -129,6 +129,7 @@ export function PlayMobileLayout({
                 // 対局者は帯に出すので、駒台には AI のアイコンを出さない。
                 topHand={{ ...getHandInfo("top"), isAI: false }}
                 bottomHand={{ ...getHandInfo("bottom"), isAI: false }}
+                handFrame="outline"
                 hintMove={hintMove}
                 boardOverlay={<PlayEndStamp />}
                 boardSectionRef={boardSectionRef}
