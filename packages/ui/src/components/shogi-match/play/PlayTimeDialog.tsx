@@ -9,6 +9,7 @@ import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
 import { useState } from "react";
 import { Button } from "../../button";
+import { ChoiceGroup } from "../../choice-group";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../dialog";
 import { formatTimeRule } from "../utils/timeSettings";
 import { PLAY_OUTLINE_BUTTON, PLAY_PRIMARY_BUTTON } from "./playStyles";
@@ -157,30 +158,25 @@ function PlayTimeForm({
         >
             <fieldset className="flex flex-col gap-1.5">
                 <legend className="sr-only">持ち時間を使い切ったあとの決まり</legend>
-                {RULE_OPTIONS.map((option) => {
-                    const selected = option.id === mode;
-                    return (
-                        <button
-                            key={option.id}
-                            type="button"
-                            aria-pressed={selected}
-                            onClick={() => setMode(option.id)}
-                            className={cn(
-                                "flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                                selected
-                                    ? "border-wafuu-sumi bg-wafuu-washi-warm ring-1 ring-inset ring-wafuu-sumi"
-                                    : "border-wafuu-border bg-background hover:bg-wafuu-washi-warm",
-                            )}
-                        >
-                            <span className="text-sm font-semibold text-wafuu-sumi">
-                                {option.title}
-                            </span>
-                            <span className="text-xs text-wafuu-sumi-light">
-                                {option.description}
-                            </span>
-                        </button>
-                    );
-                })}
+                <ChoiceGroup
+                    options={RULE_OPTIONS.map((option) => ({
+                        value: option.id,
+                        label: (
+                            <>
+                                <span className="text-sm font-semibold text-wafuu-sumi">
+                                    {option.title}
+                                </span>
+                                <span className="text-xs font-normal text-wafuu-sumi-light">
+                                    {option.description}
+                                </span>
+                            </>
+                        ),
+                    }))}
+                    value={mode}
+                    onChange={setMode}
+                    size="card"
+                    layout="stack"
+                />
             </fieldset>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-3 text-sm text-wafuu-sumi">
                 <label className="flex items-center gap-1.5">

@@ -11,6 +11,7 @@ import { SKILL_LEVEL_MAX } from "@shogi/engine-client";
 import type { ReactElement, ReactNode } from "react";
 import { useEffect, useEffectEvent, useState } from "react";
 import { Button } from "../../button";
+import { ChoiceGroup } from "../../choice-group";
 import { NativeSelect } from "../../native-select";
 import { SoundToggle } from "../components/SoundToggle";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
@@ -90,40 +91,20 @@ function Segmented<T extends string>({
                     {labelAddon}
                 </span>
             )}
-            <div
-                className={cn(
-                    "flex min-w-0 flex-1 flex-wrap gap-1.5",
-                    rowLabel && "max-[359px]:gap-1",
+            <ChoiceGroup
+                options={options.map((option) => ({ value: option.id, label: option.label }))}
+                value={value}
+                onChange={onChange}
+                layout="fill"
+                className={cn("min-w-0 flex-1", rowLabel && "max-[359px]:gap-1")}
+                optionClassName={cn(
+                    // 幅 320〜390px 級の端末でも、時間の 4〜5 個の選択肢を 1 行に収める。
+                    rowLabel && "px-1.5 max-[399px]:px-1 max-[399px]:text-xs max-[359px]:px-0.5",
+                    wrapLabels
+                        ? "whitespace-normal break-keep py-0.5 max-[399px]:text-[11px]"
+                        : "whitespace-nowrap",
                 )}
-            >
-                {options.map((option) => {
-                    const selected = option.id === value;
-                    return (
-                        <button
-                            key={option.id}
-                            type="button"
-                            aria-pressed={selected}
-                            onClick={() => onChange(option.id)}
-                            className={cn(
-                                // 幅 320〜390px 級の端末でも、時間の 4〜5 個の選択肢を 1 行に収める。
-                                rowLabel
-                                    ? "px-1.5 max-[399px]:px-1 max-[399px]:text-xs max-[359px]:px-0.5"
-                                    : "px-2.5",
-                                wrapLabels
-                                    ? "whitespace-normal break-keep py-0.5 leading-tight max-[399px]:text-[11px]"
-                                    : "whitespace-nowrap",
-                                "min-h-10 flex-1 rounded-md border text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 md:min-h-9 [@media(max-height:760px)]:md:min-h-8",
-                                // 選んでいる項目は墨の枠で示す（朱・藍は、先手・後手の色に取っておく）。
-                                selected
-                                    ? "border-wafuu-sumi bg-wafuu-washi-warm font-semibold text-wafuu-sumi ring-1 ring-inset ring-wafuu-sumi"
-                                    : "border-wafuu-border bg-background text-wafuu-sumi hover:bg-wafuu-washi-warm",
-                            )}
-                        >
-                            {option.label}
-                        </button>
-                    );
-                })}
-            </div>
+            />
         </fieldset>
     );
 }
