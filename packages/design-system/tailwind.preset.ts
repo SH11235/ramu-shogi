@@ -97,7 +97,6 @@ const preset: Omit<Config, "content"> = {
                 // 将棋盤配色
                 shogi: {
                     border: "hsl(var(--shogi-border))",
-                    "outer-border": "hsl(var(--shogi-outer-border))",
                     "cell-light": "hsl(var(--shogi-cell-light))",
                     "cell-dark": "hsl(var(--shogi-cell-dark))",
                     "piece-text": "hsl(var(--shogi-piece-text))",

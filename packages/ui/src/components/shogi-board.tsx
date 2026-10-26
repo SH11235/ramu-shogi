@@ -117,14 +117,11 @@ export function ShogiBoard({
         : false;
 
     return (
-        <div
-            className="relative inline-block rounded-lg border border-shogi-outer-border bg-shogi-cell-light shadow-[0_4px_12px_rgba(0,0,0,0.12)]"
-            style={shadowStyle}
-        >
+        <div className="relative inline-block" style={shadowStyle}>
             {/* 盤外ラベル: 筋（上） */}
             <div
                 className={cn(
-                    "grid grid-cols-9 py-0.5 text-center text-[11px] font-semibold text-wafuu-sumi/70 [text-shadow:0_1px_0_rgba(255,255,255,0.5)] ml-[1.25em] mr-[1.25em]",
+                    "grid grid-cols-9 py-0.5 text-center text-[11px] font-semibold text-muted-foreground ml-[1.25em] mr-[1.25em]",
                     showBoardLabels ? "visible" : "invisible",
                 )}
             >
@@ -141,7 +138,8 @@ export function ShogiBoard({
                         </span>
                     ))}
                 </div>
-                <div className="grid flex-1 grid-cols-9 overflow-hidden rounded-xl border-l border-t border-shogi-border">
+                {/* 角は直角にする。丸めると、隅のマスの駒が角で欠ける。外周は outline を足して内側の線より太く見せる。 */}
+                <div className="grid flex-1 grid-cols-9 overflow-hidden border-l border-t border-shogi-border outline outline-1 outline-shogi-border">
                     {grid.map((row, rowIndex) =>
                         row.map((cell, columnIndex) => {
                             const isSelected = selectedSquare === cell.id;
@@ -356,7 +354,7 @@ export function ShogiBoard({
                 {/* 盤外ラベル: 段（右） */}
                 <div
                     className={cn(
-                        "flex flex-col justify-around px-0.5 text-[11px] font-semibold text-wafuu-sumi/70 [text-shadow:0_1px_0_rgba(255,255,255,0.5)]",
+                        "flex flex-col justify-around px-0.5 text-[11px] font-semibold text-muted-foreground",
                         showBoardLabels ? "visible" : "invisible",
                     )}
                 >
