@@ -81,11 +81,14 @@ const openBookViewer = (flip: boolean) => async (page: Page) => {
 /** 人どうしの対局を始め、マス（`7g` など）や成りの選択（`成る`）を順に押す。 */
 const openHumanGame = (clicks: readonly string[]) => async (page: Page) => {
     await page.goto("/play");
-    await page.getByRole("button", { name: "人 対 人", exact: true }).click();
-    await page.getByRole("button", { name: "対局開始", exact: true }).click();
-    await page
-        .getByRole("button", { name: "対局開始", exact: true })
-        .waitFor({ state: "detached" });
+    const start = page.getByRole("button", { name: "対局開始", exact: true });
+    // 設定の欄は読み込みのあとに描き直されるので、それより前に押した選択や開始は効かないことがある。
+    // 対局が始まるまで選び直して押す。
+    await expect(async () => {
+        await page.getByRole("button", { name: "人 対 人", exact: true }).click();
+        await start.click();
+        await expect(start).toHaveCount(0, { timeout: 2_000 });
+    }).toPass({ timeout: 30_000 });
     for (const target of clicks) {
         if (/^\d[a-i]$/.test(target)) {
             await page.locator(`[data-square='${target}']:visible`).click();
@@ -107,8 +110,10 @@ const SCENES: Scene[] = [
         open: async (page) => {
             await page.goto("/play");
             await page.getByRole("button", { name: "対局開始", exact: true }).waitFor();
-            // 盤は局面を読み込んでから描くので、ボタンより遅れて出ることがある。
-            await page.locator("[data-square='5i']").first().waitFor();
+            // PC では盤も並ぶが、局面を読み込んでから描くので、ボタンより遅れて出ることがある。
+            if ((page.viewportSize()?.width ?? 0) >= 768) {
+                await page.locator("[data-square='5i']").first().waitFor();
+            }
         },
     },
     {
@@ -187,9 +192,22 @@ for (const [device, viewport] of Object.entries(VIEWPORTS)) {
         test(`${scene.name} ${device}`, async ({ page }) => {
             await page.setViewportSize(viewport);
             await scene.open(page);
+            // 局面を読み込んでいる間の表示が消えてから撮る（設定の欄や盤は読み込みのあとに描き直される）。
+            await expect(page.getByText(/局面を読み込み中/)).toHaveCount(0, { timeout: 30_000 });
             // API の再試行や開発サーバーの接続があるので networkidle は来ない。フォントと画像を待つ。
             await page.evaluate(async () => {
                 await document.fonts.ready;
+                // ダイアログの開くアニメーションなど、動いている途中の文字は撮るたびににじみが変わる。
+                await Promise.all(
+                    document
+                        .getAnimations()
+                        // 繰り返し続けるもの（読み込み中の点滅など）は終わらないので待たない。
+                        .filter(
+                            (animation) =>
+                                animation.effect?.getComputedTiming().endTime !== Infinity,
+                        )
+                        .map((animation) => animation.finished.catch(() => null)),
+                );
                 await Promise.all(
                     [...document.images].map((img) =>
                         img.complete ? null : img.decode().catch(() => null),
