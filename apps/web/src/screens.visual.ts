@@ -28,6 +28,7 @@ const openStudyAtEnd = async (page: Page): Promise<void> => {
     await page.getByRole("textbox", { name: "棋譜のテキスト" }).fill(KIFU_WITH_HANDS);
     await page.getByRole("button", { name: "研究ノートにする" }).click();
     await page.waitForURL(/\/studies\/[^/]+$/);
+    // 幅によって送りのボタンが 2 か所に出ることがある。どちらも同じ操作なので最初のものを押す。
     await page.getByRole("button", { name: "最後の局面へ" }).first().click();
 };
 

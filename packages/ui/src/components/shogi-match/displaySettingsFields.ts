@@ -13,12 +13,17 @@ export const SQUARE_NOTATION_OPTIONS: ReadonlyArray<{ value: SquareNotation; lab
 
 export const BOARD_PATTERN_LABEL = "盤の模様";
 
-/** チェックボックスで切り替える表示設定 */
-export type DisplayToggleKey = {
-    [K in keyof DisplaySettings]: DisplaySettings[K] extends boolean ? K : never;
-}[keyof DisplaySettings];
+/** 表示設定の欄にチェックボックスで出す項目（音や AI の読みは別の欄で扱う） */
+export type DisplayToggleKey = Extract<
+    keyof DisplaySettings,
+    | "showBoardLabels"
+    | "highlightLastMove"
+    | "showKifuEval"
+    | "showSearchInfo"
+    | "enableWheelNavigation"
+>;
 
-export const DISPLAY_TOGGLE_LABELS: Readonly<Partial<Record<DisplayToggleKey, string>>> = {
+export const DISPLAY_TOGGLE_LABELS: Readonly<Record<DisplayToggleKey, string>> = {
     showBoardLabels: "盤の外に筋・段を表示",
     highlightLastMove: "直前の手を強調",
     showKifuEval: "棋譜に評価値を表示",
