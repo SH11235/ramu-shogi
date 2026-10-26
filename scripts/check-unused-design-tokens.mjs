@@ -1,5 +1,5 @@
 // デザイントークンの使われ残りを検出する。
-// - theme.css で定義した CSS 変数が、どこからも var(--name) で参照されていない
+// - theme.css で定義した CSS 変数が、どこからも var(--name) / (--name) で参照されていない
 // - tailwind.preset.ts の theme.extend に定義したキーが、クラスとして一度も使われていない
 // クラス名は静的な文字列として書かれている前提で探す（`bg-${name}` のような組み立ては拾えない）。
 import { readdirSync, readFileSync } from "node:fs";
@@ -75,13 +75,30 @@ export function collectPresetTokens(extend) {
     });
 }
 
-/** トークンを使っている印になる正規表現。keyframes は animation の値か animate-[name_...] で使われる */
-export function tokenUsagePattern({ group, name }) {
+/**
+ * コメントを取り除く。文字列リテラルは残すので、文字列中の `//`（URL など）では切らない。
+ * CSS は `//` がコメントではない（url(https://...) など）ので、ブロックコメントだけを取り除く。
+ */
+export function stripComments(text, { lineComments = true } = {}) {
+    const pattern = lineComments
+        ? /("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^`\\])*`)|\/\*[\s\S]*?\*\/|\/\/[^\n]*/g
+        : /("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|\/\*[\s\S]*?\*\//g;
+    return text.replace(pattern, (_match, literal) => literal ?? "");
+}
+
+/**
+ * トークンを使っている印になる正規表現。keyframes は animation の値か animate-[name_...] で使われる。
+ * shadow-<name> は boxShadow に同名があれば Tailwind がそちらで解決するので、色の接頭辞から外す。
+ */
+export function tokenUsagePattern({ group, name }, boxShadowNames = new Set()) {
     const escaped = escapeRegExp(name);
     if (group === "keyframes") {
         return new RegExp(`(?:animate-\\[|["'\`\\s])${escaped}(?=[_\\s"'\`])`);
     }
-    const prefix = UTILITY_PREFIXES[group];
+    const prefix =
+        group === "colors" && boxShadowNames.has(name)
+            ? `(?:${COLOR_PREFIXES.filter((p) => p !== "shadow").join("|")})`
+            : UTILITY_PREFIXES[group];
     if (prefix === undefined) {
         throw new Error(`未対応の theme.extend のキー: ${group}`);
     }
@@ -89,18 +106,26 @@ export function tokenUsagePattern({ group, name }) {
     return new RegExp(`(?<![\\w-])${prefix}-${escaped}(?![\\w-])`);
 }
 
-/** 定義の外で var(--name) と参照されていない CSS 変数を返す */
+/**
+ * 定義の外で参照されていない CSS 変数を返す。参照は var(--name) と、Tailwind v4 の省略記法
+ * `bg-(--name)` / `font-(family-name:--name)` の両方を数える。
+ */
 export function findUnusedCssVariables(names, sources) {
     return names.filter((name) => {
-        const pattern = new RegExp(`var\\(\\s*${escapeRegExp(name)}(?![\\w-])`);
+        const pattern = new RegExp(
+            `(?:var\\(\\s*|\\((?:[\\w-]+:)?)${escapeRegExp(name)}(?![\\w-])`,
+        );
         return !sources.some((source) => pattern.test(source));
     });
 }
 
 /** どのソースにも使われていない preset トークンを返す。keyframes は使われている animation の値も見る */
 export function findUnusedPresetTokens(tokens, sources) {
+    const boxShadowNames = new Set(
+        tokens.filter((token) => token.group === "boxShadow").map((token) => token.name),
+    );
     const isUnused = (token, haystack) => {
-        const pattern = tokenUsagePattern(token);
+        const pattern = tokenUsagePattern(token, boxShadowNames);
         return !haystack.some((source) => pattern.test(source));
     };
     const unused = tokens.filter(
@@ -136,9 +161,15 @@ async function main() {
     const sourceFiles = SOURCE_DIRS.flatMap((dir) => listSourceFiles(path.join(ROOT, dir))).filter(
         (file) => path.resolve(file) !== path.join(ROOT, PRESET),
     );
-    // 定義そのものを参照と数えないよう、theme.css は宣言部分を除いて読む
+    // 説明のための言及を使用と数えないよう、コメントを除いて読む。
+    // 定義そのものも参照と数えないよう、theme.css は宣言部分を除く
     const sources = sourceFiles.map((file) => {
-        const text = readFileSync(file, "utf8");
+        const extension = path.extname(file);
+        const raw = readFileSync(file, "utf8");
+        const text =
+            extension === ".html"
+                ? raw
+                : stripComments(raw, { lineComments: extension !== ".css" });
         return path.resolve(file) === path.join(ROOT, THEME_CSS)
             ? text.replaceAll(/--[\w-]+\s*:/g, "")
             : text;
@@ -155,7 +186,7 @@ async function main() {
     ]);
 
     for (const name of unusedVariables) {
-        console.error(`${THEME_CSS}: ${name} はどこからも var() で参照されていない`);
+        console.error(`${THEME_CSS}: ${name} はどこからも参照されていない`);
     }
     for (const { group, name } of unusedTokens) {
         console.error(`${PRESET}: theme.extend.${group} の ${name} がクラスとして使われていない`);

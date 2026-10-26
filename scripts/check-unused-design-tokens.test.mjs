@@ -5,9 +5,49 @@ import {
     collectPresetTokens,
     findUnusedCssVariables,
     findUnusedPresetTokens,
+    stripComments,
 } from "./check-unused-design-tokens.mjs";
 
 const names = (tokens) => tokens.map(({ group, name }) => `${group}.${name}`);
+
+test("コメントは取り除き、文字列中の // や /* は残す", () => {
+    const source = [
+        "// var(--a) の説明",
+        'const url = "https://example.com"; /* var(--b) */',
+        "const c = 'w-[var(--c)]'; // var(--d)",
+        "{/* bg-wafuu-kin */}",
+    ].join("\n");
+    const stripped = stripComments(source);
+    assert.deepEqual(findUnusedCssVariables(["--a", "--b", "--c", "--d"], [stripped]), [
+        "--a",
+        "--b",
+        "--d",
+    ]);
+    assert.match(stripped, /https:\/\/example\.com/);
+    assert.doesNotMatch(stripped, /wafuu-kin/);
+});
+
+test("CSS は /* */ だけを取り除き、url(https://...) の後ろは残す", () => {
+    const css = "a { background: url(https://x.test/a.png) var(--a); } /* var(--b) */";
+    const stripped = stripComments(css, { lineComments: false });
+    assert.deepEqual(findUnusedCssVariables(["--a", "--b"], [stripped]), ["--b"]);
+});
+
+test("Tailwind v4 の省略記法 (--name) / (type:--name) も参照と数える", () => {
+    const sources = ['className="bg-(--a) font-(family-name:--b) w-(--c-long)"'];
+    assert.deepEqual(findUnusedCssVariables(["--a", "--b", "--c"], sources), ["--c"]);
+});
+
+test("shadow-<name> は boxShadow に同名があれば色の使用と数えない", () => {
+    const extend = { colors: { card: "c", ink: "i" }, boxShadow: { card: "x" } };
+    const tokens = collectPresetTokens(extend);
+    assert.deepEqual(names(findUnusedPresetTokens(tokens, ['"shadow-card shadow-ink"'])), [
+        "colors.card",
+    ]);
+    assert.deepEqual(names(findUnusedPresetTokens(tokens, ['"bg-card shadow-card"'])), [
+        "colors.ink",
+    ]);
+});
 
 test("theme.css の宣言だけを変数として集め、コメントは無視する", () => {
     const css = ":root { --a: 1px; /* --b: 2px; */ --c-d: var(--a); }";
