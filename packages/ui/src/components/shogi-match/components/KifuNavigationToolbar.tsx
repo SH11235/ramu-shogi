@@ -9,7 +9,7 @@ import { ChevronIcon } from "../../chevron-icon";
 import type { ReactElement, ReactNode } from "react";
 import { useRef, useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "../../popover";
-import { moveMenuFocus } from "../utils/menuKeyNavigation";
+import { handleMenuKeyDown } from "../utils/menuKeyNavigation";
 
 interface BranchInfo {
     hasBranches: boolean;
@@ -232,7 +232,12 @@ export function KifuNavigationToolbar({
                             ref={branchMenuRef}
                             role="menu"
                             aria-label="分岐選択"
-                            onKeyDown={(event) => moveMenuFocus(event, '[role^="menuitem"]')}
+                            onKeyDown={(event) =>
+                                handleMenuKeyDown(event, {
+                                    itemSelector: '[role^="menuitem"]',
+                                    onClose: () => setShowBranchMenu(false),
+                                })
+                            }
                         >
                             {Array.from({ length: branchInfo.count }, (_, i) => i).map((index) => (
                                 <button
@@ -240,6 +245,7 @@ export function KifuNavigationToolbar({
                                     key={index}
                                     onClick={() => handleBranchSelect(index)}
                                     role="menuitemradio"
+                                    tabIndex={-1}
                                     aria-checked={index === branchInfo.currentIndex}
                                     className={`
                                         w-full px-3 py-1.5 text-left text-[12px]
@@ -274,6 +280,7 @@ export function KifuNavigationToolbar({
                                             setShowBranchMenu(false);
                                         }}
                                         role="menuitem"
+                                        tabIndex={-1}
                                         className="w-full px-3 py-1.5 text-left text-[12px] text-wafuu-shu hover:bg-accent/50 focus-visible:outline-none focus-visible:bg-accent/50 transition-colors duration-150"
                                     >
                                         ★ メインに昇格

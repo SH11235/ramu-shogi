@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { KifuNavigationToolbar } from "./KifuNavigationToolbar";
 
@@ -59,5 +59,22 @@ describe("KifuNavigationToolbar の分岐メニュー", () => {
         fireEvent.click(screen.getByRole("menuitem", { name: "★ メインに昇格" }));
         expect(onPromoteToMain).toHaveBeenCalled();
         expect(screen.queryByRole("menu")).toBeNull();
+    });
+
+    it("項目は Tab で止まらず、Tab / Shift+Tab でメニューを閉じて分岐のボタンへ戻る", async () => {
+        renderToolbar({ currentIndex: 1, onPromoteToMain: vi.fn() });
+        const trigger = screen.getByTitle(/^分岐 /);
+        for (const shiftKey of [false, true]) {
+            openMenu();
+            for (const item of [
+                ...screen.getAllByRole("menuitemradio"),
+                screen.getByRole("menuitem"),
+            ]) {
+                expect(item.tabIndex).toBe(-1);
+            }
+            fireEvent.keyDown(document.activeElement as HTMLElement, { key: "Tab", shiftKey });
+            expect(screen.queryByRole("menu")).toBeNull();
+            await waitFor(() => expect(document.activeElement).toBe(trigger));
+        }
     });
 });

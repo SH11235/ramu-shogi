@@ -9,8 +9,20 @@ const KIFU_NAVIGATION_KEYS = new Set([
     "End",
 ]);
 
-/** Popover の中のメニューで、上下・Home・End キーで項目の間を移る。 */
-export function moveMenuFocus(event: KeyboardEvent<HTMLElement>, itemSelector: string): void {
+/**
+ * Popover の中のメニューのキー操作。項目は tabIndex=-1 にして上下・Home・End だけで移り、
+ * Tab / Shift+Tab ではメニューを閉じる（Popover が開いたボタンへフォーカスを戻す）。
+ */
+export function handleMenuKeyDown(
+    event: KeyboardEvent<HTMLElement>,
+    { itemSelector, onClose }: { itemSelector: string; onClose: () => void },
+): void {
+    if (event.key === "Tab") {
+        // Popover は body の末尾に出るので、そのまま Tab を通すとページの末尾へ飛ぶ
+        event.preventDefault();
+        onClose();
+        return;
+    }
     // 棋譜の矢印キー送りは document で聞いているので、メニューを開いている間は背後の局面を動かさない
     if (KIFU_NAVIGATION_KEYS.has(event.key)) event.stopPropagation();
     const items = [...event.currentTarget.querySelectorAll<HTMLElement>(itemSelector)];

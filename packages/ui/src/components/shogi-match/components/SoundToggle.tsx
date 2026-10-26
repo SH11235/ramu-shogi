@@ -6,7 +6,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "../../popover";
 import { useNavigation } from "../contexts/NavigationContext";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
 import { DEFAULT_DISPLAY_SETTINGS } from "../types";
-import { moveMenuFocus } from "../utils/menuKeyNavigation";
+import { handleMenuKeyDown } from "../utils/menuKeyNavigation";
 
 type SoundMode = SoundVoice | "off";
 
@@ -173,7 +173,12 @@ export function SoundToggle({ size = "md" }: { size?: "md" | "lg" }): ReactEleme
                     ref={menuRef}
                     role="menu"
                     aria-label="着手音"
-                    onKeyDown={(event) => moveMenuFocus(event, '[role="menuitemradio"]')}
+                    onKeyDown={(event) =>
+                        handleMenuKeyDown(event, {
+                            itemSelector: '[role="menuitemradio"]',
+                            onClose: () => setOpen(false),
+                        })
+                    }
                     className="flex flex-col gap-0.5"
                 >
                     {MODE_OPTIONS.map((option) => {
@@ -183,6 +188,7 @@ export function SoundToggle({ size = "md" }: { size?: "md" | "lg" }): ReactEleme
                                 key={option.mode}
                                 type="button"
                                 role="menuitemradio"
+                                tabIndex={-1}
                                 aria-checked={checked}
                                 onClick={() => select(option.mode)}
                                 className={cn(
