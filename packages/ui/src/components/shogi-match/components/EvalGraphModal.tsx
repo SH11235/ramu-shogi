@@ -41,6 +41,7 @@ export function EvalGraphModal({
             initialSize={{ width: 600, height: 400 }}
             minWidth={MIN_WIDTH}
             minHeight={MIN_HEIGHT}
+            headerClassName="box-border h-10"
             bodyClassName="p-3 pb-2 overflow-visible"
         >
             {(size) => (

@@ -23,12 +23,17 @@ interface FloatingWindowProps {
      * 呼ぶ側で描くのをやめると、次に開いたときに初めの位置へ戻る。
      */
     open?: boolean;
+    /** 見出しの帯の高さ。省くと中身に合わせる（見出しが折り返せば伸びる）。 */
+    headerClassName?: string;
     bodyClassName?: string;
     /** 中身を窓の大きさに合わせて描くときは関数で渡す。 */
     children: ReactNode | ((size: WindowSize) => ReactNode);
 }
 
 const EDGE_HANDLE_SIZE = 6;
+
+const FLOATING_CLOSE_BUTTON_CLASS =
+    "cursor-pointer rounded p-0 px-1.5 py-0.5 hover:bg-accent hover:text-muted-foreground transition-none";
 
 /**
  * 盤の上に重ねて置く、動かせて大きさも変えられる小窓。
@@ -42,6 +47,7 @@ export function FloatingWindow({
     minWidth,
     minHeight,
     open = true,
+    headerClassName,
     bodyClassName,
     children,
 }: FloatingWindowProps): ReactElement | null {
@@ -78,7 +84,10 @@ export function FloatingWindow({
             }}
         >
             <div
-                className="box-border flex h-10 shrink-0 cursor-move select-none items-center justify-between gap-2 border-b border-border bg-muted px-3 py-2"
+                className={cn(
+                    "flex cursor-move select-none items-center justify-between border-b border-border bg-muted px-3 py-2",
+                    headerClassName,
+                )}
                 onMouseDown={onMoveStart}
                 role="toolbar"
                 aria-label="ウィンドウ移動ハンドル"
@@ -88,9 +97,9 @@ export function FloatingWindow({
                 ) : (
                     title
                 )}
-                {/* 見出しの帯が bg-muted なので、押せることが分かるよう hover の色を一段濃くする。 */}
+                {/* 帯が bg-muted なので hover は一段濃い色にする。押せる範囲は 32x24px（文字の「✕」の頃と同じ）。 */}
                 <CloseIconButton
-                    className="rounded p-0.5 hover:bg-accent"
+                    className={FLOATING_CLOSE_BUTTON_CLASS}
                     onMouseDown={(e) => e.stopPropagation()}
                     onClick={onClose}
                 />
