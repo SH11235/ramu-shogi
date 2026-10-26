@@ -52,12 +52,39 @@ const SCENES: Scene[] = [
         },
     },
     {
+        name: "play-time-dialog",
+        open: async (page) => {
+            await page.goto("/play");
+            await page.getByRole("button", { name: "指定", exact: true }).click();
+            await page.getByRole("dialog").waitFor();
+        },
+    },
+    {
+        name: "play-edit",
+        open: async (page) => {
+            await page.goto("/play");
+            await page.getByRole("combobox", { name: "開始局面" }).selectOption("edit");
+            await page.getByRole("region", { name: "開始局面の編集" }).waitFor();
+        },
+    },
+    {
         name: "studies",
         open: gotoAndWait("/studies", (p) =>
             p.getByRole("button", { name: "研究ノートにする" }).waitFor(),
         ),
     },
     { name: "study-note", open: openStudyAtEnd },
+    {
+        name: "study-analysis-settings",
+        open: async (page) => {
+            await openStudyAtEnd(page);
+            // スマホでは「その他の操作」の中にある。
+            const more = page.getByRole("button", { name: "その他の操作" });
+            if ((page.viewportSize()?.width ?? 0) < 768) await more.click();
+            await page.getByRole("button", { name: /^解析の設定/ }).click();
+            await page.getByRole("dialog").waitFor();
+        },
+    },
     {
         name: "privacy",
         open: gotoAndWait("/privacy", (p) => p.getByRole("heading").first().waitFor()),
