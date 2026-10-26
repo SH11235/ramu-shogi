@@ -5,6 +5,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import ts from "typescript";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const THEME_CSS = "packages/design-system/src/theme.css";
@@ -76,14 +77,32 @@ export function collectPresetTokens(extend) {
 }
 
 /**
- * コメントを取り除く。文字列リテラルは残すので、文字列中の `//`（URL など）では切らない。
- * CSS は `//` がコメントではない（url(https://...) など）ので、ブロックコメントだけを取り除く。
+ * コメントを取り除く。TS/TSX は正規表現リテラルやテンプレート内の式を字句として正しく扱うため、
+ * TypeScript のトランスパイル（removeComments）を通す。型注釈も消えるが、クラス名や var() は
+ * 文字列・JSX 属性に残るので探索には困らない。
  */
-export function stripComments(text, { lineComments = true } = {}) {
-    const pattern = lineComments
-        ? /("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^`\\])*`)|\/\*[\s\S]*?\*\/|\/\/[^\n]*/g
-        : /("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|\/\*[\s\S]*?\*\//g;
-    return text.replace(pattern, (_match, literal) => literal ?? "");
+export function stripComments(text, fileName) {
+    switch (path.extname(fileName)) {
+        case ".ts":
+        case ".tsx":
+            return ts.transpileModule(text, {
+                // .d.ts のままだと出力が生成されず例外になる
+                fileName: fileName.replace(/\.d\.ts$/, ".ts"),
+                compilerOptions: {
+                    removeComments: true,
+                    jsx: ts.JsxEmit.Preserve,
+                    target: ts.ScriptTarget.ESNext,
+                    module: ts.ModuleKind.ESNext,
+                },
+            }).outputText;
+        case ".css":
+            // CSS の `//` はコメントではない（url(https://...) など）
+            return text.replaceAll(/\/\*[\s\S]*?\*\//g, "");
+        case ".html":
+            return text.replaceAll(/<!--[\s\S]*?-->/g, "");
+        default:
+            return text;
+    }
 }
 
 /**
@@ -164,12 +183,7 @@ async function main() {
     // 説明のための言及を使用と数えないよう、コメントを除いて読む。
     // 定義そのものも参照と数えないよう、theme.css は宣言部分を除く
     const sources = sourceFiles.map((file) => {
-        const extension = path.extname(file);
-        const raw = readFileSync(file, "utf8");
-        const text =
-            extension === ".html"
-                ? raw
-                : stripComments(raw, { lineComments: extension !== ".css" });
+        const text = stripComments(readFileSync(file, "utf8"), file);
         return path.resolve(file) === path.join(ROOT, THEME_CSS)
             ? text.replaceAll(/--[\w-]+\s*:/g, "")
             : text;

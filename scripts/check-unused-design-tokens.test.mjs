@@ -15,22 +15,33 @@ test("コメントは取り除き、文字列中の // や /* は残す", () => 
         "// var(--a) の説明",
         'const url = "https://example.com"; /* var(--b) */',
         "const c = 'w-[var(--c)]'; // var(--d)",
-        "{/* bg-wafuu-kin */}",
+        `const e = <div className={\`w-[var(--e)] \${/* var(--f) */ ''}\`}>{/* bg-wafuu-kin */}</div>;`,
     ].join("\n");
-    const stripped = stripComments(source);
-    assert.deepEqual(findUnusedCssVariables(["--a", "--b", "--c", "--d"], [stripped]), [
-        "--a",
-        "--b",
-        "--d",
-    ]);
+    const stripped = stripComments(source, "a.tsx");
+    assert.deepEqual(
+        findUnusedCssVariables(["--a", "--b", "--c", "--d", "--e", "--f"], [stripped]),
+        ["--a", "--b", "--d", "--f"],
+    );
     assert.match(stripped, /https:\/\/example\.com/);
     assert.doesNotMatch(stripped, /wafuu-kin/);
 });
 
+test("正規表現リテラル中の / をコメントの始まりと取り違えない", () => {
+    const source = 'const cls = /\\//.test(path) ? "w-[var(--a)]" : "";';
+    assert.deepEqual(findUnusedCssVariables(["--a"], [stripComments(source, "a.ts")]), []);
+});
+
 test("CSS は /* */ だけを取り除き、url(https://...) の後ろは残す", () => {
     const css = "a { background: url(https://x.test/a.png) var(--a); } /* var(--b) */";
-    const stripped = stripComments(css, { lineComments: false });
+    const stripped = stripComments(css, "a.css");
     assert.deepEqual(findUnusedCssVariables(["--a", "--b"], [stripped]), ["--b"]);
+});
+
+test("HTML は <!-- --> を取り除く", () => {
+    const html = '<!-- <div class="w-[var(--a)]"> -->\n<div class="w-[var(--b)]"></div>';
+    assert.deepEqual(findUnusedCssVariables(["--a", "--b"], [stripComments(html, "index.html")]), [
+        "--a",
+    ]);
 });
 
 test("Tailwind v4 の省略記法 (--name) / (type:--name) も参照と数える", () => {
