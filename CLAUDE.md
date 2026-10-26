@@ -52,7 +52,7 @@
 - 色はハードコード（`#ffffff`, `text-[#3a2a16]` 等）せず、デザインシステムの CSS 変数を使用する
   - 一般的な色: `bg-background`, `text-foreground`, `border-border` 等
   - 和風配色: `text-wafuu-sumi`, `bg-wafuu-shu`, `bg-wafuu-ai` 等
-  - 将棋盤: `text-shogi-piece-text`, `bg-shogi-piece-bg`, `border-shogi-outer-border` 等
+  - 将棋盤: `text-shogi-piece-text`, `bg-shogi-piece-bg`, `border-shogi-border` 等
 - 新しい色が必要な場合は `packages/design-system/src/theme.css` と `tailwind.preset.ts` に追加する
 
 ## テストファイルの配置
