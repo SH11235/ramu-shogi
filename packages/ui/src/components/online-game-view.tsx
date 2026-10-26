@@ -1442,8 +1442,9 @@ export function OnlineGameView({
             </AlertDialog>
 
             {/* 対局結果ダイアログ */}
-            {gameResult && !endDialogClosed && (
+            {gameResult && (
                 <GameEndDialog
+                    open={!endDialogClosed}
                     result={gameResult}
                     kifu={generatedKif}
                     playerNames={playerNames}
