@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 
 // ─── プリセット定義 ────────────────────────────────────────────────────────────
 
-export interface PositionPreset {
+interface PositionPreset {
     /** API に送信する startSfen 値（"startpos" または "handicap:xxx" または SFEN 文字列） */
     value: string;
     label: string;
@@ -144,7 +144,7 @@ function normalizeSfenSpacing(sfen: string): string {
 
 // ─── コンポーネント ────────────────────────────────────────────────────────────
 
-export interface PositionPresetSelectorProps {
+interface PositionPresetSelectorProps {
     /** 現在選択されている startSfen 値 */
     value: string;
     /** 変更時コールバック（startSfen 文字列を渡す） */

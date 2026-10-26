@@ -6,7 +6,6 @@ import { forwardRef } from "react";
 
 export const Sheet = DialogPrimitive.Root;
 export const SheetTrigger = DialogPrimitive.Trigger;
-export const SheetClose = DialogPrimitive.Close;
 const SheetPortal = DialogPrimitive.Portal;
 
 const SheetOverlay = forwardRef<
@@ -61,30 +60,6 @@ export const SheetContent = forwardRef<
     );
 });
 
-export function SheetHeader({
-    className,
-    ...props
-}: React.HTMLAttributes<HTMLDivElement>): ReactElement {
-    return (
-        <div
-            className={cn("flex flex-col space-y-2 text-center sm:text-left", className)}
-            {...props}
-        />
-    );
-}
-
-export function SheetFooter({
-    className,
-    ...props
-}: React.HTMLAttributes<HTMLDivElement>): ReactElement {
-    return (
-        <div
-            className={cn("flex flex-col-reverse gap-2 sm:flex-row sm:justify-end", className)}
-            {...props}
-        />
-    );
-}
-
 export const SheetTitle = forwardRef<
     ComponentRef<typeof DialogPrimitive.Title>,
     ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
@@ -92,19 +67,6 @@ export const SheetTitle = forwardRef<
     return (
         <DialogPrimitive.Title
             className={cn("text-lg font-semibold text-foreground", className)}
-            ref={ref}
-            {...props}
-        />
-    );
-});
-
-export const SheetDescription = forwardRef<
-    ComponentRef<typeof DialogPrimitive.Description>,
-    ComponentPropsWithoutRef<typeof DialogPrimitive.Description>
->(function SheetDescription({ className, ...props }, ref): ReactElement {
-    return (
-        <DialogPrimitive.Description
-            className={cn("text-sm text-muted-foreground", className)}
             ref={ref}
             {...props}
         />
