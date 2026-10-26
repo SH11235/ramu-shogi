@@ -14,6 +14,7 @@ on:
       - "knip.json"
       - "tsconfig*.json"
       - "scripts/validate-desktop-release.*"
+      - "scripts/check-unused-design-tokens.*"
       - ".github/workflows/release-desktop.yml"
       - "tsconfig.base.json"
       - ".github/workflows/js-format-lint.yml"
@@ -29,6 +30,7 @@ on:
       - "knip.json"
       - "tsconfig*.json"
       - "scripts/validate-desktop-release.*"
+      - "scripts/check-unused-design-tokens.*"
       - ".github/workflows/release-desktop.yml"
       - "tsconfig.base.json"
       - ".github/workflows/js-format-lint.yml"
@@ -70,6 +72,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm test:release
+      - run: pnpm test:design-tokens
+      - run: pnpm check:design-tokens
 
   knip:
     runs-on: ubuntu-latest

@@ -2527,7 +2527,6 @@ export function ShogiMatch({
                 <SearchInfoPanel side={liveSearchInfo.side} info={liveSearchInfo.event} isMobile />
             ) : null,
         isReviewMode,
-        reviewMode,
         onOpenAbout: () => setIsAboutOpen(true),
         onImportSfen: importSfenFromPanel,
         onImportKif: importKifFromPanel,

@@ -13,6 +13,8 @@
         "check:contracts:frontend": "node scripts/check-frontend-contracts.mjs",
         "check:contracts:backend": "node scripts/check-backend-contracts.mjs",
         "test:contracts": "node --test scripts/contract-check.test.mjs",
+        "check:design-tokens": "node scripts/check-unused-design-tokens.mjs",
+        "test:design-tokens": "node --test scripts/check-unused-design-tokens.test.mjs",
         "build": "turbo build",
         "dev": "turbo dev",
         "test": "turbo test -- --run",

@@ -207,7 +207,7 @@ function EvalHintBanner({
                     onClick={onEnable}
                     className="
                         flex items-center gap-2 text-[12px] font-medium
-                        text-wafuu-sumi dark:text-foreground
+                        text-wafuu-sumi
                         hover:text-wafuu-shu transition-colors
                         bg-transparent border-none cursor-pointer p-0
                     "
@@ -433,7 +433,7 @@ function ExpandedMoveDetails({
         <section
             className="
                 mt-1 mx-1 p-3 rounded-lg
-                bg-wafuu-washi dark:bg-card
+                bg-wafuu-washi
                 border border-border
                 shadow-sm
                 animate-[slideDown_0.15s_ease-out]
@@ -642,7 +642,7 @@ function PvCandidateItem({
         <div
             className="
                 border border-border rounded-lg p-2
-                bg-wafuu-washi/30 dark:bg-muted/30
+                bg-wafuu-washi/30
             "
         >
             {/* ヘッダー: 候補番号 + 評価値 */}
