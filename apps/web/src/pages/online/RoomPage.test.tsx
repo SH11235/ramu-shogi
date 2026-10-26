@@ -204,6 +204,7 @@ const ROOM_INFO = {
 
 const { default: RoomPage } = await import("./RoomPage");
 const { readPlayHandoff } = await import("../../lib/playHandoff");
+const { AppDialogHost } = await import("../../components/AppDialogs");
 
 describe("RoomPage", () => {
     beforeEach(() => {
@@ -504,9 +505,12 @@ describe("RoomPage", () => {
 
         it("局面を引き継げなかったら、遷移せず席の記憶も残す", async () => {
             stubGameRecordFetch(() => Promise.resolve({ ok: false, status: 401 }));
-            const alert = vi.fn();
-            vi.stubGlobal("alert", alert);
-            render(<RoomPage />);
+            render(
+                <>
+                    <RoomPage />
+                    <AppDialogHost />
+                </>,
+            );
             await deliverOnOpen("test-room", [finishedSnapshot()]);
 
             const setItem = vi.spyOn(window.sessionStorage, "setItem").mockImplementation(() => {
@@ -518,7 +522,9 @@ describe("RoomPage", () => {
                 setItem.mockRestore();
             }
 
-            expect(alert).toHaveBeenCalledTimes(1);
+            expect(
+                screen.getByRole("alertdialog", { name: "局面を引き継げませんでした" }),
+            ).toBeTruthy();
             expect(mockNavigate).not.toHaveBeenCalled();
             expect(localStorage.getItem("ramu_resume_token_test-room")).toBe("token-test-room");
             expect(localStorage.getItem("ramu_seat_test-room")).toBe("b");
