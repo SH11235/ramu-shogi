@@ -3,7 +3,6 @@ import { cn } from "@shogi/design-system";
 import { cva, type VariantProps } from "class-variance-authority";
 import type { ComponentPropsWithoutRef, ComponentRef, ReactElement } from "react";
 import { forwardRef } from "react";
-import { useSurfaceTheme } from "./surface-theme";
 
 export const Sheet = DialogPrimitive.Root;
 export const SheetTrigger = DialogPrimitive.Trigger;
@@ -47,13 +46,12 @@ export const SheetContent = forwardRef<
     ComponentRef<typeof DialogPrimitive.Content>,
     ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & VariantProps<typeof sheetVariants>
 >(function SheetContent({ side = "right", className, children, ...props }, ref): ReactElement {
-    const surfaceTheme = useSurfaceTheme();
     return (
         <SheetPortal>
             <SheetOverlay />
             <DialogPrimitive.Content
                 aria-describedby={undefined}
-                className={cn(surfaceTheme, sheetVariants({ side }), className)}
+                className={cn(sheetVariants({ side }), className)}
                 ref={ref}
                 {...props}
             >

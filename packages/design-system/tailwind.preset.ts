@@ -2,7 +2,6 @@ import type { Config } from "tailwindcss";
 import animate from "tailwindcss-animate";
 
 const preset: Omit<Config, "content"> = {
-    darkMode: "selector",
     content: [],
     theme: {
         container: {
@@ -43,10 +42,7 @@ const preset: Omit<Config, "content"> = {
                     DEFAULT: "hsl(var(--popover))",
                     foreground: "hsl(var(--popover-foreground))",
                 },
-                card: {
-                    DEFAULT: "hsl(var(--card))",
-                    foreground: "hsl(var(--card-foreground))",
-                },
+                card: "hsl(var(--card))",
                 // 和モダン配色
                 wafuu: {
                     sumi: "hsl(var(--wafuu-sumi))",
@@ -73,7 +69,6 @@ const preset: Omit<Config, "content"> = {
                 // 接続状態・成功状態
                 status: {
                     online: "hsl(var(--status-online))",
-                    "online-fg": "hsl(var(--status-online-fg))",
                     "online-bg": "hsl(var(--status-online-bg))",
                     "online-border": "hsl(var(--status-online-border))",
                     success: "hsl(var(--status-success))",
@@ -81,7 +76,6 @@ const preset: Omit<Config, "content"> = {
                     "success-bg": "hsl(var(--status-success-bg))",
                     "success-border": "hsl(var(--status-success-border))",
                     warning: "hsl(var(--status-warning))",
-                    "warning-fg": "hsl(var(--status-warning-fg))",
                     "warning-bg": "hsl(var(--status-warning-bg))",
                     "warning-border": "hsl(var(--status-warning-border))",
                 },
@@ -104,9 +98,6 @@ const preset: Omit<Config, "content"> = {
                     border: "hsl(var(--shogi-border))",
                     "cell-light": "hsl(var(--shogi-cell-light))",
                     "cell-dark": "hsl(var(--shogi-cell-dark))",
-                    "piece-text": "hsl(var(--shogi-piece-text))",
-                    "piece-bg": "hsl(var(--shogi-piece-bg))",
-                    "piece-bg-dark": "hsl(var(--shogi-piece-bg-dark))",
                     "coord-text": "hsl(var(--shogi-coord-text))",
                     "last-move-to": "hsl(var(--shogi-last-move-to))",
                     "last-move-to-ring": "hsl(var(--shogi-last-move-to-ring))",
@@ -120,7 +111,6 @@ const preset: Omit<Config, "content"> = {
                 sm: "calc(var(--radius) - 4px)",
             },
             fontFamily: {
-                sans: ["var(--font-sans)", "system-ui", "sans-serif"],
                 // 見出し・和の顔（明朝系）
                 display: ["var(--font-display)", "serif"],
                 // 評価値・秒読み・手数など桁を揃える数値
@@ -146,20 +136,6 @@ const preset: Omit<Config, "content"> = {
                 popover: "70",
                 blocking: "90",
                 drag: "100",
-            },
-            keyframes: {
-                "accordion-down": {
-                    from: { height: "0px" },
-                    to: { height: "var(--radix-accordion-content-height)" },
-                },
-                "accordion-up": {
-                    from: { height: "var(--radix-accordion-content-height)" },
-                    to: { height: "0px" },
-                },
-            },
-            animation: {
-                "accordion-down": "accordion-down 0.2s ease-out",
-                "accordion-up": "accordion-up 0.2s ease-out",
             },
         },
     },

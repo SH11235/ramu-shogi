@@ -60,7 +60,6 @@ const UI_PRIMITIVES = [
     "select",
     "sheet",
     "spinner",
-    "surface-theme",
     "switch",
     "tooltip",
 ];
