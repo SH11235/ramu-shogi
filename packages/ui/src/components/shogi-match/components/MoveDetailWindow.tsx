@@ -15,8 +15,7 @@ import type {
     PresetConfig,
 } from "@shogi/app-core";
 import type { ReactElement } from "react";
-import { useEffect } from "react";
-import { useDraggableWindow } from "../hooks/useDraggableWindow";
+import { FloatingWindow } from "../../floating-window";
 import {
     comparePvWithMainLine,
     findExistingBranchForPv,
@@ -73,7 +72,6 @@ const DEFAULT_WIDTH = 320;
 const DEFAULT_HEIGHT = 400;
 const MIN_WIDTH = 280;
 const MIN_HEIGHT = 200;
-const EDGE_HANDLE_SIZE = 6;
 
 /**
  * 単一のPV候補を表示するコンポーネント
@@ -328,33 +326,6 @@ export function MoveDetailWindow({
     isOnMainLine = true,
     showSearchInfo = false,
 }: MoveDetailWindowProps): ReactElement {
-    const { geometry, handlers } = useDraggableWindow(
-        {
-            x:
-                typeof window !== "undefined"
-                    ? Math.max(50, window.innerWidth - DEFAULT_WIDTH - 100)
-                    : 100,
-            y: typeof window !== "undefined" ? 100 : 100,
-        },
-        { width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT },
-        { minWidth: MIN_WIDTH, minHeight: MIN_HEIGHT },
-    );
-
-    const { position: windowPosition, size } = geometry;
-    const { onMoveStart: handleMoveStart, createResizeHandler } = handlers;
-
-    // Escキーでウィンドウを閉じる
-    useEffect(() => {
-        const handleEscape = (e: KeyboardEvent) => {
-            if (e.key === "Escape") {
-                onClose();
-            }
-        };
-
-        document.addEventListener("keydown", handleEscape);
-        return () => document.removeEventListener("keydown", handleEscape);
-    }, [onClose]);
-
     // 複数PVがある場合はリストで表示、なければ従来の単一PVを使用
     const pvList: PvEvalInfo[] = (() => {
         const multiPv = (move.multiPvEvals ?? []).filter((pv) => pv?.pv && pv.pv.length > 0);
@@ -420,22 +391,8 @@ export function MoveDetailWindow({
     const showNnueSelector = analysisNnueSelection !== undefined && !!onAnalysisNnueSelectionChange;
 
     return (
-        <div
-            className="fixed flex flex-col overflow-hidden bg-card border border-border rounded-xl shadow-2xl z-window"
-            style={{
-                left: windowPosition.x,
-                top: windowPosition.y,
-                width: size.width,
-                height: size.height,
-            }}
-        >
-            {/* ヘッダー（ドラッグハンドル） */}
-            <div
-                className="flex justify-between items-center px-3 py-2 bg-muted border-b border-border cursor-move select-none"
-                onMouseDown={handleMoveStart}
-                role="toolbar"
-                aria-label="ウィンドウ移動ハンドル"
-            >
+        <FloatingWindow
+            title={
                 <div className="flex items-center gap-2">
                     <span className="font-semibold text-sm">詳細</span>
                     <span className="text-[11px] text-muted-foreground">{move.ply}手目</span>
@@ -446,133 +403,130 @@ export function MoveDetailWindow({
                         </span>
                     )}
                 </div>
-
-                <button
-                    type="button"
-                    className="bg-transparent border-none cursor-pointer px-2 py-1 rounded text-base leading-none text-muted-foreground hover:bg-accent"
-                    onClick={onClose}
-                    aria-label="閉じる"
+            }
+            onClose={onClose}
+            initialPosition={{
+                x:
+                    typeof window !== "undefined"
+                        ? Math.max(50, window.innerWidth - DEFAULT_WIDTH - 100)
+                        : 100,
+                y: 100,
+            }}
+            initialSize={{ width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT }}
+            minWidth={MIN_WIDTH}
+            minHeight={MIN_HEIGHT}
+            bodyClassName="overflow-auto p-3"
+        >
+            {/* 評価値サマリー */}
+            <div className="flex items-center gap-2 mb-3 p-2 bg-wafuu-washi rounded-lg">
+                <span
+                    className={`font-medium text-[14px] ${
+                        evalInfo.advantage === "sente"
+                            ? "text-wafuu-shu"
+                            : evalInfo.advantage === "gote"
+                              ? "text-wafuu-ai"
+                              : ""
+                    }`}
                 >
-                    ✕
-                </button>
+                    {evalInfo.description}
+                </span>
+                {hasMultiplePv && (
+                    <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                        {pvList.length}候補
+                    </span>
+                )}
+                <div className="text-muted-foreground text-[10px] ml-auto space-x-1.5">
+                    {evalInfo.detail && <span>{evalInfo.detail}</span>}
+                    {evalInfo.depthText && <span>{evalInfo.depthText}</span>}
+                </div>
             </div>
 
-            {/* コンテンツ */}
-            <div className="flex-1 overflow-auto p-3">
-                {/* 評価値サマリー */}
-                <div className="flex items-center gap-2 mb-3 p-2 bg-wafuu-washi rounded-lg">
-                    <span
-                        className={`font-medium text-[14px] ${
-                            evalInfo.advantage === "sente"
-                                ? "text-wafuu-shu"
-                                : evalInfo.advantage === "gote"
-                                  ? "text-wafuu-ai"
-                                  : ""
-                        }`}
-                    >
-                        {evalInfo.description}
+            {showSearchInfo && searchStats && (
+                // Desktop の記録には、届かなかった項目が null で入っていることがある。
+                <div className="mb-3 grid grid-cols-2 gap-1 text-[11px] tabular-nums text-muted-foreground">
+                    <span>
+                        深さ {typeof searchStats.depth === "number" ? searchStats.depth : "—"}
+                        {typeof searchStats.seldepth === "number" &&
+                            `（最大 ${searchStats.seldepth}）`}
                     </span>
-                    {hasMultiplePv && (
-                        <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                            {pvList.length}候補
-                        </span>
-                    )}
-                    <div className="text-muted-foreground text-[10px] ml-auto space-x-1.5">
-                        {evalInfo.detail && <span>{evalInfo.detail}</span>}
-                        {evalInfo.depthText && <span>{evalInfo.depthText}</span>}
-                    </div>
+                    <span>
+                        {typeof searchStats.nodes === "number"
+                            ? `${formatNodeCount(searchStats.nodes)}局面`
+                            : "—"}
+                    </span>
+                    <span>
+                        {typeof searchStats.nps === "number"
+                            ? `${formatNodeCount(searchStats.nps)}局面/秒`
+                            : "—"}
+                    </span>
+                    <span>
+                        考えた時間{" "}
+                        {typeof searchStats.timeMs === "number"
+                            ? `${(searchStats.timeMs / 1000).toFixed(1)}秒`
+                            : "—"}
+                    </span>
+                    <span>
+                        思考上限{" "}
+                        {typeof searchStats.thinkLimitMs === "number"
+                            ? `${(searchStats.thinkLimitMs / 1000).toFixed(1)}秒`
+                            : "—"}
+                    </span>
                 </div>
+            )}
 
-                {showSearchInfo && searchStats && (
-                    // Desktop の記録には、届かなかった項目が null で入っていることがある。
-                    <div className="mb-3 grid grid-cols-2 gap-1 text-[11px] tabular-nums text-muted-foreground">
-                        <span>
-                            深さ {typeof searchStats.depth === "number" ? searchStats.depth : "—"}
-                            {typeof searchStats.seldepth === "number" &&
-                                `（最大 ${searchStats.seldepth}）`}
-                        </span>
-                        <span>
-                            {typeof searchStats.nodes === "number"
-                                ? `${formatNodeCount(searchStats.nodes)}局面`
-                                : "—"}
-                        </span>
-                        <span>
-                            {typeof searchStats.nps === "number"
-                                ? `${formatNodeCount(searchStats.nps)}局面/秒`
-                                : "—"}
-                        </span>
-                        <span>
-                            考えた時間{" "}
-                            {typeof searchStats.timeMs === "number"
-                                ? `${(searchStats.timeMs / 1000).toFixed(1)}秒`
-                                : "—"}
-                        </span>
-                        <span>
-                            思考上限{" "}
-                            {typeof searchStats.thinkLimitMs === "number"
-                                ? `${(searchStats.thinkLimitMs / 1000).toFixed(1)}秒`
-                                : "—"}
-                        </span>
-                    </div>
-                )}
+            {/* 複数PV候補リスト */}
+            {hasPv && (
+                <div className="space-y-2">
+                    {pvList.map((pv) => (
+                        <PvCandidateItem
+                            key={pv.multipv}
+                            pv={pv}
+                            position={position}
+                            ply={move.ply}
+                            onAddBranch={onAddBranch}
+                            onPreview={onPreview}
+                            isOnMainLine={isOnMainLine}
+                            kifuTree={kifuTree}
+                        />
+                    ))}
+                </div>
+            )}
 
-                {/* 複数PV候補リスト */}
-                {hasPv && (
-                    <div className="space-y-2">
-                        {pvList.map((pv) => (
-                            <PvCandidateItem
-                                key={pv.multipv}
-                                pv={pv}
-                                position={position}
-                                ply={move.ply}
-                                onAddBranch={onAddBranch}
-                                onPreview={onPreview}
-                                isOnMainLine={isOnMainLine}
-                                kifuTree={kifuTree}
-                            />
-                        ))}
-                    </div>
-                )}
-
-                {/* 解析ボタン */}
-                {onAnalyze && (
-                    <div
-                        className={
-                            hasPv ? "pt-2 border-t border-border mt-2 space-y-2" : "space-y-2"
-                        }
-                    >
-                        {!hasPv && (
-                            <div className="text-[11px] text-muted-foreground mb-2">
-                                読み筋がありません
-                            </div>
-                        )}
-                        {showNnueSelector && (
-                            <label className="flex flex-col gap-1 text-[10px] text-muted-foreground">
-                                <span>分析に使うAI</span>
-                                <NativeSelect
-                                    value={selectedValue}
-                                    onChange={(e) =>
-                                        onAnalysisNnueSelectionChange?.(
-                                            parseNnueSelectionValue(e.target.value),
-                                        )
-                                    }
-                                    wrapperClassName="w-full"
-                                    className="text-xs"
-                                >
-                                    <option value="material">簡易AI（駒得）</option>
-                                    {nnueOptions.map((opt) => (
-                                        <option key={toOptionValue(opt)} value={toOptionValue(opt)}>
-                                            {opt.label}
-                                        </option>
-                                    ))}
-                                </NativeSelect>
-                            </label>
-                        )}
-                        <button
-                            type="button"
-                            onClick={() => onAnalyze(move.ply)}
-                            disabled={isThisPlyAnalyzing}
-                            className={`
+            {/* 解析ボタン */}
+            {onAnalyze && (
+                <div className={hasPv ? "pt-2 border-t border-border mt-2 space-y-2" : "space-y-2"}>
+                    {!hasPv && (
+                        <div className="text-[11px] text-muted-foreground mb-2">
+                            読み筋がありません
+                        </div>
+                    )}
+                    {showNnueSelector && (
+                        <label className="flex flex-col gap-1 text-[10px] text-muted-foreground">
+                            <span>分析に使うAI</span>
+                            <NativeSelect
+                                value={selectedValue}
+                                onChange={(e) =>
+                                    onAnalysisNnueSelectionChange?.(
+                                        parseNnueSelectionValue(e.target.value),
+                                    )
+                                }
+                                wrapperClassName="w-full"
+                                className="text-xs"
+                            >
+                                <option value="material">簡易AI（駒得）</option>
+                                {nnueOptions.map((opt) => (
+                                    <option key={toOptionValue(opt)} value={toOptionValue(opt)}>
+                                        {opt.label}
+                                    </option>
+                                ))}
+                            </NativeSelect>
+                        </label>
+                    )}
+                    <button
+                        type="button"
+                        onClick={() => onAnalyze(move.ply)}
+                        disabled={isThisPlyAnalyzing}
+                        className={`
                                 w-full px-3 py-2 text-[12px]
                                 disabled:opacity-50 disabled:cursor-not-allowed
                                 rounded border border-border
@@ -583,86 +537,31 @@ export function MoveDetailWindow({
                                         : "bg-primary text-primary-foreground hover:bg-primary/90"
                                 }
                             `}
-                        >
-                            {isThisPlyAnalyzing ? (
-                                <span>解析中...</span>
-                            ) : (
-                                <>
-                                    <span className="mr-1">{hasPv ? "🔄" : "🔍"}</span>
-                                    {hasPv ? "再解析する" : "この局面を解析する"}
-                                </>
-                            )}
-                        </button>
-                        {/* 解析エラー表示 */}
-                        {analysisError && analysisError.ply === move.ply && (
-                            <div className="mt-2 px-2 py-1.5 rounded bg-destructive/10 border border-destructive/30 text-destructive text-[11px]">
-                                {analysisError.message}
-                            </div>
+                    >
+                        {isThisPlyAnalyzing ? (
+                            <span>解析中...</span>
+                        ) : (
+                            <>
+                                <span className="mr-1">{hasPv ? "🔄" : "🔍"}</span>
+                                {hasPv ? "再解析する" : "この局面を解析する"}
+                            </>
                         )}
-                    </div>
-                )}
+                    </button>
+                    {/* 解析エラー表示 */}
+                    {analysisError && analysisError.ply === move.ply && (
+                        <div className="mt-2 px-2 py-1.5 rounded bg-destructive/10 border border-destructive/30 text-destructive text-[11px]">
+                            {analysisError.message}
+                        </div>
+                    )}
+                </div>
+            )}
 
-                {/* 読み筋もなく解析機能もない場合のメッセージ */}
-                {!hasPv && !onAnalyze && (
-                    <div className="text-[12px] text-muted-foreground text-center py-4">
-                        この手には詳細情報がありません
-                    </div>
-                )}
-            </div>
-
-            {/* リサイズハンドル - マウス操作専用のためアクセシビリティツリーから除外 */}
-            <div
-                className="absolute top-0 left-3 right-3 cursor-ns-resize"
-                style={{ height: EDGE_HANDLE_SIZE }}
-                onMouseDown={createResizeHandler("resize-n")}
-                aria-hidden="true"
-            />
-            <div
-                className="absolute bottom-0 left-3 right-3 cursor-ns-resize"
-                style={{ height: EDGE_HANDLE_SIZE }}
-                onMouseDown={createResizeHandler("resize-s")}
-                aria-hidden="true"
-            />
-            <div
-                className="absolute left-0 top-3 bottom-3 cursor-ew-resize"
-                style={{ width: EDGE_HANDLE_SIZE }}
-                onMouseDown={createResizeHandler("resize-w")}
-                aria-hidden="true"
-            />
-            <div
-                className="absolute right-0 top-3 bottom-3 cursor-ew-resize"
-                style={{ width: EDGE_HANDLE_SIZE }}
-                onMouseDown={createResizeHandler("resize-e")}
-                aria-hidden="true"
-            />
-            <div
-                className="absolute left-0 top-0 w-3 h-3 cursor-nwse-resize"
-                onMouseDown={createResizeHandler("resize-nw")}
-                aria-hidden="true"
-            >
-                <div className="absolute left-1 top-1 w-2 h-2 border-l-2 border-t-2 border-muted-foreground opacity-50" />
-            </div>
-            <div
-                className="absolute right-0 top-0 w-3 h-3 cursor-nesw-resize"
-                onMouseDown={createResizeHandler("resize-ne")}
-                aria-hidden="true"
-            >
-                <div className="absolute right-1 top-1 w-2 h-2 border-r-2 border-t-2 border-muted-foreground opacity-50" />
-            </div>
-            <div
-                className="absolute left-0 bottom-0 w-3 h-3 cursor-nesw-resize"
-                onMouseDown={createResizeHandler("resize-sw")}
-                aria-hidden="true"
-            >
-                <div className="absolute left-1 bottom-1 w-2 h-2 border-l-2 border-b-2 border-muted-foreground opacity-50" />
-            </div>
-            <div
-                className="absolute right-0 bottom-0 w-3 h-3 cursor-nwse-resize"
-                onMouseDown={createResizeHandler("resize-se")}
-                aria-hidden="true"
-            >
-                <div className="absolute right-1 bottom-1 w-2 h-2 border-r-2 border-b-2 border-muted-foreground opacity-50" />
-            </div>
-        </div>
+            {/* 読み筋もなく解析機能もない場合のメッセージ */}
+            {!hasPv && !onAnalyze && (
+                <div className="text-[12px] text-muted-foreground text-center py-4">
+                    この手には詳細情報がありません
+                </div>
+            )}
+        </FloatingWindow>
     );
 }
