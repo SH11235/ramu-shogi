@@ -1,5 +1,7 @@
+import { cn } from "@shogi/design-system";
 import type { RshogiPlayerDetail } from "@shogi/match-client";
 import { fetchRshogiPlayerDetail } from "@shogi/match-client";
+import { Card, cardVariants } from "@shogi/ui/components/card";
 import { RshogiCsaGameList } from "@shogi/ui/components/rshogi-csa-game-list";
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import type { ReactElement } from "react";
@@ -129,72 +131,82 @@ export default function RshogiPlayerDetailPage(): ReactElement {
                 )}
                 {player && (
                     <>
-                        <section className="overflow-hidden rounded-2xl border border-wafuu-border bg-wafuu-washi-warm shadow-sm">
-                            <div className="grid lg:grid-cols-[minmax(0,1fr)_18rem]">
-                                <div className="flex min-w-0 flex-col justify-between gap-8 bg-wafuu-sumi px-5 py-7 text-wafuu-washi-warm sm:px-8 sm:py-9">
-                                    <div className="flex flex-col gap-3">
-                                        <div className="flex flex-wrap items-center gap-2 text-xs tracking-[0.18em] text-wafuu-kincha">
-                                            RATING RECORD
-                                            {player.legacy && (
-                                                <span className="rounded-sm border border-wafuu-kincha/50 px-1.5 py-0.5 text-[10px]">
-                                                    LEGACY
-                                                </span>
-                                            )}
+                        <Card
+                            asChild
+                            variant="washi"
+                            elevation="raised"
+                            className="overflow-hidden"
+                        >
+                            <section>
+                                <div className="grid lg:grid-cols-[minmax(0,1fr)_18rem]">
+                                    <div className="flex min-w-0 flex-col justify-between gap-8 bg-wafuu-sumi px-5 py-7 text-wafuu-washi-warm sm:px-8 sm:py-9">
+                                        <div className="flex flex-col gap-3">
+                                            <div className="flex flex-wrap items-center gap-2 text-xs tracking-[0.18em] text-wafuu-kincha">
+                                                RATING RECORD
+                                                {player.legacy && (
+                                                    <span className="rounded-sm border border-wafuu-kincha/50 px-1.5 py-0.5 text-[10px]">
+                                                        LEGACY
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <h1 className="truncate font-serif text-3xl font-bold sm:text-4xl">
+                                                {player.displayName}
+                                            </h1>
+                                            <code className="truncate text-[11px] text-wafuu-washi-warm/45 sm:text-xs">
+                                                {player.playerId}
+                                            </code>
                                         </div>
-                                        <h1 className="truncate font-serif text-3xl font-bold sm:text-4xl">
-                                            {player.displayName}
-                                        </h1>
-                                        <code className="truncate text-[11px] text-wafuu-washi-warm/45 sm:text-xs">
-                                            {player.playerId}
-                                        </code>
+                                        <Link
+                                            to="/rshogi-viewer/players"
+                                            className="w-fit border-b border-wafuu-kincha pb-1 pt-2 text-sm hover:text-wafuu-kincha"
+                                        >
+                                            ← レーティングへ戻る
+                                        </Link>
                                     </div>
-                                    <Link
-                                        to="/rshogi-viewer/players"
-                                        className="w-fit border-b border-wafuu-kincha pb-1 pt-2 text-sm hover:text-wafuu-kincha"
-                                    >
-                                        ← レーティングへ戻る
-                                    </Link>
-                                </div>
-                                <div className="flex flex-col justify-center gap-1 border-t border-wafuu-border px-6 py-7 lg:border-l lg:border-t-0">
-                                    <span className="text-xs tracking-[0.2em] text-muted-foreground">
-                                        ELO RATING
-                                    </span>
-                                    <strong className="font-mono text-5xl font-bold tabular-nums text-wafuu-shu">
-                                        {Math.round(player.rating).toLocaleString("ja-JP")}
-                                    </strong>
-                                    <span className="mt-2 text-xs text-muted-foreground">
-                                        初期値 1500 · K=32
-                                    </span>
-                                </div>
-                            </div>
-                            <dl className="grid grid-cols-4 divide-x divide-wafuu-border border-t border-wafuu-border">
-                                {[
-                                    ["対局", player.games],
-                                    ["勝", player.wins],
-                                    ["敗", player.losses],
-                                    ["分", player.draws],
-                                ].map(([label, value]) => (
-                                    <div
-                                        key={label}
-                                        className="flex flex-col items-center gap-1 px-2 py-4"
-                                    >
-                                        <dt className="text-[11px] tracking-widest text-muted-foreground">
-                                            {label}
-                                        </dt>
-                                        <dd className="font-mono text-xl tabular-nums text-wafuu-sumi">
-                                            {value}
-                                        </dd>
+                                    <div className="flex flex-col justify-center gap-1 border-t border-wafuu-border px-6 py-7 lg:border-l lg:border-t-0">
+                                        <span className="text-xs tracking-[0.2em] text-muted-foreground">
+                                            ELO RATING
+                                        </span>
+                                        <strong className="font-mono text-5xl font-bold tabular-nums text-wafuu-shu">
+                                            {Math.round(player.rating).toLocaleString("ja-JP")}
+                                        </strong>
+                                        <span className="mt-2 text-xs text-muted-foreground">
+                                            初期値 1500 · K=32
+                                        </span>
                                     </div>
-                                ))}
-                            </dl>
-                        </section>
+                                </div>
+                                <dl className="grid grid-cols-4 divide-x divide-wafuu-border border-t border-wafuu-border">
+                                    {[
+                                        ["対局", player.games],
+                                        ["勝", player.wins],
+                                        ["敗", player.losses],
+                                        ["分", player.draws],
+                                    ].map(([label, value]) => (
+                                        <div
+                                            key={label}
+                                            className="flex flex-col items-center gap-1 px-2 py-4"
+                                        >
+                                            <dt className="text-[11px] tracking-widest text-muted-foreground">
+                                                {label}
+                                            </dt>
+                                            <dd className="font-mono text-xl tabular-nums text-wafuu-sumi">
+                                                {value}
+                                            </dd>
+                                        </div>
+                                    ))}
+                                </dl>
+                            </section>
+                        </Card>
 
                         {nnueLabExperiment && (
                             <a
                                 href={`${nnueLabBaseUrl}/t/${encodeURIComponent(nnueLabExperiment.tenant_slug)}/experiments/${encodeURIComponent(nnueLabExperiment.experiment_id)}`}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="flex items-center justify-between gap-4 rounded-xl border border-wafuu-border bg-wafuu-washi-warm px-5 py-4 text-wafuu-sumi shadow-sm transition-colors hover:bg-wafuu-kincha/10"
+                                className={cn(
+                                    cardVariants({ variant: "washi", elevation: "raised" }),
+                                    "flex items-center justify-between gap-4 px-5 py-4 text-wafuu-sumi transition-colors hover:bg-wafuu-kincha/10",
+                                )}
                             >
                                 <span className="min-w-0">
                                     <span className="block text-[11px] font-semibold tracking-[0.2em] text-wafuu-shu">

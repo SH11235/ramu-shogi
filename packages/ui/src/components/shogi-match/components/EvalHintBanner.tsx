@@ -17,7 +17,7 @@ export function EvalHintBanner({
     return (
         <div
             className={cn(
-                "relative overflow-hidden bg-gradient-to-r from-wafuu-washi-warm to-wafuu-washi border border-wafuu-kin/40 rounded-lg px-3 py-2 animate-[slideDown_0.3s_ease-out,fadeIn_0.3s_ease-out] shadow-[0_2px_8px_hsl(var(--wafuu-kin)/0.15)]",
+                "relative overflow-hidden bg-gradient-to-r from-wafuu-washi-warm to-wafuu-washi border border-wafuu-kin/40 rounded-lg px-3 py-2 animate-[slideDown_0.3s_ease-out,fadeIn_0.3s_ease-out] shadow-sm",
                 className,
             )}
         >

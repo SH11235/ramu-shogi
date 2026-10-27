@@ -41,6 +41,7 @@ import {
 } from "@shogi/match-client";
 import { type ReactElement, type ReactNode, useEffect, useRef, useState } from "react";
 import { useScreenWakeLock } from "../hooks/useScreenWakeLock";
+import { cardVariants } from "./card";
 import { resolveDisplayedResult } from "./rshogi-csa-result";
 import {
     type PlayFromPosition,
@@ -694,7 +695,10 @@ export function RshogiLiveScoreboard({
     return (
         <section
             aria-label="対局スコアボード"
-            className="grid grid-cols-1 overflow-hidden rounded-xl border border-wafuu-border bg-wafuu-washi-warm shadow-sm sm:grid-cols-[1fr_auto_1fr]"
+            className={cn(
+                cardVariants({ variant: "washi", elevation: "raised" }),
+                "grid grid-cols-1 overflow-hidden sm:grid-cols-[1fr_auto_1fr]",
+            )}
         >
             <ScoreboardSide
                 side="sente"

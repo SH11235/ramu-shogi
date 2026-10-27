@@ -53,14 +53,11 @@ export const DragGhost = forwardRef<HTMLDivElement, DragGhostProps>(function Dra
             <div
                 className={cn(
                     "relative flex h-11 w-11 items-center justify-center",
-                    "shadow-[0_8px_24px_rgba(0,0,0,0.35),0_4px_8px_rgba(0,0,0,0.2)]",
+                    "shadow-drag",
                     "transform-gpu",
                     shouldFlip && "-rotate-180",
                     // 削除モード時のエフェクト
-                    mode === "delete" && [
-                        "ring-2 ring-destructive/70",
-                        "shadow-[0_0_16px_hsl(var(--destructive)/0.5),0_8px_24px_rgba(0,0,0,0.35)]",
-                    ],
+                    mode === "delete" && "ring-2 ring-destructive/70",
                 )}
             >
                 {/* 駒画像 */}

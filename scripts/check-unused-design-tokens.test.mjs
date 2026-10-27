@@ -3,6 +3,7 @@ import test from "node:test";
 import {
     collectCssVariables,
     collectPresetTokens,
+    findAdHocDesignClasses,
     findUnusedCssVariables,
     findUnusedPresetTokens,
     stripComments,
@@ -117,4 +118,30 @@ test("keyframes は使われている animation か animate-[...] から参照�
         "animation.wave",
         "keyframes.wave",
     ]);
+});
+
+test("トークンを通さない影・角の丸み・重なり順を拾い、トークンや部品の段は通す", () => {
+    const source = [
+        'className="shadow-[0_2px_8px_black] hover:shadow-lg drop-shadow-[0_1px_1px_black]"',
+        'className="rounded-[2px] rounded-tl-[3px] z-50 z-[60] md:z-100"',
+        'className="inset-shadow-[inset_0_1px_black] [box-shadow:0_1px_black] [border-top-left-radius:3px] [z-index:100]"',
+        'className="shadow-sm hover:shadow-md shadow-panel drop-shadow-piece rounded-xl z-modal z-40 z-5"',
+    ].join("\n");
+    assert.deepEqual(
+        findAdHocDesignClasses(source).map(({ match }) => match),
+        [
+            "shadow-[",
+            "drop-shadow-[",
+            "inset-shadow-[",
+            "[box-shadow:",
+            "[border-top-left-radius:",
+            "[z-index:",
+            "shadow-lg",
+            "rounded-[",
+            "rounded-tl-[",
+            "z-50",
+            "z-[",
+            "z-100",
+        ],
+    );
 });

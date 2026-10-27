@@ -21,7 +21,7 @@ export function StudyNotice({
                 <div
                     role={message.type === "error" ? "alert" : "status"}
                     className={cn(
-                        "pointer-events-auto flex max-w-[min(36rem,100%)] items-start gap-3 whitespace-pre-line rounded-lg border px-3 py-2 text-sm shadow-card",
+                        "pointer-events-auto flex max-w-[min(36rem,100%)] items-start gap-3 whitespace-pre-line rounded-lg border px-3 py-2 text-sm shadow-panel",
                         message.type === "error"
                             ? "border-destructive/40 bg-card text-destructive"
                             : message.type === "warning"

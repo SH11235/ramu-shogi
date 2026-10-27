@@ -223,7 +223,7 @@ export function KifuNavigationToolbar({
                         side="bottom"
                         align="end"
                         sideOffset={4}
-                        className="w-auto min-w-[100px] overflow-hidden rounded p-0 shadow-lg"
+                        className="w-auto min-w-[100px] overflow-hidden p-0"
                         // 先頭ではなく今の分岐から矢印キーで動けるようにする
                         onOpenAutoFocus={(event) => {
                             event.preventDefault();

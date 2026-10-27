@@ -330,7 +330,7 @@ export function ShogiBoard({
                                                     }
                                                 }}
                                                 aria-label="成る"
-                                                className="flex-1 rounded-md border-2 border-wafuu-sumi bg-wafuu-kin text-[15px] font-bold text-wafuu-sumi shadow-lg transition-transform hover:scale-105 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                                className="flex-1 rounded-md border-2 border-wafuu-sumi bg-wafuu-kin text-[15px] font-bold text-wafuu-sumi shadow-md transition-transform hover:scale-105 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                                             >
                                                 成
                                             </button>
@@ -352,7 +352,7 @@ export function ShogiBoard({
                                                     }
                                                 }}
                                                 aria-label="成らない"
-                                                className="flex-1 rounded-md border-2 border-wafuu-sumi bg-background text-[15px] font-bold text-wafuu-sumi shadow-lg transition-transform hover:scale-105 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                                className="flex-1 rounded-md border-2 border-wafuu-sumi bg-background text-[15px] font-bold text-wafuu-sumi shadow-md transition-transform hover:scale-105 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                                             >
                                                 不成
                                             </button>

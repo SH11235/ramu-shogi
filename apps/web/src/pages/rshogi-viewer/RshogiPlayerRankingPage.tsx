@@ -92,7 +92,7 @@ export default function RshogiPlayerRankingPage(): ReactElement {
                 right={<HeaderNav />}
             />
             <PageContainer width="wide" className="gap-5">
-                <section className="relative overflow-hidden rounded-2xl bg-wafuu-sumi px-5 py-7 text-wafuu-washi-warm shadow-lg sm:px-8 sm:py-9">
+                <section className="relative overflow-hidden rounded-xl bg-wafuu-sumi px-5 py-7 text-wafuu-washi-warm shadow-sm sm:px-8 sm:py-9">
                     <div
                         className="pointer-events-none absolute -right-10 -top-20 h-64 w-64 rounded-full border-[44px] border-wafuu-shu/20"
                         aria-hidden="true"

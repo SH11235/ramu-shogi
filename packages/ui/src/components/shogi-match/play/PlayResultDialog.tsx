@@ -104,7 +104,7 @@ export function PlayResultDialog({ variant }: PlayResultDialogProps): ReactEleme
                     aria-describedby={undefined}
                     onOpenAutoFocus={focusPrimary}
                     onCloseAutoFocus={focusHeading}
-                    className="fixed inset-x-0 bottom-0 z-modal max-h-[calc(100dvh-16px)] overflow-y-auto rounded-t-2xl border-t border-wafuu-border bg-background px-4 pb-[max(env(safe-area-inset-bottom),16px)] pt-2 text-foreground shadow-xl outline-none duration-300 data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom motion-reduce:animate-none"
+                    className="fixed inset-x-0 bottom-0 z-modal max-h-[calc(100dvh-16px)] overflow-y-auto rounded-t-2xl border-t border-wafuu-border bg-background px-4 pb-[max(env(safe-area-inset-bottom),16px)] pt-2 text-foreground shadow-modal outline-none duration-300 data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom motion-reduce:animate-none"
                 >
                     <div className="flex flex-col gap-2">
                         <div

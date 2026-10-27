@@ -62,8 +62,8 @@ export const RSHOGI_VENUE_FILTERS: readonly {
 // 色だけに頼らないよう、種類ごとにアイコンの形も変え、ラベルを必ず併記する。
 const VENUE_ICON_CLASS: Record<RshogiVenueKind, string> = {
     rshogi: "bg-wafuu-shu rounded-full",
-    floodgate: "bg-wafuu-ai rounded-[2px]",
-    other: "bg-wafuu-kincha rotate-45 rounded-[1px]",
+    floodgate: "bg-wafuu-ai rounded-xs",
+    other: "bg-wafuu-kincha rotate-45 rounded-xs",
     unknown: "bg-wafuu-sumi-light rounded-full opacity-60",
 };
 

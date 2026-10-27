@@ -1,6 +1,7 @@
 // デザイントークンの使われ残りを検出する。
 // - theme.css で定義した CSS 変数が、どこからも var(--name) / (--name) で参照されていない
 // - tailwind.preset.ts の theme.extend に定義したキーが、クラスとして一度も使われていない
+// - 影・角の丸み・重なり順を、トークンを通さずに書いている（任意値や、トークンで置き換えた既定の段）
 // クラス名は静的な文字列として書かれている前提で探す（`bg-${name}` のような組み立ては拾えない）。
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -165,6 +166,32 @@ export function findUnusedPresetTokens(tokens, sources) {
     return [...unused, ...unusedKeyframes];
 }
 
+// トークンを通さずに書いた影・角の丸み・重なり順。浮く面の影は shadow-panel / shadow-modal 等、
+// 画面全体に重なる層は z-modal 等を使う。ボタンなど部品の影は Tailwind の shadow-sm / shadow-md まで。
+const AD_HOC_CLASS_PATTERNS = [
+    { pattern: /(?<![\w-])(?:drop-|inset-)?shadow-\[/g, hint: "影の任意値" },
+    {
+        pattern: /\[(?:box-shadow|filter|border(?:-[a-z]+)*-radius|z-index):/g,
+        hint: "影・角の丸み・重なり順の任意プロパティ",
+    },
+    {
+        pattern: /(?<![\w-])shadow-(?:lg|xl|2xl)(?![\w-])/g,
+        hint: "影の段（浮く面は名前付きの影）",
+    },
+    { pattern: new RegExp(`(?<![\\w-])${ROUNDED_PREFIX}-\\[`, "g"), hint: "角の丸みの任意値" },
+    {
+        pattern: /(?<![\w-])z-(?:\[|(?:[5-9]\d|\d{3,})(?![\w-]))/g,
+        hint: "重なり順の数値（50 以上は名前付き）",
+    },
+];
+
+/** トークンを通さずに書いたクラスを `{ match, hint }` の一覧で返す */
+export function findAdHocDesignClasses(source) {
+    return AD_HOC_CLASS_PATTERNS.flatMap(({ pattern, hint }) =>
+        [...source.matchAll(pattern)].map((match) => ({ match: match[0], hint })),
+    );
+}
+
 function listSourceFiles(dir) {
     return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
         const full = path.join(dir, entry.name);
@@ -210,11 +237,17 @@ async function main() {
     for (const { group, name } of unusedTokens) {
         console.error(`${PRESET}: theme.extend.${group} の ${name} がクラスとして使われていない`);
     }
-    if (unusedVariables.length > 0 || unusedTokens.length > 0) {
+    const adHocClasses = sourceFiles.flatMap((file, index) =>
+        findAdHocDesignClasses(sources[index]).map((found) => ({ file, ...found })),
+    );
+    for (const { file, match, hint } of adHocClasses) {
+        console.error(`${path.relative(ROOT, file)}: ${match} はトークンを通していない（${hint}）`);
+    }
+    if (unusedVariables.length > 0 || unusedTokens.length > 0 || adHocClasses.length > 0) {
         process.exitCode = 1;
         return;
     }
-    console.log("使われていないデザイントークンはない");
+    console.log("使われていないデザイントークンも、トークンを通さない影・角・重なり順もない");
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

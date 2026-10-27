@@ -147,14 +147,14 @@ export default function NewStudyFromGamePage(): ReactElement {
                         {isBusy ? (
                             <output
                                 aria-live="polite"
-                                className="rounded-lg border border-wafuu-border bg-card px-4 py-2 text-sm text-wafuu-sumi shadow-lg"
+                                className="rounded-lg border border-wafuu-border bg-card px-4 py-2 text-sm text-wafuu-sumi shadow-panel"
                             >
                                 研究ノートを用意しています…
                             </output>
                         ) : (
                             <p
                                 role="alert"
-                                className="rounded-lg border border-status-warning-border bg-status-warning-bg px-4 py-2 text-sm text-status-warning shadow-lg"
+                                className="rounded-lg border border-status-warning-border bg-status-warning-bg px-4 py-2 text-sm text-status-warning shadow-panel"
                             >
                                 {error}
                             </p>
