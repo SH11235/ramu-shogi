@@ -45,6 +45,8 @@ export {
 // game/csa
 export {
     buildBoardFromCsa,
+    formatCsaMove,
+    formatCsaStartPosition,
     movesToCsa,
     parseCsaMoves,
     parseCsaMovesWithState,

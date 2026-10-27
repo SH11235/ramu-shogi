@@ -1,7 +1,7 @@
 import { applyStudyOps, STUDY_LIMITS, type StudyDocument, type StudyOp } from "@shogi/app-core";
 import type { StoredStudy } from "@shogi/study-client";
 import type { EngineOption, StudyCommentDraft, StudyWorkspaceViewState } from "@shogi/ui";
-import { NnueLibraryDialog, StudyWorkspace } from "@shogi/ui";
+import { downloadTextFile, NnueLibraryDialog, StudyWorkspace } from "@shogi/ui";
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import type { ReactElement, ReactNode } from "react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
@@ -157,6 +157,7 @@ export default function StudyPage(): ReactElement {
     const sync = getStudySync();
     const [state, setState] = useState<LoadState>({ status: "loading" });
     const [reloadCount, setReloadCount] = useState(0);
+    const [isTitleDialogOpen, setIsTitleDialogOpen] = useState(false);
     const [notice, setNotice] = useState<{ id: number; text: string; type: "error" } | null>(null);
     const [isNnueLibraryOpen, setIsNnueLibraryOpen] = useState(false);
     const nnueAccount = useAccountNnue();
@@ -569,7 +570,13 @@ export default function StudyPage(): ReactElement {
                 items={[
                     { label: "ラム将棋", to: "/" },
                     { label: "研究ノート", to: "/studies" },
-                    { label: title },
+                    {
+                        label: title,
+                        action:
+                            state.status === "ready" && !state.locked
+                                ? { onClick: () => setIsTitleDialogOpen(true), hint: "表題を変更" }
+                                : undefined,
+                    },
                 ]}
                 // 見出しの「ログイン」も、保存状態の案内と同じく、ログイン後にこのノートへ戻る。
                 right={<HeaderNav login={{ href: loginHref(studyId), onNavigate: goToLogin }} />}
@@ -637,6 +644,11 @@ export default function StudyPage(): ReactElement {
                         onDiscard={handleDiscard}
                         originLink={renderOriginLink(state.doc.origin)}
                         onPlayFromPosition={playFromPosition}
+                        onSaveKifuFile={downloadTextFile}
+                        titleDialog={{
+                            open: isTitleDialogOpen,
+                            onOpenChange: setIsTitleDialogOpen,
+                        }}
                         locked={state.locked}
                         commentBaseConfirmed={state.fresh}
                         initialCommentDrafts={state.drafts}

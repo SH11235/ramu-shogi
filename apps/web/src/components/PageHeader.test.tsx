@@ -1,4 +1,4 @@
-import { render } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -38,5 +38,19 @@ describe("PageHeader", () => {
         const { rerender } = render(<PageHeader items={[{ label: "研究ノート" }]} />);
         rerender(<PageHeader items={[{ label: "矢倉の研究" }]} />);
         expect(document.title).toBe("矢倉の研究 | ラム将棋");
+    });
+
+    it("現在地に操作があれば、押せるボタンにする", () => {
+        const onClick = vi.fn();
+        render(
+            <PageHeader
+                items={[
+                    { label: "研究ノート", to: "/studies" },
+                    { label: "矢倉の研究", action: { onClick, hint: "表題を変更" } },
+                ]}
+            />,
+        );
+        fireEvent.click(screen.getByRole("button", { name: "矢倉の研究（表題を変更）" }));
+        expect(onClick).toHaveBeenCalledTimes(1);
     });
 });

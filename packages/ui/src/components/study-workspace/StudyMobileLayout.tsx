@@ -1,6 +1,7 @@
 import { cn } from "@shogi/design-system";
 import type { CSSProperties, KeyboardEvent, ReactElement, ReactNode, RefObject } from "react";
 import { useLayoutEffect, useRef, useState } from "react";
+import { BranchIcon } from "./StudyIcons";
 import { StudyNavBar } from "./StudyNavBar";
 import { fitMobileBoard, mobileCommentMaxHeight } from "./studyMobileBoardFit";
 
@@ -80,13 +81,14 @@ export function StudyMobileLayout({
     measure,
     locked,
     moreMenu,
+    saveStrip,
     board,
     boardSectionRef,
     nav,
     commentButton,
     commentBox,
     showsComment,
-    backToMainButton,
+    onBackToMainLine,
     moveStrip,
     graphPanel,
     moveList,
@@ -97,6 +99,8 @@ export function StudyMobileLayout({
     measure: StudyMobileMeasure;
     locked: boolean;
     moreMenu: ReactNode;
+    /** 表示の切り替えの下に出す、保存の状態の帯（出さないときは null）。 */
+    saveStrip: ReactNode;
     board: ReactNode;
     boardSectionRef: RefObject<HTMLDivElement | null>;
     nav: {
@@ -110,7 +114,8 @@ export function StudyMobileLayout({
     commentButton: ReactNode;
     commentBox: ReactNode;
     showsComment: boolean;
-    backToMainButton: ReactNode;
+    /** 変化を見ているときの「本譜に戻る」。本譜にいる間は null。 */
+    onBackToMainLine: (() => void) | null;
     moveStrip: ReactNode;
     graphPanel: ReactNode;
     moveList: ReactNode;
@@ -143,7 +148,7 @@ export function StudyMobileLayout({
                 <div
                     role="tablist"
                     aria-label="表示の切り替え"
-                    className="grid min-w-0 flex-1 grid-cols-[3rem_repeat(3,minmax(0,1fr))] gap-1 rounded-lg border border-wafuu-border bg-wafuu-washi-warm p-1"
+                    className="grid min-w-0 flex-1 grid-cols-3 gap-1 rounded-lg border border-wafuu-border bg-wafuu-washi-warm p-1"
                 >
                     {MOBILE_TABS.map((item) => (
                         <button
@@ -169,6 +174,7 @@ export function StudyMobileLayout({
                 </div>
                 {moreMenu}
             </div>
+            {saveStrip}
             <div
                 ref={measure.observePanel}
                 id="study-tabpanel"
@@ -213,6 +219,23 @@ export function StudyMobileLayout({
                 {/* 局面の移動と、この局面へのコメント。どの表示でも盤のすぐ下の同じ位置に置く。
                     コメント欄は開いたときだけ、この行の下に重ねる（開閉で画面が上下しない）。 */}
                 <div className="relative flex shrink-0 items-center justify-center gap-1">
+                    {/* 「本譜へ」はどの表示でもこの位置に出す。本譜にいる間も場所は空けておき、変化に
+                        出入りしても移動のボタンが左右に動かないようにする。 */}
+                    <button
+                        type="button"
+                        aria-label="本譜に戻る"
+                        aria-hidden={onBackToMainLine === null}
+                        tabIndex={onBackToMainLine === null ? -1 : undefined}
+                        onClick={onBackToMainLine ?? undefined}
+                        className={cn(
+                            "flex h-10 shrink-0 items-center justify-center rounded-md border border-wafuu-border bg-card px-1.5 text-xs font-medium text-wafuu-ai transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                            onBackToMainLine === null && "invisible",
+                        )}
+                    >
+                        {/* 幅の狭い画面では文字を入れる場所が無いので、枝分かれの印だけにする。 */}
+                        <BranchIcon className="h-4 w-4 min-[375px]:hidden" />
+                        <span className="hidden min-[375px]:inline">本譜へ</span>
+                    </button>
                     <StudyNavBar compact {...nav} />
                     {commentButton}
                     <div
@@ -238,10 +261,7 @@ export function StudyMobileLayout({
                 </div>
                 {tab === "board" ? (
                     <div className="flex min-h-0 flex-1 flex-col gap-1.5">
-                        <div className="flex shrink-0 items-center gap-1.5">
-                            {backToMainButton}
-                            <div className="min-w-0 flex-1">{moveStrip}</div>
-                        </div>
+                        <div className="shrink-0">{moveStrip}</div>
                         {/* グラフは残りの高さいっぱいに広げる（盤の下に空きを作らない）。 */}
                         <div ref={measure.observeGraphSlot} className="min-h-0 flex-1">
                             {graphPanel}
@@ -249,10 +269,6 @@ export function StudyMobileLayout({
                     </div>
                 ) : (
                     <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain">
-                        {/* 棋譜の欄は見出しに同じ操作があるので、それ以外の欄にだけ出す。 */}
-                        {tab !== "moves" && backToMainButton && (
-                            <div className="flex shrink-0">{backToMainButton}</div>
-                        )}
                         {tab === "moves" && moveList}
                         {tab === "candidates" && candidatesPanel}
                     </div>

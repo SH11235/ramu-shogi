@@ -68,11 +68,11 @@ export function useStudyMoveEditing({
     }, [currentNodeId, locked]);
     const moveProcessingRef = useRef(false);
 
-    /** いまの局面から手を足す（既にある手なら、その手へ移るだけ）。 */
-    const addMoveFromCurrent = (usiMove: string): void => {
+    /** いまの局面から手を足す（既にある手なら、その手へ移るだけ）。足せなかったときは false。 */
+    const addMoveFromCurrent = (usiMove: string): boolean => {
         if (!isStudyUsiMove(usiMove)) {
             onMessageChange({ text: "この手は研究ノートに追加できません", type: "error" });
-            return;
+            return false;
         }
         const childId = studyChildNodeId(currentNodeId, usiMove);
         if (!tree.nodes.has(childId)) {
@@ -81,14 +81,14 @@ export function useStudyMoveEditing({
                     text: `このノートの局面の数が上限（${STUDY_LIMITS.nodesPerStudy}）に達しました。これ以上、手を足せません。`,
                     type: "error",
                 });
-                return;
+                return false;
             }
             if (currentNode.ply + 1 > STUDY_LIMITS.lineLength) {
                 onMessageChange({
                     text: `このノートの手数が上限（${STUDY_LIMITS.lineLength} 手）に達しました。`,
                     type: "error",
                 });
-                return;
+                return false;
             }
             trackAddedNodes(
                 currentNodeId,
@@ -97,15 +97,17 @@ export function useStudyMoveEditing({
             );
         }
         navigateTo(childId);
+        return true;
     };
 
     /**
      * いまの局面でパスを指す。パスできない局面（王手がかかっている）と、エンジンが読み込めない
-     * 回数（1 つの手順で各側 `STUDY_MAX_PASSES_PER_SIDE` 回まで）は断る。
+     * 回数（1 つの手順で各側 `STUDY_MAX_PASSES_PER_SIDE` 回まで）は断る。パスの局面へ移ったら、
+     * その局面のノード ID で解決する（断ったときは null）。
      */
-    const passFromCurrent = async (): Promise<void> => {
+    const passFromCurrent = async (): Promise<string | null> => {
         // 確かめている間の押し直しは受け付けない。
-        if (passPendingRef.current) return;
+        if (passPendingRef.current) return null;
         const nodeId = currentNodeId;
         const moves = [...movesToCurrent, STUDY_PASS_MOVE];
         if (!tree.nodes.has(studyChildNodeId(currentNodeId, STUDY_PASS_MOVE))) {
@@ -114,7 +116,7 @@ export function useStudyMoveEditing({
                     text: `1 つの手順で指せるパスは、先手・後手それぞれ ${STUDY_MAX_PASSES_PER_SIDE} 回までです。`,
                     type: "error",
                 });
-                return;
+                return null;
             }
             // パスが合法手にあるかで確かめる（パスを足したあとの手順と同じパス権で調べる）。
             const passRights = studyPassRightsForLine(tree.startSfen, moves);
@@ -135,23 +137,25 @@ export function useStudyMoveEditing({
                     text: "パスできるかを確かめられませんでした。もう一度お試しください。",
                     type: "error",
                 });
-                return;
+                return null;
             } finally {
                 passPendingRef.current = false;
             }
             // 確かめている間に、別の局面へ移った・編集できなくなったときは、足さない。
             if (latestPassGuardRef.current.nodeId !== nodeId || latestPassGuardRef.current.locked) {
-                return;
+                return null;
             }
             if (!canPass) {
                 onMessageChange({
                     text: "この局面ではパスできません（王手がかかっているときは、パスできません）。",
                     type: "error",
                 });
-                return;
+                return null;
             }
         }
-        addMoveFromCurrent(STUDY_PASS_MOVE);
+        return addMoveFromCurrent(STUDY_PASS_MOVE)
+            ? studyChildNodeId(nodeId, STUDY_PASS_MOVE)
+            : null;
     };
 
     const board: UseMoveExecutionReturn = useMoveExecution({

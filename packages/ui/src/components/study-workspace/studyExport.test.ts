@@ -1,7 +1,12 @@
-import { applyStudyOps, createStudyDocumentFromMoves } from "@shogi/app-core";
+import { applyStudyOps, createStudyDocumentFromMoves, parseCsaGameRecord } from "@shogi/app-core";
 import { describe, expect, it } from "vitest";
 import { cp, createTestStudy, TEST_LAYER_ID } from "./study-test-support";
-import { exportStudyLineToKif, exportStudyPositionToSfen } from "./studyExport";
+import {
+    exportStudyLineToCsa,
+    exportStudyLineToKif,
+    exportStudyPositionToSfen,
+    studyLineHasPass,
+} from "./studyExport";
 import { parseKifuTextForStudy } from "./studyImport";
 import { buildStudyViewTree, resolveStudyLine } from "./studyView";
 
@@ -119,6 +124,84 @@ describe("exportStudyLineToKif", () => {
 
         expect(kif).toContain(`開始局面：${sfen}`);
         expect(parseKifuTextForStudy(kif)).toEqual({ kind: "moves", startSfen: sfen, moves: [] });
+    });
+});
+
+describe("exportStudyLineToCsa", () => {
+    it("表示中の手順を、対局者名・評価値・コメントつきの CSA にする（読み直すと同じ手順と評価値になる）", () => {
+        const base = createTestStudy([cp(0), cp(30), cp(-20), null, null]);
+        const doc = applyStudyOps(base.doc, [
+            { type: "setComment", nodeId: base.ids[0], value: "開始局面のメモ" },
+            { type: "setComment", nodeId: base.ids[2], value: "*印つき\n2 行目" },
+        ]);
+        const { tree } = buildStudyViewTree(doc, TEST_LAYER_ID);
+        const line = resolveStudyLine(tree, tree.rootId);
+
+        const csa = exportStudyLineToCsa(doc, tree, line);
+
+        expect(csa).toContain("N+先手太郎\nN-後手花子\nPI\n+\n'開始局面のメモ\n+7776FU");
+        expect(csa).toContain("-3334FU\n'** -20\n'※*印つき\n'2 行目\n+2726FU");
+        const record = parseCsaGameRecord(csa);
+        expect(record.startSfen).toBe("startpos");
+        expect(record.moves).toEqual(["7g7f", "3c3d", "2g2f", "8c8d"]);
+        expect(record.annotations.map((item) => item?.evalCp)).toEqual([
+            30,
+            -20,
+            undefined,
+            undefined,
+        ]);
+    });
+
+    it("評価値や終局の記録に見えるコメントは、読み直しても指し手と評価値を壊さない", () => {
+        const base = createTestStudy([cp(0), cp(30), cp(-20), null, null]);
+        const doc = applyStudyOps(base.doc, [
+            { type: "setComment", nodeId: base.ids[0], value: "* 9999" },
+            { type: "setComment", nodeId: base.ids[1], value: "summary: 研究メモ" },
+        ]);
+        const { tree } = buildStudyViewTree(doc, TEST_LAYER_ID);
+
+        const record = parseCsaGameRecord(
+            exportStudyLineToCsa(doc, tree, resolveStudyLine(tree, tree.rootId)),
+        );
+
+        expect(record.moves).toEqual(["7g7f", "3c3d", "2g2f", "8c8d"]);
+        expect(record.annotations[0]?.evalCp).toBe(30);
+    });
+
+    it("平手でない開始局面・後手番からも書き出し、読み直すと同じ局面から始まる", () => {
+        const sfen = "4k4/9/9/9/9/9/9/9/4K4 w G 1";
+        const doc = createStudyDocumentFromMoves({
+            id: "55555555-5555-4555-8555-555555555555",
+            title: "局面",
+            origin: { kind: "paste", ref: null },
+            startSfen: sfen,
+            moves: ["5a4b"],
+            meta: {},
+        });
+        const { tree } = buildStudyViewTree(doc, null);
+
+        const record = parseCsaGameRecord(
+            exportStudyLineToCsa(doc, tree, resolveStudyLine(tree, tree.rootId)),
+        );
+
+        expect(record.startSfen).toBe(sfen);
+        expect(record.moves).toEqual(["5a4b"]);
+    });
+
+    it("パスを含む手順は CSA にできないと分かる", () => {
+        const doc = createStudyDocumentFromMoves({
+            id: "66666666-6666-4666-8666-666666666666",
+            title: "パス",
+            origin: { kind: "paste", ref: null },
+            startSfen: "startpos",
+            moves: ["7g7f", "pass"],
+            meta: {},
+        });
+        const { tree } = buildStudyViewTree(doc, null);
+        const line = resolveStudyLine(tree, tree.rootId);
+
+        expect(studyLineHasPass(tree, line)).toBe(true);
+        expect(studyLineHasPass(tree, line.slice(0, 2))).toBe(false);
     });
 });
 

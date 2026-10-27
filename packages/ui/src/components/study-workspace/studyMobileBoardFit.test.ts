@@ -19,6 +19,15 @@ describe("fitMobileBoard（スマートフォンの盤の寸法）", () => {
         expect(fit.cellSize).toBeGreaterThanOrEqual(20);
     });
 
+    it("下限のマスで数 px 足りないだけなら、下の欄を削らずに盤を少しだけ縮める", () => {
+        // 下に 150px を残すと下限のマス（高さ 224px）に 8px 足りない高さ。
+        const fit = fitMobileBoard(375, 418);
+        expect(fit.cellSize).toBe(20);
+        expect(fit.scale).toBeGreaterThanOrEqual(0.9);
+        expect(fit.scale).toBeLessThan(1);
+        expect(418 - 40 - 12 - fit.boardHeight).toBeGreaterThanOrEqual(150);
+    });
+
     it("下の欄を削っても入らないときは縮めるが、駒が読めないほどには縮めない", () => {
         const fit = fitMobileBoard(375, 100);
         expect(fit.cellSize).toBe(20);

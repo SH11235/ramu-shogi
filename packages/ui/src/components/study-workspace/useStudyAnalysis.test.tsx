@@ -359,7 +359,12 @@ describe("useStudyAnalysis", () => {
             await result.current.controller.startDeep(ids[2]);
         });
         await waitFor(() => expect(result.current.controller.mode).toBe("deep"));
-        expect(result.current.controller.live).toEqual({ nodeId: ids[2], depth: 5 });
+        expect(result.current.controller.live).toMatchObject({
+            nodeId: ids[2],
+            depth: 5,
+            budgetMs: 30_000,
+        });
+        expect(result.current.controller.live?.startedAt).toEqual(expect.any(Number));
 
         // 上限（30 秒）の前に止めると、そこまでの結果を「途中まで」として残し、続きから読める。
         await act(async () => {

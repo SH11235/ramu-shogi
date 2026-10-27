@@ -43,10 +43,7 @@ import {
     type Message,
 } from "./shogi-match/types";
 import { boardToGrid } from "./shogi-match/utils/positionUtils";
-import {
-    type StudyAnalysisRunState,
-    StudyHeaderAnalysisAction,
-} from "./study-workspace/StudyAnalysisRunControls";
+import type { StudyAnalysisRunState } from "./study-workspace/StudyAnalysisRunControls";
 import { StudyAnalysisSettings } from "./study-workspace/StudyAnalysisSettings";
 import { StudyCandidatesPanel, type StudyPvRequest } from "./study-workspace/StudyCandidatesPanel";
 import {
@@ -62,24 +59,32 @@ import {
     type StudyGraphSeries,
 } from "./study-workspace/StudyEvalGraphPanel";
 import { StudyIconButton } from "./study-workspace/StudyIconButton";
-import { BranchIcon, CommentIcon, FlipIcon } from "./study-workspace/StudyIcons";
+import { CommentIcon, FlipIcon } from "./study-workspace/StudyIcons";
 import {
     StudyMobileLayout,
     type StudyMobileTab,
     useStudyMobileMeasure,
 } from "./study-workspace/StudyMobileLayout";
-import { StudyMoreMenu } from "./study-workspace/StudyMoreMenu";
+import { type StudyKifuFormat, StudyMoreMenu } from "./study-workspace/StudyMoreMenu";
 import { StudyMoveList } from "./study-workspace/StudyMoveList";
 import { StudyNavBar } from "./study-workspace/StudyNavBar";
 import { StudyNotice } from "./study-workspace/StudyNotice";
 import {
     StudySaveIndicator,
     StudySaveNotice,
+    StudySaveStrip,
     type StudyWorkspaceSaveStatus,
+    showsStudySaveStrip,
 } from "./study-workspace/StudySaveStatus";
 import { StudyTitleDialog } from "./study-workspace/StudyTitleDialog";
 import { StudyWorkspaceHeader } from "./study-workspace/StudyWorkspaceHeader";
-import { exportStudyLineToKif, exportStudyPositionToSfen } from "./study-workspace/studyExport";
+import {
+    exportStudyLineToCsa,
+    exportStudyLineToKif,
+    exportStudyPositionToSfen,
+    studyLineHasPass,
+} from "./study-workspace/studyExport";
+import { type StudyKifuFile, studyKifuFileName } from "./study-workspace/studyFile";
 import { deriveStudyPositionInsights } from "./study-workspace/studyPositionInsights";
 import {
     applyStudyLayerToTree,
@@ -146,6 +151,16 @@ interface StudyWorkspaceCommonProps {
      * 渡さなければ「この局面から対局」を出さない。
      */
     onPlayFromPosition?: (position: PlayFromPosition) => void;
+    /**
+     * 棋譜をファイルに保存する（保存のしかたは呼び出し側が決める。Web はブラウザのダウンロード）。
+     * 渡さなければ「ファイルに保存」を出さない。
+     */
+    onSaveKifuFile?: (file: StudyKifuFile) => void;
+    /**
+     * 表題を変えるダイアログの開閉を、呼び出し側で持つ（ページの見出しの表題からも開けるように）。
+     * 省略時は画面の中で持つ。
+     */
+    titleDialog?: { open: boolean; onOpenChange: (open: boolean) => void };
     /** 合法手の取得の差し替え（Desktop・テスト用）。省略時は共通の PositionService。 */
     fetchLegalMoves?: StudyFetchLegalMoves;
     /**
@@ -223,6 +238,8 @@ export function StudyWorkspaceView({
     originLink,
     localOnly = false,
     onPlayFromPosition,
+    onSaveKifuFile,
+    titleDialog,
     fetchLegalMoves,
     locked = false,
     initialCommentDrafts,
@@ -260,7 +277,9 @@ export function StudyWorkspaceView({
     const [graphPrimaryChoice, setGraphPrimaryChoice] = useState<StudyGraphSeries>("source");
     const sideColumnRef = useRef<HTMLDivElement | null>(null);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-    const [isTitleDialogOpen, setIsTitleDialogOpen] = useState(false);
+    const [ownTitleDialogOpen, setOwnTitleDialogOpen] = useState(false);
+    const isTitleDialogOpen = titleDialog?.open ?? ownTitleDialogOpen;
+    const setIsTitleDialogOpen = titleDialog?.onOpenChange ?? setOwnTitleDialogOpen;
     // 「その他の操作」を開いている間は、矢印キーで局面を動かさない（コピー・対局に渡す局面が、
     // メニューの中でのキー操作で変わってしまうため）。
     const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
@@ -383,13 +402,38 @@ export function StudyWorkspaceView({
             failed();
         }
     };
-    const copyKif = (): void =>
-        copyText(
-            exportStudyLineToKif(doc, tree, line),
-            line.length > 1
-                ? `表示中の手順（${line.length - 1} 手）を KIF でコピーしました。`
-                : "開始局面を KIF でコピーしました。",
-        );
+    const csaUnavailableReason = studyLineHasPass(tree, line)
+        ? "パスを含む手順は CSA にできません"
+        : undefined;
+    const exportKifu = (format: StudyKifuFormat): string =>
+        format === "csa"
+            ? exportStudyLineToCsa(doc, tree, line)
+            : exportStudyLineToKif(doc, tree, line);
+    const kifuLabel = (format: StudyKifuFormat): string =>
+        `${line.length > 1 ? `表示中の手順（${line.length - 1} 手）` : "開始局面"}を ${format.toUpperCase()} で`;
+    const copyKifu = (format: StudyKifuFormat): void => {
+        let text: string;
+        try {
+            text = exportKifu(format);
+        } catch {
+            onMessageChange({ text: "棋譜を書き出せませんでした。", type: "error" });
+            return;
+        }
+        copyText(text, `${kifuLabel(format)}コピーしました。`);
+    };
+    const saveKifu = onSaveKifuFile
+        ? (format: StudyKifuFormat): void => {
+              try {
+                  onSaveKifuFile({
+                      fileName: studyKifuFileName(doc.title, format),
+                      text: exportKifu(format),
+                  });
+                  onMessageChange({ text: `${kifuLabel(format)}保存しました。`, type: "success" });
+              } catch {
+                  onMessageChange({ text: "ファイルに保存できませんでした。", type: "error" });
+              }
+          }
+        : undefined;
     const copySfen = (): void =>
         copyText(
             exportStudyPositionToSfen(tree.startSfen, movesToCurrent),
@@ -416,7 +460,7 @@ export function StudyWorkspaceView({
         setIsSettingsOpen(false);
         setIsTitleDialogOpen(false);
         setDeleteTargetId(null);
-    }, [locked]);
+    }, [locked, setIsTitleDialogOpen]);
     const settingsOpen = isSettingsOpen && !locked;
     const deleteDialogTargetId = locked ? null : deleteTargetId;
 
@@ -439,6 +483,29 @@ export function StudyWorkspaceView({
         setDeepNodeId(currentNodeId);
         void analysis.startDeep(currentNodeId);
     };
+    // パスの局面は、足した手が文書に入って画面のツリーに現れてから解析を始める（解析は画面のツリーから
+    // 手順を読むので、足した直後に始めると局面が見つからずに何もしない）。
+    const [pendingPassDeepNodeId, setPendingPassDeepNodeId] = useState<string | null>(null);
+    const startDeepAfterPass = async (): Promise<void> => {
+        if (locked || analysisBlocked || analysis.mode !== null) return;
+        const passNodeId = await editing.passFromCurrent();
+        if (passNodeId !== null) setPendingPassDeepNodeId(passNodeId);
+    };
+    // 依存配列を付けず、描画のたびに「待っている局面がツリーに現れたか」を確かめる。
+    useEffect(() => {
+        if (pendingPassDeepNodeId === null) return;
+        // 別の局面へ移ったら、待つのをやめる（後でその局面へ来ても、勝手に解析を始めない）。
+        if (currentNodeId !== pendingPassDeepNodeId) {
+            setPendingPassDeepNodeId(null);
+            return;
+        }
+        if (!tree.nodes.has(pendingPassDeepNodeId)) return;
+        setPendingPassDeepNodeId(null);
+        // 待っている間に詰み探索や別の解析が始まっていたら、重ねて動かさない。
+        if (locked || analysisBlocked || analysis.mode !== null) return;
+        setDeepNodeId(pendingPassDeepNodeId);
+        void analysis.startDeep(pendingPassDeepNodeId);
+    });
     const continueDeep = (): void => {
         if (locked) return;
         setDeepNodeId(currentNodeId);
@@ -650,13 +717,12 @@ export function StudyWorkspaceView({
             alternative={insights.alternative}
             playedBestLabel={insights.playedBestLabel}
             deeperResult={insights.deeperResult}
-            deeperIsFresh={insights.deeperIsFresh}
-            onShowLayer={onDisplayLayerChange}
             source={storedNode?.source ?? null}
             analysisMode={analysis.mode}
             isPreparing={analysis.isPreparing}
-            liveDepth={analysis.live?.nodeId === currentNodeId ? analysis.live.depth : undefined}
+            live={analysis.live?.nodeId === currentNodeId ? analysis.live : undefined}
             onStartDeep={startDeep}
+            onStartDeepAfterPass={locked ? undefined : () => void startDeepAfterPass()}
             revision={insights.revision}
             canContinueDeep={analysis.continuableDeepNodeId === currentNodeId}
             onContinueDeep={continueDeep}
@@ -691,28 +757,19 @@ export function StudyWorkspaceView({
             baseConfirmed={commentBaseConfirmed}
         />
     );
-    // 変化（本譜から外れた手順）を見ているときの「本譜に戻る」。盤で駒を動かして変化に入ったあと、
-    // どの表示からでも戻れるようにする。
-    const backToMainButton = nav.onMainLine ? null : (
-        <button
-            type="button"
-            onClick={nav.backToMainLine}
-            className="flex h-9 shrink-0 items-center gap-1 rounded-md border border-wafuu-border bg-card px-2 text-xs font-medium text-wafuu-ai transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-            <BranchIcon className="h-3.5 w-3.5" />
-            本譜に戻る
-        </button>
-    );
     const metaRow = (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1.5 text-xs text-muted-foreground">
             {playersLabel && <span className="truncate">{playersLabel}</span>}
             <span className="truncate">{originLink ?? studyOriginLabel(doc.origin)}</span>
-            <StudySaveIndicator
-                status={saveStatus}
-                onLogin={onLogin}
-                localOnly={localOnly}
-                className="md:ml-auto"
-            />
+            {/* スマートフォンで保存の状態の帯を出している間は、同じ案内をここに重ねない。 */}
+            {!(isMobile && showsStudySaveStrip(saveStatus, localOnly)) && (
+                <StudySaveIndicator
+                    status={saveStatus}
+                    onLogin={onLogin}
+                    localOnly={localOnly}
+                    className="md:ml-auto"
+                />
+            )}
         </div>
     );
     const moreMenu = (
@@ -728,7 +785,6 @@ export function StudyWorkspaceView({
                               : [
                                     {
                                         label: "表題を変更",
-                                        note: "研究ノートの名前",
                                         run: () => setIsTitleDialogOpen(true),
                                     },
                                     {
@@ -739,14 +795,15 @@ export function StudyWorkspaceView({
                                 ]),
                           {
                               label: flipBoard ? "盤面を元に戻す" : "盤面を反転",
-                              note: "後手側から盤を見る",
                               run: () => setFlipBoard(!flipBoard),
                           },
                       ]
                     : undefined
             }
             onPass={locked ? undefined : () => void editing.passFromCurrent()}
-            onCopyKif={copyKif}
+            onCopyKifu={copyKifu}
+            onSaveKifu={saveKifu}
+            csaUnavailableReason={csaUnavailableReason}
             onCopySfen={copySfen}
             onPlayFromPosition={
                 onPlayFromPosition
@@ -799,12 +856,6 @@ export function StudyWorkspaceView({
                         moreMenu={moreMenu}
                         settingsLabel={analysis.settingsLabel}
                         onOpenSettings={() => setIsSettingsOpen(true)}
-                        analysisAction={
-                            <StudyHeaderAnalysisAction
-                                run={analysisRun}
-                                graphIsEmpty={!graph.hasSourceGraph && !hasResults}
-                            />
-                        }
                         metaRow={metaRow}
                     />
                 )}
@@ -864,13 +915,21 @@ export function StudyWorkspaceView({
                             measure={mobileMeasure}
                             locked={locked}
                             moreMenu={moreMenu}
+                            saveStrip={
+                                <StudySaveStrip
+                                    status={saveStatus}
+                                    onLogin={onLogin}
+                                    localOnly={localOnly}
+                                />
+                            }
                             board={sideHandBoard}
                             boardSectionRef={boardSectionRef}
                             nav={navProps}
                             commentButton={commentButton}
                             commentBox={commentBox}
                             showsComment={showsComment}
-                            backToMainButton={backToMainButton}
+                            // 変化に入ったあと、どの表示からでも本譜へ戻れるようにする。
+                            onBackToMainLine={nav.onMainLine ? null : nav.backToMainLine}
                             // 手を横に流す棋譜（いまの手を中央に。前後の流れが 1 行で見え、押すとその手へ
                             // 移る）。指し手の表記を省略せずに出せる。
                             moveStrip={

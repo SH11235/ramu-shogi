@@ -47,6 +47,7 @@ export type {
     StudyWorkspaceViewState,
 } from "./components/study-workspace";
 export { StudyWorkspace } from "./components/study-workspace";
+export { downloadTextFile } from "./components/study-workspace/studyFile";
 
 // ============================================================
 // Providers

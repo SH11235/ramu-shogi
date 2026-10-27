@@ -1,12 +1,10 @@
 import type { KifuNode, KifuTree, StudyDocument, StudyHighlight } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
-import { Button } from "../button";
 import { cardVariants } from "../card";
 import { EvalGraph, type EvalGraphMarker } from "../shogi-match/components/EvalGraph";
 import { type EvalHistory, formatEval } from "../shogi-match/utils/kifFormat";
 import { type StudyAnalysisRunState, StudyCompactAnalysisAction } from "./StudyAnalysisRunControls";
-import { AnalyzeIcon } from "./StudyIcons";
 import {
     formatStudyScore,
     studyHighlightTitle,
@@ -161,66 +159,71 @@ function DesktopGraphHeader({
     hasResults,
     analysisLabel,
     onPrimaryChange,
+    run,
 }: {
     graph: StudyEvalGraphData;
     hasResults: boolean;
     analysisLabel: string;
     onPrimaryChange: (series: StudyGraphSeries) => void;
+    run: StudyAnalysisRunState;
 }): ReactElement {
     return (
-        <div className="flex min-h-7 flex-wrap items-center gap-x-3 gap-y-1">
-            <h2 className="font-display text-sm font-semibold text-wafuu-sumi">評価値グラフ</h2>
-            {graph.secondaryHistory ? (
-                // 押した側を主の線（手番で色分けした実線）にし、もう一方は破線で重ねる。
-                // ボタンの線の見本が、そのまま凡例になる。
-                <fieldset className="m-0 flex min-w-0 items-center gap-1 border-0 p-0">
-                    <legend className="sr-only">主に描く評価値</legend>
-                    {(
-                        [
-                            { series: "source", label: "対局時" },
-                            { series: "analysis", label: analysisLabel },
-                        ] as const
-                    ).map(({ series, label }) => {
-                        const isPrimary = graph.primary === series;
-                        return (
-                            <button
-                                key={series}
-                                type="button"
-                                aria-pressed={isPrimary}
-                                onClick={() => onPrimaryChange(series)}
-                                className={cn(
-                                    "flex min-w-0 items-center gap-1.5 rounded px-1.5 py-0.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                                    isPrimary
-                                        ? "bg-muted font-medium text-wafuu-sumi"
-                                        : "text-muted-foreground hover:bg-muted/60",
-                                )}
-                            >
-                                {isPrimary ? (
-                                    <PrimaryLineSwatch />
-                                ) : (
-                                    <span
-                                        aria-hidden="true"
-                                        className="w-4 shrink-0 border-t-[1.5px] border-dashed border-muted-foreground"
-                                    />
-                                )}
-                                <span className="truncate">{label}</span>
-                            </button>
-                        );
-                    })}
-                </fieldset>
-            ) : (
-                // 線が 1 本だけのときも、2 本のときの切り替えと同じ見本で、何の線かを示す。
-                <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-                    {(graph.hasSourceGraph || hasResults) && <PrimaryLineSwatch />}
-                    <span className="truncate">
-                        {graph.hasSourceGraph
-                            ? "対局時"
-                            : hasResults
-                              ? analysisLabel
-                              : "解析すると、形勢の流れが出ます"}
+        <div className="flex min-h-7 items-center justify-between gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                <h2 className="font-display text-sm font-semibold text-wafuu-sumi">評価値グラフ</h2>
+                {graph.secondaryHistory ? (
+                    // 押した側を主の線（手番で色分けした実線）にし、もう一方は破線で重ねる。
+                    // ボタンの線の見本が、そのまま凡例になる。
+                    <fieldset className="m-0 flex min-w-0 items-center gap-1 border-0 p-0">
+                        <legend className="sr-only">主に描く評価値</legend>
+                        {(
+                            [
+                                { series: "source", label: "対局時" },
+                                { series: "analysis", label: analysisLabel },
+                            ] as const
+                        ).map(({ series, label }) => {
+                            const isPrimary = graph.primary === series;
+                            return (
+                                <button
+                                    key={series}
+                                    type="button"
+                                    aria-pressed={isPrimary}
+                                    onClick={() => onPrimaryChange(series)}
+                                    className={cn(
+                                        "flex min-w-0 items-center gap-1.5 rounded px-1.5 py-0.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                        isPrimary
+                                            ? "bg-muted font-medium text-wafuu-sumi"
+                                            : "text-muted-foreground hover:bg-muted/60",
+                                    )}
+                                >
+                                    {isPrimary ? (
+                                        <PrimaryLineSwatch />
+                                    ) : (
+                                        <span
+                                            aria-hidden="true"
+                                            className="w-4 shrink-0 border-t-[1.5px] border-dashed border-muted-foreground"
+                                        />
+                                    )}
+                                    <span className="truncate">{label}</span>
+                                </button>
+                            );
+                        })}
+                    </fieldset>
+                ) : (
+                    // 線が 1 本だけのときも、2 本のときの切り替えと同じ見本で、何の線かを示す。
+                    <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                        {(graph.hasSourceGraph || hasResults) && <PrimaryLineSwatch />}
+                        <span className="truncate">
+                            {graph.hasSourceGraph
+                                ? "対局時"
+                                : hasResults
+                                  ? analysisLabel
+                                  : "解析すると、形勢の流れが出ます"}
+                        </span>
                     </span>
-                </span>
-            )}
+                )}
+            </div>
+            <StudyCompactAnalysisAction run={run} wide />
         </div>
     );
 }
@@ -256,8 +259,6 @@ export function StudyEvalGraphPanel({
     mobileSlotHeight: number | null;
     onPlySelect: (ply: number) => void;
 }): ReactElement {
-    // グラフに線が 1 本も無い（未解析で、対局時の評価値も無い）ときは、空のグラフの中央で解析を促す。
-    const graphIsEmpty = !graph.hasSourceGraph && !hasResults;
     return (
         <section
             aria-label="評価値グラフ"
@@ -277,6 +278,7 @@ export function StudyEvalGraphPanel({
                         displayLayerLabel !== null ? `解析（${displayLayerLabel}）` : "解析"
                     }
                     onPrimaryChange={onPrimaryChange}
+                    run={run}
                 />
             )}
             <div className="relative">
@@ -299,19 +301,6 @@ export function StudyEvalGraphPanel({
                     markers={graph.markers}
                     onMarkerSelect={(marker) => onPlySelect(marker.ply)}
                 />
-                {!isMobile && graphIsEmpty && !run.locked && run.mode !== "full" && (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                        <Button
-                            type="button"
-                            className="gap-1.5 shadow-sm"
-                            onClick={run.onStartFull}
-                            disabled={run.startDisabled}
-                        >
-                            <AnalyzeIcon />
-                            全体を解析
-                        </Button>
-                    </div>
-                )}
             </div>
         </section>
     );

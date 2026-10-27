@@ -32,6 +32,9 @@ function studyMateProgressText(state: StudyMateState & { status: "running" }): s
     return `${what}を調べています（${Math.floor(state.elapsedMs / 1000)} 秒）`;
 }
 
+/** 候補手の欄の操作のボタン。1 行に並べて候補手の場所を空けるため、小さめにする。 */
+export const COMPACT_BUTTON_CLASS = "h-8 gap-1 whitespace-nowrap px-2 text-xs";
+
 function StopButton({ onStop }: { onStop: () => void }): ReactElement {
     return (
         <Button
@@ -39,6 +42,7 @@ function StopButton({ onStop }: { onStop: () => void }): ReactElement {
             variant="outline"
             size="sm"
             aria-label="詰み探索を中止"
+            className={cn(COMPACT_BUTTON_CLASS, "w-full")}
             onClick={onStop}
         >
             中止
@@ -97,7 +101,10 @@ function MateLine({
     );
 }
 
-/** 「詰みを調べる」のボタン。調べている間は途中経過と中止に替わる。 */
+/**
+ * 「詰みを読む」のボタン。調べている間は同じ場所が「中止」に替わる。枠の幅は「詰みを読む」に合わせ、
+ * 途中経過は `StudyMateProgress` で下の行に出す（ボタンの行の幅を変えない）。
+ */
 export function StudyMateControl({
     state,
     busyElsewhere,
@@ -114,25 +121,53 @@ export function StudyMateControl({
     onStart: () => void;
     onStop: () => void;
 }): ReactElement {
-    if (state?.status === "running" || busyElsewhere) {
-        return (
-            <div className="flex items-center gap-2">
-                <output
-                    aria-live="polite"
-                    className="whitespace-nowrap text-xs text-muted-foreground"
-                >
-                    {state?.status === "running"
-                        ? studyMateProgressText(state)
-                        : "別の局面の詰みを調べています"}
-                </output>
-                <StopButton onStop={onStop} />
-            </div>
-        );
-    }
+    const running = state?.status === "running" || busyElsewhere;
     return (
-        <Button type="button" variant="outline" size="sm" onClick={onStart} disabled={disabled}>
-            詰みを調べる
-        </Button>
+        <div className="grid">
+            <span
+                aria-hidden="true"
+                className={cn(
+                    COMPACT_BUTTON_CLASS,
+                    "invisible col-start-1 row-start-1 flex items-center border border-transparent font-medium",
+                )}
+            >
+                詰みを読む
+            </span>
+            <div className="col-start-1 row-start-1 flex">
+                {running ? (
+                    <StopButton onStop={onStop} />
+                ) : (
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className={cn(COMPACT_BUTTON_CLASS, "w-full")}
+                        onClick={onStart}
+                        disabled={disabled}
+                    >
+                        詰みを読む
+                    </Button>
+                )}
+            </div>
+        </div>
+    );
+}
+
+/** 詰み探索の途中経過（調べていなければ何も出さない）。 */
+export function StudyMateProgress({
+    state,
+    busyElsewhere,
+}: {
+    state: StudyMateState | undefined;
+    busyElsewhere: boolean;
+}): ReactElement | null {
+    if (state?.status !== "running" && !busyElsewhere) return null;
+    return (
+        <output aria-live="polite">
+            {state?.status === "running"
+                ? studyMateProgressText(state)
+                : "別の局面の詰みを調べています"}
+        </output>
     );
 }
 

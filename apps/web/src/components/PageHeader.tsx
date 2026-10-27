@@ -7,6 +7,8 @@ import { NavDrawer } from "./NavDrawer";
 interface BreadcrumbItem {
     label: string;
     to?: string;
+    /** 現在地を押したときの操作（研究ノートの表題を変える、など）。`hint` は押すと何が起きるか。 */
+    action?: { onClick: () => void; hint: string };
 }
 
 interface PageHeaderProps {
@@ -79,6 +81,16 @@ export function PageHeader({ items, right }: PageHeaderProps): ReactElement {
                                         >
                                             {item.label}
                                         </Link>
+                                    ) : item.action ? (
+                                        <button
+                                            type="button"
+                                            title={item.action.hint}
+                                            aria-label={`${item.label}（${item.action.hint}）`}
+                                            onClick={item.action.onClick}
+                                            className="block min-w-0 truncate rounded-sm leading-10 font-medium text-wafuu-sumi transition-colors hover:text-wafuu-shu focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                        >
+                                            {item.label}
+                                        </button>
                                     ) : (
                                         <span className="truncate font-medium text-wafuu-sumi">
                                             {item.label}
