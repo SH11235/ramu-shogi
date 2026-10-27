@@ -484,9 +484,16 @@ export function StudyWorkspaceView({
         if (passNodeId !== null) setPendingPassDeepNodeId(passNodeId);
     };
     useEffect(() => {
-        if (pendingPassDeepNodeId === null || !tree.nodes.has(pendingPassDeepNodeId)) return;
+        if (pendingPassDeepNodeId === null) return;
+        // 別の局面へ移ったら、待つのをやめる（後でその局面へ来ても、勝手に解析を始めない）。
+        if (currentNodeId !== pendingPassDeepNodeId) {
+            setPendingPassDeepNodeId(null);
+            return;
+        }
+        if (!tree.nodes.has(pendingPassDeepNodeId)) return;
         setPendingPassDeepNodeId(null);
-        if (locked || currentNodeId !== pendingPassDeepNodeId) return;
+        // 待っている間に詰み探索や別の解析が始まっていたら、重ねて動かさない。
+        if (locked || analysisBlocked || analysis.mode !== null) return;
         setDeepNodeId(pendingPassDeepNodeId);
         void analysis.startDeep(pendingPassDeepNodeId);
     });

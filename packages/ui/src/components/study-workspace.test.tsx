@@ -516,7 +516,7 @@ describe("StudyWorkspaceView", () => {
                 openMenu();
                 fireEvent.click(screen.getByRole("button", { name: "ファイルに保存（CSA）" }));
                 expect(onSaveKifuFile.mock.calls.map(([file]) => file.fileName)).toEqual([
-                    "テストのノート.kif",
+                    "テストのノート.kifu",
                     "テストのノート.csa",
                 ]);
                 expect(onSaveKifuFile.mock.calls[0][0].text).toContain("先手：先手太郎");

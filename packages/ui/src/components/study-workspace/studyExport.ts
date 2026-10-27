@@ -108,10 +108,17 @@ export function exportStudyLineToCsa(
             lines.push(formatCsaMove(node.usiMove, before.board, before.turn));
             const elapsedMs = stored?.source?.elapsedMs;
             if (elapsedMs != null) lines.push(`T${Math.max(0, Math.round(elapsedMs / 1000))}`);
-            const score =
-                node.eval?.scoreMate != null
-                    ? Math.sign(node.eval.scoreMate) * CSA_MATE_EVAL_THRESHOLD
-                    : node.eval?.scoreCp;
+            const mate = node.eval?.scoreMate;
+            // 詰みの手数 0（もう詰んでいる）は符号で勝つ側を表せないので、詰まされた手番から決める。
+            const mateSign =
+                mate == null
+                    ? 0
+                    : mate !== 0
+                      ? Math.sign(mate)
+                      : node.positionAfter.turn === "sente"
+                        ? -1
+                        : 1;
+            const score = mate != null ? mateSign * CSA_MATE_EVAL_THRESHOLD : node.eval?.scoreCp;
             if (score != null && Number.isFinite(score)) lines.push(`'** ${score}`);
         }
         if (stored) lines.push(...csaCommentLines(stored.comment));

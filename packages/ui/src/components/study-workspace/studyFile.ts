@@ -16,7 +16,8 @@ export function studyKifuFileName(title: string, format: StudyKifuFormat): strin
             .replace(/\s+/g, " ")
             .trim()
             .slice(0, 100) || "研究ノート";
-    return `${base}.${format}`;
+    // UTF-8 の KIF は `.kifu`（`.kif` は Shift_JIS として読む棋譜ソフトがある）。
+    return `${base}.${format === "kif" ? "kifu" : "csa"}`;
 }
 
 /** 文字列をファイルとしてブラウザに保存させる（ダウンロード）。 */
@@ -27,5 +28,5 @@ export function downloadTextFile({ fileName, text }: StudyKifuFile): void {
     anchor.download = fileName;
     anchor.click();
     // クリック直後に URL を消すと、ダウンロードが始まらないブラウザがある。
-    setTimeout(() => URL.revokeObjectURL(url), 0);
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }

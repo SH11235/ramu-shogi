@@ -233,8 +233,8 @@ export function StudyMobileLayout({
                         )}
                     >
                         {/* 幅の狭い画面では文字を入れる場所が無いので、枝分かれの印だけにする。 */}
-                        <BranchIcon className="h-4 w-4 min-[360px]:hidden" />
-                        <span className="hidden min-[360px]:inline">本譜へ</span>
+                        <BranchIcon className="h-4 w-4 min-[375px]:hidden" />
+                        <span className="hidden min-[375px]:inline">本譜へ</span>
                     </button>
                     <StudyNavBar compact {...nav} />
                     {commentButton}

@@ -24,7 +24,7 @@ export function StudyNavBar({
 }): ReactElement {
     const buttonClass = cn(
         // 幅の狭い画面では、左に「本譜へ」の場所を空けるため細くする。
-        compact ? "w-9 min-[360px]:w-10" : "w-12",
+        compact ? "w-9 min-[375px]:w-10" : "w-12",
         "border-border bg-background text-wafuu-sumi",
     );
     return (
@@ -32,7 +32,7 @@ export function StudyNavBar({
             aria-label="局面の移動"
             className={cn(
                 "flex items-center justify-center",
-                compact ? "gap-1 min-[360px]:gap-1.5" : "gap-1.5",
+                compact ? "gap-1 min-[375px]:gap-1.5" : "gap-1.5",
             )}
         >
             <StudyIconButton
@@ -54,7 +54,7 @@ export function StudyNavBar({
             <output
                 className={cn(
                     "text-center font-mono text-sm tabular-nums text-wafuu-sumi",
-                    compact ? "min-w-[3.25rem] min-[360px]:min-w-[3.75rem]" : "min-w-[4.5rem]",
+                    compact ? "min-w-[3.25rem] min-[375px]:min-w-[3.75rem]" : "min-w-[4.5rem]",
                 )}
             >
                 {index} / {total}

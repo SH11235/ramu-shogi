@@ -142,6 +142,7 @@ function DeepProgressNote({ live }: { live: StudyLiveSearch }): ReactElement | n
     const [now, setNow] = useState(() => Date.now());
     useEffect(() => {
         if (live.startedAt === null) return;
+        setNow(Date.now());
         const timer = setInterval(() => setNow(Date.now()), 1_000);
         return () => clearInterval(timer);
     }, [live.startedAt]);
