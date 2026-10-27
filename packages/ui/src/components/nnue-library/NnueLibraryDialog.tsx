@@ -60,7 +60,7 @@ export function NnueLibraryDialog({
                                 <CloseIconButton
                                     size="sm"
                                     onClick={onClearOpenReason}
-                                    className="-my-1 -mr-2"
+                                    className="-my-1 -mr-1"
                                     aria-label="メッセージを閉じる"
                                 />
                             )}
