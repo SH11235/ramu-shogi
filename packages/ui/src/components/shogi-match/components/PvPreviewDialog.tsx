@@ -8,6 +8,7 @@ import type { PositionState, Square } from "@shogi/app-core";
 import { applyMoveAllowingStudyPass } from "@shogi/app-core";
 import type { ReactElement } from "react";
 import { useEffect, useEffectEvent, useState } from "react";
+import { CloseIconButton } from "../../close-icon-button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../../dialog";
 import { StaticBoardView } from "../../static-board-view";
 import type { SquareNotation } from "../types";
@@ -226,28 +227,7 @@ export function PvPreviewDialog({
                     )}
                 </DialogHeader>
                 {/* 右上の閉じるボタン */}
-                <button
-                    type="button"
-                    onClick={onClose}
-                    className="absolute right-3 top-3 p-1.5 rounded hover:bg-muted cursor-pointer text-muted-foreground hover:text-foreground"
-                    aria-label="閉じる"
-                >
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="20"
-                        height="20"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden="true"
-                    >
-                        <line x1="18" y1="6" x2="6" y2="18" />
-                        <line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                </button>
+                <CloseIconButton onClick={onClose} className="absolute right-3 top-3" />
 
                 <div className="flex flex-col gap-1.5">
                     {/* 持っていない駒は盤面の画面と同じく出さない。持ち駒が無い段も同じ高さを取り、

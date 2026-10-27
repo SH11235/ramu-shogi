@@ -1,37 +1,52 @@
 import { cn } from "@shogi/design-system";
 import type { ComponentPropsWithRef, ReactElement } from "react";
 
-/** ダイアログの右上に置く「×」のボタン。`DialogClose asChild` の中にも置ける。 */
+/** 閉じるの「×」の印。文字の「✕」はフォントで太さと位置が変わるので、閉じる操作にはこれを使う。 */
+export function CloseIcon({ className }: { className?: string }): ReactElement {
+    return (
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            className={cn("size-5 shrink-0", className)}
+        >
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+    );
+}
+
+const SIZE_CLASS = {
+    // ダイアログの右上
+    md: { button: "p-2 rounded-lg", icon: "size-5" },
+    // 通知や帯の中
+    sm: { button: "p-1 rounded-md", icon: "size-4" },
+} as const;
+
+/** 「×」だけの閉じるボタン。`DialogClose asChild` の中にも置ける。 */
 export function CloseIconButton({
+    size = "md",
     className,
     "aria-label": ariaLabel = "閉じる",
     ...props
-}: ComponentPropsWithRef<"button">): ReactElement {
+}: ComponentPropsWithRef<"button"> & { size?: keyof typeof SIZE_CLASS }): ReactElement {
     return (
         <button
             type="button"
             aria-label={ariaLabel}
             className={cn(
-                "p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors",
+                "inline-flex shrink-0 items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+                SIZE_CLASS[size].button,
                 className,
             )}
             {...props}
         >
-            <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-            >
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
+            <CloseIcon className={SIZE_CLASS[size].icon} />
         </button>
     );
 }

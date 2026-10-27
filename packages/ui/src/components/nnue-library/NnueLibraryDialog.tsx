@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 import { useState } from "react";
 import { Button } from "../button";
+import { CloseIconButton } from "../close-icon-button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../dialog";
 import { NnueLibrary } from "./NnueLibrary";
 import type { NnueAccountStore, NnueSpeedSupport } from "./types";
@@ -56,14 +57,12 @@ export function NnueLibraryDialog({
                         <div className="flex items-start justify-between gap-3 rounded-md border border-status-warning/30 bg-status-warning/10 px-3 py-2 text-sm text-foreground">
                             <p>{reasonMessage(openReason)}</p>
                             {onClearOpenReason && (
-                                <button
-                                    type="button"
+                                <CloseIconButton
+                                    size="sm"
                                     onClick={onClearOpenReason}
-                                    className="text-muted-foreground hover:text-foreground"
+                                    className="-my-1 -mr-2"
                                     aria-label="メッセージを閉じる"
-                                >
-                                    ✕
-                                </button>
+                                />
                             )}
                         </div>
                     )}
