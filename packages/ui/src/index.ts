@@ -22,8 +22,11 @@ export { EngineControlPanel } from "./components/engine-control-panel";
 export { NnueLibrary } from "./components/nnue-library/NnueLibrary";
 export { NnueLibraryDialog } from "./components/nnue-library/NnueLibraryDialog";
 export type { NnueAccountFile, NnueAccountStore } from "./components/nnue-library/types";
-export type { AnalysisMoveResult, OnlineAnalysis } from "./components/online-game-view";
 export { OnlineGameView } from "./components/online-game-view";
+export type {
+    AnalysisMoveResult,
+    OnlineAnalysis,
+} from "./components/online-game-view/onlineAnalysis";
 export {
     onlineStartSfenProblem,
     PositionPresetSelector,
