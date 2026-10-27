@@ -1,11 +1,7 @@
-import type { LayerStacksConfig } from "@shogi/app-core";
 import {
     applyMoveWithState,
-    type BoardState,
     deriveLastMove,
     getPositionService,
-    type NnueSelection,
-    NONE_NNUE_SELECTION,
     type PieceType,
     type Player,
     type PositionState,
@@ -13,51 +9,33 @@ import {
 } from "@shogi/app-core";
 import type {
     AiSupportSettings,
-    ClockState,
     ErrorCode,
-    GameResult,
     RoomClient,
-    RoomClientStatus,
-    RoomEvent,
     Seat,
     SnapshotPayload,
 } from "@shogi/match-client";
-import {
-    getStoredResumeToken,
-    isResumeTokenRejected,
-    removeStoredResumeToken,
-    removeStoredSeat,
-} from "@shogi/match-client";
 import type { ReactElement } from "react";
 import { useEffect, useEffectEvent, useReducer, useRef, useState } from "react";
-import { useLazyNnueLoader } from "../hooks/useLazyNnueLoader";
 import { useScreenWakeLock } from "../hooks/useScreenWakeLock";
 import { useShogiSound } from "../hooks/useShogiSound";
-import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-    AlertDialogTrigger,
-} from "./alert-dialog";
-import { ConnectionLostNotice } from "./connection-lost-notice";
 import { NnueLibraryDialog } from "./nnue-library/NnueLibraryDialog";
 import type { NnueAccountStore } from "./nnue-library/types";
-import {
-    createSerialQueue,
-    exportGameKif,
-    gameReducer,
-    makeInitialGameState,
-    resolveStartSfen,
-    restorePosition,
-    type SerialQueue,
-    snapshotAnalysisRemaining,
-} from "./online-game-state";
-import { type AiHintMove, AiHintPanel } from "./shogi-match/components/AiHintPanel";
+import { exportGameKif } from "./online-game-state";
+import { AnalysisSummaryBar } from "./online-game-view/AnalysisSummaryBar";
+import { ConnectionNotices } from "./online-game-view/ConnectionNotices";
+import { GameEndDialog } from "./online-game-view/GameEndDialog";
+import { GameResultStrip } from "./online-game-view/GameResultStrip";
+import { formatGameEndReason, formatGameResultTitle } from "./online-game-view/gameResultText";
+import { OnlineAiPanel } from "./online-game-view/OnlineAiPanel";
+import { OnlineKifuList } from "./online-game-view/OnlineKifuList";
+import type { OnlineAnalysis } from "./online-game-view/onlineAnalysis";
+import { INITIAL_UI_STATE, uiReducer } from "./online-game-view/onlineGameUiState";
+import { PlayerHeader } from "./online-game-view/PlayerHeader";
+import { ResignButton } from "./online-game-view/ResignButton";
+import { TakebackApprovalDialog, TakebackPendingBanner } from "./online-game-view/TakebackPrompts";
+import { useOnlineAiAnalysis } from "./online-game-view/useOnlineAiAnalysis";
+import { useOnlineClock } from "./online-game-view/useOnlineClock";
+import { useOnlineGameRoom } from "./online-game-view/useOnlineGameRoom";
 import { BottomSheet } from "./shogi-match/components/BottomSheet";
 import { KifuNavigationToolbar } from "./shogi-match/components/KifuNavigationToolbar";
 import { type HandInfo, MobileBoardSection } from "./shogi-match/components/MobileBoardSection";
@@ -66,42 +44,15 @@ import { PvPreviewDialog } from "./shogi-match/components/PvPreviewDialog";
 import { TabHeader } from "./shogi-match/components/TabHeader";
 import { useIsMobile } from "./shogi-match/hooks/useMediaQuery";
 import type { PromotionSelection } from "./shogi-match/types";
-import { formatMoveSimple } from "./shogi-match/utils/kifFormat";
 import { computeMoveShadow } from "./shogi-match/utils/moveShadow";
 import { boardToGrid } from "./shogi-match/utils/positionUtils";
 import { determinePromotion } from "./shogi-match/utils/promotionLogic";
-
-// ─── AI 解析インターフェース（export） ─────────────────────────────────────────
-
-export interface AnalysisMoveResult {
-    usi: string;
-    cp: number;
-    pv: string[];
-}
-
-export interface OnlineAnalysis {
-    isAnalyzing: boolean;
-    topMoves: AnalysisMoveResult[];
-    startAnalysis: (sfen: string, moves: string[]) => Promise<void>;
-    cancelAnalysis: () => Promise<void>;
-    loadNnue?: (nnueId: string | null, layerStacks?: LayerStacksConfig) => Promise<void>;
-}
-
-// ─── 型定義 ───────────────────────────────────────────────────────────────────
 
 const BOARD_DISPLAY_SETTINGS = {
     highlightLastMove: true,
     squareNotation: "none" as const,
     showBoardLabels: true,
 };
-
-// 時間フォーマット
-function formatMs(ms: number): string {
-    const totalSec = Math.max(0, Math.floor(ms / 1000));
-    const min = Math.floor(totalSec / 60);
-    const sec = totalSec % 60;
-    return `${String(min).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
-}
 
 // サーバーに拒否された操作のうち、利用者がやり直せるものだけ案内する
 function rejectedCommandNotice(code: ErrorCode, seat: Seat): string | null {
@@ -118,152 +69,6 @@ function rejectedCommandNotice(code: ErrorCode, seat: Seat): string | null {
 
 const CHECKMATE_REJECTED_NOTICE =
     "サーバーではこの局面を詰みと判定しませんでした。指せる手が表示されないときは、投了で対局を終えてください。";
-
-/** 局面も手番も終局も変えないイベント。指し手を送る準備の途中に届いても、その指し手は有効 */
-const POSITION_KEEPING_EVENTS: ReadonlySet<RoomEvent["kind"]> = new Set([
-    "player_offline",
-    "player_online",
-    "analysis_used",
-    "settings_updated",
-    "takeback_requested",
-    "takeback_rejected",
-    "takeback_cancelled",
-]);
-
-/** 再接続後、席へ戻った結果の snapshot を待つ上限。過ぎたら要求を送り直す */
-const RESYNC_TIMEOUT_MS = 15_000;
-/** snapshot の要求を送り直す回数の上限。尽きたら再読み込みを案内する */
-const RESYNC_MAX_RETRIES = 2;
-
-/**
- * 同期を待つ間にこれらが返ったら、送り直しても同じ席へは戻れない。ROOM_FINISHED は、切断中に
- * 終局した部屋へ参加し直そうとした観戦者（と、トークンを持たない対局者）に返る
- */
-const SEAT_LOST_CODES: ReadonlySet<ErrorCode> = new Set([
-    "INVALID_TOKEN",
-    "ROOM_NOT_FOUND",
-    "ROOM_EXPIRED",
-    "ROOM_FULL",
-    "ROOM_FINISHED",
-]);
-
-/**
- * 対局中の接続。reconnecting は WebSocket を開き直している間と、開いた後に席へ戻って
- * サーバーの snapshot を反映し終えるまで。lost は再接続か再同期を諦め、再読み込みを案内する状態。
- * rejected はサーバーが席への復帰を拒んだ状態で、finished は拒んだ理由が終局だったとき
- */
-type GameConnection =
-    | { state: "connected" }
-    | { state: "reconnecting" }
-    | { state: "lost"; canResume: boolean }
-    | { state: "rejected"; finished: boolean };
-
-/**
- * 届いた順に反映するサーバーからのメッセージ。initial は画面を開いたときの snapshot。
- * resync は、再接続後の同期を待っている間に届いた snapshot に付く、その再接続の番号
- */
-type Incoming =
-    | { t: "snapshot"; payload: SnapshotPayload; initial: boolean; resync?: number }
-    | { t: "event"; payload: RoomEvent };
-
-// ─── UI インタラクション状態管理 ───────────────────────────────────────────────
-
-interface UIState {
-    selectedSquare: string | null;
-    selectedHand: PieceType | null;
-    legalMoves: string[];
-    promoteDialog: { from: string; to: string; usi: string } | null;
-    navIndex: number | null;
-    aiSheetOpen: boolean;
-    kifuSheetOpen: boolean;
-    endDialogClosed: boolean;
-}
-
-type UIAction =
-    | { type: "move_received" } // selectedSquare, selectedHand, legalMoves を一括リセット
-    | { type: "resync_received" } // 選択・成り選択・合法手・navIndex を一括リセット
-    | { type: "clear_selection" } // selectedSquare, selectedHand を一括リセット
-    | { type: "select_square"; squareId: string | null }
-    | { type: "select_hand"; pieceType: PieceType | null }
-    | { type: "set_legal_moves"; moves: string[] }
-    | { type: "set_promote_dialog"; dialog: { from: string; to: string; usi: string } | null }
-    | { type: "set_nav_index"; index: number | null }
-    | { type: "set_ai_sheet_open"; open: boolean }
-    | { type: "set_kifu_sheet_open"; open: boolean }
-    | { type: "set_end_dialog_closed"; closed: boolean };
-
-const INITIAL_UI_STATE: UIState = {
-    selectedSquare: null,
-    selectedHand: null,
-    legalMoves: [],
-    promoteDialog: null,
-    navIndex: null,
-    aiSheetOpen: false,
-    kifuSheetOpen: false,
-    endDialogClosed: false,
-};
-
-function uiReducer(state: UIState, action: UIAction): UIState {
-    switch (action.type) {
-        case "move_received":
-            return { ...state, selectedSquare: null, selectedHand: null, legalMoves: [] };
-        case "resync_received":
-            return {
-                ...state,
-                selectedSquare: null,
-                selectedHand: null,
-                legalMoves: [],
-                promoteDialog: null,
-                navIndex: null,
-            };
-        case "clear_selection":
-            return { ...state, selectedSquare: null, selectedHand: null };
-        case "select_square":
-            return { ...state, selectedSquare: action.squareId };
-        case "select_hand":
-            return { ...state, selectedHand: action.pieceType };
-        case "set_legal_moves":
-            return { ...state, legalMoves: action.moves };
-        case "set_promote_dialog":
-            return { ...state, promoteDialog: action.dialog };
-        case "set_nav_index":
-            return { ...state, navIndex: action.index };
-        case "set_ai_sheet_open":
-            return { ...state, aiSheetOpen: action.open };
-        case "set_kifu_sheet_open":
-            return { ...state, kifuSheetOpen: action.open };
-        case "set_end_dialog_closed":
-            return { ...state, endDialogClosed: action.closed };
-    }
-}
-
-// ─── クロックフック ────────────────────────────────────────────────────────────
-
-function useOnlineClock(clockState: ClockState | null): { b: number; w: number } {
-    const [displayMs, setDisplayMs] = useState<{ b: number; w: number }>({ b: 0, w: 0 });
-
-    useEffect(() => {
-        if (!clockState) return;
-        const update = (): void => {
-            const elapsed = Date.now() - clockState.lastTickTs;
-            setDisplayMs({
-                b:
-                    clockState.running === "b"
-                        ? Math.max(0, clockState.b.remainMs - elapsed)
-                        : clockState.b.remainMs,
-                w:
-                    clockState.running === "w"
-                        ? Math.max(0, clockState.w.remainMs - elapsed)
-                        : clockState.w.remainMs,
-            });
-        };
-        update();
-        const id = setInterval(update, 500);
-        return () => clearInterval(id);
-    }, [clockState]);
-
-    return displayMs;
-}
 
 // ─── メインコンポーネント ──────────────────────────────────────────────────────
 
@@ -298,27 +103,9 @@ export function OnlineGameView({
     onExit,
     requestFullSnapshot,
 }: OnlineGameViewProps): ReactElement {
-    // ─── AI サポート設定（makeInitialGameState の引数として使用するため先に定義） ──
+    // ─── AI サポート設定 ─────────────────────────────────────────────────────
     const aiSupport = snapshot.settings.aiSupport as AiSupportSettings | null;
     const myAiSettings = seat !== "s" && aiSupport ? aiSupport[seat === "b" ? "b" : "w"] : null;
-
-    // ─── ゲーム状態（useReducer） ─────────────────────────────────────────────
-    const [gameState, dispatch] = useReducer(gameReducer, undefined, () =>
-        makeInitialGameState(snapshot, myAiSettings, seat),
-    );
-    const {
-        position,
-        positionHistory,
-        turn,
-        clockState,
-        gameResult,
-        offlineSeats,
-        passRights,
-        myAnalysisRemaining,
-        analysisLog,
-        usiMoveLog,
-        pendingTakeback,
-    } = gameState;
 
     // ─── UI インタラクション状態（useReducer） ───────────────────────────────
     const [uiState, dispatchUI] = useReducer(uiReducer, INITIAL_UI_STATE);
@@ -332,60 +119,6 @@ export function OnlineGameView({
         kifuSheetOpen,
         endDialogClosed,
     } = uiState;
-
-    // 右パネルのアクティブタブ
-    const [rightTab, setRightTab] = useState<"kifu" | "ai">(aiSupport || analysis ? "ai" : "kifu");
-
-    // analysis prop から分解（undefined 時のデフォルト値）
-    const isAnalyzing = analysis?.isAnalyzing ?? false;
-    const topMoves = analysis?.topMoves ?? [];
-    // ミニサマリバー用評価値（先手視点 cp）
-    const summaryEvalCp = topMoves[0]?.cp ?? null;
-    const summaryEvalPercent =
-        summaryEvalCp !== null ? Math.min(100, Math.max(0, 50 + (summaryEvalCp / 2000) * 50)) : 50;
-
-    // 現在の start SFEN と moves
-    const startSfenRef = useRef(resolveStartSfen(snapshot.settings.startSfen));
-    const movesRef = useRef<string[]>([...snapshot.moves]);
-    const gameRecordIdRef = useRef<string | null>(snapshot.gameRecordId ?? null);
-    // 画面に反映し終えた最新のイベント。操作の送信にはこの番号を使う: 受信しただけで
-    // まだ反映していないイベントの番号を送ると、古い局面を見て選んだ操作がサーバーを通ってしまう
-    const appliedEventIdRef = useRef(snapshot.eventId);
-
-    // 自分の手番か
-    const myPlayer: Player | null = seat === "b" ? "sente" : seat === "w" ? "gote" : null;
-    const isMyTurn =
-        myPlayer !== null &&
-        ((turn === "b" && myPlayer === "sente") || (turn === "w" && myPlayer === "gote"));
-    const isSpectator = seat === "s";
-    const [connection, setConnection] = useState<GameConnection>({ state: "connected" });
-    // つながっていない間に送った操作は RoomClient が捨てる。再接続した直後も、サーバーの
-    // 局面を反映し終えるまでは古い局面を見て選んだ操作になるので受け付けない
-    const canSend = connection.state === "connected";
-    // 対局中（観戦中も）は、相手の手を待つ間に画面が消えてロックされないようにする。つながり直せない
-    // （再読み込みやトップへ戻る案内を出している）間は、消灯を止めない。
-    useScreenWakeLock(
-        !gameResult && (connection.state === "connected" || connection.state === "reconnecting"),
-    );
-    // 切断・再接続のたびに進む。非同期処理の前後で比べ、その間に接続が替わったかを知る
-    const connectionEpochRef = useRef(0);
-    // 再接続後、席へ戻った結果の snapshot を待っている間だけ、その再接続の番号を持つ
-    const resyncRef = useRef<number | null>(null);
-    const resyncRetriesRef = useRef(0);
-    const resyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    // 局面を変えるイベントや snapshot を反映するたびに進む
-    const positionVersionRef = useRef(0);
-    // 復帰を拒まれた後に開き直しても、同じトークンでは席へ戻れない
-    const rejectedRef = useRef(false);
-    const canPlay = isMyTurn && canSend;
-
-    const totalPly = Math.max(0, positionHistory.length - 1);
-    // 自分の手番になったら巻き戻しを解除してライブ追従（effect 不要、レンダー時に派生）
-    const effectiveNavIndex = isMyTurn ? null : navIndex;
-    const isRewound = effectiveNavIndex !== null;
-    const currentPly = isRewound ? effectiveNavIndex : totalPly;
-    // 表示用局面: 巻き戻し中は履歴局面、それ以外はライブ局面
-    const displayPosition = isRewound ? (positionHistory[effectiveNavIndex] ?? null) : position;
 
     // ─── サーバーに拒否された操作の案内 ──────────────────────────────────────
 
@@ -403,320 +136,114 @@ export function OnlineGameView({
     // 詰みの申告を拒まれた局面の指し手。サーバーと食い違ったまま申告と拒否を繰り返さないよう、
     // その局面では申告し直さない。届かなかった申告は再接続後に送り直せるよう、送っただけでは記録しない
     const checkmateRejectedMovesRef = useRef<string | null>(null);
+    const { playSound } = useShogiSound();
+
+    // ─── ルームの購読と対局の状態 ────────────────────────────────────────────
+    const {
+        gameState,
+        connection,
+        loadFailed,
+        startSfenRef,
+        movesRef,
+        gameRecordIdRef,
+        appliedEventIdRef,
+        connectionEpochRef,
+        positionVersionRef,
+    } = useOnlineGameRoom({
+        client,
+        snapshot,
+        seat,
+        roomId,
+        myAiSettings,
+        requestFullSnapshot,
+        onPositionReset: () => dispatchUI({ type: "resync_received" }),
+        onMoveApplied: (usi, nextTurn) => {
+            dispatchUI({ type: "move_received" });
+            // 自分の席が着手後の手番 = 相手が指した
+            const isOpponentMove = seat !== "s" && nextTurn === seat;
+            if (usi === "pass") {
+                playSound("pass");
+            } else if (isOpponentMove || seat === "s") {
+                playSound("move_opponent");
+            } else {
+                playSound("move_self");
+            }
+        },
+        onCommandRejected: (code, appliedMovesKey) => {
+            const text = rejectedCommandNotice(code, seat);
+            if (text) {
+                setCommandNotice({ text });
+            }
+            if (code === "CHECKMATE_NOT_CONFIRMED") {
+                // 申告の判定と同じ指し手列で記録する。案内は描画中の usiMovesKey と比べるが、
+                // どちらも適用し終えた指し手列から作るので一致する
+                checkmateRejectedMovesRef.current = appliedMovesKey;
+                setCheckmateRejectedMoves(usiMovesKey);
+            }
+        },
+    });
+    const {
+        position,
+        positionHistory,
+        turn,
+        clockState,
+        gameResult,
+        offlineSeats,
+        passRights,
+        myAnalysisRemaining,
+        analysisLog,
+        usiMoveLog,
+        pendingTakeback,
+    } = gameState;
+
+    // 右パネルのアクティブタブ
+    const [rightTab, setRightTab] = useState<"kifu" | "ai">(aiSupport || analysis ? "ai" : "kifu");
+
+    // analysis prop から分解（undefined 時のデフォルト値）
+    const isAnalyzing = analysis?.isAnalyzing ?? false;
+    const topMoves = analysis?.topMoves ?? [];
+
+    // 自分の手番か
+    const myPlayer: Player | null = seat === "b" ? "sente" : seat === "w" ? "gote" : null;
+    const isMyTurn =
+        myPlayer !== null &&
+        ((turn === "b" && myPlayer === "sente") || (turn === "w" && myPlayer === "gote"));
+    const isSpectator = seat === "s";
+    // つながっていない間に送った操作は RoomClient が捨てる。再接続した直後も、サーバーの
+    // 局面を反映し終えるまでは古い局面を見て選んだ操作になるので受け付けない
+    const canSend = connection.state === "connected";
+    // 対局中（観戦中も）は、相手の手を待つ間に画面が消えてロックされないようにする。つながり直せない
+    // （再読み込みやトップへ戻る案内を出している）間は、消灯を止めない。
+    useScreenWakeLock(
+        !gameResult && (connection.state === "connected" || connection.state === "reconnecting"),
+    );
+    const canPlay = isMyTurn && canSend;
+
+    const totalPly = Math.max(0, positionHistory.length - 1);
+    // 自分の手番になったら巻き戻しを解除してライブ追従（effect 不要、レンダー時に派生）
+    const effectiveNavIndex = isMyTurn ? null : navIndex;
+    const isRewound = effectiveNavIndex !== null;
+    const currentPly = isRewound ? effectiveNavIndex : totalPly;
+    // 表示用局面: 巻き戻し中は履歴局面、それ以外はライブ局面
+    const displayPosition = isRewound ? (positionHistory[effectiveNavIndex] ?? null) : position;
+
     const usiMovesKey = usiMoveLog.map((entry) => entry.usi).join(" ");
     const showsCheckmateRejected = !gameResult && checkmateRejectedMoves === usiMovesKey;
 
-    const showRejection = useEffectEvent((code: ErrorCode): void => {
-        const text = rejectedCommandNotice(code, seat);
-        if (text) {
-            setCommandNotice({ text });
-        }
-        if (code === "CHECKMATE_NOT_CONFIRMED") {
-            // 申告の判定と同じ指し手列で記録する。案内は描画中の usiMovesKey と比べるが、
-            // どちらも適用し終えた指し手列から作るので一致する
-            checkmateRejectedMovesRef.current = movesRef.current.join(" ");
-            setCheckmateRejectedMoves(usiMovesKey);
-        }
-        // 見ている局面が古いと指し直しても通らないので、取りこぼしたイベントを取り直す。
-        // 詰みの申告が拒まれるのも、手元の局面がサーバーと食い違っているとき
-        if (code === "DESYNC" || code === "CHECKMATE_NOT_CONFIRMED") {
-            client.sync({ sinceEventId: appliedEventIdRef.current });
-        }
-    });
-
-    // ─── 接続状態 ────────────────────────────────────────────────────────────
-
-    const stopResync = useEffectEvent((): void => {
-        resyncRef.current = null;
-        if (resyncTimerRef.current !== null) {
-            clearTimeout(resyncTimerRef.current);
-            resyncTimerRef.current = null;
-        }
-    });
-
-    const showConnectionLost = (): void => {
-        setConnection({
-            state: "lost",
-            canResume: seat !== "s" && getStoredResumeToken(roomId) !== null,
-        });
-    };
-
-    // snapshot を求め直せたら true。待ちが終わっていれば何もせず、回数を使い切ったら諦める
-    const requestResyncSnapshot = useEffectEvent((resync: number): boolean => {
-        if (resyncRef.current !== resync) return false;
-        if (resyncRetriesRef.current >= RESYNC_MAX_RETRIES || !requestFullSnapshot?.()) {
-            stopResync();
-            showConnectionLost();
-            return false;
-        }
-        resyncRetriesRef.current += 1;
-        return true;
-    });
-
-    const waitForResync = (resync: number): void => {
-        if (resyncTimerRef.current !== null) clearTimeout(resyncTimerRef.current);
-        resyncTimerRef.current = setTimeout(() => {
-            if (requestResyncSnapshot(resync)) waitForResync(resync);
-        }, RESYNC_TIMEOUT_MS);
-    };
-
-    const retryResync = useEffectEvent((resync: number): void => {
-        if (requestResyncSnapshot(resync)) waitForResync(resync);
-    });
-
-    const rejectResync = useEffectEvent((code: ErrorCode): void => {
-        stopResync();
-        // useRoomConnection は対局開始で購読をやめていて、この応答を見ない。二度と使えない
-        // トークンをここで捨てないと、再読み込みのたびに同じ resume が拒まれる
-        if (isResumeTokenRejected(code)) {
-            removeStoredResumeToken(roomId);
-            removeStoredSeat(roomId);
-        }
-        rejectedRef.current = true;
-        setConnection({ state: "rejected", finished: code === "ROOM_FINISHED" });
-    });
-
-    const applyStatus = useEffectEvent((status: RoomClientStatus): void => {
-        connectionEpochRef.current += 1;
-        stopResync();
-        if (rejectedRef.current) return;
-        if (status === "reconnecting") {
-            setConnection({ state: "reconnecting" });
-        } else if (status === "disconnected") {
-            showConnectionLost();
-        } else if (status === "connected") {
-            // WebSocket が開いても、席へ戻れたかは分からない。対局者は RoomClient が必ず snapshot の
-            // 返る resume を送り、観戦者は useRoomConnection が開き直した接続で参加し直すので、
-            // どちらも応答の snapshot を反映し終えたら戻す
-            const resync = connectionEpochRef.current;
-            resyncRef.current = resync;
-            resyncRetriesRef.current = 0;
-            waitForResync(resync);
-        }
-    });
-
-    const { playSound } = useShogiSound();
-    const playSoundEvent = useEffectEvent(playSound);
-
-    // ─── サーバーからのメッセージの反映 ──────────────────────────────────────
-
-    // 局面の解析は非同期なので、メッセージごとに別々に進めると、後から届いたものが先に
-    // 反映されたり、古い snapshot が新しい指し手を巻き戻したりする。画面を開いたときの
-    // snapshot も含めて 1 本の列に並べ、届いた順に 1 件ずつ反映し終えてから次へ進む
-    const incomingRef = useRef<SerialQueue<Incoming> | null>(null);
-    const initialSnapshotRef = useRef(snapshot);
-    const isListeningRef = useRef(false);
-    const [loadFailed, setLoadFailed] = useState(false);
-
-    const applyIncoming = useEffectEvent((incoming: Incoming): void | Promise<void> => {
-        if (incoming.t === "snapshot") {
-            const { payload, initial } = incoming;
-            // 画面を開いたときの snapshot を復元できないと盤面を出せないので、1 度だけやり直す
-            const restoring = initial
-                ? restorePosition(payload).catch(() => restorePosition(payload))
-                : restorePosition(payload);
-            return restoring.then(
-                (restored) => {
-                    if (!isListeningRef.current) return;
-                    setLoadFailed(false);
-                    appliedEventIdRef.current = payload.eventId;
-                    startSfenRef.current = resolveStartSfen(payload.settings.startSfen);
-                    movesRef.current = [...payload.moves];
-                    // 終局イベントは購読開始より前に配信済みのことがあるので、snapshot からも復元する
-                    if (payload.result) {
-                        dispatch({ type: "result", result: payload.result });
-                    }
-                    if (payload.gameRecordId) {
-                        gameRecordIdRef.current = payload.gameRecordId;
-                    }
-                    if (initial) {
-                        dispatch({ type: "init", ...restored });
-                        return;
-                    }
-                    positionVersionRef.current += 1;
-                    if (incoming.resync !== undefined && incoming.resync === resyncRef.current) {
-                        stopResync();
-                        setConnection({ state: "connected" });
-                    }
-                    dispatch({
-                        type: "resync",
-                        ...restored,
-                        turn: payload.turn,
-                        clock: payload.clock,
-                        passRights: payload.passRights,
-                        pendingTakeback: payload.pendingTakeback,
-                        myAnalysisRemaining: snapshotAnalysisRemaining(payload, seat),
-                        analysisLog: payload.analysisLog,
-                    });
-                    dispatchUI({ type: "resync_received" }); // 再接続後は最新局面に戻す
-                },
-                (err) => {
-                    console.error("[OnlineGameView] Failed to parse SFEN from snapshot:", err);
-                    if (!isListeningRef.current) return;
-                    if (initial) {
-                        setLoadFailed(true);
-                        // 局面が無いままでは指せず、snapshot が届くまで待つしかないので取り寄せる。
-                        // 届いた snapshot も読めなければ、再接続後の同期と同じく回数を区切って諦める。
-                        // 再接続後の同期が既に待っていれば、その snapshot で作り直せるので引き継ぐ
-                        const resync = connectionEpochRef.current;
-                        if (resyncRef.current === resync) return;
-                        resyncRef.current = resync;
-                        resyncRetriesRef.current = 0;
-                        if (requestFullSnapshot?.()) {
-                            waitForResync(resync);
-                        } else {
-                            stopResync();
-                        }
-                        return;
-                    }
-                    // sync の応答は差分イベントだけのことがあるので、同期待ちなら snapshot を求め直す
-                    if (incoming.resync !== undefined && incoming.resync === resyncRef.current) {
-                        retryResync(incoming.resync);
-                        return;
-                    }
-                    // サーバーに再同期リクエストを送信して最新状態を取得する
-                    client.sync({ sinceEventId: appliedEventIdRef.current });
-                },
-            );
-        }
-
-        const e = incoming.payload;
-        // 終局済みルームへ再接続すると、snapshot に反映済みのイベントが後から届く。
-        // 二重に適用しないよう、終局の通知以外は読み飛ばす
-        const alreadyApplied = e.eventId <= appliedEventIdRef.current;
-        // サーバーは指し手以外のイベントでもイベント番号を増やすので、すべてのイベントで更新する
-        const markApplied = (): void => {
-            appliedEventIdRef.current = Math.max(appliedEventIdRef.current, e.eventId);
-            if (!POSITION_KEEPING_EVENTS.has(e.kind)) {
-                positionVersionRef.current += 1;
-            }
-        };
-
-        if (e.kind === "game_end") {
-            if (e.gameRecordId) {
-                gameRecordIdRef.current = e.gameRecordId;
-            }
-            dispatch({ type: "result", result: e.result });
-        } else if (
-            e.kind === "resign" ||
-            e.kind === "timeout" ||
-            e.kind === "checkmate" ||
-            e.kind === "sennichite" ||
-            e.kind === "illegal_move" ||
-            e.kind === "disconnect_loss"
-        ) {
-            dispatch({ type: "result", result: e.result });
-        } else if (alreadyApplied) {
-            return;
-        } else if (e.kind === "takeback_accepted") {
-            return getPositionService()
-                .parseSfen(e.sfen)
-                .then((pos) => {
-                    if (!isListeningRef.current) return;
-                    movesRef.current = movesRef.current.slice(0, -1);
-                    dispatch({
-                        type: "takeback_accepted",
-                        position: pos,
-                        turn: e.turn,
-                        clock: e.clock,
-                        passRights: e.passRights,
-                    });
-                    dispatchUI({ type: "resync_received" });
-                    markApplied();
-                });
-        } else if (e.kind === "move") {
-            dispatch({
-                type: "move",
-                usi: e.usi,
-                turn: e.turn,
-                clock: e.clock,
-                passRights: e.passRights,
-                elapsedMs: e.elapsedMs,
-            });
-            movesRef.current = [...movesRef.current, e.usi];
-            dispatchUI({ type: "move_received" });
-
-            // ─── 着手通知 ────────────────────────────────────────
-            // e.turn は着手後の次の手番。自分の席が次手番 = 相手が指した
-            const isOpponentMove = seat !== "s" && e.turn === seat;
-            if (e.usi === "pass") {
-                playSoundEvent("pass");
-            } else if (isOpponentMove || seat === "s") {
-                playSoundEvent("move_opponent");
-            } else {
-                playSoundEvent("move_self");
-            }
-        } else if (e.kind === "player_offline") {
-            dispatch({ type: "player_offline", seat: e.seat });
-        } else if (e.kind === "player_online") {
-            dispatch({ type: "player_online", seat: e.seat });
-        } else if (e.kind === "analysis_used" && (e.seat === "b" || e.seat === "w")) {
-            dispatch({
-                type: "analysis_used",
-                isMySeat: e.seat === seat,
-                seat: e.seat,
-                analysisRemaining: e.analysisRemaining,
-                ply: movesRef.current.length,
-            });
-        } else if (e.kind === "takeback_requested" && (e.seat === "b" || e.seat === "w")) {
-            dispatch({ type: "takeback_requested", seat: e.seat, ply: e.ply });
-        } else if (e.kind === "takeback_rejected") {
-            dispatch({ type: "takeback_rejected" });
-        } else if (e.kind === "takeback_cancelled") {
-            dispatch({ type: "takeback_cancelled" });
-        }
-        markApplied();
-    });
-
-    useEffect(() => {
-        isListeningRef.current = true;
-        if (!incomingRef.current) {
-            incomingRef.current = createSerialQueue<Incoming>(
-                (incoming) => applyIncoming(incoming),
-                () => isListeningRef.current,
-            );
-            incomingRef.current.push({
-                t: "snapshot",
-                payload: initialSnapshotRef.current,
-                initial: true,
-            });
-        } else {
-            incomingRef.current.resume();
-        }
-        const incoming = incomingRef.current;
-        const unsub = client.subscribe((msg) => {
-            if (msg.t === "event") {
-                incoming.push(msg);
-            } else if (msg.t === "snapshot") {
-                incoming.push({
-                    t: "snapshot",
-                    payload: msg.payload,
-                    initial: false,
-                    resync: resyncRef.current ?? undefined,
-                });
-            } else if (msg.t === "error") {
-                if (resyncRef.current !== null && SEAT_LOST_CODES.has(msg.payload.code)) {
-                    rejectResync(msg.payload.code);
-                    return;
-                }
-                showRejection(msg.payload.code);
-            }
-        });
-        const initialStatus = client.getStatus();
-        if (initialStatus === "reconnecting" || initialStatus === "disconnected") {
-            applyStatus(initialStatus);
-        }
-        const unsubStatus = client.subscribeStatus(applyStatus);
-        return () => {
-            unsub();
-            unsubStatus();
-            stopResync();
-            // 解析の途中で画面を離れたら、その結果も残りのメッセージも反映しない
-            isListeningRef.current = false;
-        };
-    }, [client]);
-
     // ─── 合法手の取得 ────────────────────────────────────────────────────────
+
+    // 指し手列は取りに行く時点で反映し終えたものを読む
+    const fetchLegalMoves = useEffectEvent(
+        (options: { passRights?: { sente: number; gote: number } }): Promise<string[]> =>
+            getPositionService().getLegalMoves(startSfenRef.current, movesRef.current, options),
+    );
+    const declareCheckmateIfNoMoves = useEffectEvent((moves: string[]): void => {
+        // 合法手が0 = 自分が詰まされている → サーバーに通知
+        const movesKey = movesRef.current.join(" ");
+        if (moves.length === 0 && checkmateRejectedMovesRef.current !== movesKey) {
+            client.checkmate({ eventId: appliedEventIdRef.current });
+        }
+    });
 
     useEffect(() => {
         // 巻き戻し中は合法手を表示しない
@@ -736,18 +263,10 @@ export function OnlineGameView({
             // 反映し終えた局面の合法手を取り直す
             if (position && canPlay && !gameResult && !isRewound) {
                 try {
-                    const moves = await getPositionService().getLegalMoves(
-                        startSfenRef.current,
-                        movesRef.current,
-                        passRightsOption,
-                    );
+                    const moves = await fetchLegalMoves(passRightsOption);
                     if (cancelled) return;
                     dispatchUI({ type: "set_legal_moves", moves });
-                    // 合法手が0 = 自分が詰まされている → サーバーに通知
-                    const movesKey = movesRef.current.join(" ");
-                    if (moves.length === 0 && checkmateRejectedMovesRef.current !== movesKey) {
-                        client.checkmate({ eventId: appliedEventIdRef.current });
-                    }
+                    declareCheckmateIfNoMoves(moves);
                 } catch {
                     if (!cancelled) {
                         dispatchUI({ type: "set_legal_moves", moves: [] });
@@ -760,15 +279,7 @@ export function OnlineGameView({
         return () => {
             cancelled = true;
         };
-    }, [
-        canPlay,
-        gameResult,
-        isRewound,
-        passRights,
-        client,
-        position,
-        snapshot.settings.passRights,
-    ]);
+    }, [canPlay, gameResult, isRewound, passRights, position, snapshot.settings.passRights]);
 
     // ─── 棋譜ナビゲーションハンドラ ───────────────────────────────────────────
 
@@ -907,9 +418,6 @@ export function OnlineGameView({
         client.resign({ eventId: appliedEventIdRef.current });
     }
 
-    // 投了は取り消せないので、確かめてから送る（スマホでは隣の「棋譜」「待った」と押し間違えやすい）。
-    const [isResignConfirmOpen, setIsResignConfirmOpen] = useState(false);
-
     // ─── 待った ───────────────────────────────────────────────────────────────
 
     function handleTakebackRequest(): void {
@@ -924,54 +432,30 @@ export function OnlineGameView({
         client.takebackCancel({ eventId: appliedEventIdRef.current });
     }
 
-    // ─── AI 解析トリガー ─────────────────────────────────────────────────────
+    // ─── AI 解析 ─────────────────────────────────────────────────────────────
 
-    // 解析を開始した局面の board/turn を保存（formatMoveSimple に渡すため）
-    const [analysisBoard, setAnalysisBoard] = useState<BoardState | null>(null);
-    const [analysisTurn, setAnalysisTurn] = useState<"b" | "w">("b");
-    // PVプレビュー用に局面と手数も保存
-    const [analysisPosition, setAnalysisPosition] = useState<PositionState | null>(null);
-    const [analysisPly, setAnalysisPly] = useState<number>(0);
-    // PVプレビューダイアログ
-    const [pvPreviewMove, setPvPreviewMove] = useState<AiHintMove | null>(null);
-
-    // 制限モードは use_analysis を先送信してからエンジン解析（観戦者はスキップ）
-    const analysisNeedsServer = myAiSettings?.mode === "limited" && seat !== "s";
-
-    const handleAnalyze = async () => {
-        if (!position || (analysisNeedsServer && !canSend)) return;
-        if (analysisNeedsServer) {
-            const ply = movesRef.current.length;
-            client.consumeAnalysis({ eventId: appliedEventIdRef.current, ply });
-            // analysis_used 受信後に自動で残り回数が更新される
-        }
-        if (analysis) {
-            setAnalysisBoard(position.board);
-            setAnalysisTurn(turn);
-            setAnalysisPosition(position);
-            setAnalysisPly(movesRef.current.length);
-            void analysis.startAnalysis(startSfenRef.current, movesRef.current);
-        }
-    };
-
-    // ─── NNUE 管理 ───────────────────────────────────────────────────────────
-
-    const [nnueSelection, setNnueSelection] = useState<NnueSelection>(NONE_NNUE_SELECTION);
-    const [nnueManagerOpen, setNnueManagerOpen] = useState(false);
-    const { resolveNnue } = useLazyNnueLoader();
-    const isMobile = useIsMobile();
-
-    const loadNnueEvent = useEffectEvent((sel: NnueSelection) => {
-        if (!analysis?.loadNnue) return;
-        resolveNnue(sel)
-            .then((resolved) =>
-                analysis.loadNnue?.(resolved?.nnueId ?? null, resolved?.layerStacks),
-            )
-            .catch(console.error);
+    const {
+        analysisNeedsServer,
+        requestAnalysis,
+        analyzedPosition,
+        pvPreviewMove,
+        setPvPreviewMove,
+        nnueSelection,
+        setNnueSelection,
+    } = useOnlineAiAnalysis({
+        analysis,
+        client,
+        seat,
+        myAiSettings,
+        canSend,
+        position,
+        turn,
+        startSfenRef,
+        movesRef,
+        appliedEventIdRef,
     });
-    useEffect(() => {
-        loadNnueEvent(nnueSelection);
-    }, [nnueSelection]);
+    const [nnueManagerOpen, setNnueManagerOpen] = useState(false);
+    const isMobile = useIsMobile();
 
     // ─── AI 手の盤面適用 ──────────────────────────────────────────────────────
 
@@ -1118,9 +602,9 @@ export function OnlineGameView({
                 topMoves={topMoves}
                 canAnalyze={canAnalyzeNow}
                 analyzeHint={analyzeHintText}
-                onAnalyze={() => void handleAnalyze()}
-                analysisBoard={analysisBoard}
-                analysisTurn={analysisTurn}
+                onAnalyze={requestAnalysis}
+                analysisBoard={analyzedPosition?.position.board ?? null}
+                analysisTurn={analyzedPosition?.turn ?? "b"}
                 nnueSelection={nnueSelection}
                 onNnueSelectionChange={setNnueSelection}
                 onOpenNnueManager={() => setNnueManagerOpen(true)}
@@ -1129,58 +613,18 @@ export function OnlineGameView({
                         ? (usiMove) => Promise.resolve(handleApplyAiMove(usiMove))
                         : undefined
                 }
-                onPreviewPv={analysisPosition ? setPvPreviewMove : undefined}
+                onPreviewPv={analyzedPosition ? setPvPreviewMove : undefined}
             />
         ) : null;
 
-    // PC サイドバー・モバイル BottomSheet 共通: 棋譜リスト
     const kifuPanelContent = (
-        <div className="flex flex-col gap-1 overflow-y-auto max-h-[50dvh] md:max-h-[calc(100dvh-160px)]">
-            {usiMoveLog.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">
-                    まだ指し手がありません
-                </p>
-            ) : (
-                usiMoveLog
-                    .map((entry, i) => ({
-                        ply: i + 1,
-                        usi: entry.usi,
-                        pos: positionHistory[i],
-                    }))
-                    .map((item) => {
-                        const moveText = item.pos
-                            ? formatMoveSimple(item.usi, item.pos.turn, item.pos.board)
-                            : item.usi;
-                        const isCurrentPly = currentPly === item.ply;
-                        return (
-                            <button
-                                key={item.ply}
-                                type="button"
-                                disabled={!gameResult && !isSpectator}
-                                onClick={() =>
-                                    dispatchUI({
-                                        type: "set_nav_index",
-                                        index:
-                                            item.ply >= positionHistory.length - 1
-                                                ? null
-                                                : item.ply,
-                                    })
-                                }
-                                className={`flex gap-2 text-xs px-2 py-1 rounded text-left transition-colors ${
-                                    isCurrentPly
-                                        ? "bg-wafuu-kincha/20 text-wafuu-kincha font-medium"
-                                        : "hover:bg-muted disabled:cursor-default"
-                                }`}
-                            >
-                                <span className="text-muted-foreground w-6 shrink-0 tabular-nums">
-                                    {item.ply}.
-                                </span>
-                                <span>{moveText}</span>
-                            </button>
-                        );
-                    })
-            )}
-        </div>
+        <OnlineKifuList
+            usiMoveLog={usiMoveLog}
+            positionHistory={positionHistory}
+            currentPly={currentPly}
+            disabled={!gameResult && !isSpectator}
+            onSelectPly={(index) => dispatchUI({ type: "set_nav_index", index })}
+        />
     );
 
     return (
@@ -1188,42 +632,12 @@ export function OnlineGameView({
             {/* 左サイドバー: 対局後検討・NNUE設定など（PC のみ表示） */}
             <div className="hidden md:flex w-64 flex-col gap-3" />
 
-            {/* 接続の通知: 盤面の上に重ね、出し入れで盤面が動かないようにする */}
-            <div className="pointer-events-none fixed top-4 left-1/2 -translate-x-1/2 z-50 flex w-[min(90vw,420px)] flex-col items-center gap-2">
-                {offlineSeats.size > 0 && (
-                    <div className="rounded-lg bg-destructive px-4 py-2 text-sm text-destructive-foreground shadow-lg">
-                        {Array.from(offlineSeats).map((s) => (
-                            <span key={s}>{s === "b" ? "先手" : "後手"}が切断しました</span>
-                        ))}
-                    </div>
-                )}
-                {!gameResult && connection.state === "reconnecting" && (
-                    <output className="rounded-lg border border-border bg-card px-4 py-2 text-sm text-muted-foreground shadow-lg">
-                        再接続中...
-                    </output>
-                )}
-                {!gameResult && connection.state === "lost" && (
-                    <ConnectionLostNotice
-                        reason={connection.canResume ? "seat" : "reload"}
-                        className="pointer-events-auto w-full shadow-lg"
-                    />
-                )}
-                {!gameResult &&
-                    connection.state === "rejected" &&
-                    (connection.finished && onExit ? (
-                        <ConnectionLostNotice
-                            reason="finished"
-                            onExit={onExit}
-                            className="pointer-events-auto w-full shadow-lg"
-                        />
-                    ) : (
-                        // 戻り先を渡されていなければ、終局していても再読み込みで画面を出し直してもらう
-                        <ConnectionLostNotice
-                            reason={connection.finished ? "reload" : "session"}
-                            className="pointer-events-auto w-full shadow-lg"
-                        />
-                    ))}
-            </div>
+            <ConnectionNotices
+                offlineSeats={offlineSeats}
+                connection={connection}
+                isGameOver={gameResult !== null}
+                onExit={onExit}
+            />
 
             {/* メインコンテンツ */}
             <div className={`flex flex-col gap-3 ${isMobile ? "items-center" : "flex-1"}`}>
@@ -1234,7 +648,6 @@ export function OnlineGameView({
                     isMyTurn={flipBoard ? turn === "b" : turn === "w"}
                     remainMs={flipBoard ? clockDisplay.b : clockDisplay.w}
                     isOffline={flipBoard ? offlineSeats.has("b") : offlineSeats.has("w")}
-                    isFlipped={flipBoard}
                     passRightsCount={
                         passRights != null ? (flipBoard ? passRights.b : passRights.w) : undefined
                     }
@@ -1311,7 +724,6 @@ export function OnlineGameView({
                     isMyTurn={flipBoard ? turn === "w" : turn === "b"}
                     remainMs={flipBoard ? clockDisplay.w : clockDisplay.b}
                     isOffline={flipBoard ? offlineSeats.has("w") : offlineSeats.has("b")}
-                    isFlipped={flipBoard}
                     passRightsCount={
                         passRights != null ? (flipBoard ? passRights.w : passRights.b) : undefined
                     }
@@ -1338,24 +750,12 @@ export function OnlineGameView({
                         onToEnd={handleNavEnd}
                         isRewound={isRewound}
                         disabled={!gameResult && !isSpectator}
+                        className="mb-2"
                     />
                 )}
 
-                {/* 待った: 申請中バナー（申請者向け） */}
                 {pendingTakeback && pendingTakeback.seat === seat && !isSpectator && (
-                    <div className="flex items-center justify-between rounded-lg border border-wafuu-kincha/40 bg-wafuu-kincha/10 px-3 py-2 text-sm">
-                        <span className="text-wafuu-kincha">
-                            待った申請中... 相手の応答を待っています
-                        </span>
-                        <button
-                            type="button"
-                            onClick={handleTakebackCancel}
-                            disabled={!canSend}
-                            className="ml-3 text-xs text-muted-foreground underline hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            取り消す
-                        </button>
-                    </div>
+                    <TakebackPendingBanner canCancel={canSend} onCancel={handleTakebackCancel} />
                 )}
 
                 {(loadFailed || commandNotice) && (
@@ -1394,41 +794,12 @@ export function OnlineGameView({
                             </button>
                         )}
                     {!isSpectator && !gameResult && (
-                        <AlertDialog
-                            // 終局したらボタンごと消えるので、確かめている途中でも閉じる（相手の投了・時間切れ）。
-                            open={isResignConfirmOpen}
-                            onOpenChange={setIsResignConfirmOpen}
-                        >
-                            <AlertDialogTrigger asChild>
-                                <button
-                                    type="button"
-                                    disabled={!canSend}
-                                    className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    投了
-                                </button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                                <AlertDialogHeader>
-                                    <AlertDialogTitle>投了しますか？</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                        {/* 切れている間（自分の手番でも押せない）は、上の接続の案内に任せる。 */}
-                                        {isMyTurn
-                                            ? "対局を終了します。取り消せません。"
-                                            : "相手の手番の間は投了できません。自分の手番になってから投了してください。"}
-                                    </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                    <AlertDialogCancel>キャンセル</AlertDialogCancel>
-                                    <AlertDialogAction
-                                        onClick={handleResign}
-                                        disabled={!canPlay || !position}
-                                    >
-                                        投了する
-                                    </AlertDialogAction>
-                                </AlertDialogFooter>
-                            </AlertDialogContent>
-                        </AlertDialog>
+                        <ResignButton
+                            disabled={!canSend}
+                            isMyTurn={isMyTurn}
+                            canResign={canPlay && position !== null}
+                            onResign={handleResign}
+                        />
                     )}
                     <button
                         type="button"
@@ -1457,31 +828,11 @@ export function OnlineGameView({
                     </p>
                 )}
 
-                {/* AI解析ミニサマリバー（モバイルのみ・シート閉じているとき） */}
                 {(aiSupport || analysis) && topMoves.length > 0 && (
-                    <button
-                        type="button"
-                        onClick={() => dispatchUI({ type: "set_ai_sheet_open", open: true })}
-                        className="md:hidden flex items-center gap-2 rounded-md border border-border bg-card/80 px-3 py-1.5 text-xs w-full"
-                    >
-                        <span className="text-muted-foreground shrink-0">🤖</span>
-                        <div className="flex-1 h-1.5 rounded-full bg-wafuu-ai overflow-hidden">
-                            <div
-                                className="h-full bg-wafuu-shu transition-all duration-300"
-                                style={{ width: `${summaryEvalPercent}%` }}
-                            />
-                        </div>
-                        <span
-                            className={`font-mono tabular-nums shrink-0 ${summaryEvalCp !== null && summaryEvalCp < 0 ? "text-wafuu-ai" : "text-wafuu-shu"}`}
-                        >
-                            {summaryEvalCp !== null
-                                ? summaryEvalCp > 0
-                                    ? `+${summaryEvalCp}`
-                                    : String(summaryEvalCp)
-                                : "---"}
-                        </span>
-                        <span className="text-muted-foreground shrink-0">詳細 ›</span>
-                    </button>
+                    <AnalysisSummaryBar
+                        evalCp={topMoves[0]?.cp ?? null}
+                        onOpen={() => dispatchUI({ type: "set_ai_sheet_open", open: true })}
+                    />
                 )}
 
                 {/* 観戦者数 */}
@@ -1511,29 +862,15 @@ export function OnlineGameView({
                 {rightTab === "ai" && aiPanelContent}
             </div>
 
-            {/* 待った: 承認ダイアログ（相手向け）。答えるまで閉じない（Esc や外側のクリックでは閉じない）。 */}
-            <AlertDialog open={showTakebackApproval} onOpenChange={() => {}}>
-                <AlertDialogContent className="w-[min(300px,calc(100%-32px))]">
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>待ったの申請</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            相手が直前の手を取り消したいと申請しています
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel onClick={() => handleTakebackResponse(false)}>
-                            拒否する
-                        </AlertDialogCancel>
-                        <AlertDialogAction onClick={() => handleTakebackResponse(true)}>
-                            承認する
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
+            <TakebackApprovalDialog
+                open={showTakebackApproval}
+                onRespond={handleTakebackResponse}
+            />
 
             {/* 対局結果ダイアログ */}
-            {gameResult && !endDialogClosed && (
+            {gameResult && (
                 <GameEndDialog
+                    open={!endDialogClosed}
                     result={gameResult}
                     kifu={generatedKif}
                     playerNames={playerNames}
@@ -1580,12 +917,12 @@ export function OnlineGameView({
             )}
 
             {/* PVプレビューダイアログ */}
-            {pvPreviewMove && analysisPosition && (
+            {pvPreviewMove && analyzedPosition && (
                 <PvPreviewDialog
                     onClose={() => setPvPreviewMove(null)}
                     pv={pvPreviewMove.pv ?? []}
-                    startPosition={analysisPosition}
-                    ply={analysisPly}
+                    startPosition={analyzedPosition.position}
+                    ply={analyzedPosition.ply}
                     evalCp={pvPreviewMove.evalCp}
                     squareNotation={BOARD_DISPLAY_SETTINGS.squareNotation}
                     showBoardLabels={BOARD_DISPLAY_SETTINGS.showBoardLabels}
@@ -1604,321 +941,5 @@ export function OnlineGameView({
                 />
             )}
         </div>
-    );
-}
-
-// ─── サブコンポーネント ────────────────────────────────────────────────────────
-
-interface PlayerHeaderProps {
-    name: string;
-    seat: "b" | "w";
-    isMyTurn: boolean;
-    remainMs: number;
-    isOffline: boolean;
-    isFlipped: boolean;
-    /** undefined = パス権機能が無効、数値 = 残りパス権数 */
-    passRightsCount?: number;
-}
-
-function PlayerHeader({
-    name,
-    seat,
-    isMyTurn,
-    remainMs,
-    isOffline,
-    passRightsCount,
-}: PlayerHeaderProps): ReactElement {
-    return (
-        // スマホでは親が中央寄せなので、幅を指定しないと中身の幅に縮み、名前と残り時間がくっつく。
-        <div
-            className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 ${isMyTurn ? "border-primary bg-primary/5" : "border-border bg-card"}`}
-        >
-            <div className="flex min-w-0 flex-wrap items-center gap-x-2">
-                <span
-                    className={`min-w-0 truncate text-sm font-semibold ${seat === "b" ? "text-wafuu-shu" : "text-wafuu-ai"}`}
-                >
-                    {seat === "b" ? "▲" : "△"} {name}
-                </span>
-                {isOffline && <span className="text-xs text-destructive">● 切断中</span>}
-                {passRightsCount !== undefined && (
-                    <span
-                        className={`text-xs ${passRightsCount > 0 ? "text-muted-foreground" : "text-muted-foreground/50"}`}
-                    >
-                        パス権: {passRightsCount}
-                    </span>
-                )}
-            </div>
-            <span
-                className={`shrink-0 font-mono text-base tabular-nums md:text-sm ${isMyTurn ? "text-primary font-bold" : "text-muted-foreground"}`}
-            >
-                {formatMs(remainMs)}
-            </span>
-        </div>
-    );
-}
-
-const GAME_END_REASONS: Record<string, string> = {
-    resign: "投了",
-    checkmate: "詰み",
-    timeout: "時間切れ",
-    sennichite: "千日手",
-    oute_sennichite: "連続王手の千日手",
-    illegal_move: "反則",
-    disconnect: "切断不戦敗",
-};
-
-function formatGameResultTitle(result: GameResult, playerNames: { b: string; w: string }): string {
-    const winnerName =
-        result.winner === "b" ? playerNames.b : result.winner === "w" ? playerNames.w : null;
-    return winnerName ? `${winnerName} の勝ち` : "引き分け";
-}
-
-function formatGameEndReason(result: GameResult): string {
-    return GAME_END_REASONS[result.reason] ?? result.reason;
-}
-
-interface GameEndDialogProps {
-    result: GameResult;
-    kifu: string;
-    playerNames: { b: string; w: string };
-    onDownloadKifu: () => void;
-    analysisLog: Array<{ seat: "b" | "w"; ply: number }>;
-    onStartReview?: () => void;
-    onExit?: () => void;
-    onDismiss: () => void;
-}
-
-// ダイアログを閉じた瞬間に下の棋譜ナビがずれないよう、終局したら高さを確保しておき、
-// 閉じたときだけ見せる。押したボタンはダイアログごと消えるので、開き直すボタンへ
-// フォーカスを移す。スクロールさせると見ようとした盤が画面の外へ押し出される
-function GameResultStrip({
-    shown,
-    text,
-    onReopen,
-}: {
-    shown: boolean;
-    text: string;
-    onReopen: () => void;
-}): ReactElement {
-    const buttonRef = useRef<HTMLButtonElement>(null);
-    useEffect(() => {
-        if (shown) buttonRef.current?.focus({ preventScroll: true });
-    }, [shown]);
-    return (
-        <div
-            aria-hidden={!shown}
-            className={`flex w-full max-w-md items-center justify-between gap-3 self-center rounded-lg border border-border bg-card px-3 py-2 ${shown ? "" : "invisible"}`}
-        >
-            <p className="text-sm font-semibold text-foreground">{text}</p>
-            <button
-                ref={buttonRef}
-                type="button"
-                onClick={onReopen}
-                className="shrink-0 rounded-md bg-secondary px-3 py-1.5 text-xs font-semibold text-secondary-foreground hover:bg-secondary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-                結果を表示
-            </button>
-        </div>
-    );
-}
-
-function GameEndDialog({
-    result,
-    kifu,
-    playerNames,
-    onDownloadKifu,
-    analysisLog,
-    onStartReview,
-    onExit,
-    onDismiss,
-}: GameEndDialogProps): ReactElement {
-    const [kifuCopied, setKifuCopied] = useState(false);
-    useEffect(() => {
-        if (!kifuCopied) return;
-        const timerId = setTimeout(() => setKifuCopied(false), 2000);
-        return () => clearTimeout(timerId);
-    }, [kifuCopied]);
-
-    // 背景の盤を操作できないモーダルなので、開いたらフォーカスをダイアログの中へ移す
-    const dialogRef = useRef<HTMLDivElement>(null);
-    useEffect(() => {
-        dialogRef.current?.focus();
-    }, []);
-
-    const bAnalysisCount = analysisLog.filter((e) => e.seat === "b").length;
-    const wAnalysisCount = analysisLog.filter((e) => e.seat === "w").length;
-
-    return (
-        <div className="fixed inset-0 z-modal flex items-center justify-center bg-overlay p-4">
-            <div
-                ref={dialogRef}
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="game-end-dialog-title"
-                tabIndex={-1}
-                onKeyDown={(e) => {
-                    if (e.key === "Escape") onDismiss();
-                }}
-                className="max-h-full min-w-[280px] max-w-sm overflow-y-auto rounded-xl border border-border bg-card p-6 shadow-xl focus-visible:outline-none"
-            >
-                <h2
-                    id="game-end-dialog-title"
-                    className="mb-3 text-center text-xl font-bold text-foreground"
-                >
-                    {formatGameResultTitle(result, playerNames)}
-                </h2>
-                <p className="mb-5 text-center text-sm text-muted-foreground">
-                    {formatGameEndReason(result)}
-                </p>
-
-                {/* 解析ログ開示 */}
-                {analysisLog.length > 0 && (
-                    <div className="mb-4 rounded-md border border-border bg-muted/30 p-3">
-                        <p className="mb-2 text-xs font-semibold text-foreground">
-                            AI 解析使用回数
-                        </p>
-                        <div className="flex flex-col gap-1 text-xs text-muted-foreground">
-                            <div className="flex justify-between">
-                                <span className="text-wafuu-shu">▲ {playerNames.b}</span>
-                                <span>{bAnalysisCount} 回</span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span className="text-wafuu-ai">△ {playerNames.w}</span>
-                                <span>{wAnalysisCount} 回</span>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                <div className="flex flex-col gap-2">
-                    {onStartReview && (
-                        <button
-                            type="button"
-                            onClick={onStartReview}
-                            className="w-full rounded-lg bg-primary py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
-                        >
-                            棋譜を検討する
-                        </button>
-                    )}
-                    {kifu && (
-                        <>
-                            <button
-                                type="button"
-                                onClick={async () => {
-                                    await navigator.clipboard.writeText(kifu);
-                                    setKifuCopied(true);
-                                }}
-                                className="w-full rounded-lg bg-secondary py-2 text-sm font-semibold text-secondary-foreground hover:bg-secondary/80"
-                            >
-                                {kifuCopied ? "コピーしました！" : "棋譜をコピー"}
-                            </button>
-                            <button
-                                type="button"
-                                onClick={onDownloadKifu}
-                                className="w-full rounded-lg bg-secondary py-2 text-sm font-semibold text-secondary-foreground hover:bg-secondary/80"
-                            >
-                                棋譜をダウンロード
-                            </button>
-                        </>
-                    )}
-                    {onExit && (
-                        <button
-                            type="button"
-                            onClick={onExit}
-                            className="w-full rounded-lg bg-secondary py-2 text-sm font-semibold text-secondary-foreground hover:bg-secondary/80"
-                        >
-                            トップへ戻る
-                        </button>
-                    )}
-                    <button
-                        type="button"
-                        onClick={onDismiss}
-                        className="w-full rounded-lg border border-border bg-card py-2 text-sm font-semibold text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                        盤面を見る
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-// ─── OnlineAiPanel ───────────────────────────────────────────────────────────
-
-interface OnlineAiPanelProps {
-    aiSupport?: AiSupportSettings;
-    seat: Seat;
-    myAnalysisRemaining: number | null;
-    isAnalyzing: boolean;
-    topMoves: AnalysisMoveResult[];
-    canAnalyze: boolean;
-    analyzeHint: string;
-    onAnalyze: () => void;
-    analysisBoard: BoardState | null;
-    analysisTurn: "b" | "w";
-    nnueSelection: NnueSelection;
-    onNnueSelectionChange: (sel: NnueSelection) => void;
-    onOpenNnueManager: () => void;
-    onApplyMove?: (usiMove: string) => Promise<unknown>;
-    onPreviewPv?: (move: AiHintMove) => void;
-}
-
-function OnlineAiPanel({
-    aiSupport,
-    seat,
-    myAnalysisRemaining,
-    isAnalyzing,
-    topMoves,
-    canAnalyze,
-    analyzeHint,
-    onAnalyze,
-    analysisBoard,
-    analysisTurn,
-    nnueSelection,
-    onNnueSelectionChange,
-    onOpenNnueManager,
-    onApplyMove,
-    onPreviewPv,
-}: OnlineAiPanelProps): ReactElement {
-    const mySeatKey = seat === "b" ? "b" : seat === "w" ? "w" : null;
-    const myMode = mySeatKey && aiSupport ? aiSupport[mySeatKey].mode : null;
-    const isLimited = myMode === "limited";
-    const hasNoRemaining = isLimited && myAnalysisRemaining !== null && myAnalysisRemaining <= 0;
-
-    const evalCp = topMoves[0]?.cp ?? null;
-    const evalPercent =
-        evalCp !== null ? Math.min(100, Math.max(0, 50 + (evalCp / 2000) * 50)) : 50;
-    const canClickAnalyze = canAnalyze && !isAnalyzing && !hasNoRemaining;
-    const moves: AiHintMove[] = topMoves.slice(0, 3).map((mv) => ({
-        usi: mv.usi,
-        displayText: analysisBoard
-            ? formatMoveSimple(mv.usi, analysisTurn === "b" ? "sente" : "gote", analysisBoard)
-            : mv.usi,
-        scoreText: `${mv.cp > 0 ? "+" : ""}${mv.cp}`,
-        scoreTone: mv.cp > 0 ? "sente" : mv.cp < 0 ? "gote" : "neutral",
-        pv: mv.pv,
-        evalCp: mv.cp,
-    }));
-
-    return (
-        <AiHintPanel
-            title="AI 解析"
-            remainingLabel={isLimited ? `残り ${myAnalysisRemaining ?? 0} 回` : null}
-            isAnalyzing={isAnalyzing}
-            moves={moves}
-            canAnalyze={canClickAnalyze}
-            analyzeHint={analyzeHint}
-            summary={{
-                percent: evalPercent,
-                senteLabel: evalCp !== null && evalCp > 0 ? `▲ +${evalCp}` : "▲",
-                goteLabel: evalCp !== null && evalCp < 0 ? `△ +${Math.abs(evalCp)}` : "△",
-            }}
-            nnueSelection={nnueSelection}
-            onNnueSelectionChange={onNnueSelectionChange}
-            onOpenNnueManager={onOpenNnueManager}
-            onAnalyze={onAnalyze}
-            onApplyMove={onApplyMove}
-            onPreviewPv={onPreviewPv}
-        />
     );
 }
