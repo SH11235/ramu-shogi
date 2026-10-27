@@ -149,9 +149,9 @@ export function ShogiBoard({
                     ))}
                 </div>
                 {/* 角は直角にする。丸めると、隅のマスの駒が角で欠ける。外周は outline を足して内側の線より太く見せる。
-                    マスの幅の合計が欄の幅を端数で超えると最後の列の線がはみ出すので、overflow-hidden で切る
-                    （そのため、マスのフォーカスの枠はマスの内側に描く）。 */}
-                <div className="grid flex-1 grid-cols-9 overflow-hidden border-l border-t border-shogi-border outline outline-1 outline-shogi-border">
+                    列の幅は --shogi-cell-size を上限にし、置き場が狭ければ 9 列そろって縮める。マスは列の幅に合わせる
+                    （マスの幅を固定すると、縮んだ列より広いマスが隣の列に重なり、隣のマスの地が縦の線を隠す）。 */}
+                <div className="grid min-w-0 grid-cols-[repeat(9,minmax(0,var(--shogi-cell-size,48px)))] border-l border-t border-shogi-border outline outline-1 outline-shogi-border">
                     {grid.map((row, rowIndex) =>
                         row.map((cell, columnIndex) => {
                             const isSelected = selectedSquare === cell.id;
@@ -173,7 +173,7 @@ export function ShogiBoard({
                             return (
                                 <div
                                     key={cell.id}
-                                    className="relative aspect-square w-[var(--shogi-cell-size,48px)] border-b border-r border-shogi-border"
+                                    className="relative aspect-square w-full border-b border-r border-shogi-border"
                                 >
                                     {(isHintTo || isHintFrom) && (
                                         <span
