@@ -20,21 +20,21 @@ export function ConnectionNotices({
     return (
         <div className="pointer-events-none fixed top-4 left-1/2 -translate-x-1/2 z-notice flex w-[min(90vw,420px)] flex-col items-center gap-2">
             {offlineSeats.size > 0 && (
-                <div className="rounded-lg bg-destructive px-4 py-2 text-sm text-destructive-foreground shadow-lg">
+                <div className="rounded-lg bg-destructive px-4 py-2 text-sm text-destructive-foreground shadow-panel">
                     {Array.from(offlineSeats).map((s) => (
                         <span key={s}>{s === "b" ? "先手" : "後手"}が切断しました</span>
                     ))}
                 </div>
             )}
             {!isGameOver && connection.state === "reconnecting" && (
-                <output className="rounded-lg border border-border bg-card px-4 py-2 text-sm text-muted-foreground shadow-lg">
+                <output className="rounded-lg border border-border bg-card px-4 py-2 text-sm text-muted-foreground shadow-panel">
                     再接続中...
                 </output>
             )}
             {!isGameOver && connection.state === "lost" && (
                 <ConnectionLostNotice
                     reason={connection.canResume ? "seat" : "reload"}
-                    className="pointer-events-auto w-full shadow-lg"
+                    className="pointer-events-auto w-full shadow-panel"
                 />
             )}
             {!isGameOver &&
@@ -43,13 +43,13 @@ export function ConnectionNotices({
                     <ConnectionLostNotice
                         reason="finished"
                         onExit={onExit}
-                        className="pointer-events-auto w-full shadow-lg"
+                        className="pointer-events-auto w-full shadow-panel"
                     />
                 ) : (
                     // 戻り先を渡されていなければ、終局していても再読み込みで画面を出し直してもらう
                     <ConnectionLostNotice
                         reason={connection.finished ? "reload" : "session"}
-                        className="pointer-events-auto w-full shadow-lg"
+                        className="pointer-events-auto w-full shadow-panel"
                     />
                 ))}
         </div>

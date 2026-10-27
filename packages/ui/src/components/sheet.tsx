@@ -25,7 +25,7 @@ const SheetOverlay = forwardRef<
 });
 
 const sheetVariants = cva(
-    "fixed z-modal gap-4 bg-card p-6 text-foreground shadow-xl transition ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500 data-[state=open]:animate-in data-[state=closed]:animate-out",
+    "fixed z-modal gap-4 bg-card p-6 text-foreground shadow-modal transition ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500 data-[state=open]:animate-in data-[state=closed]:animate-out",
     {
         variants: {
             side: {

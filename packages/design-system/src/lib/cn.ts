@@ -8,7 +8,7 @@ const twMerge = extendTailwindMerge({
     extend: {
         classGroups: {
             z: [{ z: ["notice", "overlay", "modal", "window", "popover", "blocking", "drag"] }],
-            shadow: [{ shadow: ["card", "panel", "modal"] }],
+            shadow: [{ shadow: ["panel", "modal", "popover", "drag", "indicator"] }],
             "drop-shadow": [{ "drop-shadow": ["piece"] }],
         },
     },

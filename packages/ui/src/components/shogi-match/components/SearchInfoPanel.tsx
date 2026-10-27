@@ -77,7 +77,7 @@ export function SearchInfoPanel({
         );
     }
     return (
-        <aside className="fixed bottom-3 left-1/2 z-40 w-[min(44rem,calc(100%-1.5rem))] -translate-x-1/2 rounded-lg border border-border bg-card/95 p-2 text-foreground shadow-lg">
+        <aside className="fixed bottom-3 left-1/2 z-40 w-[min(44rem,calc(100%-1.5rem))] -translate-x-1/2 rounded-lg border border-border bg-card/95 p-2 text-foreground shadow-panel">
             {details}
         </aside>
     );

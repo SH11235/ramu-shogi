@@ -221,7 +221,7 @@ export function StudyMobileLayout({
                         // 欄は下の場所の高さまでにして中で送る（別の画面の変更との突き合わせなどで
                         // 高くなる）。下の場所が低すぎるときは下限の高さで出し、表示の場所ごと送る
                         // （欄の端まで送ったら外側へ送りを渡し、上の操作へ戻れるようにする）。
-                        className="absolute inset-x-0 top-full z-20 mt-1.5 overflow-y-auto rounded-xl shadow-lg"
+                        className="absolute inset-x-0 top-full z-20 mt-1.5 overflow-y-auto rounded-xl shadow-panel"
                         style={
                             panel === null || boardFit === null
                                 ? undefined

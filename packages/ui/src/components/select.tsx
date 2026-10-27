@@ -51,7 +51,7 @@ const SelectContent = forwardRef<
         <SelectPrimitive.Portal>
             <SelectPrimitive.Content
                 className={cn(
-                    "relative z-popover max-h-96 min-w-[8rem] overflow-hidden rounded-lg border border-wafuu-border bg-wafuu-washi shadow-md",
+                    "relative z-popover max-h-96 min-w-[8rem] overflow-hidden rounded-lg border border-wafuu-border bg-wafuu-washi shadow-popover",
                     "data-[state=open]:animate-in data-[state=closed]:animate-out",
                     "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
                     "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",

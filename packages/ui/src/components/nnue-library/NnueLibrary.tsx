@@ -933,8 +933,9 @@ function AddedRow({
     return (
         <li
             className={cn(
-                "flex flex-col gap-3 rounded-xl border border-border p-4 shadow-sm sm:flex-row sm:items-center",
-                muted ? "border-dashed bg-transparent shadow-none" : "bg-card",
+                cardVariants({ elevation: muted ? "none" : "raised" }),
+                "flex flex-col gap-3 p-4 sm:flex-row sm:items-center",
+                muted && "border-dashed bg-transparent",
             )}
         >
             <div className="flex min-w-0 flex-1 flex-col gap-1">

@@ -36,7 +36,7 @@ export function KifuEvalToggle({
                         w-2.5 h-2.5 rounded-full
                         bg-wafuu-kin
                         animate-[pulse_2s_ease-in-out_infinite]
-                        shadow-[0_0_6px_hsl(var(--wafuu-kin)/0.6)]
+                        shadow-indicator
                     "
                     aria-hidden="true"
                 />

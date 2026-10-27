@@ -74,7 +74,7 @@ export function BottomSheet({
                 onOpenAutoFocus={(event) => event.preventDefault()}
                 data-state={open ? "open" : "closed"}
                 className={cn(
-                    "fixed bottom-0 left-0 right-0 top-auto z-50",
+                    "fixed bottom-0 left-0 right-0 top-auto",
                     "w-full max-w-full",
                     "rounded-t-2xl",
                     "overflow-hidden",

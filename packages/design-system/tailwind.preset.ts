@@ -116,13 +116,18 @@ const preset: Omit<Config, "content"> = {
                 // 評価値・秒読み・手数など桁を揃える数値
                 mono: ["var(--font-mono)", "ui-monospace", "monospace"],
             },
+            // 浮く面の影。ページの流れの中に置く面とボタンなどの部品は Tailwind の shadow-sm / shadow-md を使う。
             boxShadow: {
-                card: "0 20px 25px -5px rgba(15, 23, 42, 0.08), 0 10px 10px -5px rgba(15, 23, 42, 0.04)",
-                // 盤の脇や上に浮かせる欄・小窓（対局画面の脇の欄、動かせる小窓、再起動中の表示など）。
-                // ページの流れの中に置くカードは Tailwind の shadow-sm を使う（Card の elevation）。
+                // 盤の脇や上に浮かせる欄・小窓・通知（対局画面の脇の欄、動かせる小窓、接続の状態など）
                 panel: "0 14px 28px rgba(0, 0, 0, 0.12)",
-                // ダイアログ
+                // ダイアログ・シート
                 modal: "0 24px 70px rgba(0, 0, 0, 0.35)",
+                // ポップオーバー・メニュー・ツールチップ
+                popover: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1)",
+                // ドラッグ中の駒
+                drag: "0 8px 24px rgba(0, 0, 0, 0.35), 0 4px 8px rgba(0, 0, 0, 0.2)",
+                // 点で知らせる印の光
+                indicator: "0 0 6px hsl(var(--wafuu-kin) / 0.6)",
             },
             dropShadow: {
                 // 盤と駒台の駒

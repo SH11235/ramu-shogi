@@ -23,7 +23,7 @@ function GraphWithComment({
             <div
                 id="study-comment"
                 hidden={!showsComment}
-                className="absolute inset-x-0 top-0 z-20 rounded-xl shadow-lg"
+                className="absolute inset-x-0 top-0 z-20 rounded-xl shadow-panel"
             >
                 {commentBox}
             </div>

@@ -829,7 +829,7 @@ export function StudyWorkspaceView({
                     // 薄くなって操作できない画面だけなので、理由が見えないと困る）。
                     <div
                         role="alert"
-                        className="sticky top-2 z-30 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-status-warning-border bg-status-warning-bg px-3 py-2 text-sm text-status-warning shadow-card"
+                        className="sticky top-2 z-30 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-status-warning-border bg-status-warning-bg px-3 py-2 text-sm text-status-warning shadow-panel"
                     >
                         <p className="min-w-0 flex-1">
                             ログインが切れたため、このノートはいま編集できません。ログインし直すと、続きから編集できます（書きかけのコメントは残っています）。

@@ -87,7 +87,7 @@ export function OpenStudyButton({
                     className={cn(
                         "text-xs text-destructive",
                         compact &&
-                            "pointer-events-none absolute top-full right-0 z-30 mt-1 w-max max-w-64 rounded-md border border-border bg-card px-2 py-1 shadow-md",
+                            "pointer-events-none absolute top-full right-0 z-30 mt-1 w-max max-w-64 rounded-md border border-border bg-card px-2 py-1 shadow-popover",
                     )}
                 >
                     {error}
