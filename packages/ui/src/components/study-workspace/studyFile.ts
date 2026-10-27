@@ -16,8 +16,9 @@ export function studyKifuFileName(title: string, format: StudyKifuFormat): strin
             .replace(/\s+/g, " ")
             .trim()
             .slice(0, 100) || "研究ノート";
-    // UTF-8 の KIF は `.kifu`（`.kif` は Shift_JIS として読む棋譜ソフトがある）。
-    return `${base}.${format === "kif" ? "kifu" : "csa"}`;
+    // KIF は中身が UTF-8 でも `.kif` にする（先頭の `#KIF version=2.0 encoding=UTF-8` で文字コードを示す。
+    // 対局の棋譜のダウンロードと同じ）。
+    return `${base}.${format}`;
 }
 
 /** 文字列をファイルとしてブラウザに保存させる（ダウンロード）。 */
