@@ -25,7 +25,12 @@ import { cardVariants } from "../card";
 import { convertPvToDisplay } from "../shogi-match/utils/kifFormat";
 import { StudyIconButton } from "./StudyIconButton";
 import { AddBranchIcon, ClockPlusIcon, PlayIcon } from "./StudyIcons";
-import { COMPACT_BUTTON_CLASS, StudyMateControl, StudyMateResult } from "./StudyMateSection";
+import {
+    COMPACT_BUTTON_CLASS,
+    StudyMateControl,
+    StudyMateProgress,
+    StudyMateResult,
+} from "./StudyMateSection";
 import {
     formatStudyScore,
     type StudyPositionResult,
@@ -377,6 +382,9 @@ export function StudyCandidatesPanel({
                         深く解析中
                         <DeepProgressNote live={live} />
                     </output>
+                )}
+                {mate && (
+                    <StudyMateProgress state={mate.state} busyElsewhere={mate.busyElsewhere} />
                 )}
             </div>
 

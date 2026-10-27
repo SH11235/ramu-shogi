@@ -72,12 +72,17 @@ export function studyLineHasPass(tree: KifuTree, line: readonly string[]): boole
     });
 }
 
+/**
+ * 読み込む側が特別に扱うコメント（`'*`・`'**` は評価値、`'summary:` などは終局後の記録）。
+ * 本文がこの形に見えるときは、頭に「※」を付けて普通のコメントとして読まれるようにする。
+ */
+const CSA_RESERVED_COMMENT = /^(?:\s*\*|summary:|ILLEGAL_MOVE|\$END_TIME|black_rate:|white_rate:)/;
+
 const csaCommentLines = (comment: string | undefined): string[] =>
     comment
         ? comment
               .split(/\r?\n/)
-              // `'*` で始まる行は評価値として読まれるので、本文が `*` で始まるときは間を空ける。
-              .map((text) => (text.startsWith("*") ? `' ${text}` : `'${text}`))
+              .map((text) => (CSA_RESERVED_COMMENT.test(text) ? `'※${text}` : `'${text}`))
         : [];
 
 /**

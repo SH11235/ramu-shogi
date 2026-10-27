@@ -140,7 +140,7 @@ describe("exportStudyLineToCsa", () => {
         const csa = exportStudyLineToCsa(doc, tree, line);
 
         expect(csa).toContain("N+先手太郎\nN-後手花子\nPI\n+\n'開始局面のメモ\n+7776FU");
-        expect(csa).toContain("-3334FU\n'** -20\n' *印つき\n'2 行目\n+2726FU");
+        expect(csa).toContain("-3334FU\n'** -20\n'※*印つき\n'2 行目\n+2726FU");
         const record = parseCsaGameRecord(csa);
         expect(record.startSfen).toBe("startpos");
         expect(record.moves).toEqual(["7g7f", "3c3d", "2g2f", "8c8d"]);
@@ -150,6 +150,22 @@ describe("exportStudyLineToCsa", () => {
             undefined,
             undefined,
         ]);
+    });
+
+    it("評価値や終局の記録に見えるコメントは、読み直しても指し手と評価値を壊さない", () => {
+        const base = createTestStudy([cp(0), cp(30), cp(-20), null, null]);
+        const doc = applyStudyOps(base.doc, [
+            { type: "setComment", nodeId: base.ids[0], value: "* 9999" },
+            { type: "setComment", nodeId: base.ids[1], value: "summary: 研究メモ" },
+        ]);
+        const { tree } = buildStudyViewTree(doc, TEST_LAYER_ID);
+
+        const record = parseCsaGameRecord(
+            exportStudyLineToCsa(doc, tree, resolveStudyLine(tree, tree.rootId)),
+        );
+
+        expect(record.moves).toEqual(["7g7f", "3c3d", "2g2f", "8c8d"]);
+        expect(record.annotations[0]?.evalCp).toBe(30);
     });
 
     it("平手でない開始局面・後手番からも書き出し、読み直すと同じ局面から始まる", () => {

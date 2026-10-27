@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "../tooltip";
-import { StudyMateControl, StudyMateResult } from "./StudyMateSection";
+import { StudyMateControl, StudyMateProgress, StudyMateResult } from "./StudyMateSection";
 import { createTestStudy, TEST_LAYER_ID } from "./study-test-support";
 import { buildStudyViewTree } from "./studyView";
 import type { StudyMateState } from "./useStudyMate";
@@ -12,12 +12,15 @@ function renderControl(
 ) {
     const handlers = { onStart: vi.fn(), onStop: vi.fn() };
     render(
-        <StudyMateControl
-            state={state}
-            busyElsewhere={busyElsewhere}
-            disabled={disabled}
-            {...handlers}
-        />,
+        <>
+            <StudyMateControl
+                state={state}
+                busyElsewhere={busyElsewhere}
+                disabled={disabled}
+                {...handlers}
+            />
+            <StudyMateProgress state={state} busyElsewhere={busyElsewhere} />
+        </>,
     );
     return handlers;
 }
