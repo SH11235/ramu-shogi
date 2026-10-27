@@ -191,6 +191,10 @@ function CandidateRow({
                     >
                         {formatStudyScore(candidate.score)}
                     </span>
+                    {/* 途中で止めた読みでは候補ごとに深さが違うことがあるので、どの候補にも添える。 */}
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                        深さ {candidate.depth}
+                    </span>
                 </div>
                 {rest.length > 0 && (
                     <p className="line-clamp-2 text-xs text-muted-foreground">
