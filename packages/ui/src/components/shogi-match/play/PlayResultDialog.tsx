@@ -9,6 +9,7 @@ import { cn } from "@shogi/design-system";
 import type { ReactElement, RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "../../button";
+import { CloseIcon } from "../../close-icon-button";
 import { Dialog, DialogContent } from "../../dialog";
 import { useMatchState } from "../contexts/MatchStateContext";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
@@ -160,7 +161,7 @@ function ResultDialogBody({
                         className="inline-flex min-h-10 shrink-0 items-center gap-1 rounded-sm px-1 text-[13px] text-wafuu-sumi-light hover:text-wafuu-sumi focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                         盤を見る
-                        <span aria-hidden>✕</span>
+                        <CloseIcon className="size-3.5" />
                     </button>
                 </DialogPrimitive.Close>
             </div>

@@ -1,5 +1,6 @@
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
+import { CloseIconButton } from "../../close-icon-button";
 
 /**
  * 評価値ヒントバナー
@@ -49,22 +50,7 @@ export function EvalHintBanner({
                     <span>評価値データがあります。表示しますか？</span>
                 </button>
 
-                <button
-                    type="button"
-                    onClick={onDismiss}
-                    className="
-                        flex items-center justify-center
-                        w-5 h-5 rounded-full
-                        text-muted-foreground
-                        hover:text-foreground
-                        hover:bg-muted
-                        bg-transparent border-none cursor-pointer
-                        transition-colors
-                    "
-                    aria-label="閉じる"
-                >
-                    ✕
-                </button>
+                <CloseIconButton size="sm" onClick={onDismiss} />
             </div>
         </div>
     );
