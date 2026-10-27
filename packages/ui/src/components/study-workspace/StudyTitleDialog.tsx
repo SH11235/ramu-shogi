@@ -1,6 +1,6 @@
 /**
  * 研究ノートの表題を変えるダイアログ。スマートフォンでは表題を画面に出さない（パンくずに出る）ので、
- * 「その他の操作」から開く。
+ * 「その他の操作」か、ページの見出しの表題から開く。
  */
 import { STUDY_LIMITS } from "@shogi/app-core";
 import type { ReactElement } from "react";

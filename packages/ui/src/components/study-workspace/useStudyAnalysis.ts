@@ -18,6 +18,7 @@ import {
     resolveWorkerCount,
     STUDY_LIMITS,
     type StudyAnalysisCompletion,
+    type StudyAnalysisResult,
     type StudyDocument,
     type StudyLayer,
     type StudyLayerRef,
@@ -80,9 +81,15 @@ export interface StudyEngineIdentity {
 }
 
 /** 深く解析している途中経過（保存はしない。表示だけ）。 */
-interface StudyLiveSearch {
+export interface StudyLiveSearch {
     nodeId: string;
     depth: number | null;
+    /** 読みを始めた時刻（`Date.now()`）。読む時間の上限と合わせて、残りの時間を出す。 */
+    startedAt: number | null;
+    /** 1 回の読みの上限（ミリ秒）。 */
+    budgetMs: number;
+    /** 読んでいる途中の候補（取れる探索だけ）。 */
+    preview: StudyAnalysisResult | null;
 }
 
 /** 解析の設定を変える画面に渡すもの。 */
@@ -327,7 +334,7 @@ export function useStudyAnalysis({
             const depth = event.depth ?? null;
             setLive((previous) =>
                 previous && previous.nodeId === nodeId && previous.depth !== depth
-                    ? { nodeId, depth }
+                    ? { ...previous, depth }
                     : previous,
             );
         },
@@ -702,7 +709,13 @@ export function useStudyAnalysis({
                 // 続きから読める探索が使えないと分かったら、1 回だけの読みに切り替える。
                 if (!isCurrent() || lockedRef.current) return;
             }
-            setLive({ nodeId, depth: null });
+            setLive({
+                nodeId,
+                depth: null,
+                startedAt: Date.now(),
+                budgetMs: limits.timeMs,
+                preview: null,
+            });
             run(
                 [
                     {
@@ -798,7 +811,13 @@ export function useStudyAnalysis({
     const activeMode = pool.isRunning ? mode : isDeepSearching ? "deep" : null;
     const deepLive =
         isDeepSearching && deep.state.nodeId !== null
-            ? { nodeId: deep.state.nodeId, depth: deep.state.depth }
+            ? {
+                  nodeId: deep.state.nodeId,
+                  depth: deep.state.depth,
+                  startedAt: deep.state.startedAt,
+                  budgetMs: STUDY_DEEP_TIME_MS,
+                  preview: deep.state.preview,
+              }
             : null;
     return {
         controller: {

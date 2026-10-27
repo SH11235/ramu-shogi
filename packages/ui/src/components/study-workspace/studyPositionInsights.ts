@@ -75,8 +75,6 @@ export function deriveStudyPositionInsights({
         (positionResult === null || storedDeeperResult.result.depth > positionResult.result.depth)
             ? storedDeeperResult
             : null);
-    const deeperIsFresh =
-        isDeepHere && deeperResult !== null && (freshDeepResult !== null || deepLayerId === null);
 
     // いま見ている手が悪手・疑問手なら、1 手前の局面の候補手（代わりに指すべきだった手）を出す。
     const currentNode = tree.nodes.get(currentNodeId);
@@ -116,7 +114,6 @@ export function deriveStudyPositionInsights({
         analyzedCount,
         positionResult,
         deeperResult,
-        deeperIsFresh,
         alternative,
         /** 悪手・疑問手と判定した手が、1 手前の局面の 1 位の候補と同じだったときの、その手の表記。 */
         playedBestLabel: currentKind && playedIsBest ? studyMoveLabel(tree, currentNodeId) : null,

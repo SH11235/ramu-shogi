@@ -32,6 +32,9 @@ function studyMateProgressText(state: StudyMateState & { status: "running" }): s
     return `${what}を調べています（${Math.floor(state.elapsedMs / 1000)} 秒）`;
 }
 
+/** 候補手の欄の操作のボタン。1 行に並べて候補手の場所を空けるため、小さめにする。 */
+export const COMPACT_BUTTON_CLASS = "h-8 gap-1 whitespace-nowrap px-2 text-xs";
+
 function StopButton({ onStop }: { onStop: () => void }): ReactElement {
     return (
         <Button
@@ -39,6 +42,7 @@ function StopButton({ onStop }: { onStop: () => void }): ReactElement {
             variant="outline"
             size="sm"
             aria-label="詰み探索を中止"
+            className={COMPACT_BUTTON_CLASS}
             onClick={onStop}
         >
             中止
@@ -97,7 +101,7 @@ function MateLine({
     );
 }
 
-/** 「詰みを調べる」のボタン。調べている間は途中経過と中止に替わる。 */
+/** 「詰みを読む」のボタン。調べている間は途中経過と中止に替わる。 */
 export function StudyMateControl({
     state,
     busyElsewhere,
@@ -130,8 +134,15 @@ export function StudyMateControl({
         );
     }
     return (
-        <Button type="button" variant="outline" size="sm" onClick={onStart} disabled={disabled}>
-            詰みを調べる
+        <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className={COMPACT_BUTTON_CLASS}
+            onClick={onStart}
+            disabled={disabled}
+        >
+            詰みを読む
         </Button>
     );
 }

@@ -13,6 +13,9 @@ const MOBILE_COMMENT_MIN_HEIGHT = 200;
 // 局面の移動の行の高さと、行どうしの間。
 const MOBILE_NAV_HEIGHT = 40;
 const MOBILE_ROW_GAP = 6;
+// 下の欄を残したまま下限のマスを少しだけ縮めれば入るなら、下の欄を削るより先にそうする縮小率の下限
+// （数 px 足りないだけでグラフを丸ごと押し出さない）。
+const MOBILE_SLIGHT_MIN_SCALE = 0.9;
 // 下限のマスでも入らないときの縮小の下限。これより縮めると駒が読めないので、下の欄を削って盤を残す。
 const MOBILE_MIN_SCALE = 0.6;
 
@@ -30,15 +33,27 @@ export const fitMobileBoard = (
 ): { cellSize: number; scale: number; boardHeight: number } => {
     const widthCell = Math.min(MOBILE_MAX_CELL_SIZE, Math.floor((width - 89) / 10.6));
     // 低い画面では、盤を縮める前に下の欄を棋譜の帯 1 行ぶんまで削る。
+    const fullHeight = mobileBoardBlockHeight(MOBILE_MIN_CELL_SIZE);
     for (const lower of [MOBILE_LOWER_MIN_HEIGHT, MOBILE_LOWER_SHORT_HEIGHT]) {
         const space = height - MOBILE_NAV_HEIGHT - 2 * MOBILE_ROW_GAP - lower;
         for (let cell = widthCell; cell >= MOBILE_MIN_CELL_SIZE; cell--) {
             const boardHeight = mobileBoardBlockHeight(cell);
             if (boardHeight <= space) return { cellSize: cell, scale: 1, boardHeight };
         }
+        const slightScale = Math.min(
+            1,
+            space / fullHeight,
+            width / (MOBILE_MIN_CELL_SIZE * 10.6 + 89),
+        );
+        if (lower === MOBILE_LOWER_MIN_HEIGHT && slightScale >= MOBILE_SLIGHT_MIN_SCALE) {
+            return {
+                cellSize: MOBILE_MIN_CELL_SIZE,
+                scale: slightScale,
+                boardHeight: fullHeight * slightScale,
+            };
+        }
     }
     const boardSpace = height - MOBILE_NAV_HEIGHT - 2 * MOBILE_ROW_GAP - MOBILE_LOWER_SHORT_HEIGHT;
-    const fullHeight = mobileBoardBlockHeight(MOBILE_MIN_CELL_SIZE);
     const scale = Math.max(
         MOBILE_MIN_SCALE,
         Math.min(1, boardSpace / fullHeight, width / (MOBILE_MIN_CELL_SIZE * 10.6 + 89)),

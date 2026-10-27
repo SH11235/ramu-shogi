@@ -1,6 +1,5 @@
 import type { ReactElement } from "react";
 import { Button } from "../button";
-import { Progress } from "../progress";
 import { AnalyzeIcon } from "./StudyIcons";
 import type { StudyAnalysisController } from "./useStudyAnalysis";
 
@@ -21,82 +20,23 @@ export interface StudyAnalysisRunState {
 }
 
 /**
- * PC の解析の操作（始める・進み具合と中止・残りを解析）。表題の行の「解析の設定」の隣に置き、
- * 「この AI・時間で解析する」と一続きに読めるようにする。グラフが空のときは、グラフの中央の
- * ボタンに任せて出さない。
+ * 評価値グラフの見出しの行に置く解析の操作（PC・スマートフォン共通）。結果の出るグラフのすぐ上に
+ * 置き、どの状態（始める・進み具合と中止・残りを解析）でも同じ場所・同じ高さで中身だけを替える。
  */
-export function StudyHeaderAnalysisAction({
-    run,
-    graphIsEmpty,
-}: {
-    run: StudyAnalysisRunState;
-    graphIsEmpty: boolean;
-}): ReactElement | null {
-    if (run.mode === "full") {
-        const percent =
-            run.progress && run.progress.total > 0
-                ? Math.round((run.progress.completed / run.progress.total) * 100)
-                : undefined;
-        return (
-            <div className="flex shrink-0 items-center gap-2">
-                <output aria-live="polite" className="text-xs text-wafuu-sumi tabular-nums">
-                    解析中 {run.progress?.completed ?? 0} / {run.progress?.total ?? 0} 局面
-                </output>
-                <Progress value={percent} aria-label="解析の進み具合" className="h-1.5 w-20" />
-                <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-10 px-3"
-                    onClick={run.onCancel}
-                >
-                    中止
-                </Button>
-            </div>
-        );
-    }
-    if (run.locked || graphIsEmpty) return null;
-    if (run.needsFullAnalysis) {
-        return (
-            <Button
-                type="button"
-                className="h-10 shrink-0 gap-1.5 px-3"
-                onClick={run.onStartFull}
-                disabled={run.startDisabled}
-            >
-                <AnalyzeIcon />
-                {run.fullTargetCount === 0 ? "解析済みの結果を表示" : "全体を解析"}
-            </Button>
-        );
-    }
-    // 解析の途中で止めた・手を足したなどで、未解析の局面が残っているとき。
-    if (run.unanalyzedCount > 0) {
-        return (
-            <Button
-                type="button"
-                variant="outline"
-                className="h-10 shrink-0 px-3"
-                onClick={run.onResume}
-                disabled={run.startDisabled}
-            >
-                残り {run.unanalyzedCount} 局面を解析
-            </Button>
-        );
-    }
-    return null;
-}
-
-/** スマートフォンの評価値グラフの見出しの行に置く、詰めた解析の操作。 */
 export function StudyCompactAnalysisAction({
     run,
+    wide = false,
 }: {
     run: StudyAnalysisRunState;
+    /** 幅に余裕がある（PC）。文言を略さずに出す。 */
+    wide?: boolean;
 }): ReactElement | null {
     if (run.mode === "full") {
         return (
             <div className="flex shrink-0 items-center gap-2">
                 <output aria-live="polite" className="font-mono tabular-nums">
                     解析中 {run.progress?.completed ?? 0} / {run.progress?.total ?? 0}
+                    {wide && " 局面"}
                 </output>
                 <Button
                     type="button"
@@ -121,7 +61,11 @@ export function StudyCompactAnalysisAction({
                 disabled={run.startDisabled}
             >
                 <AnalyzeIcon />
-                {run.fullTargetCount === 0 ? "結果を表示" : "全体を解析"}
+                {run.fullTargetCount === 0
+                    ? wide
+                        ? "解析済みの結果を表示"
+                        : "結果を表示"
+                    : "全体を解析"}
             </Button>
         );
     }

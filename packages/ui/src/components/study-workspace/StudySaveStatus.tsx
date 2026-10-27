@@ -125,6 +125,54 @@ export function StudySaveIndicator({
     );
 }
 
+const saveStripAction = (status: StudyWorkspaceSaveStatus, localOnly: boolean): string | null => {
+    if (localOnly || status.state !== "local") return null;
+    if (status.reason === "anonymous") return "ログインしてクラウドへ";
+    if (status.reason === "signed_out") return "ログインして再開";
+    return null;
+};
+
+/** `StudySaveStrip` を出すか（出すときは、ほかの場所に同じ保存の状態を重ねて出さない）。 */
+export const showsStudySaveStrip = (status: StudyWorkspaceSaveStatus, localOnly = false): boolean =>
+    saveStripAction(status, localOnly) !== null;
+
+/**
+ * スマートフォンで、保存先がこのブラウザだけのとき（未ログイン・ログインが切れた）に、表示の切り替えの
+ * 下へ出す 1 行の帯。上部の小さな表示を置けない狭い画面でも、クラウドに保存されていないことと
+ * ログインの入口を見落とさないようにする。クラウドに保存できている間と、帯の案内（`StudySaveNotice`）を
+ * 出すときは出さない。
+ */
+export function StudySaveStrip({
+    status,
+    onLogin,
+    localOnly = false,
+}: Pick<StudySaveIndicatorProps, "status" | "onLogin" | "localOnly">): ReactElement | null {
+    const action = saveStripAction(status, localOnly);
+    if (action === null) return null;
+    return (
+        <div className="flex h-6 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md bg-wafuu-washi-warm text-xs text-wafuu-sumi-light">
+            <output
+                className="flex items-center gap-1"
+                aria-label="保存の状態: このブラウザだけに保存"
+            >
+                <DeviceIcon className="h-3.5 w-3.5" />
+                <span>このブラウザだけに保存</span>
+            </output>
+            {onLogin ? (
+                <button
+                    type="button"
+                    onClick={onLogin}
+                    className="relative rounded-sm text-wafuu-ai underline underline-offset-2 after:absolute after:inset-x-0 after:-inset-y-1.5 hover:text-wafuu-ai-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                    {action}
+                </button>
+            ) : (
+                <span>{action}</span>
+            )}
+        </div>
+    );
+}
+
 interface StudySaveNoticeProps {
     status: StudyWorkspaceSaveStatus;
     /** 止まっている送信をもう一度試す。 */

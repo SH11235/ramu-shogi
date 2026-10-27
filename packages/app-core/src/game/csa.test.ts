@@ -2,11 +2,14 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createInitialBoard, createInitialPositionState } from "./board";
 import {
     buildBoardFromCsa,
+    formatCsaMove,
+    formatCsaStartPosition,
     movesToCsa,
     parseCsaMoves,
     parseCsaMovesWithState,
     parseSingleCsaMove,
 } from "./csa";
+import { buildCsaStartPosition } from "./csa-position";
 import { REAL_GAME_CSA_MOVES } from "./csa-real-game.fixture";
 import type { PositionService } from "./position-service";
 import { setPositionServiceFactory } from "./position-service-registry";
@@ -477,5 +480,47 @@ describe("parseCsaMovesWithState", () => {
 
         expect(result.moves).toEqual(["7g7f", "3c3d"]);
         expect(result.state.turn).toBe("sente");
+    });
+});
+
+describe("formatCsaStartPosition", () => {
+    it("平手・先手番は PI と手番の行", () => {
+        expect(formatCsaStartPosition(createInitialPositionState())).toEqual(["PI", "+"]);
+    });
+
+    it("平手以外は P1〜P9・持ち駒・手番で書き、読み戻すと同じ局面になる", () => {
+        const start = createInitialPositionState();
+        const board = {
+            ...start.board,
+            "8h": null,
+            "7g": null,
+            "3g": null,
+            "2b": { owner: "gote" as const, type: "B" as const, promoted: true },
+        };
+        const position = {
+            ...start,
+            board,
+            hands: { sente: { B: 1, P: 2 }, gote: {} },
+            turn: "gote" as const,
+        };
+        const lines = formatCsaStartPosition(position);
+        expect(lines[1]).toBe("P2 * -HI *  *  *  *  * -UM * ");
+        expect(lines.slice(9)).toEqual(["P+00KA00FU00FU", "-"]);
+        const restored = buildCsaStartPosition(lines.slice(0, -1), "gote").position;
+        expect(restored.board).toEqual(board);
+        expect(restored.hands.sente).toEqual({ B: 1, P: 2 });
+    });
+});
+
+describe("formatCsaMove", () => {
+    it("後手の手・成り・駒打ちを書く", () => {
+        const board = createInitialBoard();
+        expect(formatCsaMove("3c3d", board, "gote")).toBe("-3334FU");
+        expect(formatCsaMove("8h2b+", board, "sente")).toBe("+8822UM");
+        expect(formatCsaMove("B*5e", board, "gote")).toBe("-0055KA");
+    });
+
+    it("パスは書けない", () => {
+        expect(() => formatCsaMove("pass", createInitialBoard(), "sente")).toThrow();
     });
 });

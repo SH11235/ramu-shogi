@@ -37,16 +37,16 @@ function renderResult(state: StudyMateState | undefined) {
 }
 
 describe("StudyMateControl", () => {
-    it("調べる前は「詰みを調べる」だけを出す", () => {
+    it("調べる前は「詰みを読む」だけを出す", () => {
         const handlers = renderControl(undefined);
-        fireEvent.click(screen.getByRole("button", { name: "詰みを調べる" }));
+        fireEvent.click(screen.getByRole("button", { name: "詰みを読む" }));
         expect(handlers.onStart).toHaveBeenCalled();
     });
 
     it("解析が動いている間は押せない", () => {
         renderControl(undefined, { disabled: true });
         expect(
-            (screen.getByRole("button", { name: "詰みを調べる" }) as HTMLButtonElement).disabled,
+            (screen.getByRole("button", { name: "詰みを読む" }) as HTMLButtonElement).disabled,
         ).toBe(true);
     });
 
@@ -65,7 +65,7 @@ describe("StudyMateControl", () => {
     it("別の局面を調べている間は、そう伝えて中止できる", () => {
         const handlers = renderControl(undefined, { busyElsewhere: true });
         screen.getByText("別の局面の詰みを調べています");
-        expect(screen.queryByRole("button", { name: "詰みを調べる" })).toBeNull();
+        expect(screen.queryByRole("button", { name: "詰みを読む" })).toBeNull();
         fireEvent.click(screen.getByRole("button", { name: "詰み探索を中止" }));
         expect(handlers.onStop).toHaveBeenCalled();
     });

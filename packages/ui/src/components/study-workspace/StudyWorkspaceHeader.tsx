@@ -48,7 +48,7 @@ function TitleInput({
     );
 }
 
-/** PC・タブレットの表題の行（表題・その他の操作・解析の設定と実行）と、出典・保存先の行。 */
+/** PC・タブレットの表題の行（表題・その他の操作・解析の設定）と、出典・保存先の行。 */
 export function StudyWorkspaceHeader({
     title,
     locked,
@@ -56,7 +56,6 @@ export function StudyWorkspaceHeader({
     moreMenu,
     settingsLabel,
     onOpenSettings,
-    analysisAction,
     metaRow,
 }: {
     title: string;
@@ -65,7 +64,6 @@ export function StudyWorkspaceHeader({
     moreMenu: ReactNode;
     settingsLabel: string;
     onOpenSettings: () => void;
-    analysisAction: ReactNode;
     metaRow: ReactNode;
 }): ReactElement {
     return (
@@ -86,9 +84,8 @@ export function StudyWorkspaceHeader({
                     <span className="text-xs text-muted-foreground">解析の設定</span>
                     <span className="truncate font-medium">{settingsLabel}</span>
                 </button>
-                {analysisAction}
             </div>
-            {/* 出典・保存先は表題の下の行に置く（表題の行は、表題と解析の操作で使う）。 */}
+            {/* 出典・保存先は表題の下の行に置く（表題の行は、表題と解析の設定で使う）。 */}
             {metaRow}
         </header>
     );

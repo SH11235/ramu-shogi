@@ -8,6 +8,7 @@ import {
     createInitialBoard,
     type Piece,
     type PieceType,
+    type Player,
     type PositionState,
     type Square,
 } from "./board";
@@ -248,21 +249,13 @@ export function movesToCsa(
         if (!parsed) {
             throw new Error(`USI move could not be parsed at index ${index}: ${move}`);
         }
-        const sign = index % 2 === 0 ? "+" : "-";
         const turn = index % 2 === 0 ? "sente" : "gote";
-        let csaMove: string;
-        if (parsed.kind === "drop") {
-            csaMove = `${sign}00${toCsaSquare(parsed.to)}${PIECE_CODES[parsed.piece]}`;
-        } else {
-            const piece = state.board[parsed.from];
-            if (!piece) {
-                throw new Error(
-                    `USI move could not be converted at index ${index}: ${move} (no piece at source square)`,
-                );
-            }
-            const pieceCode = determinePieceCode(piece, piece.promoted === true || parsed.promote);
-            csaMove = `${sign}${toCsaSquare(parsed.from)}${toCsaSquare(parsed.to)}${pieceCode}`;
+        if (parsed.kind === "move" && !state.board[parsed.from]) {
+            throw new Error(
+                `USI move could not be converted at index ${index}: ${move} (no piece at source square)`,
+            );
         }
+        const csaMove = formatCsaMove(move, state.board, turn);
         const result = applyMoveWithState({ ...state, turn }, move, {
             validateTurn: true,
             ignoreHandLimits: true,
@@ -375,6 +368,65 @@ function parseCsaMovesWithBoard(
         state = result.next;
     }
     return { moves, board: state.board };
+}
+
+/**
+ * USI の 1 手を CSA の指し手行 (`+7776FU` / `-0055KA` など) にする。`board` は指す前の盤。
+ * 解釈できない手 (パスなど) と、動かす駒が無い手は例外にする。
+ */
+export function formatCsaMove(move: string, board: BoardState, mover: Player): string {
+    const sign = mover === "sente" ? "+" : "-";
+    const parsed = parseUsiMove(move);
+    if (!parsed) throw new Error(`USI move cannot be written in CSA: ${move}`);
+    if (parsed.kind === "drop") {
+        return `${sign}00${toCsaSquare(parsed.to)}${PIECE_CODES[parsed.piece]}`;
+    }
+    const piece = board[parsed.from];
+    if (!piece) throw new Error(`USI move cannot be written in CSA: ${move} (no piece at source)`);
+    const pieceCode = determinePieceCode(piece, piece.promoted === true || parsed.promote);
+    return `${sign}${toCsaSquare(parsed.from)}${toCsaSquare(parsed.to)}${pieceCode}`;
+}
+
+const HAND_ORDER: readonly Exclude<PieceType, "K">[] = ["R", "B", "G", "S", "N", "L", "P"];
+
+/**
+ * 開始局面を CSA の局面の行にする。平手・先手番は `PI` と `+`、それ以外は `P1`〜`P9` の
+ * 一括表現と、持ち駒の `P+00..` / `P-00..`、手番の行。
+ */
+export function formatCsaStartPosition(position: PositionState): string[] {
+    const initial = createInitialBoard();
+    const handsEmpty = (["sente", "gote"] as const).every((owner) =>
+        Object.values(position.hands[owner]).every((count) => !count),
+    );
+    const isHirateBoard = (Object.keys(initial) as Square[]).every((square) => {
+        const a = initial[square];
+        const b = position.board[square];
+        return a === null || b === null
+            ? a === b
+            : a.owner === b.owner && a.type === b.type && !!a.promoted === !!b.promoted;
+    });
+    const turnLine = position.turn === "sente" ? "+" : "-";
+    if (isHirateBoard && handsEmpty) return ["PI", turnLine];
+    const lines = BOARD_RANKS.map(
+        (rank, index) =>
+            `P${index + 1}${BOARD_FILES.map((file) => {
+                const piece = position.board[`${file}${rank}` as Square];
+                if (!piece) return " * ";
+                const sign = piece.owner === "sente" ? "+" : "-";
+                return `${sign}${determinePieceCode(piece, piece.promoted === true)}`;
+            }).join("")}`,
+    );
+    for (const owner of ["sente", "gote"] as const) {
+        const items = HAND_ORDER.flatMap((type) =>
+            Array.from(
+                { length: position.hands[owner][type] ?? 0 },
+                () => `00${PIECE_CODES[type]}`,
+            ),
+        );
+        if (items.length > 0) lines.push(`P${owner === "sente" ? "+" : "-"}${items.join("")}`);
+    }
+    lines.push(turnLine);
+    return lines;
 }
 
 export function parseCsaMoves(contents: string, initialBoard?: BoardState): string[] {

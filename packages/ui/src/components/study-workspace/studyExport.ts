@@ -3,10 +3,20 @@
  *
  * - KIF: いま表示している手順（本譜、または選んだ変化）を、表示中の解析結果の評価値と、
  *   コメントつきで書き出す。変化の枝分かれは含めない（KIF の 1 本の手順として読める形にする）。
+ * - CSA: KIF と同じ手順・評価値・コメントを CSA で書き出す。CSA にはパスの書き方が無いので、
+ *   パスを含む手順は書き出さない。
  * - SFEN: いま見ている局面までの手順を、USI の `position` の形で書き出す。
  */
 
-import { type KifuTree, STUDY_HIRATE_SFEN, type StudyDocument } from "@shogi/app-core";
+import {
+    CSA_MATE_EVAL_THRESHOLD,
+    formatCsaMove,
+    formatCsaStartPosition,
+    isPassMove,
+    type KifuTree,
+    STUDY_HIRATE_SFEN,
+    type StudyDocument,
+} from "@shogi/app-core";
 import {
     convertMovesToKif,
     exportToKifString,
@@ -52,6 +62,61 @@ export function exportStudyLineToKif(
         startSfen: tree.startSfen,
         comments,
     });
+}
+
+/** 表示している手順にパスがあるか（あれば CSA では書き出せない）。 */
+export function studyLineHasPass(tree: KifuTree, line: readonly string[]): boolean {
+    return line.some((nodeId) => {
+        const move = tree.nodes.get(nodeId)?.usiMove;
+        return move != null && isPassMove(move);
+    });
+}
+
+const csaCommentLines = (comment: string | undefined): string[] =>
+    comment
+        ? comment
+              .split(/\r?\n/)
+              // `'*` で始まる行は評価値として読まれるので、本文が `*` で始まるときは間を空ける。
+              .map((text) => (text.startsWith("*") ? `' ${text}` : `'${text}`))
+        : [];
+
+/**
+ * 表示している手順を CSA の文字列にする。評価値は先手視点の `'** <評価値>` の行（詰みは
+ * ±100000）で、指し手の直後に書く。パスを含む手順では例外を投げる（先に `studyLineHasPass` で確かめる）。
+ */
+export function exportStudyLineToCsa(
+    doc: StudyDocument,
+    tree: KifuTree,
+    line: readonly string[],
+): string {
+    const root = tree.nodes.get(line[0] ?? tree.rootId);
+    if (!root) throw new Error("研究ノートの開始局面が見つかりません");
+    const lines = ["V2.2"];
+    const blackName = doc.meta.blackName?.trim();
+    const whiteName = doc.meta.whiteName?.trim();
+    if (blackName) lines.push(`N+${blackName}`);
+    if (whiteName) lines.push(`N-${whiteName}`);
+    lines.push(...formatCsaStartPosition(root.positionAfter));
+    for (let index = 0; index < line.length; index++) {
+        const nodeId = line[index];
+        const stored = Object.hasOwn(doc.tree.nodes, nodeId) ? doc.tree.nodes[nodeId] : undefined;
+        if (index > 0) {
+            const node = tree.nodes.get(nodeId);
+            const parent = tree.nodes.get(line[index - 1]);
+            if (!node || !parent || node.usiMove === null) break;
+            const before = parent.positionAfter;
+            lines.push(formatCsaMove(node.usiMove, before.board, before.turn));
+            const elapsedMs = stored?.source?.elapsedMs;
+            if (elapsedMs != null) lines.push(`T${Math.max(0, Math.round(elapsedMs / 1000))}`);
+            const score =
+                node.eval?.scoreMate != null
+                    ? Math.sign(node.eval.scoreMate) * CSA_MATE_EVAL_THRESHOLD
+                    : node.eval?.scoreCp;
+            if (score != null && Number.isFinite(score)) lines.push(`'** ${score}`);
+        }
+        if (stored) lines.push(...csaCommentLines(stored.comment));
+    }
+    return `${lines.join("\n")}\n`;
 }
 
 /** 開始局面と、いま見ている局面までの手順を、USI の `position` の形にする。 */

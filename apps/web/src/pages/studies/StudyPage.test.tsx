@@ -68,6 +68,7 @@ vi.mock("@shogi/ui", () => ({
         );
     },
     NnueLibraryDialog: () => null,
+    downloadTextFile: () => {},
 }));
 vi.mock("../../hooks/useAccountNnue", () => ({ useAccountNnue: () => undefined }));
 

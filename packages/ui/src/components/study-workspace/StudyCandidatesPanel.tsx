@@ -11,6 +11,7 @@
 
 import type {
     KifuNode,
+    StudyAnalysisResult,
     StudyCandidate,
     StudyHighlightKind,
     StudyScore,
@@ -18,13 +19,13 @@ import type {
 } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "../button";
 import { cardVariants } from "../card";
 import { convertPvToDisplay } from "../shogi-match/utils/kifFormat";
 import { StudyIconButton } from "./StudyIconButton";
-import { AddBranchIcon, AnalyzeIcon, PlayIcon } from "./StudyIcons";
-import { StudyMateControl, StudyMateResult } from "./StudyMateSection";
+import { AddBranchIcon, ClockPlusIcon, PlayIcon } from "./StudyIcons";
+import { COMPACT_BUTTON_CLASS, StudyMateControl, StudyMateResult } from "./StudyMateSection";
 import {
     formatStudyScore,
     type StudyPositionResult,
@@ -32,6 +33,7 @@ import {
     studyFirstMoveLabel,
     studyScoreSide,
 } from "./studyView";
+import type { StudyLiveSearch } from "./useStudyAnalysis";
 import type { StudyMateState } from "./useStudyMate";
 
 /** 読み筋を盤で見る・変化として足すときに渡す内容。 */
@@ -69,17 +71,18 @@ interface StudyCandidatesPanelProps {
      * 候補手は差し替えず、別の段として添える。
      */
     deeperResult?: StudyPositionResult | null;
-    /** `deeperResult` が、利用者がいま「この局面を深く解析」で得た結果か（開いた状態で目立たせる）。 */
-    deeperIsFresh?: boolean;
-    /** 表示する解析結果を、その設定に切り替える。 */
-    onShowLayer?: (layerId: string) => void;
     /** いま見ている手に棋譜から付いていた評価値・読み筋（対局時の評価値）。 */
     source: StudySource | null;
     analysisMode: "full" | "deep" | null;
     isPreparing: boolean;
     /** この局面を深く解析している途中経過。別の局面を解析中・解析していなければ undefined。 */
-    liveDepth: number | null | undefined;
+    live: StudyLiveSearch | undefined;
     onStartDeep: () => void;
+    /**
+     * いまの局面でパスを指し（変化として足し）、その局面を深く解析する。手番でない側が何を狙って
+     * いるかを見るため。渡さなければ出さない（編集できないとき）。
+     */
+    onStartDeepAfterPass?: () => void;
     /**
      * 深く読んだ結果で、いま見ている手の判定が変わったときの、元の判定と新しい判定
      * （悪手でも疑問手でもないなら null）。
@@ -106,13 +109,48 @@ interface StudyCandidatesPanelProps {
 const sideClass = (side: "sente" | "gote" | null): string =>
     side === "sente" ? "text-wafuu-shu" : side === "gote" ? "text-wafuu-ai" : "text-foreground";
 
-/** どの設定の結果かの注記（例: `RAMU・1 秒・深さ 15`）。 */
+/** どの結果かの注記（例: `RAMU・深さ 15・1 秒・48 万局面`）。 */
 function resultNote(result: StudyPositionResult): string {
     return [
-        result.layer.display.label,
-        `深さ ${result.result.depth}`,
-        ...(result.result.completion === "aborted" ? ["途中まで"] : []),
+        // 設定の名前（「RAMU・30 秒」）の時間は 1 回に読む上限で、実際に読んだ時間と紛らわしいので、
+        // AI の名前だけを出す。
+        result.layer.display.nnueName ?? result.layer.display.label,
+        // 上限の前に止めたかどうかは出さない（止めるのは利用者が満足したときで、どこまで読んだかは
+        // 深さ・時間で分かる）。
+        searchStats(result.result),
     ].join("・");
+}
+
+/** 読んだ局面の数（1 万以上は「万」「億」で丸める）。 */
+function formatNodes(nodes: number): string {
+    if (nodes >= 100_000_000) return `${(nodes / 100_000_000).toFixed(1)} 億局面`;
+    if (nodes >= 10_000) return `${Math.round(nodes / 10_000)} 万局面`;
+    return `${nodes} 局面`;
+}
+
+/** 読みの深さ・読んだ時間・読んだ局面の数（続けて読んだ分も足した値）。取れないものは出さない。 */
+function searchStats(result: StudyAnalysisResult): string {
+    return [
+        `深さ ${result.depth}`,
+        ...(result.timeMs != null ? [`${Math.round(result.timeMs / 1000)} 秒`] : []),
+        ...(result.nodes != null ? [formatNodes(result.nodes)] : []),
+    ].join("・");
+}
+
+/** 深く解析している間の「（残り m 秒）」。残りの時間は 1 秒ごとに数え直す。 */
+function DeepProgressNote({ live }: { live: StudyLiveSearch }): ReactElement | null {
+    const [now, setNow] = useState(() => Date.now());
+    useEffect(() => {
+        if (live.startedAt === null) return;
+        const timer = setInterval(() => setNow(Date.now()), 1_000);
+        return () => clearInterval(timer);
+    }, [live.startedAt]);
+    const remaining =
+        live.startedAt === null
+            ? null
+            : Math.max(0, Math.ceil((live.startedAt + live.budgetMs - now) / 1_000));
+    // 深さ・読んだ時間などは、途中の候補の見出しに出す。
+    return remaining !== null ? <>（残り {remaining} 秒）</> : null;
 }
 
 function CandidateRow({
@@ -184,90 +222,29 @@ function CandidateRow({
  * より深く読んだ結果の段。ふだんは 1 行（最善手と評価値）に畳み、押すと候補手と読み筋を出す。
  * 利用者がいま深く解析して得た結果は、開いた状態で目立たせる。
  */
-function DeeperResultSection({
+/** 深く解析した局面に添える、全体の解析の最善手（1 行）。 */
+function ShallowResultLine({
     node,
     result,
-    isFresh,
-    onShowLayer,
-    onPreviewPv,
-    onAddPvAsVariation,
 }: {
     node: KifuNode;
     result: StudyPositionResult;
-    isFresh: boolean;
-    onShowLayer?: (layerId: string) => void;
-    onPreviewPv: (request: StudyPvRequest) => void;
-    onAddPvAsVariation: (request: StudyPvRequest) => void;
-}): ReactElement {
-    // 開いた・閉じた局面を覚える（別の局面へ移ったら、既定の状態に戻る）。
-    const [openedNodeId, setOpenedNodeId] = useState<string | null>(null);
-    const [closedNodeId, setClosedNodeId] = useState<string | null>(null);
-    const isOpen = isFresh ? closedNodeId !== node.id : openedNodeId === node.id;
+}): ReactElement | null {
     const best = studyBestCandidate(result.result);
-    const bestLabel = best ? studyFirstMoveLabel(node, best.pv) : null;
-    const toggle = (): void => {
-        setOpenedNodeId(isOpen ? null : node.id);
-        setClosedNodeId(isOpen ? node.id : null);
-    };
+    if (!best) return null;
     return (
-        <div
-            className={cn(
-                "flex flex-col gap-1 rounded-lg border px-2 py-1",
-                isFresh ? "border-wafuu-shu/40 bg-wafuu-shu/5" : "border-border bg-wafuu-washi",
-            )}
-        >
-            <button
-                type="button"
-                aria-expanded={isOpen}
-                onClick={toggle}
-                className="flex min-h-10 w-full flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md px-1 text-left text-xs text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-                <span className={cn("font-medium", isFresh && "text-wafuu-shu")}>
-                    {isFresh ? "深く解析した結果" : "より深い解析"}（{resultNote(result)}）
-                </span>
-                {best && bestLabel && (
-                    <span className="flex items-baseline gap-1.5">
-                        <span className="text-sm font-medium text-wafuu-sumi">{bestLabel}</span>
-                        <span
-                            className={cn(
-                                "font-mono text-sm tabular-nums",
-                                sideClass(studyScoreSide(best.score)),
-                            )}
-                        >
-                            {formatStudyScore(best.score)}
-                        </span>
-                    </span>
+        <p className="flex flex-wrap items-baseline gap-x-1.5 border-t border-border px-1 pt-1.5 text-xs text-muted-foreground">
+            <span>全体の解析（深さ {result.result.depth}）</span>
+            <span className="text-sm text-wafuu-sumi">{studyFirstMoveLabel(node, best.pv)}</span>
+            <span
+                className={cn(
+                    "font-mono text-sm tabular-nums",
+                    sideClass(studyScoreSide(best.score)),
                 )}
-                <span className="ml-auto shrink-0 underline underline-offset-2">
-                    {isOpen ? "閉じる" : "読み筋を見る"}
-                </span>
-            </button>
-            {isOpen && (
-                <>
-                    <ol className="flex flex-col">
-                        {result.result.candidates.map((candidate) => (
-                            <CandidateRow
-                                key={candidate.rank}
-                                node={node}
-                                candidate={candidate}
-                                groupLabel="深い解析の"
-                                onPreviewPv={onPreviewPv}
-                                onAddPvAsVariation={onAddPvAsVariation}
-                            />
-                        ))}
-                    </ol>
-                    {onShowLayer && (
-                        <button
-                            type="button"
-                            onClick={() => onShowLayer(result.layer.id)}
-                            className="min-h-10 self-start rounded-md px-1 text-left text-xs text-wafuu-ai underline underline-offset-2 hover:text-wafuu-ai-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        >
-                            表示を「{result.layer.display.label}」の結果に切り替える
-                        </button>
-                    )}
-                </>
-            )}
-        </div>
+            >
+                {formatStudyScore(best.score)}
+            </span>
+        </p>
     );
 }
 
@@ -279,13 +256,12 @@ export function StudyCandidatesPanel({
     alternative,
     playedBestLabel = null,
     deeperResult = null,
-    deeperIsFresh = false,
-    onShowLayer,
     source,
     analysisMode,
     isPreparing,
-    liveDepth,
+    live,
     onStartDeep,
+    onStartDeepAfterPass,
     revision = null,
     canContinueDeep = false,
     onContinueDeep,
@@ -295,10 +271,11 @@ export function StudyCandidatesPanel({
     mate,
     className,
 }: StudyCandidatesPanelProps): ReactElement {
-    const isDeepHere = liveDepth !== undefined;
+    const isDeepHere = live !== undefined;
     const mateRunning =
         mate !== undefined && (mate.state?.status === "running" || mate.busyElsewhere);
     const sourceText = formatStudyScore(source?.score);
+    const mainResult = deeperResult ?? positionResult;
 
     return (
         <section
@@ -310,40 +287,71 @@ export function StudyCandidatesPanel({
             )}
         >
             <div className="flex flex-col gap-2">
-                <h2 className="font-display text-base font-semibold text-wafuu-sumi">候補手</h2>
-                <div className="flex flex-wrap items-center gap-2">
-                    {isDeepHere ? (
-                        <div className="flex items-center gap-2">
-                            <output aria-live="polite" className="text-xs text-muted-foreground">
-                                深く解析中{liveDepth ? `（深さ ${liveDepth}）` : ""}
-                            </output>
-                            <Button type="button" variant="outline" size="sm" onClick={onCancel}>
-                                止める
-                            </Button>
-                        </div>
-                    ) : canContinueDeep && onContinueDeep ? (
-                        <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="gap-1.5"
-                            onClick={onContinueDeep}
-                            disabled={isPreparing || analysisMode !== null || mateRunning}
+                {/* 欄の名前は見出しとして画面に出さない（PC は欄の並び、スマートフォンはタブで分かる）。 */}
+                <h2 className="sr-only">候補手</h2>
+                <div className="flex items-center gap-1.5">
+                    {/* 深く解析・止める・続けて読むは同じ枠で入れ替え、枠の幅をいちばん長い文言に合わせる
+                        （切り替わるたびに隣のボタンが動かないように）。深さ・残りの時間は下の行に出す。 */}
+                    <div className="grid">
+                        <span
+                            aria-hidden="true"
+                            className={cn(
+                                COMPACT_BUTTON_CLASS,
+                                "invisible col-start-1 row-start-1 flex items-center border border-transparent",
+                            )}
                         >
-                            <AnalyzeIcon />
+                            <ClockPlusIcon />
                             続けて読む
-                        </Button>
-                    ) : (
+                        </span>
+                        <div className="col-start-1 row-start-1 flex">
+                            {isDeepHere ? (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className={cn(COMPACT_BUTTON_CLASS, "w-full")}
+                                    onClick={onCancel}
+                                >
+                                    止める
+                                </Button>
+                            ) : canContinueDeep && onContinueDeep ? (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className={cn(COMPACT_BUTTON_CLASS, "w-full")}
+                                    onClick={onContinueDeep}
+                                    disabled={isPreparing || analysisMode !== null || mateRunning}
+                                >
+                                    <ClockPlusIcon />
+                                    続けて読む
+                                </Button>
+                            ) : (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className={cn(COMPACT_BUTTON_CLASS, "w-full")}
+                                    aria-label="この局面を深く解析"
+                                    onClick={onStartDeep}
+                                    disabled={isPreparing || analysisMode !== null || mateRunning}
+                                >
+                                    深く解析
+                                </Button>
+                            )}
+                        </div>
+                    </div>
+                    {onStartDeepAfterPass && (
                         <Button
                             type="button"
                             variant="outline"
                             size="sm"
-                            className="gap-1.5"
-                            onClick={onStartDeep}
+                            className={COMPACT_BUTTON_CLASS}
+                            title="手番の側がパスした局面を深く解析し、相手の狙いを見ます（パスは変化として足します）"
+                            onClick={onStartDeepAfterPass}
                             disabled={isPreparing || analysisMode !== null || mateRunning}
                         >
-                            <AnalyzeIcon />
-                            この局面を深く解析
+                            パスして解析
                         </Button>
                     )}
                     {mate && (
@@ -356,7 +364,37 @@ export function StudyCandidatesPanel({
                         />
                     )}
                 </div>
+                {live && (
+                    <output
+                        aria-live="polite"
+                        className="text-xs tabular-nums text-muted-foreground"
+                    >
+                        深く解析中
+                        <DeepProgressNote live={live} />
+                    </output>
+                )}
             </div>
+
+            {/* 読んでいる途中の候補。満足したら「止める」で、その時点の結果を残せる。 */}
+            {live?.preview && (
+                <div className="flex flex-col gap-1 rounded-lg bg-wafuu-washi px-2 py-2">
+                    <span className="px-1 text-xs text-muted-foreground">
+                        読んでいる途中の候補（{searchStats(live.preview)}）
+                    </span>
+                    <ol className="flex flex-col">
+                        {live.preview.candidates.map((candidate) => (
+                            <CandidateRow
+                                key={candidate.rank}
+                                node={node}
+                                candidate={candidate}
+                                groupLabel="途中の"
+                                onPreviewPv={onPreviewPv}
+                                onAddPvAsVariation={onAddPvAsVariation}
+                            />
+                        ))}
+                    </ol>
+                </div>
+            )}
 
             {revision && (
                 <p className="rounded-md border border-border bg-muted/40 px-2.5 py-1.5 text-xs text-wafuu-sumi">
@@ -376,18 +414,6 @@ export function StudyCandidatesPanel({
                 <StudyMateResult
                     node={node}
                     state={mate.state}
-                    onPreviewPv={onPreviewPv}
-                    onAddPvAsVariation={onAddPvAsVariation}
-                />
-            )}
-
-            {/* いま深く解析して得た結果は、押したボタンのすぐ下に出す（見当たらない、を防ぐ）。 */}
-            {deeperResult && deeperIsFresh && (
-                <DeeperResultSection
-                    node={node}
-                    result={deeperResult}
-                    isFresh={deeperIsFresh}
-                    onShowLayer={onShowLayer}
                     onPreviewPv={onPreviewPv}
                     onAddPvAsVariation={onAddPvAsVariation}
                 />
@@ -426,20 +452,23 @@ export function StudyCandidatesPanel({
                 </p>
             )}
 
+            {/* 深く解析した結果があれば、それを候補手の一覧にする（同じ局面をより深く読んだ結果なので）。
+                全体の解析の結果は、最善手だけを 1 行で添える。 */}
             <div className="flex flex-col gap-1">
                 <div className="flex flex-col px-1">
                     {alternative && (
                         <h3 className="text-sm font-medium text-wafuu-sumi">この局面の候補手</h3>
                     )}
-                    {positionResult && (
+                    {mainResult && (
                         <span className="text-xs text-muted-foreground">
-                            {resultNote(positionResult)}
+                            {deeperResult ? "深く解析・" : ""}
+                            {resultNote(mainResult)}
                         </span>
                     )}
                 </div>
-                {positionResult ? (
+                {mainResult ? (
                     <ol className="flex flex-col">
-                        {positionResult.result.candidates.map((candidate) => (
+                        {mainResult.result.candidates.map((candidate) => (
                             <CandidateRow
                                 key={candidate.rank}
                                 node={node}
@@ -455,18 +484,10 @@ export function StudyCandidatesPanel({
                         この局面はまだ解析していません。
                     </p>
                 )}
+                {deeperResult && positionResult && (
+                    <ShallowResultLine node={node} result={positionResult} />
+                )}
             </div>
-
-            {deeperResult && !deeperIsFresh && (
-                <DeeperResultSection
-                    node={node}
-                    result={deeperResult}
-                    isFresh={deeperIsFresh}
-                    onShowLayer={onShowLayer}
-                    onPreviewPv={onPreviewPv}
-                    onAddPvAsVariation={onAddPvAsVariation}
-                />
-            )}
 
             {source && (sourceText !== "" || source.pv) && (
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-t border-border pt-2 text-xs text-muted-foreground">

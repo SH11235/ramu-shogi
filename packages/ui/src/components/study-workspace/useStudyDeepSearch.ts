@@ -50,7 +50,17 @@ interface StudyDeepState {
     depth: number | null;
     /** 止めた読みを、同じ局面の続きから読める。 */
     canContinue: boolean;
+    /** いまの読みを始めた時刻（`Date.now()`。読んでいる間だけ）。残りの時間を出すのに使う。 */
+    startedAt: number | null;
+    /** 読んでいる途中の候補（`PREVIEW_INTERVAL_MS` ごとに更新する）。 */
+    preview: StudyAnalysisResult | null;
 }
+
+/**
+ * 途中の候補を画面へ写す間隔。読みの情報は 1 秒に何度も届くので、そのたびに写すと候補が
+ * 目まぐるしく入れ替わって読めない。
+ */
+const PREVIEW_INTERVAL_MS = 3_000;
 
 interface Options {
     createClient: (() => EngineClient) | null;
@@ -62,13 +72,22 @@ interface Options {
     onError: (message: string) => void;
 }
 
-const IDLE: StudyDeepState = { phase: "idle", nodeId: null, depth: null, canContinue: false };
+const IDLE: StudyDeepState = {
+    phase: "idle",
+    nodeId: null,
+    depth: null,
+    canContinue: false,
+    startedAt: null,
+    preview: null,
+};
 
 interface Session {
     /** 解析の部品に渡す ID。同じ局面でも、新しく始めるたびに別の ID にする。 */
     key: string;
     request: StudyDeepRequest;
     collector: StudyAnalysisCollector;
+    /** 途中の候補を最後に画面へ写した時刻。 */
+    previewAt: number;
 }
 
 export function useStudyDeepSearch(options: Options): {
@@ -104,14 +123,21 @@ export function useStudyDeepSearch(options: Options): {
             setState((prev) =>
                 prev.phase === "running" && prev.nodeId === nodeId
                     ? prev
-                    : { phase: "running", nodeId, depth: prev.depth, canContinue: false },
+                    : {
+                          ...prev,
+                          phase: "running",
+                          nodeId,
+                          canContinue: false,
+                          startedAt: Date.now(),
+                      },
             );
         } else if (controllerState.phase === "paused" || controllerState.phase === "idle") {
             setState((prev) => ({
+                ...prev,
                 phase: "paused",
                 nodeId,
-                depth: prev.depth,
                 canContinue: controllerState.canResume,
+                startedAt: null,
             }));
         }
     });
@@ -122,8 +148,18 @@ export function useStudyDeepSearch(options: Options): {
             if (!session || session.key !== key) return;
             session.collector.push(info);
             const depth = info.depth ?? null;
-            if (depth !== null) {
-                setState((prev) => (prev.depth === depth ? prev : { ...prev, depth }));
+            const now = Date.now();
+            const preview =
+                now - session.previewAt >= PREVIEW_INTERVAL_MS
+                    ? session.collector.finish("aborted")
+                    : null;
+            if (preview) session.previewAt = now;
+            if (depth !== null || preview) {
+                setState((prev) =>
+                    (depth === null || prev.depth === depth) && !preview
+                        ? prev
+                        : { ...prev, depth: depth ?? prev.depth, preview: preview ?? prev.preview },
+                );
             }
         },
     );
@@ -225,8 +261,9 @@ export function useStudyDeepSearch(options: Options): {
                 sideToMove: request.sideToMove,
                 execution: { threads: request.setup.threads, parallelWorkers: 1 },
             }),
+            previewAt: Date.now(),
         };
-        setState({ phase: "preparing", nodeId: request.nodeId, depth: null, canContinue: false });
+        setState({ ...IDLE, phase: "preparing", nodeId: request.nodeId });
         await controller.select({
             nodeId: key,
             sfen: request.sfen,
