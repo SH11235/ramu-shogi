@@ -175,7 +175,7 @@ const AD_HOC_CLASS_PATTERNS = [
         hint: "影・角の丸み・重なり順の任意プロパティ",
     },
     {
-        pattern: /(?<![\w-])shadow-(?:lg|xl|2xl|inner)(?![\w-])/g,
+        pattern: /(?<![\w-])shadow-(?:lg|xl|2xl)(?![\w-])/g,
         hint: "影の段（浮く面は名前付きの影）",
     },
     { pattern: new RegExp(`(?<![\\w-])${ROUNDED_PREFIX}-\\[`, "g"), hint: "角の丸みの任意値" },
