@@ -44,6 +44,19 @@ function readCurrentThreads(maxThreads: number | undefined): number {
  * 表に出すスレッド数。1・上限の半分・上限を基本に、いまの設定と記録のある数を足す（重なりは 1 つに）。
  * 対局で使う数（いまの設定）の値が無いと、対局での実測と見比べられないので必ず入れる。
  */
+/**
+ * 計測の残り秒数。`index` 番目の局面を読み始めてから `elapsedMs` たったとき。いまの局面を読み終える
+ * までは、次の局面からの分より少なくしない（局面が替わる知らせが少し遅れても、先に 0 にしない）。
+ */
+export function benchmarkRemainingSeconds(index: number, elapsedMs: number): number {
+    const left = NNUE_SPEED_BENCHMARK_POSITIONS.length - index;
+    const ms = NNUE_SPEED_BENCHMARK_MS_PER_POSITION;
+    return Math.max(
+        ((left - 1) * ms) / 1000,
+        Math.ceil((left * ms - Math.max(0, elapsedMs)) / 1000),
+    );
+}
+
 export function speedTableThreads(
     threadCap: number,
     currentThreads: number,
@@ -254,16 +267,26 @@ export function NnueSpeedTable({
             : benchmark.isEngineBusy
               ? "対局・解析中は測れません"
               : undefined);
-    // 局面ごとに決まった時間だけ読むので、残りの局面の数から残り時間が分かる。
+    // 局面ごとに決まった時間だけ読むので、残りの局面の数と、いまの局面を読み始めてからの時間で
+    // 残り時間が分かる。局面が替わるのを待たず 1 秒ごとに数え直す（止まって見えないように）。
+    const runningIndex = running?.index ?? null;
+    const [indexStart, setIndexStart] = useState<{ index: number | null; at: number }>({
+        index: null,
+        at: 0,
+    });
+    if (runningIndex !== indexStart.index) setIndexStart({ index: runningIndex, at: Date.now() });
+    const [now, setNow] = useState(() => Date.now());
+    useEffect(() => {
+        if (runningIndex === null) return;
+        setNow(Date.now());
+        const timer = setInterval(() => setNow(Date.now()), 1_000);
+        return () => clearInterval(timer);
+    }, [runningIndex]);
     const progressLabel = !running
         ? null
-        : running.index === null
+        : runningIndex === null
           ? "準備中"
-          : `あと約 ${
-                ((NNUE_SPEED_BENCHMARK_POSITIONS.length - running.index) *
-                    NNUE_SPEED_BENCHMARK_MS_PER_POSITION) /
-                1000
-            } 秒`;
+          : `あと約 ${benchmarkRemainingSeconds(runningIndex, now - indexStart.at)} 秒`;
 
     const canMeasure = support.createBenchmarkClient !== undefined;
     if (!canMeasure && rows.length === 0) return null;

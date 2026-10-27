@@ -5,7 +5,12 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ENGINE_THREADS_STORAGE_KEY } from "../shogi-match/constants";
-import { NnueSpeedTable, speedTableThreads, useNnueSpeedBenchmark } from "./NnueSpeed";
+import {
+    benchmarkRemainingSeconds,
+    NnueSpeedTable,
+    speedTableThreads,
+    useNnueSpeedBenchmark,
+} from "./NnueSpeed";
 import type { NnueSpeedSupport } from "./types";
 
 const meta: NnueMeta = {
@@ -85,6 +90,17 @@ describe("speedTableThreads", () => {
         expect(speedTableThreads(8, 3, [6])).toEqual([1, 3, 4, 6, 8]);
         expect(speedTableThreads(2, 2, [])).toEqual([1, 2]);
         expect(speedTableThreads(1, 1, [])).toEqual([1]);
+    });
+});
+
+describe("benchmarkRemainingSeconds", () => {
+    it("局面を読んでいる間も 1 秒ごとに減り、局面が替わるまでは次の局面の分を下回らない", () => {
+        expect(benchmarkRemainingSeconds(0, 0)).toBe(9);
+        expect(benchmarkRemainingSeconds(0, 1_000)).toBe(8);
+        expect(benchmarkRemainingSeconds(0, 2_500)).toBe(7);
+        expect(benchmarkRemainingSeconds(0, 5_000)).toBe(6);
+        expect(benchmarkRemainingSeconds(2, 2_000)).toBe(1);
+        expect(benchmarkRemainingSeconds(2, 9_000)).toBe(0);
     });
 });
 
