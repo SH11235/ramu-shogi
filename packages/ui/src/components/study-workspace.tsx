@@ -411,8 +411,16 @@ export function StudyWorkspaceView({
             : exportStudyLineToKif(doc, tree, line);
     const kifuLabel = (format: StudyKifuFormat): string =>
         `${line.length > 1 ? `表示中の手順（${line.length - 1} 手）` : "開始局面"}を ${format.toUpperCase()} で`;
-    const copyKifu = (format: StudyKifuFormat): void =>
-        copyText(exportKifu(format), `${kifuLabel(format)}コピーしました。`);
+    const copyKifu = (format: StudyKifuFormat): void => {
+        let text: string;
+        try {
+            text = exportKifu(format);
+        } catch {
+            onMessageChange({ text: "棋譜を書き出せませんでした。", type: "error" });
+            return;
+        }
+        copyText(text, `${kifuLabel(format)}コピーしました。`);
+    };
     const saveKifu = onSaveKifuFile
         ? (format: StudyKifuFormat): void => {
               try {
@@ -483,6 +491,7 @@ export function StudyWorkspaceView({
         const passNodeId = await editing.passFromCurrent();
         if (passNodeId !== null) setPendingPassDeepNodeId(passNodeId);
     };
+    // 依存配列を付けず、描画のたびに「待っている局面がツリーに現れたか」を確かめる。
     useEffect(() => {
         if (pendingPassDeepNodeId === null) return;
         // 別の局面へ移ったら、待つのをやめる（後でその局面へ来ても、勝手に解析を始めない）。

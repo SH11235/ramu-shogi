@@ -163,7 +163,7 @@ export function StudyMateProgress({
 }): ReactElement | null {
     if (state?.status !== "running" && !busyElsewhere) return null;
     return (
-        <output aria-live="polite" className="text-xs text-muted-foreground">
+        <output aria-live="polite">
             {state?.status === "running"
                 ? studyMateProgressText(state)
                 : "別の局面の詰みを調べています"}

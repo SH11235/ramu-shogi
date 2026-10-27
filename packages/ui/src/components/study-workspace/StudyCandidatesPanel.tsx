@@ -378,18 +378,28 @@ export function StudyCandidatesPanel({
                         />
                     )}
                 </div>
-                {live && (
-                    <output
-                        aria-live="polite"
-                        className="text-xs tabular-nums text-muted-foreground"
-                    >
-                        深く解析中
-                        <DeepProgressNote live={live} />
-                    </output>
-                )}
-                {mate && (
-                    <StudyMateProgress state={mate.state} busyElsewhere={mate.busyElsewhere} />
-                )}
+                {/* ボタンの下の 1 行は常に置き、読んでいる間は進み具合、それ以外はどの結果を出しているかを
+                    書く。高さは 1 行に固定する（解析を始めても止めても、下の候補手が上下に動かないように）。 */}
+                <div className="h-4 truncate px-1 text-xs leading-4 text-muted-foreground">
+                    {live ? (
+                        <output aria-live="polite" className="tabular-nums">
+                            深く解析中
+                            <DeepProgressNote live={live} />
+                        </output>
+                    ) : mate && (mate.state?.status === "running" || mate.busyElsewhere) ? (
+                        <StudyMateProgress state={mate.state} busyElsewhere={mate.busyElsewhere} />
+                    ) : alternative ? null : mainResult ? (
+                        // 1 行に収まらないときは省略し、全文はマウスを載せると見られるようにする。
+                        <span
+                            title={`${deeperResult ? "深く解析・" : ""}${resultNote(mainResult)}`}
+                        >
+                            {deeperResult ? "深く解析・" : ""}
+                            {resultNote(mainResult)}
+                        </span>
+                    ) : (
+                        <span>この局面はまだ解析していません。</span>
+                    )}
+                </div>
             </div>
 
             {/* 読んでいる途中の候補。満足したら「止める」で、その時点の結果を残せる。 */}
@@ -472,17 +482,18 @@ export function StudyCandidatesPanel({
             {/* 深く解析した結果があれば、それを候補手の一覧にする（同じ局面をより深く読んだ結果なので）。
                 全体の解析の結果は、最善手だけを 1 行で添える。 */}
             <div className="flex flex-col gap-1">
-                <div className="flex flex-col px-1">
-                    {alternative && (
+                {/* 悪手・疑問手の局面では「この手の代わりに」と分けるため、ここにも見出しと注記を置く。 */}
+                {alternative && (
+                    <div className="flex flex-col px-1">
                         <h3 className="text-sm font-medium text-wafuu-sumi">この局面の候補手</h3>
-                    )}
-                    {mainResult && (
-                        <span className="text-xs text-muted-foreground">
-                            {deeperResult ? "深く解析・" : ""}
-                            {resultNote(mainResult)}
-                        </span>
-                    )}
-                </div>
+                        {mainResult && (
+                            <span className="text-xs text-muted-foreground">
+                                {deeperResult ? "深く解析・" : ""}
+                                {resultNote(mainResult)}
+                            </span>
+                        )}
+                    </div>
+                )}
                 {mainResult ? (
                     <ol className="flex flex-col">
                         {mainResult.result.candidates.map((candidate) => (
@@ -497,9 +508,11 @@ export function StudyCandidatesPanel({
                         ))}
                     </ol>
                 ) : (
-                    <p className="px-1 text-sm text-muted-foreground">
-                        この局面はまだ解析していません。
-                    </p>
+                    alternative && (
+                        <p className="px-1 text-sm text-muted-foreground">
+                            この局面はまだ解析していません。
+                        </p>
+                    )
                 )}
                 {deeperResult && positionResult && (
                     <ShallowResultLine node={node} result={positionResult} />

@@ -27,7 +27,10 @@ export function downloadTextFile({ fileName, text }: StudyKifuFile): void {
     const anchor = document.createElement("a");
     anchor.href = url;
     anchor.download = fileName;
+    // 文書に付けていない a 要素の click ではダウンロードしないブラウザがある。
+    document.body.appendChild(anchor);
     anchor.click();
+    anchor.remove();
     // クリック直後に URL を消すと、ダウンロードが始まらないブラウザがある。
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
