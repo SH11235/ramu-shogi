@@ -128,7 +128,7 @@ export function StudyMateControl({
                 aria-hidden="true"
                 className={cn(
                     COMPACT_BUTTON_CLASS,
-                    "invisible col-start-1 row-start-1 flex items-center border border-transparent",
+                    "invisible col-start-1 row-start-1 flex items-center border border-transparent font-medium",
                 )}
             >
                 詰みを読む

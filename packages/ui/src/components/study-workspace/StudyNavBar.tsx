@@ -57,7 +57,8 @@ export function StudyNavBar({
                     compact ? "min-w-[3.25rem] min-[375px]:min-w-[3.75rem]" : "min-w-[4.5rem]",
                 )}
             >
-                {index} / {total}
+                {/* 狭い行に入れるので、3 桁の手数でも幅が増えないよう空白を入れない。 */}
+                {compact ? `${index}/${total}` : `${index} / ${total}`}
             </output>
             <StudyIconButton
                 label="1 手進む（→）"

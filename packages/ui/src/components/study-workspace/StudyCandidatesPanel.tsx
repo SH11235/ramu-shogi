@@ -154,7 +154,11 @@ function DeepProgressNote({ live }: { live: StudyLiveSearch }): ReactElement | n
     const remaining =
         live.startedAt === null
             ? null
-            : Math.max(0, Math.ceil((live.startedAt + live.budgetMs - now) / 1_000));
+            : // 読み始めた直後の描画では `now` がまだ古いので、上限の秒数で抑える。
+              Math.min(
+                  live.budgetMs / 1_000,
+                  Math.max(0, Math.ceil((live.startedAt + live.budgetMs - now) / 1_000)),
+              );
     // 深さ・読んだ時間などは、途中の候補の見出しに出す。
     return remaining !== null ? <>（残り {remaining} 秒）</> : null;
 }
@@ -307,7 +311,7 @@ export function StudyCandidatesPanel({
                             aria-hidden="true"
                             className={cn(
                                 COMPACT_BUTTON_CLASS,
-                                "invisible col-start-1 row-start-1 flex items-center border border-transparent",
+                                "invisible col-start-1 row-start-1 flex items-center border border-transparent font-medium",
                             )}
                         >
                             <ClockPlusIcon />
