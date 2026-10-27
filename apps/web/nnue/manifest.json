@@ -1,6 +1,6 @@
 {
     "version": 1,
-    "updatedAt": "2026-10-11T12:29:15Z",
+    "updatedAt": "2026-10-28T00:00:00Z",
     "presets": [
         {
             "presetKey": "coco",
@@ -8,9 +8,9 @@
             "iconUrl": "https://ramu-shogi.sh11235.com/nnue/files/coco-20261011.jpg",
             "usageLabel": "軽量",
             "description": "軽量モデル。水匠5に対して約+156 nEloを記録しています。計算が軽いぶん NPS が高めです。",
-            "url": "https://ramu-shogi.sh11235.com/nnue/files/coco-halfkp256-20260825.bin",
-            "size": 64217088,
-            "sha256": "f4babf2b6c51d9b9de8fe0ecee7d0665e76d13e4c4d7380c3019480423ebc037",
+            "url": "https://ramu-shogi.sh11235.com/nnue/files/coco-halfkp256-20261028.bin",
+            "size": 64217089,
+            "sha256": "0e577d0098c619a716170e6965fbfb2894a2884c275d948e7e5777ff19223b96",
             "license": "MIT License",
             "releasedAt": "2026-10-11",
             "recommendedFvScale": 14,
