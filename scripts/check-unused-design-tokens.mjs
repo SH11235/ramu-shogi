@@ -169,7 +169,11 @@ export function findUnusedPresetTokens(tokens, sources) {
 // トークンを通さずに書いた影・角の丸み・重なり順。浮く面の影は shadow-panel / shadow-modal 等、
 // 画面全体に重なる層は z-modal 等を使う。ボタンなど部品の影は Tailwind の shadow-sm / shadow-md まで。
 const AD_HOC_CLASS_PATTERNS = [
-    { pattern: /(?<![\w-])(?:drop-)?shadow-\[/g, hint: "影の任意値" },
+    { pattern: /(?<![\w-])(?:drop-|inset-)?shadow-\[/g, hint: "影の任意値" },
+    {
+        pattern: /\[(?:box-shadow|filter|border(?:-[a-z]+)*-radius|z-index):/g,
+        hint: "影・角の丸み・重なり順の任意プロパティ",
+    },
     {
         pattern: /(?<![\w-])shadow-(?:lg|xl|2xl|inner)(?![\w-])/g,
         hint: "影の段（浮く面は名前付きの影）",
