@@ -17,7 +17,7 @@ import type {
     EngineErrorDetails,
 } from "@shogi/app-controller";
 import type { Player } from "@shogi/app-core";
-import type { Dispatch, ReactElement, ReactNode, SetStateAction } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { DisplaySettingsPanel } from "../components/DisplaySettingsPanel";
 import { EngineLogsPanel } from "../components/EngineLogsPanel";
 import { ImportDialog } from "../components/ImportDialog";
@@ -27,8 +27,8 @@ import { PassRightsSettingsDialog } from "../components/PassRightsSettingsDialog
 import { PCBoardSection } from "../components/PCBoardSection";
 import { PCKifuSection } from "../components/PCKifuSection";
 import { useMatchSettings } from "../contexts/MatchSettingsContext";
-import { useNavigation } from "../contexts/NavigationContext";
-import type { DisplaySettings, PassRightsSettings } from "../types";
+import { useMatchState } from "../contexts/MatchStateContext";
+import type { PassRightsSettings } from "../types";
 import type { ImportKifHandler, ImportSfenHandler } from "../utils/kifuImport";
 
 /**
@@ -69,7 +69,6 @@ interface PCLayoutProps {
     /** サイドバーの表示設定 */
     isDisplaySettingsOpen: boolean;
     onDisplaySettingsOpenChange: (open: boolean) => void;
-    setDisplaySettings: Dispatch<SetStateAction<DisplaySettings>>;
 
     /** パス権設定ダイアログ */
     isPassRightsSettingsOpen: boolean;
@@ -102,7 +101,6 @@ export function PCLayout({
     isRetrying,
     isDisplaySettingsOpen,
     onDisplaySettingsOpenChange,
-    setDisplaySettings,
     isPassRightsSettingsOpen,
     onPassRightsSettingsOpenChange,
     handlePassRightsSettingsChange,
@@ -112,13 +110,11 @@ export function PCLayout({
 }: PCLayoutProps): ReactElement {
     // Context から状態を取得
     const matchSettings = useMatchSettings();
-    const navigation = useNavigation();
 
     // MatchSettingsContext から取得
     const { passRightsSettings, settingsLocked } = matchSettings;
 
-    // NavigationContext から表示設定を取得
-    const { displaySettings: navDisplaySettings } = navigation;
+    const { displaySettings, onDisplaySettingsChange } = useMatchState();
 
     return (
         <section className={matchLayoutClasses}>
@@ -182,8 +178,8 @@ export function PCLayout({
                                 displaySettingsPanel={
                                     isDisplaySettingsOpen ? (
                                         <DisplaySettingsPanel
-                                            settings={navDisplaySettings}
-                                            onChange={setDisplaySettings}
+                                            settings={displaySettings}
+                                            onChange={onDisplaySettingsChange}
                                         />
                                     ) : null
                                 }

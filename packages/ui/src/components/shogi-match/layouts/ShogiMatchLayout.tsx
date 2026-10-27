@@ -128,6 +128,7 @@ export function ShogiMatchLayout({
         editFromSquare,
         flipBoard,
         displaySettings,
+        setDisplaySettings,
         onFlipBoardChange,
     } = boardState;
 
@@ -191,7 +192,6 @@ export function ShogiMatchLayout({
         handlePreviewPv,
         kifuViewMode,
         setKifuViewMode,
-        setDisplaySettings,
         handlePlySelect,
         handleCopyKif,
         handleMoveDetailSelect,
@@ -252,8 +252,7 @@ export function ShogiMatchLayout({
     } = pcSpecificProps;
 
     // グループ化されたpropsを展開: Mobile専用
-    const { isReviewMode, onOpenAbout, onImportSfen, onImportKif, onDisplaySettingsChange } =
-        mobileSpecificProps;
+    const { isReviewMode, onOpenAbout, onImportSfen, onImportKif } = mobileSpecificProps;
 
     const playDevTools = isDevMode && (
         <EngineLogsPanel
@@ -419,6 +418,7 @@ export function ShogiMatchLayout({
                             flipBoard={flipBoard}
                             onFlipBoardChange={onFlipBoardChange}
                             displaySettings={displaySettings}
+                            onDisplaySettingsChange={setDisplaySettings}
                             passRightsSettings={passRightsSettings}
                             sides={sides}
                             moves={moves}
@@ -469,8 +469,6 @@ export function ShogiMatchLayout({
                                 handlePreviewPv={handlePreviewPv}
                                 kifuViewMode={kifuViewMode}
                                 onViewModeChange={setKifuViewMode}
-                                displaySettings={displaySettings}
-                                onDisplaySettingsChange={setDisplaySettings}
                                 handlePlySelect={handlePlySelect}
                                 handleCopyKif={handleCopyKif}
                                 handleMoveDetailSelect={handleMoveDetailSelect}
@@ -479,7 +477,6 @@ export function ShogiMatchLayout({
                                 {isPlayScreen ? (
                                     <PlayMobileLayout
                                         candidateNote={candidateNote}
-                                        onDisplaySettingsChange={onDisplaySettingsChange}
                                         devTools={playDevTools}
                                     />
                                 ) : (
@@ -491,7 +488,6 @@ export function ShogiMatchLayout({
                                         onImportSfen={onImportSfen}
                                         onImportKif={onImportKif}
                                         positionReady={positionReady}
-                                        onDisplaySettingsChange={onDisplaySettingsChange}
                                     />
                                 )}
                             </NavigationProvider>
@@ -563,6 +559,7 @@ export function ShogiMatchLayout({
                             flipBoard={flipBoard}
                             onFlipBoardChange={onFlipBoardChange}
                             displaySettings={displaySettings}
+                            onDisplaySettingsChange={setDisplaySettings}
                             passRightsSettings={passRightsSettings}
                             sides={sides}
                             moves={moves}
@@ -613,8 +610,6 @@ export function ShogiMatchLayout({
                                 handlePreviewPv={handlePreviewPv}
                                 kifuViewMode={kifuViewMode}
                                 onViewModeChange={setKifuViewMode}
-                                displaySettings={displaySettings}
-                                onDisplaySettingsChange={setDisplaySettings}
                                 handlePlySelect={handlePlySelect}
                                 handleCopyKif={handleCopyKif}
                                 handleMoveDetailSelect={handleMoveDetailSelect}
@@ -624,7 +619,6 @@ export function ShogiMatchLayout({
                                     <PlayPCLayout
                                         matchLayoutClasses={matchLayoutClasses}
                                         candidateNote={candidateNote}
-                                        setDisplaySettings={setDisplaySettings}
                                         devTools={playDevTools}
                                     />
                                 ) : (
@@ -644,7 +638,6 @@ export function ShogiMatchLayout({
                                         isRetrying={isRetrying}
                                         isDisplaySettingsOpen={isDisplaySettingsOpen}
                                         onDisplaySettingsOpenChange={onDisplaySettingsOpenChange}
-                                        setDisplaySettings={setDisplaySettings}
                                         isPassRightsSettingsOpen={isPassRightsSettingsOpen}
                                         onPassRightsSettingsOpenChange={
                                             onPassRightsSettingsOpenChange

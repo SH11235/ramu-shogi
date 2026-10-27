@@ -88,6 +88,7 @@ export interface BoardStateProps {
     editFromSquare: import("@shogi/app-core").Square | null;
     flipBoard: boolean;
     displaySettings: DisplaySettings;
+    setDisplaySettings: import("react").Dispatch<import("react").SetStateAction<DisplaySettings>>;
     onFlipBoardChange: (flip: boolean) => void;
 }
 
@@ -195,7 +196,6 @@ export interface NavigationProps {
     ) => void;
     kifuViewMode: import("../components/KifuPanel").KifuViewMode;
     setKifuViewMode: (mode: import("../components/KifuPanel").KifuViewMode) => void;
-    setDisplaySettings: import("react").Dispatch<import("react").SetStateAction<DisplaySettings>>;
     handlePlySelect: (ply: number) => void;
     handleCopyKif: () => string;
     handleMoveDetailSelect: (
@@ -299,7 +299,6 @@ export interface PCSpecificProps {
  * - 検討モード判定
  * - Aboutダイアログ表示
  * - 棋譜インポート（Mobile版）
- * - 表示設定変更（Mobile版）
  */
 export interface MobileSpecificProps {
     searchInfo?: import("react").ReactNode;
@@ -307,5 +306,4 @@ export interface MobileSpecificProps {
     onOpenAbout: () => void;
     onImportSfen: import("../utils/kifuImport").ImportSfenHandler;
     onImportKif: import("../utils/kifuImport").ImportKifHandler;
-    onDisplaySettingsChange: (settings: DisplaySettings) => void;
 }

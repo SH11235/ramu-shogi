@@ -5,6 +5,7 @@
  */
 
 import type { LastMove, PieceType, Player, PositionState, Square } from "@shogi/app-core";
+import type { Dispatch, SetStateAction } from "react";
 import type { ShogiBoardCell, ShogiBoardMoveShadow, ShogiBoardPiece } from "../../shogi-board";
 import type { PassDisabledReason } from "../components/PassButton";
 import type { TickState } from "../hooks/useClockManager";
@@ -70,6 +71,7 @@ export interface MatchStateContextValue {
     flipBoard: boolean;
     onFlipBoardChange: (flip: boolean) => void;
     displaySettings: DisplaySettings;
+    onDisplaySettingsChange: Dispatch<SetStateAction<DisplaySettings>>;
     passRightsSettings?: PassRightsSettings;
 
     // 手番・プレイヤー情報

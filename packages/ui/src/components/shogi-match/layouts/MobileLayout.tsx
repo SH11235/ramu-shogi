@@ -29,7 +29,6 @@ import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { useMatchState } from "../contexts/MatchStateContext";
 import { useNavigation } from "../contexts/NavigationContext";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
-import type { DisplaySettings } from "../types";
 import { formatEval } from "../utils/kifFormat";
 import type { ImportKifHandler, ImportSfenHandler } from "../utils/kifuImport";
 
@@ -67,9 +66,6 @@ interface MobileLayoutProps {
 
     /** 局面が準備完了しているか */
     positionReady?: boolean;
-
-    /** 表示設定変更コールバック（BottomSheet用） */
-    onDisplaySettingsChange: (settings: DisplaySettings) => void;
 }
 
 /**
@@ -84,7 +80,6 @@ export function MobileLayout({
     onImportSfen,
     onImportKif,
     positionReady = true,
-    onDisplaySettingsChange,
 }: MobileLayoutProps): ReactElement {
     // Context から状態を取得
     const matchState = useMatchState();
@@ -110,6 +105,7 @@ export function MobileLayout({
         editFromSquare,
         moves,
         displaySettings,
+        onDisplaySettingsChange,
         passRightsSettings,
         clocks,
         message,

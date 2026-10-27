@@ -5,8 +5,8 @@ import { ShogiMatchProvider } from "../ShogiMatchContext";
 import { DEFAULT_DISPLAY_SETTINGS, type DisplaySettings } from "../types";
 import { SoundToggle } from "./SoundToggle";
 
-vi.mock("../contexts/NavigationContext", () => ({
-    useNavigation: () => {
+vi.mock("../contexts/MatchStateContext", () => ({
+    useMatchState: () => {
         // 古い保存値にはenableSoundがなく、表示時に既定値だけが補完される。
         const [stored, setStored] = useState<Partial<DisplaySettings>>({ showBoardLabels: false });
         return {
