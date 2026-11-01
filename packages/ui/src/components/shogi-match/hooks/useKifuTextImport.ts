@@ -86,8 +86,8 @@ export function useKifuTextImport({
                 }
                 return;
             }
-            track("kifu_import", { format: detectKifuTextFormat(text) });
             if (!isLatest(requestId)) return;
+            track("kifu_import", { format: detectKifuTextFormat(text) });
             setSuccess(true);
             setInputValue("");
             successTimerRef.current = setTimeout(() => setSuccess(false), SUCCESS_DISPLAY_MS);
