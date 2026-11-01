@@ -125,7 +125,23 @@ const EVENT_SPECS = {
     nnue_download: { text: [{ key: "ai", valid: isAi, required: true }], numbers: [] },
 } as const satisfies Record<string, EventSpec>;
 
-type UsageEventName = keyof typeof EVENT_SPECS;
+export type UsageEventName = keyof typeof EVENT_SPECS;
+
+type TextFieldsOf<E extends UsageEventName> = (typeof EVENT_SPECS)[E]["text"][number];
+type RequiredTextKey<E extends UsageEventName> = Extract<
+    TextFieldsOf<E>,
+    { required: true }
+>["key"];
+type OptionalTextKey<E extends UsageEventName> = Exclude<
+    TextFieldsOf<E>["key"],
+    RequiredTextKey<E>
+>;
+type NumberKey<E extends UsageEventName> = (typeof EVENT_SPECS)[E]["numbers"][number]["key"];
+
+/** イベントごとに送れる項目。画面側はこの型で送り、Worker の検証と食い違わないようにする */
+export type UsageEventProps<E extends UsageEventName> = { [K in RequiredTextKey<E>]: string } & {
+    [K in OptionalTextKey<E>]?: string;
+} & { [K in NumberKey<E>]: number };
 
 const TOP_LEVEL_KEYS = new Set(["v", "deviceId", "event", "internal", "loggedIn", "props"]);
 

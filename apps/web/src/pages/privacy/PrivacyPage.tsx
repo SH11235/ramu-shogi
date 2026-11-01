@@ -4,6 +4,7 @@ import { PageContainer } from "../../components/PageContainer";
 import { PageHeader } from "../../components/PageHeader";
 import { PageHeading } from "../../components/PageHeading";
 import { Section } from "../../components/Section";
+import { UsageSettings } from "./UsageSettings";
 
 function PolicySection({
     title,
@@ -28,10 +29,7 @@ export default function PrivacyPage(): ReactElement {
                 right={<HeaderNav />}
             />
             <PageContainer width="narrow">
-                <PageHeading
-                    title="プライバシーポリシー"
-                    description="最終更新日：2026年10月23日"
-                />
+                <PageHeading title="プライバシーポリシー" description="最終更新日：2026年11月2日" />
 
                 <Section className="gap-6 p-6">
                     <PolicySection title="1. はじめに">
@@ -61,6 +59,9 @@ export default function PrivacyPage(): ReactElement {
                             <li>ログイン時のIPアドレスとブラウザ情報、ログインと利用の日時</li>
                             <li>
                                 通信やアクセス解析に伴うIPアドレス、閲覧したページ、参照元、ブラウザ・端末の種類、表示速度などの情報
+                            </li>
+                            <li>
+                                利用状況の集計に使う、端末ごとのランダムな番号と、使った画面・機能の種類（7章）
                             </li>
                         </ul>
                     </PolicySection>
@@ -114,9 +115,8 @@ export default function PrivacyPage(): ReactElement {
 
                     <PolicySection title="7. Cloudflareの利用とアクセス解析">
                         <p>
-                            配信・データ保存・不正アクセス対策にCloudflareを利用します。アクセス解析にはCloudflare
-                            Web
-                            Analyticsを利用しています。この解析はCookieなどを使った利用者の追跡を行いません。詳しくは{" "}
+                            配信・データ保存・不正アクセス対策にCloudflareを利用します。ページの表示回数や表示速度の把握にはCloudflare
+                            Web Analyticsを利用しています。詳しくは{" "}
                             <a
                                 href="https://www.cloudflare.com/privacypolicy/"
                                 target="_blank"
@@ -127,6 +127,28 @@ export default function PrivacyPage(): ReactElement {
                             </a>
                             をご参照ください。
                         </p>
+                        <p className="mt-2">
+                            また、本サービスをより使いやすくするため、どの画面や機能がどのくらい使われているかを集計しています。集計に使うのは次の情報で、個人を特定できる情報は含みません。
+                        </p>
+                        <ul className="mt-2 list-inside list-disc space-y-1">
+                            <li>
+                                開いた画面の種類（「対局」「棋譜」など。個々の棋譜やノートの番号は含みません）
+                            </li>
+                            <li>
+                                使った機能の種類（対局の開始・終局、ヒント、解析など）と、対局の結果・手数
+                            </li>
+                            <li>国と端末の種類（スマートフォン・タブレット・パソコン）</li>
+                            <li>
+                                この端末で作ったランダムな番号（同じ端末からの利用をまとめて数えるため）
+                            </li>
+                        </ul>
+                        <p className="mt-2">
+                            棋譜や局面の内容、研究ノートの本文、アカウントの情報は送りません。IPアドレスとブラウザの詳しい情報は集計の記録に残しません。番号はアカウントと結びつけていません。集計の記録は3か月で自動的に消えます。
+                        </p>
+                        <p className="mt-2">
+                            不具合などのお問い合わせの際に下の番号を添えていただくと、その端末での操作の流れを調査に使えます。番号をお知らせいただいた場合に限り、この目的で使います。集計に協力しない場合は、下の切り替えをオフにしてください。
+                        </p>
+                        <UsageSettings />
                     </PolicySection>
 
                     <PolicySection title="8. Cookieと端末内の保存">
@@ -135,6 +157,9 @@ export default function PrivacyPage(): ReactElement {
                         </p>
                         <p className="mt-2">
                             設定や研究ノートなどを端末内にも保存します。ログイン中は対応する設定やノートをサーバーへ同期します。ログアウトしても端末内の値は残るため、共有端末ではブラウザのサイトデータ削除機能をご利用ください。端末内だけにある未同期データも削除されます。
+                        </p>
+                        <p className="mt-2">
+                            利用状況の集計に使う番号と、集計に協力するかどうかの設定も端末内に保存します（Cookieは使いません）。サイトデータを削除すると、番号は新しく作り直されます。
                         </p>
                     </PolicySection>
 
