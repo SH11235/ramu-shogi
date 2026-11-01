@@ -13,6 +13,7 @@ import { AppDialogHost } from "./components/AppDialogs";
 import { StatusBanner } from "./components/StatusBanner";
 import { AuthSessionProvider } from "./hooks/useAuthSession";
 import { useStudySessionSync } from "./hooks/useStudySessionSync";
+import { useUsageTracking } from "./hooks/useUsageTracking";
 import { useUserSettingsSync } from "./hooks/useUserSettingsSync";
 import { nnueStorage } from "./platform/nnue-storage";
 import {
@@ -42,6 +43,7 @@ const validateNnueHeader = async (header: Uint8Array, fileSize: number) => {
 function AppProvidersInner(): ReactElement {
     const { syncError, retrySync } = useUserSettingsSync();
     useStudySessionSync();
+    useUsageTracking();
 
     return (
         <NnueProvider storage={nnueStorage} validateNnueHeader={validateNnueHeader}>
