@@ -15,7 +15,6 @@ type UsageDeps = {
     search: string;
     referrer: string;
     storage: Pick<Storage, "getItem" | "setItem" | "removeItem"> | null;
-    /** 自動操作のブラウザ（Playwright・Puppeteer・Selenium など）。`navigator.webdriver` */
     automated: boolean;
     randomUUID: () => string;
     send: (path: string, body: string) => void;
