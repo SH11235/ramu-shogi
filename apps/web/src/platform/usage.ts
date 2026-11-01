@@ -57,8 +57,8 @@ function externalReferrerHost(referrer: string, hostname: string): string | unde
 export function createUsageClient(deps: UsageDeps) {
     let loggedIn = false;
     let lastPathname: string | null = null;
-    // 保存に失敗しても、オフにした操作はこの画面の間は守る
-    let optedOutInMemory: boolean | null = null;
+    // 保存に失敗しても、オフにした操作はこの画面の間は守る。オンは覚えない（別のタブでオフにされたら従う）
+    let optedOutInMemory = false;
     let referrer = externalReferrerHost(deps.referrer, deps.hostname);
 
     // 運営者の端末は `?internal=1` で印を付け、集計で除く。送らない形にしないのは、本番で送信を確かめるため
@@ -69,8 +69,7 @@ export function createUsageClient(deps: UsageDeps) {
     function status(): UsageStatus {
         if (deps.hostname !== PRODUCTION_HOST || !deps.storage) return "unsupported";
         if (deps.globalPrivacyControl) return "gpc";
-        const optedOut = optedOutInMemory ?? readStorage(deps, OPT_OUT_KEY) === "1";
-        if (optedOut) return "opted_out";
+        if (optedOutInMemory || readStorage(deps, OPT_OUT_KEY) === "1") return "opted_out";
         return "enabled";
     }
 
@@ -150,7 +149,8 @@ function browserDeps(): UsageDeps {
         randomUUID: () => crypto.randomUUID(),
         send: (path, body) => {
             // sendBeacon は Referer（ID 入りのページの URL）と Cookie を外せないので、fetch で両方を外して送る。
-            // keepalive はページを閉じる間際の送信を届けるため
+            // keepalive はページを閉じる間際の送信を届けるため。mode は既定の cors のままにする（same-origin に
+            // すると no-referrer で Origin が null になり、Worker が別オリジンとして捨てる）
             void fetch(path, {
                 method: "POST",
                 body,

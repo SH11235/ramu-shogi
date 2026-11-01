@@ -12,10 +12,20 @@ import { createUsageClient } from "../platform/usage";
 import { useUsageTracking } from "./useUsageTracking";
 
 let authState = { session: { authenticated: true }, isLoadingSession: false };
+const authListeners = new Set<() => void>();
+function setAuthState(next: typeof authState) {
+    authState = next;
+    for (const listener of authListeners) listener();
+}
 
-vi.mock("./useAuthSession", () => ({
-    useAuthSession: () => authState,
-}));
+vi.mock("./useAuthSession", async () => {
+    const { useSyncExternalStore } = await import("react");
+    const subscribe = (listener: () => void) => {
+        authListeners.add(listener);
+        return () => authListeners.delete(listener);
+    };
+    return { useAuthSession: () => useSyncExternalStore(subscribe, () => authState) };
+});
 
 function setup() {
     const sent: Record<string, unknown>[] = [];
@@ -91,5 +101,32 @@ describe("useUsageTracking", () => {
         });
         await act(() => router.navigate({ to: "/play" }));
         expect(sent).toEqual([]);
+    });
+
+    it("router の読み込みが先に終わっても、セッションを読み終えた時点でいまのページを送る", async () => {
+        authState = { session: { authenticated: false }, isLoadingSession: true };
+        const { router, sent } = setup();
+        await act(async () => {
+            render(<RouterProvider router={router} />);
+            await router.load();
+        });
+        expect(sent).toEqual([]);
+        await act(async () => {
+            setAuthState({ session: { authenticated: false }, isLoadingSession: false });
+        });
+        expect(sent.map((body) => (body.props as { route: string }).route)).toEqual(["/"]);
+        expect(sent[0]).not.toHaveProperty("loggedIn");
+    });
+
+    it("外したら移動を送らない", async () => {
+        const { router, sent } = setup();
+        let view: ReturnType<typeof render> | undefined;
+        await act(async () => {
+            view = render(<RouterProvider router={router} />);
+            await router.load();
+        });
+        view?.unmount();
+        await router.navigate({ to: "/play" });
+        expect(sent.map((body) => (body.props as { route: string }).route)).toEqual(["/"]);
     });
 });
