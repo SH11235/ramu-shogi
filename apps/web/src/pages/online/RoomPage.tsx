@@ -314,8 +314,8 @@ export default function RoomPage(): ReactElement {
     const [joinActionError, setJoinActionError] = useState<string | null>(null);
     const [isPreparingJoin, setIsPreparingJoin] = useState(false);
     const [pendingJoinSeat, setPendingJoinSeat] = useState<"b" | "w" | "s" | null>(null);
-    // 参加のフォームから対局者として参加を求めたか。切れたあとの再接続は数えない
-    const joinRequestedRef = useRef(false);
+    // 参加のフォームから対局者として参加を求めた部屋。切れたあとの再接続や、別の部屋への自動の復帰は数えない
+    const joinRequestedRef = useRef<string | null>(null);
 
     const {
         joinName,
@@ -355,10 +355,14 @@ export default function RoomPage(): ReactElement {
     }, [joined, joinName, session, setJoinName]);
 
     useEffect(() => {
-        if (!joined || !joinRequestedRef.current) return;
-        joinRequestedRef.current = false;
+        if (joinRequestedRef.current !== roomId) {
+            joinRequestedRef.current = null;
+            return;
+        }
+        if (!joined) return;
+        joinRequestedRef.current = null;
         usageClient.track("online_room", { action: "join" });
-    }, [joined]);
+    }, [joined, roomId]);
 
     async function handleJoinWithProfileSync(seat: "b" | "w" | "s"): Promise<void> {
         const trimmedName = joinName.trim();
@@ -373,7 +377,7 @@ export default function RoomPage(): ReactElement {
             if (isNotAuthenticated) saveLocalPlayerName(trimmedName);
             await syncProfileDisplayNameIfNeeded(session, trimmedName);
             // 観戦（"s"）は対局への参加として数えない。参加はサーバーが受け付けた時点で数える
-            joinRequestedRef.current = seat !== "s";
+            joinRequestedRef.current = seat !== "s" ? roomId : null;
             handleJoin(seat);
             // ここから先の「接続中」は useRoomConnection が持つ。残すと、接続に失敗して
             // 参加フォームへ戻ったときに入力もボタンも無効のままになる
