@@ -206,4 +206,12 @@ describe("POST /usage", () => {
             expect(points.map((point) => point.blobs?.[5])).toEqual(["other", "material"]);
         });
     });
+
+    it("ヘッドレスの Chrome からの送信は internal として書く", async () => {
+        const { env, points } = createEnv();
+        const headless =
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.0.0 Safari/537.36";
+        await handleUsageRequest(usageRequest(matchEnd, { "User-Agent": headless }), env);
+        expect(points[0]?.blobs?.[3]).toBe("1");
+    });
 });
