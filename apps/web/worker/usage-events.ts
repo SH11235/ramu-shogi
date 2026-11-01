@@ -6,9 +6,6 @@ export const USAGE_SCHEMA_VERSION = 1;
 export const USAGE_MAX_BODY_BYTES = 2048;
 
 const DEVICE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
-// 長い 16 進や数字の並びは ID・ハッシュの疑いがあるので、名前として受け付けない
-const ID_LIKE = /[0-9a-f]{8}|[0-9]{6}/i;
 const HOST = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
 
 /**
@@ -42,7 +39,13 @@ export const USAGE_ROUTES: readonly string[] = [
     "/studies/new",
 ];
 
-const isName = (value: string) => NAME.test(value) && !ID_LIKE.test(value);
+/** 配布 AI 以外の対局相手。`material` は組み込みの駒得 AI、`custom` は利用者が入れた NNUE */
+export const USAGE_FIXED_AI_NAMES: readonly string[] = ["material", "custom"];
+
+/** 検証に使う、その時点の値の集合 */
+type UsageContext = { aiNames: ReadonlySet<string> };
+
+const isAi = (value: string, context: UsageContext) => context.aiNames.has(value);
 const isHost = (value: string) => value.length <= 253 && HOST.test(value);
 const isRoute = (value: string) => USAGE_ROUTES.includes(value);
 const oneOf =
@@ -50,7 +53,11 @@ const oneOf =
     (value: string) =>
         values.includes(value);
 
-type TextField = { key: string; valid: (value: string) => boolean; required?: true };
+type TextField = {
+    key: string;
+    valid: (value: string, context: UsageContext) => boolean;
+    required?: true;
+};
 type NumberField = { key: string; max: number };
 type EventSpec = { text: readonly TextField[]; numbers: readonly NumberField[] };
 
@@ -67,7 +74,7 @@ const EVENT_SPECS = {
     match_start: {
         text: [
             { key: "players", valid: oneOf("human_ai", "ai_ai", "human_human"), required: true },
-            { key: "ai", valid: isName },
+            { key: "ai", valid: isAi },
             { key: "time", valid: oneOf("none", "byoyomi", "fischer", "sudden") },
             { key: "start", valid: oneOf("even", "handicap", "position") },
         ],
@@ -114,7 +121,7 @@ const EVENT_SPECS = {
         text: [{ key: "action", valid: oneOf("create", "join"), required: true }],
         numbers: [],
     },
-    nnue_download: { text: [{ key: "ai", valid: isName, required: true }], numbers: [] },
+    nnue_download: { text: [{ key: "ai", valid: isAi, required: true }], numbers: [] },
 } as const satisfies Record<string, EventSpec>;
 
 type UsageEventName = keyof typeof EVENT_SPECS;
@@ -139,9 +146,10 @@ const hasOwn = (record: Record<string, unknown>, key: string) => Object.hasOwn(r
 /**
  * 本文 `{ v, deviceId, event, internal?, loggedIn?, props? }` を検証する。`props` に置けるのは
  * イベントごとに決めた項目だけ。知らないイベント・知らない項目・形の違う値が 1 つでもあれば null を返す
- * （どこかの不具合で棋譜や ID などが紛れ込んでも、そのまま書き込まないため）。
+ * （どこかの不具合で棋譜や ID などが紛れ込んでも、そのまま書き込まないため）。自由な文字列は受け付けず、
+ * AI の名前も `context.aiNames` にあるものだけ。
  */
-export function parseUsageEvent(body: unknown): ParsedUsageEvent | null {
+export function parseUsageEvent(body: unknown, context: UsageContext): ParsedUsageEvent | null {
     if (!isRecord(body) || body.v !== USAGE_SCHEMA_VERSION) return null;
     if (Object.keys(body).some((key) => !TOP_LEVEL_KEYS.has(key))) return null;
     const { deviceId, event, internal, loggedIn } = body;
@@ -164,7 +172,7 @@ export function parseUsageEvent(body: unknown): ParsedUsageEvent | null {
             texts.push("");
             continue;
         }
-        if (typeof value !== "string" || !field.valid(value)) return null;
+        if (typeof value !== "string" || !field.valid(value, context)) return null;
         texts.push(value);
     }
 

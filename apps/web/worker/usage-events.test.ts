@@ -3,14 +3,15 @@
 import { describe, expect, it } from "vitest";
 import { parseUsageEvent } from "./usage-events";
 
+const parse = (body: unknown) =>
+    parseUsageEvent(body, { aiNames: new Set(["material", "custom", "coco"]) });
+
 const DEVICE_ID = "3f2b8c1e-4d5a-4b6c-9d7e-0123456789ab";
 const base = { v: 1, deviceId: DEVICE_ID };
 
 describe("parseUsageEvent", () => {
     it("ルートの型を受け付け、無い項目は空文字で埋める", () => {
-        expect(
-            parseUsageEvent({ ...base, event: "page_view", props: { route: "/games/$gameId" } }),
-        ).toEqual({
+        expect(parse({ ...base, event: "page_view", props: { route: "/games/$gameId" } })).toEqual({
             deviceId: DEVICE_ID,
             event: "page_view",
             internal: false,
@@ -21,13 +22,11 @@ describe("parseUsageEvent", () => {
     });
 
     it("項目の無いイベントは props を省ける", () => {
-        expect(parseUsageEvent({ ...base, event: "hint_request", internal: true })?.internal).toBe(
-            true,
-        );
+        expect(parse({ ...base, event: "hint_request", internal: true })?.internal).toBe(true);
     });
 
     it("終局の項目を順に並べる", () => {
-        const parsed = parseUsageEvent({
+        const parsed = parse({
             ...base,
             event: "match_end",
             loggedIn: true,
@@ -46,7 +45,7 @@ describe("parseUsageEvent", () => {
         ["クエリ", "/play?sfen=x"],
         ["先頭のスラッシュ無し", "play"],
     ])("ルートが型でなければ弾く: %s", (_, route) => {
-        expect(parseUsageEvent({ ...base, event: "page_view", props: { route } })).toBeNull();
+        expect(parse({ ...base, event: "page_view", props: { route } })).toBeNull();
     });
 
     it.each([
@@ -82,17 +81,17 @@ describe("parseUsageEvent", () => {
             },
         ],
         ["UUID の AI 名", { ...base, event: "nnue_download", props: { ai: DEVICE_ID } }],
-        ["数字の並ぶ AI 名", { ...base, event: "nnue_download", props: { ai: "user1234567" } }],
+        ["一覧に無い AI 名", { ...base, event: "nnue_download", props: { ai: "alice" } }],
     ])("不正な本文は null: %s", (_, body) => {
-        expect(parseUsageEvent(body)).toBeNull();
+        expect(parse(body)).toBeNull();
     });
 
-    it("AI の名前は受け付ける", () => {
-        const parsed = parseUsageEvent({
+    it("一覧にある AI の名前は受け付ける", () => {
+        const parsed = parse({
             ...base,
             event: "match_start",
-            props: { players: "human_ai", ai: "COCO", time: "byoyomi", start: "even" },
+            props: { players: "human_ai", ai: "coco", time: "byoyomi", start: "even" },
         });
-        expect(parsed?.texts).toEqual(["human_ai", "COCO", "byoyomi", "even"]);
+        expect(parsed?.texts).toEqual(["human_ai", "coco", "byoyomi", "even"]);
     });
 });

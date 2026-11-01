@@ -152,4 +152,58 @@ describe("POST /usage", () => {
         expect(warnSpy).toHaveBeenCalledWith(JSON.stringify({ event: "usage_event_failed" }));
         warnSpy.mockRestore();
     });
+
+    describe("AI の名前", () => {
+        const download = (ai: string) =>
+            usageRequest(
+                JSON.stringify({
+                    v: 1,
+                    deviceId: DEVICE_ID,
+                    event: "nnue_download",
+                    props: { ai },
+                }),
+            );
+        const bucket = (manifest: unknown) => ({
+            get: async (key: string) =>
+                key === "manifest.json" && manifest !== null
+                    ? { json: async () => manifest }
+                    : null,
+        });
+
+        it("manifest の配布 AI と固定の名前だけを書く", async () => {
+            const { env, points } = createEnv();
+            const withBucket = {
+                ...env,
+                NNUE_BUCKET: bucket({ presets: [{ presetKey: "coco" }] }),
+            } as unknown as UsageEnv;
+            for (const ai of ["coco", "custom", "alice"]) {
+                await handleUsageRequest(download(ai), withBucket);
+            }
+            expect(points.map((point) => point.blobs?.[5])).toEqual(["coco", "custom"]);
+        });
+
+        it("manifest が壊れていても、ほかのイベントは書く", async () => {
+            const { env, points } = createEnv();
+            const broken = {
+                get: async () => ({
+                    json: async () => {
+                        throw new SyntaxError("Unexpected token");
+                    },
+                }),
+            };
+            await handleUsageRequest(usageRequest(matchEnd), {
+                ...env,
+                NNUE_BUCKET: broken,
+            } as unknown as UsageEnv);
+            expect(points).toHaveLength(1);
+        });
+
+        it("manifest が無ければ固定の名前だけを書く", async () => {
+            const { env, points } = createEnv();
+            const withBucket = { ...env, NNUE_BUCKET: bucket(null) } as unknown as UsageEnv;
+            await handleUsageRequest(download("coco"), withBucket);
+            await handleUsageRequest(download("material"), withBucket);
+            expect(points.map((point) => point.blobs?.[5])).toEqual(["material"]);
+        });
+    });
 });

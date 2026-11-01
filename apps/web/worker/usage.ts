@@ -1,6 +1,7 @@
 import {
     parseUsageEvent,
     USAGE_EVENTS_PATH,
+    USAGE_FIXED_AI_NAMES,
     USAGE_MAX_BODY_BYTES,
     USAGE_SCHEMA_VERSION,
 } from "./usage-events";
@@ -9,7 +10,40 @@ export type UsageEnv = {
     /** 利用状況のイベントの書き込み先。無い環境（ローカル開発など）では受け取って捨てる */
     USAGE_EVENTS?: AnalyticsEngineDataset;
     USAGE_RATE_LIMITER?: { limit(options: { key: string }): Promise<{ success: boolean }> };
+    /** 配布 AI の manifest の置き場。AI の名前の検証に使う */
+    NNUE_BUCKET?: Pick<R2Bucket, "get">;
 };
+
+// manifest の配信と同じく 5 分で読み直す。配布 AI を足したとき、deploy なしで受け付けるようにするため
+const AI_NAMES_TTL_MS = 5 * 60 * 1000;
+const aiNamesCache = new WeakMap<object, { names: ReadonlySet<string>; expiresAt: number }>();
+
+async function loadAiNames(env: UsageEnv): Promise<ReadonlySet<string>> {
+    const bucket = env.NNUE_BUCKET;
+    if (!bucket) return new Set(USAGE_FIXED_AI_NAMES);
+    const cached = aiNamesCache.get(bucket);
+    if (cached && cached.expiresAt > Date.now()) return cached.names;
+
+    const names = new Set(USAGE_FIXED_AI_NAMES);
+    // manifest が読めないときも、AI の名前を持たないイベントは書けるように固定の名前だけで続ける
+    let manifest: unknown;
+    try {
+        manifest = await (await bucket.get("manifest.json"))?.json();
+    } catch {
+        return names;
+    }
+    const presets =
+        typeof manifest === "object" && manifest !== null && "presets" in manifest
+            ? manifest.presets
+            : null;
+    if (Array.isArray(presets)) {
+        for (const preset of presets) {
+            if (typeof preset?.presetKey === "string") names.add(preset.presetKey);
+        }
+    }
+    aiNamesCache.set(bucket, { names, expiresAt: Date.now() + AI_NAMES_TTL_MS });
+    return names;
+}
 
 const MAX_TEXT_FIELDS = 4;
 const MAX_NUMBER_FIELDS = 2;
@@ -98,7 +132,7 @@ async function recordUsageEvent(request: Request, env: UsageEnv, url: URL): Prom
     } catch {
         return;
     }
-    const parsed = parseUsageEvent(json);
+    const parsed = parseUsageEvent(json, { aiNames: await loadAiNames(env) });
     if (!parsed) return;
 
     const texts = [...parsed.texts, ...Array(MAX_TEXT_FIELDS).fill("")].slice(0, MAX_TEXT_FIELDS);
