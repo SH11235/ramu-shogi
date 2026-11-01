@@ -41,10 +41,14 @@ function writeStorage(deps: UsageDeps, key: string, value: string | null): void 
     }
 }
 
+// 手元の開発機や LAN 内の機械のアドレスは、送っても集計の役に立たない
+const LOCAL_HOST =
+    /^(localhost|.*\.local|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|\[.*\])$/;
+
 function externalReferrerHost(referrer: string, hostname: string): string | undefined {
     try {
         const host = new URL(referrer).hostname.toLowerCase();
-        return host && host !== hostname ? host : undefined;
+        return host && host !== hostname && !LOCAL_HOST.test(host) ? host : undefined;
     } catch {
         return undefined;
     }
@@ -52,7 +56,9 @@ function externalReferrerHost(referrer: string, hostname: string): string | unde
 
 export function createUsageClient(deps: UsageDeps) {
     let loggedIn = false;
-    let lastHref: string | null = null;
+    let lastPathname: string | null = null;
+    // 保存に失敗しても、オフにした操作はこの画面の間は守る
+    let optedOutInMemory: boolean | null = null;
     let referrer = externalReferrerHost(deps.referrer, deps.hostname);
 
     // 運営者の端末は `?internal=1` で印を付け、集計で除く。送らない形にしないのは、本番で送信を確かめるため
@@ -63,7 +69,8 @@ export function createUsageClient(deps: UsageDeps) {
     function status(): UsageStatus {
         if (deps.hostname !== PRODUCTION_HOST || !deps.storage) return "unsupported";
         if (deps.globalPrivacyControl) return "gpc";
-        if (readStorage(deps, OPT_OUT_KEY) === "1") return "opted_out";
+        const optedOut = optedOutInMemory ?? readStorage(deps, OPT_OUT_KEY) === "1";
+        if (optedOut) return "opted_out";
         return "enabled";
     }
 
@@ -99,20 +106,24 @@ export function createUsageClient(deps: UsageDeps) {
         status,
         /** お問い合わせ用に画面へ出す端末 ID。送らない環境では null */
         deviceId,
+        /** オフにしたときは端末 ID も消す。オンに戻すと新しい ID を作る */
         setOptOut(optOut: boolean): void {
+            optedOutInMemory = optOut;
             writeStorage(deps, OPT_OUT_KEY, optOut ? "1" : null);
+            if (optOut) writeStorage(deps, DEVICE_ID_KEY, null);
         },
         setLoggedIn(value: boolean): void {
             loggedIn = value;
         },
         track,
         /**
-         * 表示した URL が変わったときだけ page_view を送る（同じ URL の通知が重なっても 1 回）。
-         * 送るのはルートの型だけで、URL は重複の判定にしか使わない。参照元は最初の 1 回だけ付ける
+         * 表示したパスが変わったときだけ page_view を送る（同じパスの通知が重なっても、絞り込みなどで
+         * クエリだけが変わっても 1 回）。送るのはルートの型だけで、パスは重複の判定にしか使わない。
+         * 参照元は最初の 1 回だけ付ける
          */
-        trackPageView(route: string, href: string): void {
-            if (href === lastHref || !USAGE_ROUTES.includes(route)) return;
-            lastHref = href;
+        trackPageView(route: string, pathname: string): void {
+            if (pathname === lastPathname || !USAGE_ROUTES.includes(route)) return;
+            lastPathname = pathname;
             track("page_view", referrer ? { route, referrer } : { route });
             referrer = undefined;
         },
@@ -138,9 +149,15 @@ function browserDeps(): UsageDeps {
             true,
         randomUUID: () => crypto.randomUUID(),
         send: (path, body) => {
-            // ページを閉じる間際でも届くよう sendBeacon を使う。使えないときは keepalive の fetch
-            if (navigator.sendBeacon?.(path, body)) return;
-            void fetch(path, { method: "POST", body, keepalive: true }).catch(() => {});
+            // sendBeacon は Referer（ID 入りのページの URL）と Cookie を外せないので、fetch で両方を外して送る。
+            // keepalive はページを閉じる間際の送信を届けるため
+            void fetch(path, {
+                method: "POST",
+                body,
+                keepalive: true,
+                credentials: "omit",
+                referrerPolicy: "no-referrer",
+            }).catch(() => {});
         },
     };
 }

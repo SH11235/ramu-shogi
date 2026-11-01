@@ -10,23 +10,31 @@ const STATUS_NOTE = {
 /** 利用状況の集計を送るかどうかの切り替えと、お問い合わせ用の番号 */
 export function UsageSettings({ client = usageClient }: { client?: UsageClient }): ReactElement {
     const [status, setStatus] = useState(client.status);
+    const [deviceId, setDeviceId] = useState(() =>
+        client.status() === "enabled" ? client.deviceId() : null,
+    );
     const [copyMessage, setCopyMessage] = useState<string | null>(null);
     const switchId = useId();
-    const deviceId = status === "enabled" ? client.deviceId() : null;
 
     const changeOptOut = (enabled: boolean) => {
         client.setOptOut(!enabled);
-        setStatus(client.status());
+        const next = client.status();
+        setStatus(next);
+        setDeviceId(next === "enabled" ? client.deviceId() : null);
         setCopyMessage(null);
     };
 
     const copyDeviceId = (id: string) => {
+        const failed = () =>
+            setCopyMessage("コピーできませんでした。番号を選択してコピーしてください。");
+        if (!navigator.clipboard) {
+            failed();
+            return;
+        }
         navigator.clipboard
             .writeText(id)
             .then(() => setCopyMessage("コピーしました。"))
-            .catch(() =>
-                setCopyMessage("コピーできませんでした。番号を選択してコピーしてください。"),
-            );
+            .catch(failed);
     };
 
     if (status === "gpc" || status === "unsupported") {
@@ -49,7 +57,7 @@ export function UsageSettings({ client = usageClient }: { client?: UsageClient }
                 <div className="flex flex-col gap-1">
                     <span>この端末の番号（お問い合わせ用）</span>
                     <div className="flex items-center gap-2">
-                        <code className="flex-1 truncate rounded-md bg-muted/40 px-3 py-2 text-xs text-foreground">
+                        <code className="flex-1 break-all rounded-md bg-muted/40 px-3 py-2 text-xs text-foreground">
                             {deviceId}
                         </code>
                         <button

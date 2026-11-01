@@ -15,12 +15,17 @@ export function useUsageTracking(client: UsageClient = usageClient): void {
 
     useEffect(() => {
         if (isLoadingSession) return;
-        const report = () => {
-            const location = router.state.resolvedLocation;
-            const route = router.state.matches.at(-1)?.routeId;
-            if (location && route) client.trackPageView(route, location.href);
-        };
-        report();
-        return router.subscribe("onResolved", report);
+        const { resolvedLocation, location, matches } = router.state;
+        const route = matches.at(-1)?.routeId;
+        // 読み込みの途中なら、いまのページは読み込みが終わったときの onResolved が送る
+        if (resolvedLocation && route && resolvedLocation.pathname === location.pathname) {
+            client.trackPageView(route, resolvedLocation.pathname);
+        }
+        // onResolved の時点では resolvedLocation はまだ移動前を指すので、移動先は通知の toLocation で読む。
+        // matches は通知より先に移動先へ切り替わっている
+        return router.subscribe("onResolved", ({ toLocation }) => {
+            const nextRoute = router.state.matches.at(-1)?.routeId;
+            if (nextRoute) client.trackPageView(nextRoute, toLocation.pathname);
+        });
     }, [client, isLoadingSession, router]);
 }
