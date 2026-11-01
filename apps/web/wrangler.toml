@@ -119,10 +119,11 @@ period = 60
 binding = "USAGE_EVENTS"
 dataset = "ramu_shogi_usage_stg"
 
+# 同じ namespace_id は Worker をまたいで数を共有するので、本番と分ける
 [[env.stg.unsafe.bindings]]
 name = "USAGE_RATE_LIMITER"
 type = "ratelimit"
-namespace_id = "1002"
+namespace_id = "1003"
 
 [env.stg.unsafe.bindings.simple]
 limit = 60

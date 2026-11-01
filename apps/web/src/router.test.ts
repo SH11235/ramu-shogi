@@ -1,5 +1,6 @@
 import { createMemoryHistory } from "@tanstack/react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { USAGE_ROUTES } from "../worker/usage-events";
 import { readReturnPathFromSearch } from "./lib/loginReturn";
 import { router } from "./router";
 
@@ -131,5 +132,11 @@ describe("router: ログイン後の戻り先", () => {
         expect(router.state.location.pathname).toBe("/rshogi-viewer");
         expect(router.state.matches.at(-1)?.search).toEqual({ event: "WCSC36" });
         expect(router.state.location.hash).toBe("list");
+    });
+});
+
+describe("router: 利用状況のイベント", () => {
+    it("Worker が受け付けるルートの型は、router のルートと一致する", () => {
+        expect([...USAGE_ROUTES].sort()).toEqual(Object.keys(router.routesByPath).sort());
     });
 });

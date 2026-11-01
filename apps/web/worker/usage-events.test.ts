@@ -31,9 +31,9 @@ describe("parseUsageEvent", () => {
             ...base,
             event: "match_end",
             loggedIn: true,
-            props: { result: "win", reason: "resign", plies: 87, durationSec: 900 },
+            props: { result: "win", reason: "resignation", plies: 87, durationSec: 900 },
         });
-        expect(parsed?.texts).toEqual(["win", "resign"]);
+        expect(parsed?.texts).toEqual(["win", "resignation"]);
         expect(parsed?.numbers).toEqual([87, 900]);
         expect(parsed?.loggedIn).toBe(true);
     });
@@ -41,6 +41,8 @@ describe("parseUsageEvent", () => {
     it.each([
         ["ID 入りの URL", "/games/abc123XYZ"],
         ["数字の区切り", "/games/123"],
+        ["小文字だけの ID", "/rshogi-viewer/players/alice"],
+        ["末尾のスラッシュ", "/games/"],
         ["クエリ", "/play?sfen=x"],
         ["先頭のスラッシュ無し", "play"],
     ])("ルートが型でなければ弾く: %s", (_, route) => {
@@ -69,7 +71,28 @@ describe("parseUsageEvent", () => {
         ["フラグが真偽値でない", { ...base, event: "hint_request", internal: "yes" }],
         ["props が配列", { ...base, event: "hint_request", props: [] }],
         ["プロトタイプの名前のイベント", { ...base, event: "toString" }],
+        ["トップレベルの知らない項目", { ...base, event: "hint_request", sfen: "startpos" }],
+        ["props が null", { ...base, event: "hint_request", props: null }],
+        [
+            "列挙に無い終局の理由",
+            {
+                ...base,
+                event: "match_end",
+                props: { result: "win", reason: "user-42", plies: 1, durationSec: 1 },
+            },
+        ],
+        ["UUID の AI 名", { ...base, event: "nnue_download", props: { ai: DEVICE_ID } }],
+        ["数字の並ぶ AI 名", { ...base, event: "nnue_download", props: { ai: "user1234567" } }],
     ])("不正な本文は null: %s", (_, body) => {
         expect(parseUsageEvent(body)).toBeNull();
+    });
+
+    it("AI の名前は受け付ける", () => {
+        const parsed = parseUsageEvent({
+            ...base,
+            event: "match_start",
+            props: { players: "human_ai", ai: "COCO", time: "byoyomi", start: "even" },
+        });
+        expect(parsed?.texts).toEqual(["human_ai", "COCO", "byoyomi", "even"]);
     });
 });

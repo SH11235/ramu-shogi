@@ -7,21 +7,44 @@ export const USAGE_MAX_BODY_BYTES = 2048;
 
 const DEVICE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
+// 長い 16 進や数字の並びは ID・ハッシュの疑いがあるので、名前として受け付けない
+const ID_LIKE = /[0-9a-f]{8}|[0-9]{6}/i;
 const HOST = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
-// ルートは TanStack Router のルートの型（`/games/$gameId`）で送る。固定の区切りに数字を許さないのは、
-// 型ではなく実際の URL（ID 入り）が送られてきたときに弾くため
-const ROUTE_SEGMENT = /^(\$[A-Za-z]+|[a-z]+(-[a-z]+)*)$/;
 
-const isName = (value: string) => NAME.test(value);
+/**
+ * 受け付けるルートの型（`apps/web/src/router.tsx` の `path` と一致させる。食い違いはテストで検出する）。
+ * 文字の形ではなく完全一致で見るのは、ID 入りの実際の URL が紛れても書き込まないため。
+ */
+export const USAGE_ROUTES: readonly string[] = [
+    "/",
+    "/auth",
+    "/book-viewer",
+    "/dog-sounds",
+    "/games",
+    "/games/$gameId",
+    "/games/$gameId/review",
+    "/nnue",
+    "/online",
+    "/online/$roomId",
+    "/online/create",
+    "/play",
+    "/privacy",
+    "/public/games",
+    "/public/games/$publicId",
+    "/rshogi-viewer",
+    "/rshogi-viewer/$gameId",
+    "/rshogi-viewer/live",
+    "/rshogi-viewer/live/$gameId",
+    "/rshogi-viewer/players",
+    "/rshogi-viewer/players/$playerId",
+    "/studies",
+    "/studies/$studyId",
+    "/studies/new",
+];
+
+const isName = (value: string) => NAME.test(value) && !ID_LIKE.test(value);
 const isHost = (value: string) => value.length <= 253 && HOST.test(value);
-const isRoute = (value: string) =>
-    value === "/" ||
-    (value.length <= 128 &&
-        value.startsWith("/") &&
-        value
-            .slice(1)
-            .split("/")
-            .every((segment) => ROUTE_SEGMENT.test(segment)));
+const isRoute = (value: string) => USAGE_ROUTES.includes(value);
 const oneOf =
     (...values: readonly string[]) =>
     (value: string) =>
@@ -57,7 +80,19 @@ const EVENT_SPECS = {
                 valid: oneOf("win", "loss", "draw", "abort", "sente_win", "gote_win"),
                 required: true,
             },
-            { key: "reason", valid: isName },
+            {
+                key: "reason",
+                valid: oneOf(
+                    "checkmate",
+                    "resignation",
+                    "time_expired",
+                    "win_declaration",
+                    "repetition",
+                    "illegal_move",
+                    "abort",
+                    "other",
+                ),
+            },
         ],
         numbers: [
             { key: "plies", max: 10_000 },
@@ -84,6 +119,8 @@ const EVENT_SPECS = {
 
 type UsageEventName = keyof typeof EVENT_SPECS;
 
+const TOP_LEVEL_KEYS = new Set(["v", "deviceId", "event", "internal", "loggedIn", "props"]);
+
 /** 検証済みのイベント。`texts` と `numbers` はイベントごとの項目の順に並び、無い項目は空文字 */
 type ParsedUsageEvent = {
     deviceId: string;
@@ -106,13 +143,14 @@ const hasOwn = (record: Record<string, unknown>, key: string) => Object.hasOwn(r
  */
 export function parseUsageEvent(body: unknown): ParsedUsageEvent | null {
     if (!isRecord(body) || body.v !== USAGE_SCHEMA_VERSION) return null;
+    if (Object.keys(body).some((key) => !TOP_LEVEL_KEYS.has(key))) return null;
     const { deviceId, event, internal, loggedIn } = body;
     if (typeof deviceId !== "string" || !DEVICE_ID.test(deviceId)) return null;
     if (typeof event !== "string" || !hasOwn(EVENT_SPECS, event)) return null;
     if (internal !== undefined && typeof internal !== "boolean") return null;
     if (loggedIn !== undefined && typeof loggedIn !== "boolean") return null;
 
-    const props = body.props ?? {};
+    const props = body.props === undefined ? {} : body.props;
     if (!isRecord(props)) return null;
     const spec: EventSpec = EVENT_SPECS[event as UsageEventName];
     const known = new Set([...spec.text, ...spec.numbers].map((field) => field.key));

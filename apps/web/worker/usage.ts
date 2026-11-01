@@ -67,27 +67,39 @@ export async function handleUsageRequest(
     if (request.method !== "POST") {
         return new Response("Method Not Allowed", { status: 405, headers: { Allow: "POST" } });
     }
-    if (!env.USAGE_EVENTS) return accepted();
+    try {
+        await recordUsageEvent(request, env, url);
+    } catch {
+        // ページを閉じる途中の送信では本文の読み取りが切れることがある。計測の取りこぼしで済むので
+        // 例外の中身は記録せず、件数だけ分かるようにする
+        console.warn(JSON.stringify({ event: "usage_event_failed" }));
+    }
+    return accepted();
+}
+
+async function recordUsageEvent(request: Request, env: UsageEnv, url: URL): Promise<void> {
+    const dataset = env.USAGE_EVENTS;
+    if (!dataset) return;
 
     const origin = request.headers.get("Origin");
-    if (origin !== null && origin !== url.origin) return accepted();
+    if (origin !== null && origin !== url.origin) return;
 
     if (env.USAGE_RATE_LIMITER) {
         const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
         const { success } = await env.USAGE_RATE_LIMITER.limit({ key: ip });
-        if (!success) return accepted();
+        if (!success) return;
     }
 
     const text = await readBody(request);
-    if (text === null) return accepted();
+    if (text === null) return;
     let json: unknown;
     try {
         json = JSON.parse(text);
     } catch {
-        return accepted();
+        return;
     }
     const parsed = parseUsageEvent(json);
-    if (!parsed) return accepted();
+    if (!parsed) return;
 
     const texts = [...parsed.texts, ...Array(MAX_TEXT_FIELDS).fill("")].slice(0, MAX_TEXT_FIELDS);
     const numbers = [...parsed.numbers, ...Array(MAX_NUMBER_FIELDS).fill(0)].slice(
@@ -95,7 +107,7 @@ export async function handleUsageRequest(
         MAX_NUMBER_FIELDS,
     );
     const country = (request.cf?.country as string | undefined) ?? "XX";
-    env.USAGE_EVENTS.writeDataPoint({
+    dataset.writeDataPoint({
         indexes: [parsed.deviceId],
         blobs: [
             parsed.event,
@@ -108,5 +120,4 @@ export async function handleUsageRequest(
         ],
         doubles: numbers,
     });
-    return accepted();
 }

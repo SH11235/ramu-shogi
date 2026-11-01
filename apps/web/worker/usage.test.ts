@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { handleUsageRequest, type UsageEnv } from "./usage";
 
 const ORIGIN = "https://app.example.test";
@@ -103,5 +103,53 @@ describe("POST /usage", () => {
         const request = new Request(`${ORIGIN}/usage`, { method: "POST", body: matchEnd });
         await handleUsageRequest(request, env);
         expect(points[0]?.blobs?.[2]).toBe("desktop");
+    });
+
+    it("Content-Length が上限を超えたら本文を読まない", async () => {
+        const { env, points } = createEnv();
+        const request = usageRequest(matchEnd, { "Content-Length": "4096" });
+        expect((await handleUsageRequest(request, env))?.status).toBe(204);
+        expect(points).toEqual([]);
+    });
+
+    it.each([
+        [
+            "本文の読み取りが切れる",
+            (env: UsageEnv) => ({
+                env,
+                request: new Request(`${ORIGIN}/usage`, {
+                    method: "POST",
+                    body: new ReadableStream({
+                        pull(controller) {
+                            controller.error(new Error("connection reset"));
+                        },
+                    }),
+                    // Node の fetch 実装はストリームの本文に duplex の指定を求める
+                    duplex: "half",
+                } as RequestInit),
+            }),
+        ],
+        [
+            "レート制限が例外を投げる",
+            (env: UsageEnv) => ({
+                env: {
+                    ...env,
+                    USAGE_RATE_LIMITER: {
+                        limit: async () => {
+                            throw new Error("unavailable");
+                        },
+                    },
+                },
+                request: usageRequest(matchEnd),
+            }),
+        ],
+    ])("例外でも書き込まずに 204: %s", async (_, setup) => {
+        const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+        const { env: baseEnv, points } = createEnv();
+        const { env, request } = setup(baseEnv);
+        expect((await handleUsageRequest(request, env))?.status).toBe(204);
+        expect(points).toEqual([]);
+        expect(warnSpy).toHaveBeenCalledWith(JSON.stringify({ event: "usage_event_failed" }));
+        warnSpy.mockRestore();
     });
 });
