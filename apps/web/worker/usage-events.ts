@@ -58,6 +58,7 @@ type TextField = {
     valid: (value: string, context: UsageContext) => boolean;
     required?: true;
 };
+// 数値の項目は常に必須（0 と「無い」を集計で区別できないため、省略を認めない）
 type NumberField = { key: string; max: number };
 type EventSpec = { text: readonly TextField[]; numbers: readonly NumberField[] };
 

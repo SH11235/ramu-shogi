@@ -89,7 +89,7 @@ async function readBody(request: Request): Promise<string | null> {
  * USAGE_SCHEMA_VERSION を上げる。
  * - indexes: [端末 ID]（サンプリングが端末単位になり、人数が崩れない）
  * - blobs: [イベント, 国, 端末の種類, internal, loggedIn, 項目 1〜4, スキーマの版]
- * - doubles: [数値の項目 1〜2]
+ * - doubles: [数値の項目 1〜2]（数値の項目を持たないイベントは 0）
  * IP と User-Agent の文字列は書かない。
  */
 export async function handleUsageRequest(
