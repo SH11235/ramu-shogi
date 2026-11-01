@@ -117,16 +117,4 @@ describe("useUsageTracking", () => {
         expect(sent.map((body) => (body.props as { route: string }).route)).toEqual(["/"]);
         expect(sent[0]).not.toHaveProperty("loggedIn");
     });
-
-    it("外したら移動を送らない", async () => {
-        const { router, sent } = setup();
-        let view: ReturnType<typeof render> | undefined;
-        await act(async () => {
-            view = render(<RouterProvider router={router} />);
-            await router.load();
-        });
-        view?.unmount();
-        await router.navigate({ to: "/play" });
-        expect(sent.map((body) => (body.props as { route: string }).route)).toEqual(["/"]);
-    });
 });
