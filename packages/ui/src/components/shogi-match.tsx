@@ -1453,6 +1453,7 @@ export function ShogiMatch({
         setShowResultDialog,
         matchEndedRef,
         sides,
+        timeSettings,
         engineOptions,
         senteNnueSelection,
         goteNnueSelection,

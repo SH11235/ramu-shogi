@@ -30,6 +30,7 @@ import {
 import type { EngineInfoEvent } from "@shogi/engine-client";
 import { useEffect, useRef, useState } from "react";
 import { useNnueContextOptional } from "../../providers/NnueContext";
+import { useUsageTracker } from "../../providers/UsageContext";
 import { type AnalysisJob, useEnginePool } from "../shogi-match/hooks/useEnginePool";
 import { useLocalStorage } from "../shogi-match/hooks/useLocalStorage";
 import { useMatchNnueDownload } from "../shogi-match/hooks/useMatchNnueDownload";
@@ -191,6 +192,7 @@ export function useStudyAnalysis({
     /** ダウンロードをやめ、簡易 AI に切り替えて、頼まれていた解析を始める。 */
     switchToSimpleAi: () => void;
 } {
+    const track = useUsageTracker();
     // 解析の設定は既存の検討モードと同じ保存先を使う（どちらで変えても同じ設定になる）。
     const [storedSettings, setSettings] = useLocalStorage<AnalysisSettings>(
         "shogi-analysis-settings",
@@ -514,6 +516,8 @@ export function useStudyAnalysis({
         // 一覧に残らないようにするため。結果を保存できなかったら `flushResults` が解析を止める。
         onLayerStarted(layer.layerId, nextMode);
         setMode(nextMode);
+        // 全体解析は一括、深い解析（続きから読めないときの 1 回だけの読み）は 1 局面として数える
+        track("analysis_start", { kind: nextMode === "full" ? "batch" : "single" });
         pool.start(jobs, {
             nnueId: resolved?.nnueId ?? null,
             layerStacks: resolved?.layerStacks,
@@ -704,6 +708,7 @@ export function useStudyAnalysis({
                 });
                 if (started) {
                     onLayerStarted(prepared.layer.layerId, "deep");
+                    track("analysis_start", { kind: "single" });
                     return;
                 }
                 // 続きから読める探索が使えないと分かったら、1 回だけの読みに切り替える。

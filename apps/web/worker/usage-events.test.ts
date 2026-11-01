@@ -80,8 +80,7 @@ describe("parseUsageEvent", () => {
                 props: { result: "win", reason: "user-42", plies: 1, durationSec: 1 },
             },
         ],
-        ["UUID の AI 名", { ...base, event: "nnue_download", props: { ai: DEVICE_ID } }],
-        ["一覧に無い AI 名", { ...base, event: "nnue_download", props: { ai: "alice" } }],
+        ["AI 名が文字列でない", { ...base, event: "nnue_download", props: { ai: 1 } }],
     ])("不正な本文は null: %s", (_, body) => {
         expect(parse(body)).toBeNull();
     });
@@ -93,5 +92,15 @@ describe("parseUsageEvent", () => {
             props: { players: "human_ai", ai: "coco", time: "byoyomi", start: "even" },
         });
         expect(parsed?.texts).toEqual(["human_ai", "coco", "byoyomi", "even"]);
+    });
+
+    it.each([
+        ["UUID", DEVICE_ID],
+        ["一覧に無い名前", "alice"],
+    ])("一覧に無い AI 名は書かず、other に置き換えてイベントは残す: %s", (_, ai) => {
+        expect(parse({ ...base, event: "nnue_download", props: { ai } })?.texts).toEqual(["other"]);
+        expect(
+            parse({ ...base, event: "match_start", props: { players: "human_ai", ai } })?.texts,
+        ).toEqual(["human_ai", "other", "", ""]);
     });
 });

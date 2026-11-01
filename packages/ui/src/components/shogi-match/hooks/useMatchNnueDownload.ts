@@ -9,6 +9,7 @@ import {
 } from "@shogi/app-core";
 import { useEffect, useRef, useState } from "react";
 import { useNnueContextOptional } from "../../../providers/NnueContext";
+import { useUsageTracker } from "../../../providers/UsageContext";
 import type { Message } from "../types";
 
 export function presetDownloadSize(preset: PresetConfig): number {
@@ -30,6 +31,7 @@ export function useMatchNnueDownload({
     /** ダウンロードを断ったときの案内の結び（「〜が未ダウンロードのため、<ここ>。」）。 */
     cancelReason?: string;
 }) {
+    const track = useUsageTracker();
     const context = useNnueContextOptional();
     const [presets, setPresets] = useState<PresetConfig[]>([]);
     const [busy, setBusy] = useState(false);
@@ -132,6 +134,7 @@ export function useMatchNnueDownload({
                     await downloadPreset(preset, context.storage, (value) => {
                         if (mounted.current) setProgress(value);
                     });
+                    track("nnue_download", { ai: preset.presetKey });
                 }
                 if (!mounted.current) return;
                 completed += presetDownloadSize(preset);

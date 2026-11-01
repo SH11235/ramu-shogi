@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 import { useState } from "react";
+import { useUsageTracker } from "../../../providers/UsageContext";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../tooltip";
 
 /**
@@ -7,12 +8,14 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../../tooltip";
  */
 export function KifCopyButton({ getKif }: { getKif: () => string }): ReactElement {
     const [copySuccess, setCopySuccess] = useState(false);
+    const track = useUsageTracker();
 
     const handleCopy = async () => {
         const kifString = getKif();
         try {
             await navigator.clipboard.writeText(kifString);
             setCopySuccess(true);
+            track("kifu_export", { format: "kif" });
             setTimeout(() => setCopySuccess(false), 2000);
         } catch (error) {
             console.error("Failed to copy to clipboard:", error);

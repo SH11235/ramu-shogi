@@ -2,6 +2,7 @@ import type { KifuTree, NnueSelection, ResolvedNnue } from "@shogi/app-core";
 import { getPathToNode } from "@shogi/app-core";
 import type { EngineInfoEvent } from "@shogi/engine-client";
 import { useEffect, useState } from "react";
+import { useUsageTracker } from "../../../providers/UsageContext";
 import type { AnalysisSettings, AnalyzingState } from "../types";
 import { ANALYZING_STATE_NONE } from "../types";
 import { collectBranchAnalysisJobs, collectTreeAnalysisJobs } from "../utils/branchTreeUtils";
@@ -129,6 +130,7 @@ export function useBatchAnalysis({
     batchAnalysis: _batchAnalysis, // 現在は未使用（将来の拡張用に保持）
     setBatchAnalysis,
 }: UseBatchAnalysisProps): UseBatchAnalysisReturn {
+    const track = useUsageTracker();
     // 解析状態（union型で相互排他的な状態を型レベルで保証）
     const [analyzingState, setAnalyzingState] = useState<AnalyzingState>(ANALYZING_STATE_NONE);
 
@@ -146,6 +148,7 @@ export function useBatchAnalysis({
     const analyzePlyWithSettings = async (
         ply: number,
         options?: HintSearchOptions,
+        onStart?: () => void,
     ): Promise<boolean> => {
         // NNUE の存在確認（未ダウンロードの場合はエラー）
         try {
@@ -169,6 +172,7 @@ export function useBatchAnalysis({
         clearEvalByPly(ply);
 
         setAnalyzingState({ type: "by-ply", ply });
+        onStart?.();
         try {
             await analyzePosition({
                 sfen: startSfen,
@@ -188,7 +192,10 @@ export function useBatchAnalysis({
 
     // 特定の手数の局面を解析するコールバック（オンデマンド解析用）
     const handleAnalyzePly = async (ply: number) => {
-        await analyzePlyWithSettings(ply);
+        // ヒントの解析も同じ処理を通るので、利用者が求めた解析のときだけ数える
+        await analyzePlyWithSettings(ply, undefined, () =>
+            track("analysis_start", { kind: "single" }),
+        );
     };
 
     const handleAnalyzeHintPly = (ply: number, options?: HintSearchOptions) =>
@@ -240,6 +247,7 @@ export function useBatchAnalysis({
 
             // 分岐解析用に状態を設定
             setAnalyzingState({ type: "by-node-id", nodeId, ply: node.ply });
+            track("analysis_start", { kind: "single" });
             await analyzePosition({
                 sfen: startSfen,
                 moves: movesForNode,
@@ -294,6 +302,7 @@ export function useBatchAnalysis({
         }));
 
         // 並列一括解析を開始（resolvedを直接渡す）
+        track("analysis_start", { kind: "batch" });
         enginePool.start(jobs, {
             nnueId: resolved?.nnueId ?? null,
             layerStacks: resolved?.layerStacks,
@@ -345,6 +354,7 @@ export function useBatchAnalysis({
         }));
 
         // 並列一括解析を開始（resolvedを直接渡す）
+        track("analysis_start", { kind: "batch" });
         enginePool.start(jobs, {
             nnueId: resolved?.nnueId ?? null,
             layerStacks: resolved?.layerStacks,
@@ -393,6 +403,7 @@ export function useBatchAnalysis({
         }));
 
         // 並列一括解析を開始（resolvedを直接渡す）
+        track("analysis_start", { kind: "batch" });
         enginePool.start(jobs, {
             nnueId: resolved?.nnueId ?? null,
             layerStacks: resolved?.layerStacks,

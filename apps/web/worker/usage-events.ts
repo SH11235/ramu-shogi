@@ -45,6 +45,7 @@ export const USAGE_FIXED_AI_NAMES: readonly string[] = ["material", "custom"];
 /** 検証に使う、その時点の値の集合 */
 type UsageContext = { aiNames: ReadonlySet<string> };
 
+// 配布をやめた AI でも手元に残っていれば対局できる。その名前は "other" にまとめ、対局の数は残す
 const isAi = (value: string, context: UsageContext) => context.aiNames.has(value);
 const isHost = (value: string) => value.length <= 253 && HOST.test(value);
 const isRoute = (value: string) => USAGE_ROUTES.includes(value);
@@ -57,6 +58,8 @@ type TextField = {
     key: string;
     valid: (value: string, context: UsageContext) => boolean;
     required?: true;
+    /** 検証に通らない文字列を、イベントごと捨てずにこの値へ置き換える（元の値は書かない） */
+    fallback?: string;
 };
 // 数値の項目は常に必須（0 と「無い」を集計で区別できないため、省略を認めない）
 type NumberField = { key: string; max: number };
@@ -75,7 +78,7 @@ const EVENT_SPECS = {
     match_start: {
         text: [
             { key: "players", valid: oneOf("human_ai", "ai_ai", "human_human"), required: true },
-            { key: "ai", valid: isAi },
+            { key: "ai", valid: isAi, fallback: "other" },
             { key: "time", valid: oneOf("none", "byoyomi", "fischer", "sudden") },
             { key: "start", valid: oneOf("even", "handicap", "position") },
         ],
@@ -122,7 +125,10 @@ const EVENT_SPECS = {
         text: [{ key: "action", valid: oneOf("create", "join"), required: true }],
         numbers: [],
     },
-    nnue_download: { text: [{ key: "ai", valid: isAi, required: true }], numbers: [] },
+    nnue_download: {
+        text: [{ key: "ai", valid: isAi, required: true, fallback: "other" }],
+        numbers: [],
+    },
 } as const satisfies Record<string, EventSpec>;
 
 export type UsageEventName = keyof typeof EVENT_SPECS;
@@ -189,8 +195,10 @@ export function parseUsageEvent(body: unknown, context: UsageContext): ParsedUsa
             texts.push("");
             continue;
         }
-        if (typeof value !== "string" || !field.valid(value, context)) return null;
-        texts.push(value);
+        if (typeof value !== "string") return null;
+        if (field.valid(value, context)) texts.push(value);
+        else if (field.fallback !== undefined) texts.push(field.fallback);
+        else return null;
     }
 
     const numbers: number[] = [];

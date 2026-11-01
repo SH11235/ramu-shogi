@@ -22,6 +22,7 @@ import {
 } from "@shogi/ui/components/study-workspace/studyEntry";
 import type { StudyKifuSource } from "@shogi/ui/components/study-workspace/studyImport";
 import { dispatchAuthSessionSyncEvent } from "../hooks/useAuthSession";
+import { usageClient } from "../platform/usage";
 import { getStudySync } from "./studySync";
 
 export { canOpenGameRecordAsStudy };
@@ -38,28 +39,28 @@ export function openOrCreateStudy(
     options: Omit<Parameters<typeof openOrCreate>[0], keyof StudyEntryDeps> &
         Partial<StudyEntryDeps>,
 ): Promise<OpenOrCreateStudyResult> {
-    return openOrCreate(withDefaults(options));
+    return openOrCreate(withDefaults(options)).then(reportStudyCreated);
 }
 
 export function openStudyFromRshogiGame(
     game: RshogiGame,
     deps: Partial<StudyEntryDeps> = {},
 ): Promise<OpenOrCreateStudyResult> {
-    return openFromRshogiGame(game, withDefaults(deps));
+    return openFromRshogiGame(game, withDefaults(deps)).then(reportStudyCreated);
 }
 
 export function openStudyFromGameRecord(
     game: GameRecordForStudy,
     deps: Partial<StudyEntryDeps> = {},
 ): Promise<OpenOrCreateStudyResult> {
-    return openFromGameRecord(game, withDefaults(deps));
+    return openFromGameRecord(game, withDefaults(deps)).then(reportStudyCreated);
 }
 
 export function createStudyFromKifuSource(
     source: StudyKifuSource,
     deps: Partial<StudyImportDeps> = {},
 ): Promise<OpenOrCreateStudyResult> {
-    return createFromKifuSource(source, withDefaults(deps));
+    return createFromKifuSource(source, withDefaults(deps)).then(reportStudyCreated);
 }
 
 export function createStudyFromKifuTree(
@@ -67,7 +68,14 @@ export function createStudyFromKifuTree(
     info: { players?: { sente?: string; gote?: string } } = {},
     deps: Partial<StudyImportDeps> = {},
 ): Promise<OpenOrCreateStudyResult> {
-    return createFromKifuTree(tree, info, withDefaults(deps));
+    return createFromKifuTree(tree, info, withDefaults(deps)).then(reportStudyCreated);
+}
+
+// ログイン中に作ったノートはサーバーへ同期される。ログインしていなければ端末内だけ
+function reportStudyCreated(result: OpenOrCreateStudyResult): OpenOrCreateStudyResult {
+    if (result.existing) return result;
+    usageClient.track("study_create", { where: usageClient.isLoggedIn() ? "server" : "local" });
+    return result;
 }
 
 /**

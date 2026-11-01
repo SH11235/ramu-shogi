@@ -9,6 +9,7 @@ import {
 } from "@shogi/app-core";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { useNnueContextOptional } from "../providers/NnueContext";
+import { useUsageTracker } from "../providers/UsageContext";
 
 interface UsePresetManagerReturn {
     /** プリセット一覧（状態付き） */
@@ -49,6 +50,7 @@ interface UsePresetManagerOptions {
  * NnueProvider の外で使用すると、空の状態を返す。
  */
 export function usePresetManager(options: UsePresetManagerOptions = {}): UsePresetManagerReturn {
+    const track = useUsageTracker();
     const { manifestUrl, autoFetch = true, onDownloadComplete } = options;
     const context = useNnueContextOptional();
     const storage = context?.storage ?? null;
@@ -218,6 +220,7 @@ export function usePresetManager(options: UsePresetManagerOptions = {}): UsePres
 
             const meta = await manager.download(presetKey);
             await validatePresetMeta(meta);
+            track("nnue_download", { ai: presetKey });
             await refresh();
             onDownloadComplete?.(meta);
             return meta;

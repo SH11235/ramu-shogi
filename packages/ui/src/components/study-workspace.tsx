@@ -24,6 +24,7 @@ import {
 import { cn } from "@shogi/design-system";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
+import { useUsageTracker } from "../providers/UsageContext";
 import type { PlayFromPosition } from "./rshogi-play-from-position";
 import { MatchNnueDownloadDialog } from "./shogi-match/components/MatchNnueDownloadDialog";
 import { type HandInfo, MobileBoardSection } from "./shogi-match/components/MobileBoardSection";
@@ -255,6 +256,7 @@ export function StudyWorkspaceView({
     deepLayerId = null,
     mate,
 }: StudyWorkspaceViewProps): ReactElement {
+    const track = useUsageTracker();
     const isMobile = useIsMobile();
     // 768〜1023px（タブレットの縦持ち）: 盤を小さくして 2 列にする。
     const isTablet = useMediaQuery("(min-width: 768px) and (max-width: 1023px)");
@@ -391,13 +393,14 @@ export function StudyWorkspaceView({
             evalMate: evalData?.scoreMate,
         });
     };
-    const copyText = (text: string, done: string): void => {
+    const copyText = (text: string, done: string, onCopied?: () => void): void => {
         const failed = (): void =>
             onMessageChange({ text: "コピーできませんでした。", type: "error" });
         try {
-            void navigator.clipboard
-                .writeText(text)
-                .then(() => onMessageChange({ text: done, type: "success" }), failed);
+            void navigator.clipboard.writeText(text).then(() => {
+                onMessageChange({ text: done, type: "success" });
+                onCopied?.();
+            }, failed);
         } catch {
             failed();
         }
@@ -419,7 +422,9 @@ export function StudyWorkspaceView({
             onMessageChange({ text: "棋譜を書き出せませんでした。", type: "error" });
             return;
         }
-        copyText(text, `${kifuLabel(format)}コピーしました。`);
+        copyText(text, `${kifuLabel(format)}コピーしました。`, () =>
+            track("kifu_export", { format }),
+        );
     };
     const saveKifu = onSaveKifuFile
         ? (format: StudyKifuFormat): void => {
@@ -429,6 +434,7 @@ export function StudyWorkspaceView({
                       text: exportKifu(format),
                   });
                   onMessageChange({ text: `${kifuLabel(format)}保存しました。`, type: "success" });
+                  track("kifu_export", { format });
               } catch {
                   onMessageChange({ text: "ファイルに保存できませんでした。", type: "error" });
               }

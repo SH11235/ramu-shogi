@@ -7,6 +7,7 @@ import {
 } from "@shogi/engine-wasm";
 import { StoredBoardPatternProvider } from "@shogi/ui/components/shogi-match/hooks/useBoardPattern";
 import { NnueProvider } from "@shogi/ui/providers/NnueContext";
+import { UsageTrackingProvider } from "@shogi/ui/providers/UsageContext";
 import { Outlet } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { AppDialogHost } from "./components/AppDialogs";
@@ -21,6 +22,8 @@ import {
     isStaleAssetError,
     reloadForStaleDeploy,
 } from "./platform/stale-deploy-reload";
+import { usageClient } from "./platform/usage";
+import { createUsageTracker } from "./platform/usageTracker";
 
 // エンジンをまだ起動していない画面（AI の一覧など）でも判定できるよう、wasm を先に読み込む。
 const validateNnueHeader = async (header: Uint8Array, fileSize: number) => {
@@ -69,12 +72,17 @@ function AppProvidersInner(): ReactElement {
     );
 }
 
+// 対局の開始の時刻を持つので、画面の描き直しで作り直さない
+const usageTracker = createUsageTracker(usageClient);
+
 export function AppProviders(): ReactElement {
     return (
         <AuthSessionProvider>
-            <StoredBoardPatternProvider>
-                <AppProvidersInner />
-            </StoredBoardPatternProvider>
+            <UsageTrackingProvider track={usageTracker}>
+                <StoredBoardPatternProvider>
+                    <AppProvidersInner />
+                </StoredBoardPatternProvider>
+            </UsageTrackingProvider>
         </AuthSessionProvider>
     );
 }
