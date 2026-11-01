@@ -1,9 +1,11 @@
+import { handleUsageRequest, type UsageEnv } from "./usage";
+
 // Cloudflare Workers Rate Limiting API の型定義
 interface RateLimiter {
     limit(options: { key: string }): Promise<{ success: boolean }>;
 }
 
-interface Env {
+interface Env extends UsageEnv {
     ASSETS: Fetcher;
     NNUE_BUCKET: R2Bucket;
     BACKEND?: Fetcher;
@@ -315,6 +317,9 @@ export default {
                 "Percent-encoded API paths are not supported",
             );
         }
+
+        const usageResponse = await handleUsageRequest(request, env);
+        if (usageResponse) return usageResponse;
 
         // /api/rooms/* はレート制限と記録を挟んで backend Worker へ転送する
         const roomResponse = await handleRoomRequest(request, env);

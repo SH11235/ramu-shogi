@@ -59,6 +59,21 @@ namespace_id = "1001"
 limit = 10
 period = 60
 
+# 利用状況のイベント（POST /usage）の書き込み先。dataset は最初の書き込みで作られる
+[[analytics_engine_datasets]]
+binding = "USAGE_EVENTS"
+dataset = "ramu_shogi_usage"
+
+# POST /usage の IP ごとのレート制限。超過分は書き込まずに捨てる
+[[unsafe.bindings]]
+name = "USAGE_RATE_LIMITER"
+type = "ratelimit"
+namespace_id = "1002"
+
+[unsafe.bindings.simple]
+limit = 60
+period = 60
+
 [env.stg]
 name = "ramu-shogi-stg"
 # Custom Domain binding。DNS record (AAAA 100:: proxied) は iac repo (Pulumi) が正典
@@ -98,4 +113,18 @@ namespace_id = "1001"
 
 [env.stg.unsafe.bindings.simple]
 limit = 10
+period = 60
+
+[[env.stg.analytics_engine_datasets]]
+binding = "USAGE_EVENTS"
+dataset = "ramu_shogi_usage_stg"
+
+# 同じ namespace_id は Worker をまたいで数を共有するので、本番と分ける
+[[env.stg.unsafe.bindings]]
+name = "USAGE_RATE_LIMITER"
+type = "ratelimit"
+namespace_id = "1003"
+
+[env.stg.unsafe.bindings.simple]
+limit = 60
 period = 60

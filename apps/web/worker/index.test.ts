@@ -458,3 +458,15 @@ describe("ルーム API の振り分け", () => {
         expect(roomRequestLogs(logSpy)).toEqual([]);
     });
 });
+
+describe("利用状況のイベント", () => {
+    it("POST /usage は Worker が受け、backend にも静的アセットにも回さない", async () => {
+        const { env, backendCalls } = createEnv();
+        const response = await worker.fetch(
+            new Request(`${ORIGIN}/usage`, { method: "POST", body: "{}" }),
+            env,
+        );
+        expect(response.status).toBe(204);
+        expect(backendCalls).toEqual([]);
+    });
+});
