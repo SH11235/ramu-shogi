@@ -4,7 +4,6 @@ import { PageContainer } from "../../components/PageContainer";
 import { PageHeader } from "../../components/PageHeader";
 import { PageHeading } from "../../components/PageHeading";
 import { Section } from "../../components/Section";
-import { UsageSettings } from "./UsageSettings";
 
 function PolicySection({
     title,
@@ -149,11 +148,6 @@ export default function PrivacyPage(): ReactElement {
                         <p className="mt-2">
                             棋譜や局面の内容、研究ノートの本文、メールアドレスや表示名などのアカウントの情報は送りません。IPアドレスとブラウザの詳しい情報は集計の記録に残しません。番号はアカウントと結びつけていません。
                         </p>
-                        <p className="mt-2">
-                            不具合などのお問い合わせの際に下の番号を添えていただくと、その端末での操作の流れを調査に使えます。番号をお知らせいただいた場合に限り、この目的で使います。集計に協力しない場合は、下の切り替えをオフにしてください。オフにすると番号も消えます。ブラウザの
-                            Global Privacy Control が有効な場合も送りません。
-                        </p>
-                        <UsageSettings />
                     </PolicySection>
 
                     <PolicySection title="8. Cookieと端末内の保存">
@@ -164,7 +158,7 @@ export default function PrivacyPage(): ReactElement {
                             設定や研究ノートなどを端末内にも保存します。ログイン中は対応する設定やノートをサーバーへ同期します。ログアウトしても端末内の値は残るため、共有端末ではブラウザのサイトデータ削除機能をご利用ください。端末内だけにある未同期データも削除されます。
                         </p>
                         <p className="mt-2">
-                            利用状況の集計に使う番号と、集計に協力するかどうかの設定も端末内に保存します（Cookieは使いません）。サイトデータを削除すると、番号は新しく作り直されます。
+                            利用状況の集計に使う番号も端末内に保存します（Cookieは使いません）。サイトデータを削除すると、番号は新しく作り直されます。
                         </p>
                     </PolicySection>
 

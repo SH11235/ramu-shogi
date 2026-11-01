@@ -34,7 +34,6 @@ function setup() {
         hostname: "ramu-shogi.sh11235.com",
         search: "",
         referrer: "",
-        globalPrivacyControl: false,
         storage: {
             getItem: (key) => storage.get(key) ?? null,
             setItem: (key, value) => void storage.set(key, value),

@@ -8,7 +8,6 @@ import {
 
 const PRODUCTION_HOST = "ramu-shogi.sh11235.com";
 const DEVICE_ID_KEY = "ramu.usage.deviceId";
-const OPT_OUT_KEY = "ramu.usage.optOut";
 const INTERNAL_KEY = "ramu.usage.internal";
 
 type UsageDeps = {
@@ -16,13 +15,9 @@ type UsageDeps = {
     search: string;
     referrer: string;
     storage: Pick<Storage, "getItem" | "setItem" | "removeItem"> | null;
-    globalPrivacyControl: boolean;
     randomUUID: () => string;
     send: (path: string, body: string) => void;
 };
-
-/** 送らない理由。画面の説明に使う */
-type UsageStatus = "enabled" | "opted_out" | "gpc" | "unsupported";
 
 function readStorage(deps: UsageDeps, key: string): string | null {
     try {
@@ -57,8 +52,6 @@ function externalReferrerHost(referrer: string, hostname: string): string | unde
 export function createUsageClient(deps: UsageDeps) {
     let loggedIn = false;
     let lastPathname: string | null = null;
-    // 保存に失敗しても、オフにした操作はこの画面の間は守る。オンは覚えない（別のタブでオフにされたら従う）
-    let optedOutInMemory = false;
     let referrer = externalReferrerHost(deps.referrer, deps.hostname);
 
     // 運営者の端末は `?internal=1` で印を付け、集計で除く。送らない形にしないのは、本番で送信を確かめるため
@@ -66,15 +59,9 @@ export function createUsageClient(deps: UsageDeps) {
     if (internalParam === "1") writeStorage(deps, INTERNAL_KEY, "1");
     if (internalParam === "0") writeStorage(deps, INTERNAL_KEY, null);
 
-    function status(): UsageStatus {
-        if (deps.hostname !== PRODUCTION_HOST || !deps.storage) return "unsupported";
-        if (deps.globalPrivacyControl) return "gpc";
-        if (optedOutInMemory || readStorage(deps, OPT_OUT_KEY) === "1") return "opted_out";
-        return "enabled";
-    }
+    const enabled = deps.hostname === PRODUCTION_HOST && deps.storage !== null;
 
     function deviceId(): string | null {
-        if (status() === "unsupported") return null;
         const stored = readStorage(deps, DEVICE_ID_KEY);
         if (stored) return stored;
         const created = deps.randomUUID();
@@ -83,7 +70,7 @@ export function createUsageClient(deps: UsageDeps) {
     }
 
     function track<E extends UsageEventName>(event: E, props?: UsageEventProps<E>): void {
-        if (status() !== "enabled") return;
+        if (!enabled) return;
         const id = deviceId();
         if (!id) return;
         const payload = {
@@ -102,15 +89,6 @@ export function createUsageClient(deps: UsageDeps) {
     }
 
     return {
-        status,
-        /** お問い合わせ用に画面へ出す端末 ID。送らない環境では null */
-        deviceId,
-        /** オフにしたときは端末 ID も消す。オンに戻すと新しい ID を作る */
-        setOptOut(optOut: boolean): void {
-            optedOutInMemory = optOut;
-            writeStorage(deps, OPT_OUT_KEY, optOut ? "1" : null);
-            if (optOut) writeStorage(deps, DEVICE_ID_KEY, null);
-        },
         setLoggedIn(value: boolean): void {
             loggedIn = value;
         },
@@ -143,9 +121,6 @@ function browserDeps(): UsageDeps {
         search: window.location.search,
         referrer: document.referrer,
         storage,
-        globalPrivacyControl:
-            (navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl ===
-            true,
         randomUUID: () => crypto.randomUUID(),
         send: (path, body) => {
             // sendBeacon は Referer（ID 入りのページの URL）と Cookie を外せないので、fetch で両方を外して送る。

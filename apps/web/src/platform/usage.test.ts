@@ -8,7 +8,6 @@ function setup({
     hostname = "ramu-shogi.sh11235.com",
     search = "",
     referrer = "",
-    globalPrivacyControl = false,
     storage = new Map<string, string>(),
     noStorage = false,
 } = {}) {
@@ -17,7 +16,6 @@ function setup({
         hostname,
         search,
         referrer,
-        globalPrivacyControl,
         storage: noStorage
             ? null
             : {
@@ -57,14 +55,12 @@ describe("createUsageClient", () => {
         const { client, sent } = setup({ storage: new Map([["ramu.usage.deviceId", existing]]) });
         client.track("hint_request");
         expect(sent[0]?.body.deviceId).toBe(existing);
-        expect(client.deviceId()).toBe(existing);
     });
 
     it.each([
         ["本番以外のホスト", { hostname: "stg.ramu-shogi.sh11235.com" }],
         ["localhost", { hostname: "localhost" }],
         ["端末内に保存できない", { noStorage: true }],
-        ["Global Privacy Control", { globalPrivacyControl: true }],
     ])("送らない: %s", (_, options) => {
         const { client, sent } = setup(options);
         client.track("hint_request");
@@ -73,72 +69,8 @@ describe("createUsageClient", () => {
 
     it("送らない環境では端末 ID を作らない", () => {
         const { client, storage } = setup({ hostname: "localhost" });
-        expect(client.deviceId()).toBeNull();
+        client.trackPageView("/", "/");
         expect(storage.size).toBe(0);
-    });
-
-    it("オフにすると送らず端末 ID も消し、オンに戻すと新しい ID で送る", () => {
-        let next = 0;
-        const ids = [DEVICE_ID, "11111111-2222-4333-8444-555555555555"];
-        const storage = new Map<string, string>();
-        const sent: Record<string, unknown>[] = [];
-        const client = createUsageClient({
-            hostname: "ramu-shogi.sh11235.com",
-            search: "",
-            referrer: "",
-            globalPrivacyControl: false,
-            storage: {
-                getItem: (key) => storage.get(key) ?? null,
-                setItem: (key, value) => void storage.set(key, value),
-                removeItem: (key) => void storage.delete(key),
-            },
-            randomUUID: () => ids[next++] ?? DEVICE_ID,
-            send: (_path, body) => sent.push(JSON.parse(body)),
-        });
-        client.track("hint_request");
-        client.setOptOut(true);
-        expect(client.status()).toBe("opted_out");
-        expect(storage.has("ramu.usage.deviceId")).toBe(false);
-        client.track("hint_request");
-        client.setOptOut(false);
-        client.track("hint_request");
-        expect(sent.map((body) => body.deviceId)).toEqual(ids);
-    });
-
-    it("別のタブでオフにされたら、こちらのタブでオンに戻していても送らない", () => {
-        const storage = new Map<string, string>();
-        const tabA = setup({ storage });
-        const tabB = setup({ storage });
-        tabA.client.setOptOut(true);
-        tabA.client.setOptOut(false);
-        tabB.client.setOptOut(true);
-        tabA.client.track("hint_request");
-        expect(tabA.sent).toEqual([]);
-    });
-
-    it("オフにした設定を保存できなくても、その画面の間は送らない", () => {
-        const sent: unknown[] = [];
-        const stored = new Map([["ramu.usage.deviceId", DEVICE_ID]]);
-        const client = createUsageClient({
-            hostname: "ramu-shogi.sh11235.com",
-            search: "",
-            referrer: "",
-            globalPrivacyControl: false,
-            storage: {
-                getItem: (key) => stored.get(key) ?? null,
-                setItem: () => {
-                    throw new Error("QuotaExceededError");
-                },
-                removeItem: () => {
-                    throw new Error("SecurityError");
-                },
-            },
-            randomUUID: () => DEVICE_ID,
-            send: (_path, body) => sent.push(body),
-        });
-        client.setOptOut(true);
-        client.track("hint_request");
-        expect(sent).toEqual([]);
     });
 
     it("?internal=1 の印を残し、?internal=0 で外す", () => {
@@ -207,7 +139,6 @@ describe("createUsageClient", () => {
             hostname: "ramu-shogi.sh11235.com",
             search: "",
             referrer: "",
-            globalPrivacyControl: false,
             storage: {
                 getItem: (key) => storage.get(key) ?? null,
                 setItem: (key, value) => void storage.set(key, value),
