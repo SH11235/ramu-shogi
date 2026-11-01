@@ -35,32 +35,17 @@ jobs:
       - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
         id: filter
         with:
+          # 既定の some はパターンごとの一致を OR で結ぶため、除外の `!**/*.md` が .md 以外の
+          # すべてのファイルに一致して常に true になる。every で除外と AND を取り、対象のパス
+          # 同士の OR は 1 本の brace パターンの中で表す。
+          predicate-quantifier: every
           filters: |
             rust_code:
-              - 'rustfmt.toml'
-              - 'packages/rust-core/shared/**'
-              - 'packages/rust-core/Cargo.toml'
-              - 'packages/rust-core/Cargo.lock'
-              - 'packages/rust-core/build.rs'
-              - 'packages/rust-core/crates/**'
-              - 'packages/rust-core/.cargo/**'
-              - '!packages/rust-core/docs/**'
-              - '!packages/rust-core/runs/**'
-              - '!packages/rust-core/logs/**'
-              - '!packages/rust-core/target/**'
-              - '!packages/rust-core/data/**'
-              - '!packages/rust-core/memo/**'
-              - '!**/*.md'
-              - '!**/*.mdx'
+              - '{rustfmt.toml,packages/rust-core/{Cargo.toml,Cargo.lock,clippy.toml,build.rs},packages/rust-core/{shared,crates,targets,.cargo}/**}'
+              - '!**/*.{md,mdx}'
             tauri_code:
-              - 'rustfmt.toml'
-              - 'packages/rust-core/shared/**'
-              - 'apps/desktop/src-tauri/Cargo.toml'
-              - 'apps/desktop/src-tauri/Cargo.lock'
-              - 'apps/desktop/src-tauri/build.rs'
-              - 'apps/desktop/src-tauri/src/**'
-              - '!**/*.md'
-              - '!**/*.mdx'
+              - '{rustfmt.toml,packages/rust-core/shared/**,apps/desktop/src-tauri/**}'
+              - '!**/*.{md,mdx}'
 
   format:
     name: Format Check
