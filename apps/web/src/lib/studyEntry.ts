@@ -39,21 +39,21 @@ export function openOrCreateStudy(
     options: Omit<Parameters<typeof openOrCreate>[0], keyof StudyEntryDeps> &
         Partial<StudyEntryDeps>,
 ): Promise<OpenOrCreateStudyResult> {
-    return openOrCreate(withDefaults(options));
+    return openOrCreate(withDefaults(options)).then(reportStudyCreated);
 }
 
 export function openStudyFromRshogiGame(
     game: RshogiGame,
     deps: Partial<StudyEntryDeps> = {},
 ): Promise<OpenOrCreateStudyResult> {
-    return openFromRshogiGame(game, withDefaults(deps));
+    return openFromRshogiGame(game, withDefaults(deps)).then(reportStudyCreated);
 }
 
 export function openStudyFromGameRecord(
     game: GameRecordForStudy,
     deps: Partial<StudyEntryDeps> = {},
 ): Promise<OpenOrCreateStudyResult> {
-    return openFromGameRecord(game, withDefaults(deps));
+    return openFromGameRecord(game, withDefaults(deps)).then(reportStudyCreated);
 }
 
 export function createStudyFromKifuSource(

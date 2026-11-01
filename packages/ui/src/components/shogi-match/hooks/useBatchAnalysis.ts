@@ -148,6 +148,7 @@ export function useBatchAnalysis({
     const analyzePlyWithSettings = async (
         ply: number,
         options?: HintSearchOptions,
+        onStart?: () => void,
     ): Promise<boolean> => {
         // NNUE の存在確認（未ダウンロードの場合はエラー）
         try {
@@ -171,6 +172,7 @@ export function useBatchAnalysis({
         clearEvalByPly(ply);
 
         setAnalyzingState({ type: "by-ply", ply });
+        onStart?.();
         try {
             await analyzePosition({
                 sfen: startSfen,
@@ -190,8 +192,10 @@ export function useBatchAnalysis({
 
     // 特定の手数の局面を解析するコールバック（オンデマンド解析用）
     const handleAnalyzePly = async (ply: number) => {
-        track("analysis_start", { kind: "single" });
-        await analyzePlyWithSettings(ply);
+        // ヒントの解析も同じ処理を通るので、利用者が求めた解析のときだけ数える
+        await analyzePlyWithSettings(ply, undefined, () =>
+            track("analysis_start", { kind: "single" }),
+        );
     };
 
     const handleAnalyzeHintPly = (ply: number, options?: HintSearchOptions) =>
@@ -202,7 +206,6 @@ export function useBatchAnalysis({
 
     // 分岐内のノードを解析するコールバック
     const handleAnalyzeNode = async (nodeId: string) => {
-        track("analysis_start", { kind: "single" });
         const tree = kifuTree;
         if (!tree) {
             setMessage({ text: "棋譜ツリーが初期化されていません", type: "error" });
@@ -244,6 +247,7 @@ export function useBatchAnalysis({
 
             // 分岐解析用に状態を設定
             setAnalyzingState({ type: "by-node-id", nodeId, ply: node.ply });
+            track("analysis_start", { kind: "single" });
             await analyzePosition({
                 sfen: startSfen,
                 moves: movesForNode,
@@ -267,7 +271,6 @@ export function useBatchAnalysis({
 
     // 一括解析を開始（並列処理）- 本譜のみ
     const handleStartBatchAnalysis = async () => {
-        track("analysis_start", { kind: "batch" });
         // PVがない手を抽出
         const targetPlies = kifMoves.filter((m) => !m.pv || m.pv.length === 0).map((m) => m.ply);
 
@@ -299,6 +302,7 @@ export function useBatchAnalysis({
         }));
 
         // 並列一括解析を開始（resolvedを直接渡す）
+        track("analysis_start", { kind: "batch" });
         enginePool.start(jobs, {
             nnueId: resolved?.nnueId ?? null,
             layerStacks: resolved?.layerStacks,
@@ -311,7 +315,6 @@ export function useBatchAnalysis({
     const handleStartTreeBatchAnalysis = async (options?: { mainLineOnly?: boolean }) => {
         const tree = kifuTree;
         if (!tree) return;
-        track("analysis_start", { kind: "batch" });
 
         // ツリーから解析ジョブを収集
         const treeJobs = collectTreeAnalysisJobs(tree, {
@@ -351,6 +354,7 @@ export function useBatchAnalysis({
         }));
 
         // 並列一括解析を開始（resolvedを直接渡す）
+        track("analysis_start", { kind: "batch" });
         enginePool.start(jobs, {
             nnueId: resolved?.nnueId ?? null,
             layerStacks: resolved?.layerStacks,
@@ -363,7 +367,6 @@ export function useBatchAnalysis({
     const handleAnalyzeBranch = async (branchNodeId: string) => {
         const tree = kifuTree;
         if (!tree) return;
-        track("analysis_start", { kind: "batch" });
 
         // 分岐から解析ジョブを収集
         const branchJobs = collectBranchAnalysisJobs(tree, branchNodeId, {
@@ -400,6 +403,7 @@ export function useBatchAnalysis({
         }));
 
         // 並列一括解析を開始（resolvedを直接渡す）
+        track("analysis_start", { kind: "batch" });
         enginePool.start(jobs, {
             nnueId: resolved?.nnueId ?? null,
             layerStacks: resolved?.layerStacks,

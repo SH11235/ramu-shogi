@@ -247,6 +247,8 @@ export function usePlayScreen({
         if (playPhase !== "setup" || moves.length !== (playStartRef.current?.moves.length ?? 0)) {
             return;
         }
+        // 「もう一局」も新しい対局の始まりとして控える（startMatch を通らないため）
+        setPendingPlayStartCapture(true);
         startRematch();
     }, [pendingRematch, isPlayResetting, playPhase, moves.length]);
     const track = useUsageTracker();

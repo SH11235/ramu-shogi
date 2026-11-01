@@ -170,7 +170,7 @@ describe("POST /usage", () => {
                     : null,
         });
 
-        it("manifest の配布 AI と固定の名前だけを書く", async () => {
+        it("manifest の配布 AI と固定の名前はそのまま、それ以外は other で書く", async () => {
             const { env, points } = createEnv();
             const withBucket = {
                 ...env,
@@ -179,7 +179,7 @@ describe("POST /usage", () => {
             for (const ai of ["coco", "custom", "alice"]) {
                 await handleUsageRequest(download(ai), withBucket);
             }
-            expect(points.map((point) => point.blobs?.[5])).toEqual(["coco", "custom"]);
+            expect(points.map((point) => point.blobs?.[5])).toEqual(["coco", "custom", "other"]);
         });
 
         it("manifest が壊れていても、ほかのイベントは書く", async () => {
@@ -198,12 +198,12 @@ describe("POST /usage", () => {
             expect(points).toHaveLength(1);
         });
 
-        it("manifest が無ければ固定の名前だけを書く", async () => {
+        it("manifest が無ければ固定の名前以外は other で書く", async () => {
             const { env, points } = createEnv();
             const withBucket = { ...env, NNUE_BUCKET: bucket(null) } as unknown as UsageEnv;
             await handleUsageRequest(download("coco"), withBucket);
             await handleUsageRequest(download("material"), withBucket);
-            expect(points.map((point) => point.blobs?.[5])).toEqual(["material"]);
+            expect(points.map((point) => point.blobs?.[5])).toEqual(["other", "material"]);
         });
     });
 });

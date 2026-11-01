@@ -219,8 +219,8 @@ export function usePresetManager(options: UsePresetManagerOptions = {}): UsePres
             }
 
             const meta = await manager.download(presetKey);
-            track("nnue_download", { ai: presetKey });
             await validatePresetMeta(meta);
+            track("nnue_download", { ai: presetKey });
             await refresh();
             onDownloadComplete?.(meta);
             return meta;

@@ -72,4 +72,74 @@ describe("createUsageTracker", () => {
             UsageEventProps<"nnue_download">
         >();
     });
+
+    it("画面の部品が送り得るすべての値を、Worker が受け付ける", () => {
+        // Record のキーに並べるので、画面の部品の型に値を足すとここが型エラーになり、足し忘れない
+        const results = {
+            win: true,
+            loss: true,
+            draw: true,
+            abort: true,
+            sente_win: true,
+            gote_win: true,
+        } satisfies Record<UsageEvents["match_end"]["result"], true>;
+        const reasons = {
+            checkmate: true,
+            resignation: true,
+            time_expired: true,
+            win_declaration: true,
+            repetition: true,
+            illegal_move: true,
+            abort: true,
+            other: true,
+        } satisfies Record<NonNullable<UsageEvents["match_end"]["reason"]>, true>;
+        const times = { none: true, byoyomi: true, fischer: true, sudden: true } satisfies Record<
+            NonNullable<UsageEvents["match_start"]["time"]>,
+            true
+        >;
+        const starts = { even: true, handicap: true, position: true } satisfies Record<
+            NonNullable<UsageEvents["match_start"]["start"]>,
+            true
+        >;
+        const players = { human_ai: true, ai_ai: true, human_human: true } satisfies Record<
+            UsageEvents["match_start"]["players"],
+            true
+        >;
+        const formats = {
+            kif: true,
+            ki2: true,
+            csa: true,
+            sfen: true,
+            usi: true,
+            url: true,
+            other: true,
+        } satisfies Record<UsageEvents["kifu_export"]["format"], true>;
+        const kinds = { single: true, batch: true } satisfies Record<
+            UsageEvents["analysis_start"]["kind"],
+            true
+        >;
+
+        const { track, sent } = setup();
+        for (const result of Object.keys(results) as (keyof typeof results)[]) {
+            for (const reason of Object.keys(reasons) as (keyof typeof reasons)[]) {
+                track("match_end", { result, reason, plies: 1 });
+            }
+        }
+        for (const time of Object.keys(times) as (keyof typeof times)[]) {
+            for (const start of Object.keys(starts) as (keyof typeof starts)[]) {
+                for (const player of Object.keys(players) as (keyof typeof players)[]) {
+                    track("match_start", { players: player, ai: "coco", time, start });
+                }
+            }
+        }
+        for (const format of Object.keys(formats) as (keyof typeof formats)[]) {
+            track("kifu_import", { format });
+            track("kifu_export", { format });
+        }
+        for (const kind of Object.keys(kinds) as (keyof typeof kinds)[]) {
+            track("analysis_start", { kind });
+        }
+        expect(sent.length).toBeGreaterThan(0);
+        expect(sent.filter((body) => accepted(body) === null)).toEqual([]);
+    });
 });

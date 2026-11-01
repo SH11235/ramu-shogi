@@ -393,13 +393,14 @@ export function StudyWorkspaceView({
             evalMate: evalData?.scoreMate,
         });
     };
-    const copyText = (text: string, done: string): void => {
+    const copyText = (text: string, done: string, onCopied?: () => void): void => {
         const failed = (): void =>
             onMessageChange({ text: "コピーできませんでした。", type: "error" });
         try {
-            void navigator.clipboard
-                .writeText(text)
-                .then(() => onMessageChange({ text: done, type: "success" }), failed);
+            void navigator.clipboard.writeText(text).then(() => {
+                onMessageChange({ text: done, type: "success" });
+                onCopied?.();
+            }, failed);
         } catch {
             failed();
         }
@@ -421,8 +422,9 @@ export function StudyWorkspaceView({
             onMessageChange({ text: "棋譜を書き出せませんでした。", type: "error" });
             return;
         }
-        copyText(text, `${kifuLabel(format)}コピーしました。`);
-        track("kifu_export", { format });
+        copyText(text, `${kifuLabel(format)}コピーしました。`, () =>
+            track("kifu_export", { format }),
+        );
     };
     const saveKifu = onSaveKifuFile
         ? (format: StudyKifuFormat): void => {
