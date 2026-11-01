@@ -1,0 +1,107 @@
+// @vitest-environment node
+
+import { describe, expect, it } from "vitest";
+import { handleUsageRequest, type UsageEnv } from "./usage";
+
+const ORIGIN = "https://app.example.test";
+const DEVICE_ID = "3f2b8c1e-4d5a-4b6c-9d7e-0123456789ab";
+const IPHONE_UA =
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Mobile/15E148 Safari/604.1";
+
+function createEnv({ rateLimitAllowed = true } = {}) {
+    const points: AnalyticsEngineDataPoint[] = [];
+    const rateLimitKeys: string[] = [];
+    const env: UsageEnv = {
+        USAGE_EVENTS: { writeDataPoint: (point) => points.push(point ?? {}) },
+        USAGE_RATE_LIMITER: {
+            limit: async ({ key }) => {
+                rateLimitKeys.push(key);
+                return { success: rateLimitAllowed };
+            },
+        },
+    };
+    return { env, points, rateLimitKeys };
+}
+
+function usageRequest(body: BodyInit, headers: Record<string, string> = {}): Request {
+    return new Request(`${ORIGIN}/usage`, {
+        method: "POST",
+        headers: {
+            Origin: ORIGIN,
+            "CF-Connecting-IP": "203.0.113.7",
+            "User-Agent": IPHONE_UA,
+            ...headers,
+        },
+        body,
+    });
+}
+
+const matchEnd = JSON.stringify({
+    v: 1,
+    deviceId: DEVICE_ID,
+    event: "match_end",
+    props: { result: "loss", reason: "checkmate", plies: 120, durationSec: 1500 },
+});
+
+describe("POST /usage", () => {
+    it("検証した 1 行を決まった列の並びで書き、204 を返す", async () => {
+        const { env, points, rateLimitKeys } = createEnv();
+        const response = await handleUsageRequest(usageRequest(matchEnd), env);
+        expect(response?.status).toBe(204);
+        expect(rateLimitKeys).toEqual(["203.0.113.7"]);
+        expect(points).toEqual([
+            {
+                indexes: [DEVICE_ID],
+                blobs: ["match_end", "XX", "mobile", "0", "0", "loss", "checkmate", "", "", "v1"],
+                doubles: [120, 1500],
+            },
+        ]);
+    });
+
+    it("/usage 以外は扱わない", async () => {
+        const { env } = createEnv();
+        expect(
+            await handleUsageRequest(new Request(`${ORIGIN}/usage/x`, { method: "POST" }), env),
+        ).toBeNull();
+    });
+
+    it("POST 以外は 405", async () => {
+        const { env, points } = createEnv();
+        const response = await handleUsageRequest(new Request(`${ORIGIN}/usage`), env);
+        expect(response?.status).toBe(405);
+        expect(points).toEqual([]);
+    });
+
+    it.each([
+        ["別のオリジン", () => usageRequest(matchEnd, { Origin: "https://evil.example" })],
+        ["JSON でない本文", () => usageRequest("not json")],
+        [
+            "検証に通らない本文",
+            () => usageRequest(JSON.stringify({ v: 1, deviceId: DEVICE_ID, event: "x" })),
+        ],
+        ["上限を超える本文", () => usageRequest(`${matchEnd}${" ".repeat(4096)}`)],
+    ])("書き込まずに 204: %s", async (_, makeRequest) => {
+        const { env, points } = createEnv();
+        const response = await handleUsageRequest(makeRequest(), env);
+        expect(response?.status).toBe(204);
+        expect(points).toEqual([]);
+    });
+
+    it("レート制限を超えたら書き込まない", async () => {
+        const { env, points } = createEnv({ rateLimitAllowed: false });
+        expect((await handleUsageRequest(usageRequest(matchEnd), env))?.status).toBe(204);
+        expect(points).toEqual([]);
+    });
+
+    it("書き込み先の無い環境では受け取って捨てる", async () => {
+        const response = await handleUsageRequest(usageRequest(matchEnd), {});
+        expect(response?.status).toBe(204);
+    });
+
+    it("Origin の無い送信も受け付ける", async () => {
+        const { env, points } = createEnv();
+        const request = new Request(`${ORIGIN}/usage`, { method: "POST", body: matchEnd });
+        await handleUsageRequest(request, env);
+        expect(points[0]?.blobs?.[2]).toBe("desktop");
+    });
+});
