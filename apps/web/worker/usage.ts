@@ -53,6 +53,9 @@ const MAX_NUMBER_FIELDS = 2;
 const accepted = () =>
     new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
 
+// 画面側で自動操作と分からなかったヘッドレスの Chrome も、集計から除けるよう internal にする
+const isHeadless = (userAgent: string) => /HeadlessChrome/.test(userAgent);
+
 function deviceType(userAgent: string): string {
     if (/iPad|Tablet|Android(?!.*Mobile)/i.test(userAgent)) return "tablet";
     if (/Mobi|iPhone|Android/i.test(userAgent)) return "mobile";
@@ -141,13 +144,14 @@ async function recordUsageEvent(request: Request, env: UsageEnv, url: URL): Prom
         MAX_NUMBER_FIELDS,
     );
     const country = (request.cf?.country as string | undefined) ?? "XX";
+    const userAgent = request.headers.get("User-Agent") ?? "";
     dataset.writeDataPoint({
         indexes: [parsed.deviceId],
         blobs: [
             parsed.event,
             country,
-            deviceType(request.headers.get("User-Agent") ?? ""),
-            parsed.internal ? "1" : "0",
+            deviceType(userAgent),
+            parsed.internal || isHeadless(userAgent) ? "1" : "0",
             parsed.loggedIn ? "1" : "0",
             ...texts,
             `v${USAGE_SCHEMA_VERSION}`,

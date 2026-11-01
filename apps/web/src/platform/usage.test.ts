@@ -10,12 +10,14 @@ function setup({
     referrer = "",
     storage = new Map<string, string>(),
     noStorage = false,
+    automated = false,
 } = {}) {
     const sent: { path: string; body: Record<string, unknown> }[] = [];
     const client = createUsageClient({
         hostname,
         search,
         referrer,
+        automated,
         storage: noStorage
             ? null
             : {
@@ -86,6 +88,12 @@ describe("createUsageClient", () => {
         expect(unmarked.sent[0]?.body).not.toHaveProperty("internal");
     });
 
+    it("自動操作のブラウザは internal の印を付けて送る", () => {
+        const { client, sent } = setup({ automated: true });
+        client.track("hint_request");
+        expect(sent[0]?.body.internal).toBe(true);
+    });
+
     it("ログイン中かどうかを付ける", () => {
         const { client, sent } = setup();
         client.setLoggedIn(true);
@@ -139,6 +147,7 @@ describe("createUsageClient", () => {
             hostname: "ramu-shogi.sh11235.com",
             search: "",
             referrer: "",
+            automated: false,
             storage: {
                 getItem: (key) => storage.get(key) ?? null,
                 setItem: (key, value) => void storage.set(key, value),

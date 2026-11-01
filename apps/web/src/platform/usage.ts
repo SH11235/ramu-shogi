@@ -15,6 +15,8 @@ type UsageDeps = {
     search: string;
     referrer: string;
     storage: Pick<Storage, "getItem" | "setItem" | "removeItem"> | null;
+    /** 自動操作のブラウザ（Playwright・Puppeteer・Selenium など）。`navigator.webdriver` */
+    automated: boolean;
     randomUUID: () => string;
     send: (path: string, body: string) => void;
 };
@@ -77,7 +79,10 @@ export function createUsageClient(deps: UsageDeps) {
             v: USAGE_SCHEMA_VERSION,
             deviceId: id,
             event,
-            ...(readStorage(deps, INTERNAL_KEY) === "1" ? { internal: true } : {}),
+            // 動作確認で本番を開く自動操作のブラウザは、各環境の設定に頼らず集計から除けるよう印を付ける
+            ...(deps.automated || readStorage(deps, INTERNAL_KEY) === "1"
+                ? { internal: true }
+                : {}),
             ...(loggedIn ? { loggedIn: true } : {}),
             ...(props ? { props } : {}),
         };
@@ -122,6 +127,7 @@ function browserDeps(): UsageDeps {
         search: window.location.search,
         referrer: document.referrer,
         storage,
+        automated: navigator.webdriver === true,
         randomUUID: () => crypto.randomUUID(),
         send: (path, body) => {
             // sendBeacon は Referer（ID 入りのページの URL）と Cookie を外せないので、fetch で両方を外して送る。
