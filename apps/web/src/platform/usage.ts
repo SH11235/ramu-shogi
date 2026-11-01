@@ -92,6 +92,7 @@ export function createUsageClient(deps: UsageDeps) {
         setLoggedIn(value: boolean): void {
             loggedIn = value;
         },
+        isLoggedIn: (): boolean => loggedIn,
         track,
         /**
          * 表示したパスが変わったときだけ page_view を送る（同じパスの通知が重なっても、絞り込みなどで

@@ -24,6 +24,7 @@ import { syncProfileDisplayNameIfNeeded, useAuthSession } from "../../hooks/useA
 import { getLocalPlayerName, saveLocalPlayerName } from "../../hooks/useLocalPlayerName";
 import { useOnlineAnalysis } from "../../hooks/useOnlineAnalysis";
 import { usePlayFromPosition } from "../../hooks/usePlayFromPosition";
+import { usageClient } from "../../platform/usage";
 
 const nnueManifestUrl: string = (() => {
     const value = import.meta.env.VITE_NNUE_MANIFEST_URL as string | undefined;
@@ -364,6 +365,8 @@ export default function RoomPage(): ReactElement {
             if (isNotAuthenticated) saveLocalPlayerName(trimmedName);
             await syncProfileDisplayNameIfNeeded(session, trimmedName);
             handleJoin(seat);
+            // 観戦（"s"）は対局への参加として数えない
+            if (seat !== "s") usageClient.track("online_room", { action: "join" });
             // ここから先の「接続中」は useRoomConnection が持つ。残すと、接続に失敗して
             // 参加フォームへ戻ったときに入力もボタンも無効のままになる
             setIsPreparingJoin(false);

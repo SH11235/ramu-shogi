@@ -22,6 +22,7 @@ import {
 } from "@shogi/ui/components/study-workspace/studyEntry";
 import type { StudyKifuSource } from "@shogi/ui/components/study-workspace/studyImport";
 import { dispatchAuthSessionSyncEvent } from "../hooks/useAuthSession";
+import { usageClient } from "../platform/usage";
 import { getStudySync } from "./studySync";
 
 export { canOpenGameRecordAsStudy };
@@ -59,7 +60,7 @@ export function createStudyFromKifuSource(
     source: StudyKifuSource,
     deps: Partial<StudyImportDeps> = {},
 ): Promise<OpenOrCreateStudyResult> {
-    return createFromKifuSource(source, withDefaults(deps));
+    return createFromKifuSource(source, withDefaults(deps)).then(reportStudyCreated);
 }
 
 export function createStudyFromKifuTree(
@@ -67,7 +68,14 @@ export function createStudyFromKifuTree(
     info: { players?: { sente?: string; gote?: string } } = {},
     deps: Partial<StudyImportDeps> = {},
 ): Promise<OpenOrCreateStudyResult> {
-    return createFromKifuTree(tree, info, withDefaults(deps));
+    return createFromKifuTree(tree, info, withDefaults(deps)).then(reportStudyCreated);
+}
+
+// ログイン中に作ったノートはサーバーへ同期される。ログインしていなければ端末内だけ
+function reportStudyCreated(result: OpenOrCreateStudyResult): OpenOrCreateStudyResult {
+    if (result.existing) return result;
+    usageClient.track("study_create", { where: usageClient.isLoggedIn() ? "server" : "local" });
+    return result;
 }
 
 /**

@@ -3,10 +3,13 @@ import { isKingInCheck, isStudyUsiMove } from "@shogi/app-core";
 import type { ReactNode } from "react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { useScreenWakeLock } from "../../../hooks/useScreenWakeLock";
+import { useUsageTracker } from "../../../providers/UsageContext";
 import { isHirateStart } from "../play/startPositions";
 import type { PlayPhase, PlayScreenConfig } from "../ShogiMatchContext";
 import type { EngineOption, SideSetting } from "../types";
+import { matchStartEvent } from "../usageEvents";
 import type { useBoardState } from "./useBoardState";
+import type { ClockSettings } from "./useClockManager";
 import type { UseKifuNavigationResult } from "./useKifuNavigation";
 import { ILLEGAL_MOVE_MESSAGE } from "./useMoveExecution";
 import type { useNnueManager } from "./useNnueManager";
@@ -48,6 +51,7 @@ interface UsePlayScreenOptions
     setPlayStartPly: (ply: number) => void;
     matchEndedRef: { current: boolean };
     sides: { sente: SideSetting; gote: SideSetting };
+    timeSettings: ClockSettings;
     engineOptions: EngineOption[];
     senteNnueSelection: NnueSelection;
     goteNnueSelection: NnueSelection;
@@ -100,6 +104,7 @@ export function usePlayScreen({
     setShowResultDialog,
     matchEndedRef,
     sides,
+    timeSettings,
     engineOptions,
     senteNnueSelection,
     goteNnueSelection,
@@ -244,6 +249,19 @@ export function usePlayScreen({
         }
         startRematch();
     }, [pendingRematch, isPlayResetting, playPhase, moves.length]);
+    const track = useUsageTracker();
+    const reportMatchStart = useEffectEvent(() => {
+        track(
+            "match_start",
+            matchStartEvent({
+                sides,
+                selections: { sente: senteNnueSelection, gote: goteNnueSelection },
+                timeSettings,
+                startSfen,
+                movesBeforeStart: moves.length,
+            }),
+        );
+    });
     // 対局が実際に始まった時点の開始局面と手順を、この対局の始まりとして控える
     // （「もう一局」で戻す先と、待ったで戻せる範囲に使う）。
     useEffect(() => {
@@ -251,6 +269,7 @@ export function usePlayScreen({
         setPendingPlayStartCapture(false);
         playStartRef.current = { sfen: startSfen, moves: [...moves] };
         setPlayStartPly(moves.length);
+        reportMatchStart();
     }, [pendingPlayStartCapture, isMatchRunning, startSfen, moves, setPlayStartPly]);
     return isPlayScreen
         ? {
@@ -335,6 +354,7 @@ export function usePlayScreen({
                   if (playHint.status.phase === "preparing") return;
                   setHintCount((count) => count + 1);
                   playHint.request();
+                  track("hint_request", {});
               },
               stopHint: playHint.stop,
               resumeHint: playHint.resume,

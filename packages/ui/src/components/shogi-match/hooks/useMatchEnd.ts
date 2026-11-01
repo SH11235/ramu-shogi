@@ -1,7 +1,9 @@
 import type { GameResult, Player, PositionState } from "@shogi/app-core";
 import { getPositionService } from "@shogi/app-core";
 import { useEffect, useEffectEvent } from "react";
+import { useUsageTracker } from "../../../providers/UsageContext";
 import type { Message, SideSetting } from "../types";
+import { matchEndEvent } from "../usageEvents";
 import { buildLegalCacheKey, type LegalMoveCache } from "../utils/legalMoveCache";
 import type { UsePassRightsResult } from "./usePassRights";
 
@@ -61,9 +63,12 @@ export function useMatchEnd({
     passRights: UsePassRightsResult;
     legalCache: LegalMoveCache;
 }) {
+    const track = useUsageTracker();
     const endMatch = async (result: GameResult) => {
         if (matchEndedRef.current) return;
         matchEndedRef.current = true;
+        // 計測は対局画面の対局だけ（開始も対局画面でだけ送る）
+        if (isPlayScreen) track("match_end", matchEndEvent(result, sides));
         setGameResult(result);
         setShowResultDialog(true);
         playMatchEndSound();

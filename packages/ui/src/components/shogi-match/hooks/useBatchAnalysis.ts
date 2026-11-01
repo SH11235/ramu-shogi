@@ -2,6 +2,7 @@ import type { KifuTree, NnueSelection, ResolvedNnue } from "@shogi/app-core";
 import { getPathToNode } from "@shogi/app-core";
 import type { EngineInfoEvent } from "@shogi/engine-client";
 import { useEffect, useState } from "react";
+import { useUsageTracker } from "../../../providers/UsageContext";
 import type { AnalysisSettings, AnalyzingState } from "../types";
 import { ANALYZING_STATE_NONE } from "../types";
 import { collectBranchAnalysisJobs, collectTreeAnalysisJobs } from "../utils/branchTreeUtils";
@@ -129,6 +130,7 @@ export function useBatchAnalysis({
     batchAnalysis: _batchAnalysis, // 現在は未使用（将来の拡張用に保持）
     setBatchAnalysis,
 }: UseBatchAnalysisProps): UseBatchAnalysisReturn {
+    const track = useUsageTracker();
     // 解析状態（union型で相互排他的な状態を型レベルで保証）
     const [analyzingState, setAnalyzingState] = useState<AnalyzingState>(ANALYZING_STATE_NONE);
 
@@ -188,6 +190,7 @@ export function useBatchAnalysis({
 
     // 特定の手数の局面を解析するコールバック（オンデマンド解析用）
     const handleAnalyzePly = async (ply: number) => {
+        track("analysis_start", { kind: "single" });
         await analyzePlyWithSettings(ply);
     };
 
@@ -199,6 +202,7 @@ export function useBatchAnalysis({
 
     // 分岐内のノードを解析するコールバック
     const handleAnalyzeNode = async (nodeId: string) => {
+        track("analysis_start", { kind: "single" });
         const tree = kifuTree;
         if (!tree) {
             setMessage({ text: "棋譜ツリーが初期化されていません", type: "error" });
@@ -263,6 +267,7 @@ export function useBatchAnalysis({
 
     // 一括解析を開始（並列処理）- 本譜のみ
     const handleStartBatchAnalysis = async () => {
+        track("analysis_start", { kind: "batch" });
         // PVがない手を抽出
         const targetPlies = kifMoves.filter((m) => !m.pv || m.pv.length === 0).map((m) => m.ply);
 
@@ -306,6 +311,7 @@ export function useBatchAnalysis({
     const handleStartTreeBatchAnalysis = async (options?: { mainLineOnly?: boolean }) => {
         const tree = kifuTree;
         if (!tree) return;
+        track("analysis_start", { kind: "batch" });
 
         // ツリーから解析ジョブを収集
         const treeJobs = collectTreeAnalysisJobs(tree, {
@@ -357,6 +363,7 @@ export function useBatchAnalysis({
     const handleAnalyzeBranch = async (branchNodeId: string) => {
         const tree = kifuTree;
         if (!tree) return;
+        track("analysis_start", { kind: "batch" });
 
         // 分岐から解析ジョブを収集
         const branchJobs = collectBranchAnalysisJobs(tree, branchNodeId, {

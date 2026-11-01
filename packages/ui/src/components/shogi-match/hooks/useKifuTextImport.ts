@@ -1,6 +1,8 @@
 import { type ChangeEvent, useEffect, useRef, useState } from "react";
+import { useUsageTracker } from "../../../providers/UsageContext";
 import {
     decodeKifuFileBytes,
+    detectKifuTextFormat,
     type ImportKifHandler,
     type ImportSfenHandler,
     importKifuText,
@@ -39,6 +41,7 @@ export function useKifuTextImport({
     onImportSfen,
     onImportKif,
 }: UseKifuTextImportProps): UseKifuTextImportResult {
+    const track = useUsageTracker();
     const [inputValue, setInputValue] = useState("");
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
@@ -83,6 +86,7 @@ export function useKifuTextImport({
                 }
                 return;
             }
+            track("kifu_import", { format: detectKifuTextFormat(text) });
             if (!isLatest(requestId)) return;
             setSuccess(true);
             setInputValue("");

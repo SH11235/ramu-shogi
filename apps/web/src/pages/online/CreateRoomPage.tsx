@@ -10,6 +10,7 @@ import { PageHeading } from "../../components/PageHeading";
 import { syncProfileDisplayNameIfNeeded, useAuthSession } from "../../hooks/useAuthSession";
 import { getLocalPlayerName, saveLocalPlayerName } from "../../hooks/useLocalPlayerName";
 import { RATE_LIMITED_MESSAGE } from "../../lib/rateLimitMessage";
+import { usageClient } from "../../platform/usage";
 
 // ─── ルーム設定の型 ───────────────────────────────────────────────────────────
 
@@ -167,6 +168,7 @@ export default function CreateRoomPage(): ReactElement {
                 }
 
                 const data = (await res.json()) as CreateRoomResponse;
+                usageClient.track("online_room", { action: "create" });
                 await navigate({
                     to: "/online/$roomId",
                     params: { roomId: data.roomId },

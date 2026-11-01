@@ -7,6 +7,7 @@ import { movesToCsa } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
 import { useState } from "react";
+import { useUsageTracker } from "../../../providers/UsageContext";
 import { Button } from "../../button";
 import { BottomSheet } from "../components/BottomSheet";
 import { useNavigation } from "../contexts/NavigationContext";
@@ -31,6 +32,7 @@ function useKifuCopy(): {
     csaAvailable: boolean;
     copy: (format: KifuFormat) => void;
 } {
+    const track = useUsageTracker();
     const { handleCopyKif, kifMoves, kifuTree } = useNavigation();
     const { play } = useShogiMatchConfig();
     const [copiedFormat, setCopiedFormat] = useState<KifuFormat | null>(null);
@@ -61,7 +63,10 @@ function useKifuCopy(): {
         if (text === null) return;
         void navigator.clipboard
             ?.writeText(text)
-            .then(() => setCopiedFormat(format))
+            .then(() => {
+                setCopiedFormat(format);
+                track("kifu_export", { format });
+            })
             .catch(() => setCopiedFormat(null));
     };
     return { copiedFormat, csaAvailable, copy };
