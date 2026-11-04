@@ -351,6 +351,31 @@ describe("StudyWorkspaceView", () => {
         );
     });
 
+    it("詰み探索の結果は、候補手の一覧より上（ボタンのすぐ下）に出す", () => {
+        const { doc } = createTestStudy([cp(30), cp(40), cp(20), cp(-900), cp(-880)]);
+        const mate = createMate({
+            results: new Map<string, StudyMateState>([
+                [
+                    doc.tree.rootId,
+                    {
+                        status: "done",
+                        mate: { kind: "noMate" },
+                        mateMs: 500,
+                        threat: null,
+                        threatMs: null,
+                    },
+                ],
+            ]),
+        });
+        render(<Harness initialDoc={doc} mate={mate} />);
+        const candidates = screen.getByRole("region", { name: "候補手" });
+        const mateSection = within(candidates).getByRole("region", { name: "詰み探索" });
+        const firstCandidate = within(candidates).getAllByRole("listitem")[0];
+        expect(
+            mateSection.compareDocumentPosition(firstCandidate) & Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+    });
+
     it("解析の間は、詰み探索を始められない", () => {
         render(
             <Harness

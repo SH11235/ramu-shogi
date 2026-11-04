@@ -138,6 +138,68 @@ describe("useStudyMate", () => {
         );
     });
 
+    it("エンジンが失敗したときは、内部の言葉を出さずに読み込み直しを促す", async () => {
+        const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+        const { node, hook } = setup(() => {
+            throw new Error("worker replaced");
+        });
+        act(() => hook.result.current.start(node(2)));
+        await waitFor(() =>
+            expect(hook.result.current.results.get(node(2).id)).toEqual({
+                status: "error",
+                message:
+                    "詰み探索を始められませんでした。ページを読み込み直してから、もう一度お試しください。",
+            }),
+        );
+        expect(consoleError).toHaveBeenCalled();
+        consoleError.mockRestore();
+    });
+
+    it("エンジンを作れないときも、内部の言葉を出さずに読み込み直しを促す", async () => {
+        const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+        const { node } = setup(() => MATE);
+        const option: EngineOption = {
+            id: "wasm",
+            label: "内蔵エンジン",
+            kind: "internal",
+            supportsMate: true,
+            createClient: () => {
+                throw new Error("Worker is not defined");
+            },
+        };
+        const hook = renderHook(() => useStudyMate({ engineOption: option, hashMb: 16 }));
+        act(() => hook.result.current.start(node(2)));
+        expect(hook.result.current.results.get(node(2).id)).toEqual({
+            status: "error",
+            message:
+                "詰み探索を始められませんでした。ページを読み込み直してから、もう一度お試しください。",
+        });
+        expect(consoleError).toHaveBeenCalled();
+        consoleError.mockRestore();
+    });
+
+    it("このエンジンで詰み探索を使えないときは、そう伝える", async () => {
+        const { node, engine } = setup(() => MATE);
+        const option: EngineOption = {
+            ...engine.option,
+            createClient: () => {
+                const client = engine.option.createClient();
+                return {
+                    ...client,
+                    mate: client.mate && { ...client.mate, available: () => false },
+                };
+            },
+        };
+        const hook = renderHook(() => useStudyMate({ engineOption: option, hashMb: 16 }));
+        act(() => hook.result.current.start(node(2)));
+        await waitFor(() =>
+            expect(hook.result.current.results.get(node(2).id)).toEqual({
+                status: "error",
+                message: "このエンジンでは詰み探索を使えません",
+            }),
+        );
+    });
+
     it("調べている間は、別の局面で始めても無視する", async () => {
         const { node, engine, hook } = setup(() => MATE);
         engine.hold("solve");
