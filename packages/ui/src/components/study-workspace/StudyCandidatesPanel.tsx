@@ -528,6 +528,16 @@ export function StudyCandidatesPanel({
                 {elsewhere && <ElsewhereActivityLine activity={elsewhere} />}
             </div>
 
+            {/* 詰み探索の結果は押したボタンの真下に出す（候補手が多い局面でも、列を送らずに見えるように）。 */}
+            {mate && (
+                <StudyMateResult
+                    node={node}
+                    state={mate.state}
+                    onPreviewPv={onPreviewPv}
+                    onAddPvAsVariation={onAddPvAsVariation}
+                />
+            )}
+
             {/* 読んでいる途中の候補。満足したら「止める」で、その時点の結果を残せる。 */}
             {live && (
                 <div className="flex flex-col gap-1 rounded-lg bg-wafuu-washi px-2 py-2">
@@ -649,15 +659,6 @@ export function StudyCandidatesPanel({
                     <ShallowResultLine node={node} result={positionResult} />
                 )}
             </div>
-
-            {mate && (
-                <StudyMateResult
-                    node={node}
-                    state={mate.state}
-                    onPreviewPv={onPreviewPv}
-                    onAddPvAsVariation={onAddPvAsVariation}
-                />
-            )}
 
             {source && (sourceText !== "" || source.pv) && (
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-t border-border pt-2 text-xs text-muted-foreground">

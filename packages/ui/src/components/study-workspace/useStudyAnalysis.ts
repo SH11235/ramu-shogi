@@ -171,6 +171,12 @@ interface UseStudyAnalysisOptions {
     locked?: boolean;
 }
 
+/**
+ * 失敗したときに添える言葉。エンジン・AI の準備の内部の言葉（worker の作り直しなど）は画面に出さない
+ * （開いたままのページでアプリが更新された・通信が切れたなど、ファイルを読めないときに起きる）。
+ */
+const RELOAD_HINT = "ページを読み込み直してから、もう一度お試しください。";
+
 const formatSeconds = (timeMs: number): string => {
     const seconds = timeMs / 1000;
     return Number.isInteger(seconds) ? `${seconds} 秒` : `${Number(seconds.toFixed(2))} 秒`;
@@ -359,10 +365,7 @@ export function useStudyAnalysis({
                 });
                 return;
             }
-            setMessage({
-                text: `解析に失敗した局面があります: ${error.message}`,
-                type: "error",
-            });
+            setMessage({ text: `解析に失敗した局面があります。${RELOAD_HINT}`, type: "error" });
         },
     });
 
@@ -391,7 +394,7 @@ export function useStudyAnalysis({
         },
         onError: (message) => {
             console.error("[study] 深く解析できませんでした:", message);
-            setMessage({ text: `解析に失敗しました: ${message}`, type: "error" });
+            setMessage({ text: `深く解析できませんでした。${RELOAD_HINT}`, type: "error" });
         },
     });
     const isDeepSearching = deep.state.phase === "preparing" || deep.state.phase === "running";
@@ -466,8 +469,9 @@ export function useStudyAnalysis({
                 }
             }
         } catch (error) {
+            console.error("[study] AI を準備できませんでした:", error);
             setMessage({
-                text: `解析を始められません: ${error instanceof Error ? error.message : "AI の準備に失敗しました"}`,
+                text: `AI を準備できず、解析を始められません。${RELOAD_HINT}`,
                 type: "error",
             });
             return null;
@@ -485,10 +489,8 @@ export function useStudyAnalysis({
             });
             return { layer, resolved };
         } catch (error) {
-            setMessage({
-                text: `解析を始められません: ${error instanceof Error ? error.message : String(error)}`,
-                type: "error",
-            });
+            console.error("[study] 解析の設定を作れませんでした:", error);
+            setMessage({ text: `解析を始められません。${RELOAD_HINT}`, type: "error" });
             return null;
         }
     };

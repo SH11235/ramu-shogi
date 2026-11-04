@@ -229,6 +229,32 @@ describe("useStudyAnalysis", () => {
         );
     });
 
+    it("エンジンが失敗したときは、内部の言葉を出さずに読み込み直しを促す", async () => {
+        const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+        const { doc } = createTestStudy();
+        const engine = createEngineOption();
+        const failing: EngineOption = {
+            ...engine.option,
+            createClient: () => ({
+                ...engine.option.createClient(),
+                init: vi.fn().mockRejectedValue(new Error("worker replaced")),
+            }),
+        };
+        const onMessage = vi.fn();
+        const { result } = renderHook(() => useHarness(doc, [failing], { onMessage }));
+
+        await act(async () => {
+            await result.current.controller.startFull();
+        });
+        await waitFor(() =>
+            expect(onMessage).toHaveBeenCalledWith({
+                text: "解析に失敗した局面があります。ページを読み込み直してから、もう一度お試しください。",
+                type: "error",
+            }),
+        );
+        consoleError.mockRestore();
+    });
+
     it("全体を解析すると、レイヤーを作り、全局面（開始局面を含む）の結果が操作として流れる", async () => {
         const { doc, ids } = createTestStudy();
         const engine = createEngineOption();

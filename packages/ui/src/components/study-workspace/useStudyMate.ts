@@ -71,6 +71,19 @@ interface UseStudyMateOptions {
 /** 調べ終わる前に中止・アンマウントされた。 */
 class StudyMateCancelled extends Error {}
 
+/** そのまま画面に出せる理由（このエンジンでは詰み探索を使えない、など）。 */
+class StudyMateUnavailable extends Error {}
+
+/**
+ * 画面に出す理由。エンジンの内部の言葉（worker の作り直しなど）は出さない。開いたままのページで
+ * アプリが更新された・通信が切れたなど、エンジンのファイルを読めないときに起きるので、読み込み直しを促す。
+ */
+function studyMateErrorMessage(error: unknown): string {
+    if (error instanceof StudyMateUnavailable) return error.message;
+    console.error("[study] 詰み探索に失敗しました:", error);
+    return "詰み探索を始められませんでした。ページを読み込み直してから、もう一度お試しください。";
+}
+
 export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): StudyMateController {
     const [results, setResults] = useState<ReadonlyMap<string, StudyMateState>>(new Map());
     const [runningNodeId, setRunningNodeId] = useState<string | null>(null);
@@ -136,10 +149,7 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
         try {
             client = option.createClient();
         } catch (error) {
-            setResult(nodeId, {
-                status: "error",
-                message: error instanceof Error ? error.message : String(error),
-            });
+            setResult(nodeId, { status: "error", message: studyMateErrorMessage(error) });
             return;
         }
         clientRef.current = client;
@@ -155,7 +165,8 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
         ): Promise<MateOutcome> => {
             await client.loadPosition(sfen, []);
             checkCurrent();
-            if (!client.mate) throw new Error("このエンジンでは詰み探索を使えません");
+            if (!client.mate)
+                throw new StudyMateUnavailable("このエンジンでは詰み探索を使えません");
             const outcome = await client.mate.solve(
                 { mode, threads: MATE_THREADS, hashMb, timeMs: STUDY_MATE_TIME_MS },
                 (progress) => {
@@ -174,7 +185,7 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
                 await client.init({ ttSizeMb: 1 });
                 checkCurrent();
                 if (!client.mate?.available()) {
-                    throw new Error("このエンジンでは詰み探索を使えません");
+                    throw new StudyMateUnavailable("このエンジンでは詰み探索を使えません");
                 }
                 // 詰みは局面だけで決まる（それまでの手順は見ない）ので、局面を SFEN にして渡す
                 const mateOutcome = await solve(
@@ -211,10 +222,7 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
                 });
             } catch (error) {
                 if (error instanceof StudyMateCancelled || runRef.current !== run) return;
-                setResult(nodeId, {
-                    status: "error",
-                    message: error instanceof Error ? error.message : String(error),
-                });
+                setResult(nodeId, { status: "error", message: studyMateErrorMessage(error) });
             } finally {
                 if (runRef.current === run) {
                     activeRef.current = null;
