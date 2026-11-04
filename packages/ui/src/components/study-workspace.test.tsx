@@ -1045,6 +1045,66 @@ describe("StudyWorkspaceView", () => {
         expect(panel.textContent).not.toContain("を深く解析中（");
     });
 
+    it("別の局面の深く解析が終わったら、行を消さずに知らせに替え、局面を移ると消す", () => {
+        const { doc, ids } = createTestStudy();
+        const live = {
+            nodeId: ids[3],
+            depth: 12,
+            startedAt: Date.now(),
+            budgetMs: 30_000,
+            preview: null,
+        };
+        const view = render(
+            <Harness initialDoc={doc} analysis={createAnalysis({ mode: "deep", live })} />,
+        );
+        const panel = screen.getByRole("region", { name: "候補手" });
+        expect(panel.textContent).toContain("3手目を深く解析中");
+
+        view.rerender(<Harness initialDoc={doc} analysis={createAnalysis()} />);
+        expect(panel.textContent).toContain("3手目の深く解析が終わりました");
+
+        fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
+        expect(panel.textContent).not.toContain("終わりました");
+    });
+
+    it("別の局面の深く解析を止めたときは、終わったと知らせない", () => {
+        const { doc, ids } = createTestStudy();
+        const analysis = createAnalysis({
+            mode: "deep",
+            live: {
+                nodeId: ids[3],
+                depth: 12,
+                startedAt: Date.now(),
+                budgetMs: 30_000,
+                preview: null,
+            },
+        });
+        const view = render(<Harness initialDoc={doc} analysis={analysis} />);
+        const panel = screen.getByRole("region", { name: "候補手" });
+        fireEvent.click(within(panel).getByRole("button", { name: "止める" }));
+        view.rerender(<Harness initialDoc={doc} analysis={createAnalysis()} />);
+        expect(panel.textContent).not.toContain("終わりました");
+        expect(panel.textContent).not.toContain("を深く解析中");
+    });
+
+    it("この局面を深く解析している間は、別の局面の行を出さない（空きも置かない）", () => {
+        const { doc } = createTestStudy();
+        const analysis = createAnalysis({
+            mode: "deep",
+            live: {
+                nodeId: doc.tree.rootId,
+                depth: 12,
+                startedAt: Date.now(),
+                budgetMs: 30_000,
+                preview: null,
+            },
+        });
+        render(<Harness initialDoc={doc} analysis={analysis} />);
+        const panel = screen.getByRole("region", { name: "候補手" });
+        expect(within(panel).queryByRole("button", { name: "その局面へ" })).toBeNull();
+        expect(panel.querySelector('[aria-hidden="true"].h-7')).toBeNull();
+    });
+
     it("別の局面を深く解析している間に深く解析を押すと、この局面に切り替える", () => {
         const { doc, ids } = createTestStudy();
         const analysis = createAnalysis({

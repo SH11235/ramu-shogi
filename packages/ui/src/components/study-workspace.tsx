@@ -23,7 +23,7 @@ import {
 } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { useUsageTracker } from "../providers/UsageContext";
 import type { PlayFromPosition } from "./rshogi-play-from-position";
 import { MatchNnueDownloadDialog } from "./shogi-match/components/MatchNnueDownloadDialog";
@@ -296,6 +296,11 @@ export function StudyWorkspaceView({
     });
     // 「この局面を深く解析」を押した局面。その局面を見ている間、結果を開いた状態で目立たせる。
     const [deepNodeId, setDeepNodeId] = useState<string | null>(null);
+    /** 別の局面で終わった解析・詰み探索（候補手の欄で知らせる。局面を移ると消す）。 */
+    const [finishedElsewhere, setFinishedElsewhere] = useState<{
+        what: "deep" | "mate" | "full";
+        nodeId: string | null;
+    } | null>(null);
     const [pvPreview, setPvPreview] = useState<{
         pv: string[];
         startPosition: PositionState;
@@ -314,6 +319,7 @@ export function StudyWorkspaceView({
         locked,
         onLeave: (leaving) => {
             setDeepNodeId(null);
+            setFinishedElsewhere(null);
             // 長すぎて保存できていないコメントを残して移るときは、黙って移らず知らせる。
             const draft = comments.drafts.get(leaving.id);
             if (draft !== undefined && isStudyCommentOverLimit(draft.text)) {
@@ -592,7 +598,7 @@ export function StudyWorkspaceView({
             positionTitle: `${node.ply}手目 ${studyMoveLabel(tree, nodeId)}`,
         };
     };
-    const elsewhere: StudyElsewhereActivity | undefined = (() => {
+    const running: Exclude<StudyElsewhereActivity, { kind: "finished" }> | undefined = (() => {
         if (analysis.mode === "full") {
             return { kind: "full", progress: analysis.progress, onStop: cancelAnalysis };
         }
@@ -622,6 +628,74 @@ export function StudyWorkspaceView({
         }
         return undefined;
     })();
+    // 別の局面で動いていたものが、利用者の操作なしに終わったら、行を消さずに「終わりました」に替える。
+    // 局面を移る・閉じるまで残す（終わった瞬間に行が消えて、下の候補手が動かないように）。
+    const runningTarget =
+        running === undefined
+            ? null
+            : {
+                  what: running.kind,
+                  nodeId:
+                      running.kind === "deep"
+                          ? running.live.nodeId
+                          : running.kind === "mate"
+                            ? (mate?.runningNodeId ?? null)
+                            : null,
+              };
+    const runningKey = runningTarget ? `${runningTarget.what}:${runningTarget.nodeId}` : null;
+    const previousRunningRef = useRef<{
+        target: NonNullable<typeof runningTarget>;
+        currentNodeId: string;
+        serial: number;
+    } | null>(null);
+    const onRunningChange = useEffectEvent((key: string | null, nodeId: string): void => {
+        const previous = previousRunningRef.current;
+        if (key !== null && runningTarget) {
+            previousRunningRef.current = {
+                target: runningTarget,
+                currentNodeId: nodeId,
+                serial: actionSerialRef.current,
+            };
+            setFinishedElsewhere(null);
+            return;
+        }
+        previousRunningRef.current = null;
+        // 局面を移った・止めた・別の解析に切り替えたときは、終わったと知らせない。
+        if (
+            previous === null ||
+            previous.currentNodeId !== nodeId ||
+            previous.serial !== actionSerialRef.current
+        ) {
+            return;
+        }
+        setFinishedElsewhere(previous.target);
+    });
+    useEffect(() => {
+        onRunningChange(runningKey, currentNodeId);
+    }, [runningKey, currentNodeId]);
+    const elsewhere: StudyElsewhereActivity | undefined =
+        running ??
+        (finishedElsewhere
+            ? {
+                  kind: "finished",
+                  what: finishedElsewhere.what,
+                  position:
+                      finishedElsewhere.nodeId === null
+                          ? null
+                          : (() => {
+                                const nodeId = finishedElsewhere.nodeId;
+                                return {
+                                    ...positionOf(nodeId),
+                                    onGo: () => {
+                                        navigateTo(nodeId);
+                                        if (finishedElsewhere.what === "deep")
+                                            setDeepNodeId(nodeId);
+                                    },
+                                };
+                            })(),
+                  onDismiss: () => setFinishedElsewhere(null),
+              }
+            : undefined);
     const analysisRun: StudyAnalysisRunState = {
         mode: analysis.mode,
         progress: analysis.progress,

@@ -76,6 +76,14 @@ export type StudyElsewhereActivity =
           kind: "full";
           progress: { completed: number; total: number } | null;
           onStop: () => void;
+      }
+    | {
+          /** 別の局面で動いていたものが終わった（局面を移る・閉じるまで残す）。 */
+          kind: "finished";
+          what: "deep" | "mate" | "full";
+          /** 全体の解析では null。 */
+          position: { positionLabel: string; positionTitle: string; onGo: () => void } | null;
+          onDismiss: () => void;
       };
 
 /** ある局面の候補手のまとまり。 */
@@ -192,17 +200,54 @@ function DeepProgressNote({ live }: { live: StudyLiveSearch }): ReactElement | n
     return remaining !== null ? <>（残り {remaining} 秒）</> : null;
 }
 
+const FINISHED_TEXT = { deep: "の深く解析が終わりました", mate: "の詰み探索が終わりました" };
+
 /**
- * 別の局面で動いているものの 1 行。高さを固定し、何も動いていないときも同じ高さの空きを置く
- * （裏で動いていた解析が終わっても、下の候補手が上下に動かないように）。1 行に収めるため、局面の
- * 表記だけを省略し、何をしているか・残りの時間は省略しない。
+ * 別の局面で動いているもの・終わったものの 1 行。終わっても行を消さずに知らせに替えるので、裏の
+ * 解析が終わった瞬間に下の候補手が動かない。1 行に収めるため、局面の表記だけを省略し、何をして
+ * いるか・残りの時間は省略しない。
  */
-function ElsewhereActivityLine({
-    activity,
-}: {
-    activity: StudyElsewhereActivity | undefined;
-}): ReactElement {
-    if (!activity) return <div aria-hidden="true" className="h-7" />;
+function ElsewhereActivityLine({ activity }: { activity: StudyElsewhereActivity }): ReactElement {
+    if (activity.kind === "finished") {
+        const { position } = activity;
+        return (
+            <div className="flex h-7 items-center gap-1 rounded-md bg-muted/40 pl-2 pr-0.5 text-xs text-muted-foreground">
+                <output
+                    aria-live="polite"
+                    className="flex min-w-0 flex-1 whitespace-nowrap"
+                    title={position?.positionTitle}
+                >
+                    {position && <span className="truncate">{position.positionLabel}</span>}
+                    <span className="shrink-0">
+                        {activity.what === "full"
+                            ? "全体の解析が終わりました"
+                            : FINISHED_TEXT[activity.what]}
+                    </span>
+                </output>
+                {position && (
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 shrink-0 px-2 text-xs"
+                        onClick={position.onGo}
+                    >
+                        その局面へ
+                    </Button>
+                )}
+                <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    aria-label="知らせを閉じる"
+                    className="h-7 w-7 shrink-0 p-0 text-xs"
+                    onClick={activity.onDismiss}
+                >
+                    ×
+                </Button>
+            </div>
+        );
+    }
     const label = activity.kind === "full" ? null : activity.positionLabel;
     const status =
         activity.kind === "full" ? (
@@ -480,7 +525,7 @@ export function StudyCandidatesPanel({
                         />
                     )}
                 </div>
-                <ElsewhereActivityLine activity={elsewhere} />
+                {elsewhere && <ElsewhereActivityLine activity={elsewhere} />}
             </div>
 
             {/* 読んでいる途中の候補。満足したら「止める」で、その時点の結果を残せる。 */}
