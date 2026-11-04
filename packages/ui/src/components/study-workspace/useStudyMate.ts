@@ -74,10 +74,7 @@ class StudyMateCancelled extends Error {}
 /** そのまま画面に出せる理由（このエンジンでは詰み探索を使えない、など）。 */
 class StudyMateUnavailable extends Error {}
 
-/**
- * 画面に出す理由。エンジンの内部の言葉（worker の作り直しなど）は出さない。開いたままのページで
- * アプリが更新された・通信が切れたなど、エンジンのファイルを読めないときに起きるので、読み込み直しを促す。
- */
+// エンジンの内部の言葉は出さない。開いたままのページでアプリが更新されるなどで起きるので、読み込み直しを促す。
 function studyMateErrorMessage(error: unknown): string {
     if (error instanceof StudyMateUnavailable) return error.message;
     console.error("[study] 詰み探索に失敗しました:", error);

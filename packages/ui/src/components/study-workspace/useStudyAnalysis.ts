@@ -171,10 +171,7 @@ interface UseStudyAnalysisOptions {
     locked?: boolean;
 }
 
-/**
- * 失敗したときに添える言葉。エンジン・AI の準備の内部の言葉（worker の作り直しなど）は画面に出さない
- * （開いたままのページでアプリが更新された・通信が切れたなど、ファイルを読めないときに起きる）。
- */
+// 失敗時はエンジン・AI の準備の内部の言葉を出さず、これを添える（開いたままのページでアプリが更新されるなどで起きる）。
 const RELOAD_HINT = "ページを読み込み直してから、もう一度お試しください。";
 
 const formatSeconds = (timeMs: number): string => {

@@ -174,6 +174,7 @@ describe("useStudyMate", () => {
             message:
                 "詰み探索を始められませんでした。ページを読み込み直してから、もう一度お試しください。",
         });
+        expect(consoleError).toHaveBeenCalled();
         consoleError.mockRestore();
     });
 
