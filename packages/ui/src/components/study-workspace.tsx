@@ -915,6 +915,8 @@ export function StudyWorkspaceView({
                 mate?.supported
                     ? {
                           state: mate.results.get(currentNode.id),
+                          moveLabel:
+                              currentNode.ply === 0 ? null : studyMoveLabel(tree, currentNodeId),
                           onStart: () => void startMate(),
                           onStop: stopMateByUser,
                       }

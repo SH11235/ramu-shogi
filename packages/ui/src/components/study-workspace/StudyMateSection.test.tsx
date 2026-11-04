@@ -12,7 +12,11 @@ function renderControl(state: StudyMateState | undefined, { disabled = false } =
     return handlers;
 }
 
-function renderResult(state: StudyMateState | undefined) {
+/** ▲7六歩 △3四歩 の後 (先手番) の局面。 */
+function renderResult(
+    state: StudyMateState | undefined,
+    { moveLabel = "☖3四歩(33)" }: { moveLabel?: string | null } = {},
+) {
     const { doc, ids } = createTestStudy();
     const { tree } = buildStudyViewTree(doc, TEST_LAYER_ID);
     const node = tree.nodes.get(ids[2]);
@@ -20,7 +24,7 @@ function renderResult(state: StudyMateState | undefined) {
     const handlers = { onPreviewPv: vi.fn(), onAddPvAsVariation: vi.fn() };
     const { container } = render(
         <TooltipProvider>
-            <StudyMateResult node={node} state={state} {...handlers} />
+            <StudyMateResult node={node} moveLabel={moveLabel} state={state} {...handlers} />
         </TooltipProvider>,
     );
     return { node, handlers, container };
@@ -81,7 +85,7 @@ describe("StudyMateResult", () => {
                 threatMs: 300,
             },
         });
-        screen.getByText("詰めろ");
+        screen.getByText("☗玉に詰めろ");
         expect(screen.getAllByText("なし")).toHaveLength(2);
     });
 
@@ -98,8 +102,8 @@ describe("StudyMateResult", () => {
         screen.getByText("（詰み・詰めろをそれぞれ最大 10 秒）");
     });
 
-    it("詰みは手数を言い切らずに手順と一緒に出し、盤で見られる", () => {
-        // ▲7六歩 △3四歩 の後 (先手番)。手順の中身は表示の確認用で、詰みである必要はない
+    it("詰みは相手の玉の名前で出し、手数を言い切らずに手順と一緒に出し、盤で見られる", () => {
+        // 手順の中身は表示の確認用で、詰みである必要はない
         const { node, handlers } = renderResult({
             status: "done",
             mate: { kind: "mate", pv: ["2g2f", "8c8d", "2f2e"] },
@@ -107,9 +111,11 @@ describe("StudyMateResult", () => {
             threat: null,
             threatMs: null,
         });
+        screen.getByText("☖玉の詰み");
         screen.getByText("あり");
-        screen.getByText("（☗の詰み・3 手・0.5 秒）");
-        expect(screen.queryByText("詰めろ")).toBeNull();
+        screen.getByText("（3 手・0.5 秒）");
+        screen.getByText("☗が王手を続けて詰ませる手順");
+        expect(screen.queryByText("☗玉に詰めろ")).toBeNull();
         fireEvent.click(screen.getByRole("button", { name: "詰み手順を盤で見る" }));
         expect(handlers.onPreviewPv).toHaveBeenCalledWith({
             nodeId: node.id,
@@ -118,7 +124,7 @@ describe("StudyMateResult", () => {
         });
     });
 
-    it("詰みが無ければ、詰めろの結果を相手の詰みとして出す", () => {
+    it("詰めろは手番の側の玉の名前で出し、直前の手が詰めろだと伝える", () => {
         renderResult({
             status: "done",
             mate: { kind: "noMate" },
@@ -126,11 +132,39 @@ describe("StudyMateResult", () => {
             threat: { kind: "mate", pv: ["2b8h+"] },
             threatMs: 2_000,
         });
+        screen.getByText("☖玉の詰み");
         screen.getByText("なし");
-        screen.getByText("詰めろ");
-        screen.getByText("（☖の詰み・1 手・2.0 秒）");
+        screen.getByText("☗玉に詰めろ");
+        screen.getByText("（1 手・2.0 秒）");
+        screen.getByText("☖3四歩(33) は詰めろ。☗が受けないと、次の手順で詰まされる");
         // 詰めろの手順は手番を渡した局面からなので、盤で見る・変化に足す操作は出さない
         expect(screen.queryByRole("button", { name: "詰み手順を盤で見る" })).toBeNull();
+    });
+
+    it("開始局面の詰めろは、直前の手を言わずに伝える", () => {
+        renderResult(
+            {
+                status: "done",
+                mate: { kind: "noMate" },
+                mateMs: 1_000,
+                threat: { kind: "mate", pv: ["2b8h+"] },
+                threatMs: 2_000,
+            },
+            { moveLabel: null },
+        );
+        screen.getByText("☗が受けないと、次の手順で詰まされる");
+    });
+
+    it("詰み・詰めろの言葉の説明を開ける", () => {
+        renderResult({
+            status: "done",
+            mate: { kind: "noMate" },
+            mateMs: 1_000,
+            threat: { kind: "noMate" },
+            threatMs: 1_000,
+        });
+        fireEvent.click(screen.getByText("詰み・詰めろとは"));
+        screen.getByText(/受けの手を指さないと、次に詰まされる状態/);
     });
 
     it("扱えない局面は、相手の玉の有無で理由を分けて伝える", () => {
@@ -155,6 +189,7 @@ describe("StudyMateResult", () => {
             <TooltipProvider>
                 <StudyMateResult
                     node={{ ...node, positionAfter: { ...node.positionAfter, board } }}
+                    moveLabel="☖3四歩(33)"
                     state={{
                         status: "done",
                         mate: { kind: "unsupported" },

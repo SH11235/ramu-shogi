@@ -1,6 +1,7 @@
 /**
  * 候補手の欄に出す詰み探索。操作（調べるボタン・中止）は「この局面を深く解析」と並べ、途中経過と
- * 結果（手番側の詰みと、手番側に掛かっている詰めろ）は、調べた局面の詰み探索の枠に出す。
+ * 結果は、調べた局面の詰み探索の枠に出す。結果は「☗玉の詰み」「☖玉に詰めろ」のように、どちらの玉の
+ * 話かで言う（詰み・詰めろという言葉に慣れていなくても、どちらが危ないかが分かるように）。
  */
 
 import type { KifuNode } from "@shogi/app-core";
@@ -21,6 +22,7 @@ type Side = "sente" | "gote";
 const sideClass = (side: Side): string => (side === "sente" ? "text-wafuu-shu" : "text-wafuu-ai");
 const sideMark = (side: Side): string => (side === "sente" ? "☗" : "☖");
 const opponent = (side: Side): Side => (side === "sente" ? "gote" : "sente");
+const king = (side: Side): string => `${sideMark(side)}玉`;
 
 const LIMIT_SECONDS = STUDY_MATE_TIME_MS / 1000;
 const UNKNOWN_TEXT = `${LIMIT_SECONDS} 秒では読み切れませんでした`;
@@ -69,16 +71,20 @@ function MateLine({
     mover,
     result,
     elapsedMs,
+    caption,
     moves,
     unsupportedText,
     actions,
 }: {
+    /** どちらの玉の話か（例: `☗玉の詰み`）。 */
     label: string;
     /** 詰ませる側。 */
     mover: Side;
     result: MateResult;
     /** 調べるのに掛かった時間（ミリ秒）。 */
     elapsedMs: number;
+    /** 見つけた手順の前に添える、何の手順かの説明。 */
+    caption: string;
     moves: string[];
     /** 扱えない局面のときの文言（詰めろの行は扱えない局面を出さないので省く）。 */
     unsupportedText?: string;
@@ -86,7 +92,7 @@ function MateLine({
 }): ReactElement {
     return (
         <div className="flex items-baseline gap-2 px-1 py-1">
-            <span className="w-12 shrink-0 text-xs text-muted-foreground">{label}</span>
+            <span className="w-20 shrink-0 text-xs text-muted-foreground">{label}</span>
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                 {result.kind === "mate" ? (
                     <>
@@ -96,10 +102,10 @@ function MateLine({
                                 あり
                             </span>
                             <span className="text-xs text-muted-foreground">
-                                （{sideMark(mover)}の詰み・{result.pv.length} 手・
-                                {formatMateSeconds(elapsedMs)}）
+                                （{result.pv.length} 手・{formatMateSeconds(elapsedMs)}）
                             </span>
                         </span>
+                        <p className="text-xs text-wafuu-sumi">{caption}</p>
                         <p className="line-clamp-2 text-xs text-muted-foreground">
                             {moves.join(" ")}
                         </p>
@@ -179,11 +185,14 @@ export function StudyMateControl({
  */
 export function StudyMateResult({
     node,
+    moveLabel,
     state,
     onPreviewPv,
     onAddPvAsVariation,
 }: {
     node: KifuNode;
+    /** この局面に至った手の表記（例: `☗7六歩(77)`）。開始局面は null。 */
+    moveLabel: string | null;
     state: StudyMateState | undefined;
     onPreviewPv: (request: StudyPvRequest) => void;
     onAddPvAsVariation: (request: StudyPvRequest) => void;
@@ -219,23 +228,56 @@ export function StudyMateResult({
                 >
                     <MateResults
                         node={node}
+                        moveLabel={moveLabel}
                         state={done}
                         onPreviewPv={onPreviewPv}
                         onAddPvAsVariation={onAddPvAsVariation}
                     />
                 </div>
             )}
+            <MateGlossary />
         </section>
+    );
+}
+
+/** 言葉の説明。詰み・詰めろに慣れていない人向けなので、開いたときだけ出す。 */
+function MateGlossary(): ReactElement {
+    return (
+        <details className="px-1 py-0.5 text-xs text-muted-foreground">
+            <summary className="cursor-pointer select-none">詰み・詰めろとは</summary>
+            <dl className="flex flex-col gap-1 pt-1 leading-relaxed">
+                <div>
+                    <dt className="inline font-medium text-wafuu-sumi">詰み</dt>
+                    <dd className="inline">
+                        ：王手を続けて、相手の玉の逃げ場を無くす手順があること。いまの手番の側が、相手の玉を詰ませられるかを調べます。
+                    </dd>
+                </div>
+                <div>
+                    <dt className="inline font-medium text-wafuu-sumi">詰めろ</dt>
+                    <dd className="inline">
+                        ：受けの手を指さないと、次に詰まされる状態。直前の手が、手番の側の玉に詰めろを掛けているか（手番の側が何もしなかったら詰むか）を調べます。詰めろを掛けられた側は、受けるか、先に相手の玉を詰ませる必要があります。
+                    </dd>
+                </div>
+                <div>
+                    <dt className="inline font-medium text-wafuu-sumi">なし（読み切り）</dt>
+                    <dd className="inline">
+                        ：王手を続けて詰ませる手順が無いと、最後まで調べた結果です。時間内に調べ切れなかったときは「読み切れませんでした」と出します。
+                    </dd>
+                </div>
+            </dl>
+        </details>
     );
 }
 
 function MateResults({
     node,
+    moveLabel,
     state,
     onPreviewPv,
     onAddPvAsVariation,
 }: {
     node: KifuNode;
+    moveLabel: string | null;
     state: StudyMateState & { status: "done" };
     onPreviewPv: (request: StudyPvRequest) => void;
     onAddPvAsVariation: (request: StudyPvRequest) => void;
@@ -262,10 +304,11 @@ function MateResults({
     return (
         <>
             <MateLine
-                label="詰み"
+                label={`${king(opponent(turn))}の詰み`}
                 mover={turn}
                 result={mate}
                 elapsedMs={mateMs}
+                caption={`${sideMark(turn)}が王手を続けて詰ませる手順`}
                 moves={mateMoves}
                 unsupportedText={
                     sidesWithoutKing(node.positionAfter).includes(opponent(turn))
@@ -293,10 +336,11 @@ function MateResults({
             />
             {threat && threatMs !== null && (
                 <MateLine
-                    label="詰めろ"
+                    label={`${king(turn)}に詰めろ`}
                     mover={opponent(turn)}
                     result={threat}
                     elapsedMs={threatMs}
+                    caption={`${moveLabel ? `${moveLabel} は詰めろ。` : ""}${sideMark(turn)}が受けないと、次の手順で詰まされる`}
                     moves={threatMoves}
                 />
             )}
