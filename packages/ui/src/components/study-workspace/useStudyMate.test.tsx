@@ -95,7 +95,9 @@ describe("useStudyMate", () => {
             expect(hook.result.current.results.get(node(2).id)).toEqual({
                 status: "done",
                 mate: MATE,
+                mateMs: 1,
                 threat: null,
+                threatMs: null,
             }),
         );
         expect(engine.loads).toEqual([AFTER_TWO]);
@@ -111,7 +113,9 @@ describe("useStudyMate", () => {
             expect(hook.result.current.results.get(node(2).id)).toEqual({
                 status: "done",
                 mate: NO_MATE,
+                mateMs: 1,
                 threat: MATE,
+                threatMs: 1,
             }),
         );
         expect(engine.loads).toEqual([AFTER_TWO, AFTER_TWO_PASSED]);
@@ -127,7 +131,9 @@ describe("useStudyMate", () => {
             expect(hook.result.current.results.get(node(2).id)).toEqual({
                 status: "done",
                 mate: NO_MATE,
+                mateMs: 1,
                 threat: null,
+                threatMs: null,
             }),
         );
     });
@@ -163,7 +169,7 @@ describe("useStudyMate", () => {
     it("結果のある局面を調べ直して中止すると、前の結果に戻す", async () => {
         const { node, engine, hook } = setup(() => MATE);
         act(() => hook.result.current.start(node(1)));
-        const done = { status: "done", mate: MATE, threat: null };
+        const done = { status: "done", mate: MATE, mateMs: 1, threat: null, threatMs: null };
         await waitFor(() => expect(hook.result.current.results.get(node(1).id)).toEqual(done));
         engine.hold("solve");
         act(() => hook.result.current.start(node(1)));

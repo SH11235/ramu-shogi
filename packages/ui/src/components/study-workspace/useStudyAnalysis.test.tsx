@@ -19,7 +19,11 @@ import { buildStudyViewTree } from "./studyView";
 import { STUDY_DEEP_TIME_MS, useStudyAnalysis } from "./useStudyAnalysis";
 
 /** 探索のたびに評価値つきの info を 1 回流してから bestmove を返すエンジン。 */
-function createEngineOption(searchMs = 5): {
+/** `cancelMs` は探索を止め終わるまでの時間（止めている途中に次の操作を挟むのに使う）。 */
+function createEngineOption(
+    searchMs = 5,
+    cancelMs = 0,
+): {
     option: EngineOption;
     searches: () => number;
     clients: () => number;
@@ -61,6 +65,8 @@ function createEngineOption(searchMs = 5): {
                 return {
                     async cancel() {
                         clearTimeout(timer);
+                        if (cancelMs > 0)
+                            await new Promise((resolve) => setTimeout(resolve, cancelMs));
                     },
                 };
             },
@@ -398,6 +404,67 @@ describe("useStudyAnalysis", () => {
         expect(result.current.controller.continuableDeepNodeId).toBe(ids[2]);
         expect(engine.starts()).toBe(1);
         expect(engine.searches()).toBe(0);
+    });
+
+    it("別の局面を深く解析している途中に深く解析すると、前の読みを結果に残して切り替える", async () => {
+        const { doc, ids } = createTestStudy();
+        const engine = createResumableEngineOption();
+        const { result } = renderHook(() => useHarness(doc, [engine.option]));
+
+        await act(async () => {
+            await result.current.controller.startDeep(ids[2]);
+        });
+        await waitFor(() => expect(result.current.controller.live?.nodeId).toBe(ids[2]));
+
+        await act(async () => {
+            await result.current.controller.startDeep(ids[3]);
+        });
+        await waitFor(() => expect(result.current.controller.live?.nodeId).toBe(ids[3]));
+        expect(result.current.controller.mode).toBe("deep");
+        expect(result.current.doc.layers[0].results[ids[2]].completion).toBe("aborted");
+    });
+
+    it("切り替えで前の読みを止め終わる前に中止したら、切り替え先の解析は始めない", async () => {
+        const { doc, ids } = createTestStudy();
+        const engine = createResumableEngineOption();
+        const { result } = renderHook(() => useHarness(doc, [engine.option]));
+
+        await act(async () => {
+            await result.current.controller.startDeep(ids[2]);
+        });
+        await waitFor(() => expect(result.current.controller.live?.nodeId).toBe(ids[2]));
+
+        await act(async () => {
+            const switching = result.current.controller.startDeep(ids[3]);
+            await result.current.controller.cancel();
+            await switching;
+        });
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(result.current.controller.mode).toBeNull();
+        expect(result.current.controller.live).toBeNull();
+    });
+
+    it("続けて別の局面に切り替えると、最後に押した局面だけを解析し、その状態を消さない", async () => {
+        const { doc, ids } = createTestStudy();
+        const engine = createEngineOption(60_000, 40);
+        const { result } = renderHook(() => useHarness(doc, [engine.option]));
+
+        await act(async () => {
+            await result.current.controller.startDeep(ids[1]);
+        });
+        await waitFor(() => expect(result.current.controller.live?.nodeId).toBe(ids[1]));
+
+        await act(async () => {
+            const toSecond = result.current.controller.startDeep(ids[2]);
+            // 1 回目の停止が探索を止めている途中で、もう一度切り替える。
+            await new Promise((resolve) => setTimeout(resolve, 10));
+            const toThird = result.current.controller.startDeep(ids[3]);
+            await Promise.all([toSecond, toThird]);
+        });
+        await waitFor(() => expect(result.current.controller.live?.nodeId).toBe(ids[3]));
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(result.current.controller.mode).toBe("deep");
+        expect(result.current.controller.live?.nodeId).toBe(ids[3]);
     });
 
     it("AI の準備中に画面を離れたら、解析を始めない（エンジンも作らない）", async () => {

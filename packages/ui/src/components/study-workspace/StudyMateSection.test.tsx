@@ -1,27 +1,14 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "../tooltip";
-import { StudyMateControl, StudyMateProgress, StudyMateResult } from "./StudyMateSection";
+import { StudyMateControl, StudyMateResult } from "./StudyMateSection";
 import { createTestStudy, TEST_LAYER_ID } from "./study-test-support";
 import { buildStudyViewTree } from "./studyView";
 import type { StudyMateState } from "./useStudyMate";
 
-function renderControl(
-    state: StudyMateState | undefined,
-    { busyElsewhere = false, disabled = false } = {},
-) {
+function renderControl(state: StudyMateState | undefined, { disabled = false } = {}) {
     const handlers = { onStart: vi.fn(), onStop: vi.fn() };
-    render(
-        <>
-            <StudyMateControl
-                state={state}
-                busyElsewhere={busyElsewhere}
-                disabled={disabled}
-                {...handlers}
-            />
-            <StudyMateProgress state={state} busyElsewhere={busyElsewhere} />
-        </>,
-    );
+    render(<StudyMateControl state={state} disabled={disabled} {...handlers} />);
     return handlers;
 }
 
@@ -53,40 +40,31 @@ describe("StudyMateControl", () => {
         ).toBe(true);
     });
 
-    it("調べている間は途中経過と中止を出す", () => {
+    it("調べている間は中止に替わる", () => {
         const handlers = renderControl({
             status: "running",
             phase: "threat",
             nodes: 1_234_567,
             elapsedMs: 3_200,
         });
-        screen.getByText("詰めろを調べています（3 秒）");
-        fireEvent.click(screen.getByRole("button", { name: "詰み探索を中止" }));
-        expect(handlers.onStop).toHaveBeenCalled();
-    });
-
-    it("別の局面を調べている間は、そう伝えて中止できる", () => {
-        const handlers = renderControl(undefined, { busyElsewhere: true });
-        screen.getByText("別の局面の詰みを調べています");
-        expect(screen.queryByRole("button", { name: "詰みを読む" })).toBeNull();
         fireEvent.click(screen.getByRole("button", { name: "詰み探索を中止" }));
         expect(handlers.onStop).toHaveBeenCalled();
     });
 });
 
 describe("StudyMateResult", () => {
-    it("調べていない・調べている途中は何も出さない", () => {
+    it("調べていない局面は何も出さない", () => {
         expect(renderResult(undefined).container.textContent).toBe("");
     });
 
-    it("途中経過は結果の場所に出さない", () => {
-        const { container } = renderResult({
-            status: "running",
-            phase: "mate",
-            nodes: 0,
-            elapsedMs: 0,
-        });
-        expect(container.textContent).toBe("");
+    it("調べている間は、上限と合わせた経過を見出しに出す", () => {
+        renderResult({ status: "running", phase: "threat", nodes: 1_234, elapsedMs: 3_200 });
+        screen.getByText("詰めろを調べています（3 / 10 秒）");
+    });
+
+    it("エンジンの起動を待つ間は秒数を出さない", () => {
+        renderResult({ status: "running", phase: "mate", nodes: 0, elapsedMs: 0 });
+        screen.getByText("詰みを調べています");
     });
 
     it("調べ直している間は前の結果を出しておく", () => {
@@ -95,10 +73,29 @@ describe("StudyMateResult", () => {
             phase: "mate",
             nodes: 0,
             elapsedMs: 0,
-            previous: { status: "done", mate: { kind: "noMate" }, threat: { kind: "noMate" } },
+            previous: {
+                status: "done",
+                mate: { kind: "noMate" },
+                mateMs: 1_200,
+                threat: { kind: "noMate" },
+                threatMs: 300,
+            },
         });
         screen.getByText("詰めろ");
         expect(screen.getAllByText("なし")).toHaveLength(2);
+    });
+
+    it("詰みが無いと読み切ったら、掛かった時間を添える（一瞬でも 0 秒とは書かない）", () => {
+        renderResult({
+            status: "done",
+            mate: { kind: "noMate" },
+            mateMs: 1_840,
+            threat: { kind: "noMate" },
+            threatMs: 20,
+        });
+        screen.getByText("（読み切り・1.8 秒）");
+        screen.getByText("（読み切り・0.1 秒未満）");
+        screen.getByText("（詰み・詰めろをそれぞれ最大 10 秒）");
     });
 
     it("詰みは手数を言い切らずに手順と一緒に出し、盤で見られる", () => {
@@ -106,10 +103,12 @@ describe("StudyMateResult", () => {
         const { node, handlers } = renderResult({
             status: "done",
             mate: { kind: "mate", pv: ["2g2f", "8c8d", "2f2e"] },
+            mateMs: 450,
             threat: null,
+            threatMs: null,
         });
         screen.getByText("あり");
-        screen.getByText("（☗の詰み・3 手）");
+        screen.getByText("（☗の詰み・3 手・0.5 秒）");
         expect(screen.queryByText("詰めろ")).toBeNull();
         fireEvent.click(screen.getByRole("button", { name: "詰み手順を盤で見る" }));
         expect(handlers.onPreviewPv).toHaveBeenCalledWith({
@@ -123,11 +122,13 @@ describe("StudyMateResult", () => {
         renderResult({
             status: "done",
             mate: { kind: "noMate" },
+            mateMs: 1_000,
             threat: { kind: "mate", pv: ["2b8h+"] },
+            threatMs: 2_000,
         });
         screen.getByText("なし");
         screen.getByText("詰めろ");
-        screen.getByText("（☖の詰み・1 手）");
+        screen.getByText("（☖の詰み・1 手・2.0 秒）");
         // 詰めろの手順は手番を渡した局面からなので、盤で見る・変化に足す操作は出さない
         expect(screen.queryByRole("button", { name: "詰み手順を盤で見る" })).toBeNull();
     });
@@ -136,7 +137,9 @@ describe("StudyMateResult", () => {
         const { node, handlers } = renderResult({
             status: "done",
             mate: { kind: "unsupported" },
+            mateMs: 0,
             threat: null,
+            threatMs: null,
         });
         screen.getByText(
             "王手を放置した局面（手番でない側の玉に王手が掛かっている）は調べられません",
@@ -152,7 +155,13 @@ describe("StudyMateResult", () => {
             <TooltipProvider>
                 <StudyMateResult
                     node={{ ...node, positionAfter: { ...node.positionAfter, board } }}
-                    state={{ status: "done", mate: { kind: "unsupported" }, threat: null }}
+                    state={{
+                        status: "done",
+                        mate: { kind: "unsupported" },
+                        mateMs: 0,
+                        threat: null,
+                        threatMs: null,
+                    }}
                     {...handlers}
                 />
             </TooltipProvider>,
@@ -161,7 +170,13 @@ describe("StudyMateResult", () => {
     });
 
     it("時間内に読み切れなければ、そう伝える", () => {
-        renderResult({ status: "done", mate: { kind: "unknown" }, threat: { kind: "unknown" } });
+        renderResult({
+            status: "done",
+            mate: { kind: "unknown" },
+            mateMs: 10_000,
+            threat: { kind: "unknown" },
+            threatMs: 10_000,
+        });
         expect(screen.getAllByText("10 秒では読み切れませんでした")).toHaveLength(2);
     });
 
