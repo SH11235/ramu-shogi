@@ -28,8 +28,8 @@ import { AddBranchIcon, ClockPlusIcon, PlayIcon } from "./StudyIcons";
 import {
     COMPACT_BUTTON_CLASS,
     StudyMateControl,
-    StudyMateProgress,
     StudyMateResult,
+    studyMateProgressText,
 } from "./StudyMateSection";
 import {
     formatStudyScore,
@@ -48,6 +48,32 @@ export interface StudyPvRequest {
     pv: string[];
     score: StudyScore | null;
 }
+
+/**
+ * 別の局面で動いている解析・詰み探索。この局面からは見えないので、何がどこで動いているかと、
+ * その局面へ戻る・止める手段を出す。
+ */
+export type StudyElsewhereActivity =
+    | {
+          kind: "deep";
+          /** 解析している局面の表記（例: `12手目 ☗7六歩`）。 */
+          positionLabel: string;
+          live: StudyLiveSearch;
+          onGo: () => void;
+          onStop: () => void;
+      }
+    | {
+          kind: "mate";
+          positionLabel: string;
+          state: StudyMateState | undefined;
+          onGo: () => void;
+          onStop: () => void;
+      }
+    | {
+          kind: "full";
+          progress: { completed: number; total: number } | null;
+          onStop: () => void;
+      };
 
 /** ある局面の候補手のまとまり。 */
 interface CandidateGroup {
@@ -103,11 +129,11 @@ interface StudyCandidatesPanelProps {
     mate?: {
         /** この局面の結果（調べていなければ undefined）。 */
         state: StudyMateState | undefined;
-        /** 別の局面を調べている途中。 */
-        busyElsewhere: boolean;
         onStart: () => void;
         onStop: () => void;
     };
+    /** 別の局面で動いている解析・詰み探索（無ければ undefined）。 */
+    elsewhere?: StudyElsewhereActivity;
     className?: string;
 }
 
@@ -161,6 +187,59 @@ function DeepProgressNote({ live }: { live: StudyLiveSearch }): ReactElement | n
               );
     // 深さ・読んだ時間などは、途中の候補の見出しに出す。
     return remaining !== null ? <>（残り {remaining} 秒）</> : null;
+}
+
+function ElsewhereActivityLine({ activity }: { activity: StudyElsewhereActivity }): ReactElement {
+    const text =
+        activity.kind === "full" ? (
+            <>
+                全体を解析中
+                {activity.progress && (
+                    <>
+                        （{activity.progress.completed} / {activity.progress.total} 局面）
+                    </>
+                )}
+            </>
+        ) : activity.kind === "deep" ? (
+            <>
+                {activity.positionLabel}を深く解析中
+                <DeepProgressNote live={activity.live} />
+            </>
+        ) : (
+            <>
+                {activity.positionLabel}：
+                {activity.state?.status === "running"
+                    ? studyMateProgressText(activity.state)
+                    : "詰みを調べています"}
+            </>
+        );
+    return (
+        <div className="flex items-center gap-1 rounded-md bg-muted/40 py-0.5 pl-2 pr-0.5 text-xs text-muted-foreground">
+            <output aria-live="polite" className="min-w-0 flex-1 tabular-nums">
+                {text}
+            </output>
+            {activity.kind !== "full" && (
+                <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 shrink-0 px-2 text-xs"
+                    onClick={activity.onGo}
+                >
+                    その局面へ
+                </Button>
+            )}
+            <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 shrink-0 px-2 text-xs"
+                onClick={activity.onStop}
+            >
+                止める
+            </Button>
+        </div>
+    );
 }
 
 function CandidateRow({
@@ -283,13 +362,17 @@ export function StudyCandidatesPanel({
     onPreviewPv,
     onAddPvAsVariation,
     mate,
+    elsewhere,
     className,
 }: StudyCandidatesPanelProps): ReactElement {
     const isDeepHere = live !== undefined;
-    const mateRunning =
-        mate !== undefined && (mate.state?.status === "running" || mate.busyElsewhere);
+    // 別の局面の深い解析・詰み探索は、押せばそれを止めて切り替える。全体の解析の途中だけは始めない。
+    const startDisabled = isPreparing || analysisMode === "full";
     const sourceText = formatStudyScore(source?.score);
     const mainResult = deeperResult ?? positionResult;
+    const mainNote = mainResult
+        ? `${deeperResult ? "深く解析・" : ""}${resultNote(mainResult)}`
+        : null;
 
     return (
         <section
@@ -305,7 +388,7 @@ export function StudyCandidatesPanel({
                 <h2 className="sr-only">候補手</h2>
                 <div className="flex items-center gap-1.5">
                     {/* 深く解析・止める・続けて読むは同じ枠で入れ替え、枠の幅をいちばん長い文言に合わせる
-                        （切り替わるたびに隣のボタンが動かないように）。深さ・残りの時間は下の行に出す。 */}
+                        （切り替わるたびに隣のボタンが動かないように）。深さ・残りの時間は途中の候補の枠に出す。 */}
                     <div className="grid">
                         <span
                             aria-hidden="true"
@@ -335,7 +418,7 @@ export function StudyCandidatesPanel({
                                     size="sm"
                                     className={cn(COMPACT_BUTTON_CLASS, "w-full")}
                                     onClick={onContinueDeep}
-                                    disabled={isPreparing || analysisMode !== null || mateRunning}
+                                    disabled={isPreparing || analysisMode !== null}
                                 >
                                     <ClockPlusIcon />
                                     続けて読む
@@ -348,7 +431,7 @@ export function StudyCandidatesPanel({
                                     className={cn(COMPACT_BUTTON_CLASS, "w-full")}
                                     aria-label="この局面を深く解析"
                                     onClick={onStartDeep}
-                                    disabled={isPreparing || analysisMode !== null || mateRunning}
+                                    disabled={startDisabled}
                                 >
                                     深く解析
                                 </Button>
@@ -363,7 +446,7 @@ export function StudyCandidatesPanel({
                             className={COMPACT_BUTTON_CLASS}
                             title="手番の側がパスした局面を深く解析し、相手の狙いを見ます（パスは変化として足します）"
                             onClick={onStartDeepAfterPass}
-                            disabled={isPreparing || analysisMode !== null || mateRunning}
+                            disabled={startDisabled}
                         >
                             パスして解析
                         </Button>
@@ -371,55 +454,39 @@ export function StudyCandidatesPanel({
                     {mate && (
                         <StudyMateControl
                             state={mate.state}
-                            busyElsewhere={mate.busyElsewhere}
-                            disabled={isPreparing || analysisMode !== null}
+                            disabled={startDisabled}
                             onStart={mate.onStart}
                             onStop={mate.onStop}
                         />
                     )}
                 </div>
-                {/* ボタンの下の 1 行は常に置き、読んでいる間は進み具合、それ以外はどの結果を出しているかを
-                    書く。高さは 1 行に固定する（解析を始めても止めても、下の候補手が上下に動かないように）。 */}
-                <div className="h-4 truncate px-1 text-xs leading-4 text-muted-foreground">
-                    {live ? (
-                        <output aria-live="polite" className="tabular-nums">
-                            深く解析中
-                            <DeepProgressNote live={live} />
-                        </output>
-                    ) : mate && (mate.state?.status === "running" || mate.busyElsewhere) ? (
-                        <StudyMateProgress state={mate.state} busyElsewhere={mate.busyElsewhere} />
-                    ) : alternative ? null : mainResult ? (
-                        // 1 行に収まらないときは省略し、全文はマウスを載せると見られるようにする。
-                        <span
-                            title={`${deeperResult ? "深く解析・" : ""}${resultNote(mainResult)}`}
-                        >
-                            {deeperResult ? "深く解析・" : ""}
-                            {resultNote(mainResult)}
-                        </span>
-                    ) : (
-                        <span>この局面はまだ解析していません。</span>
-                    )}
-                </div>
+                {elsewhere && <ElsewhereActivityLine activity={elsewhere} />}
             </div>
 
             {/* 読んでいる途中の候補。満足したら「止める」で、その時点の結果を残せる。 */}
-            {live?.preview && (
+            {live && (
                 <div className="flex flex-col gap-1 rounded-lg bg-wafuu-washi px-2 py-2">
-                    <span className="px-1 text-xs text-muted-foreground">
-                        読んでいる途中の候補（{searchStats(live.preview)}）
-                    </span>
-                    <ol className="flex flex-col">
-                        {live.preview.candidates.map((candidate) => (
-                            <CandidateRow
-                                key={candidate.rank}
-                                node={node}
-                                candidate={candidate}
-                                groupLabel="途中の"
-                                onPreviewPv={onPreviewPv}
-                                onAddPvAsVariation={onAddPvAsVariation}
-                            />
-                        ))}
-                    </ol>
+                    <output aria-live="polite" className="px-1 text-xs text-muted-foreground">
+                        <span className="tabular-nums">
+                            深く解析中
+                            <DeepProgressNote live={live} />
+                        </span>
+                        {live.preview && <>・途中の候補（{searchStats(live.preview)}）</>}
+                    </output>
+                    {live.preview && (
+                        <ol className="flex flex-col">
+                            {live.preview.candidates.map((candidate) => (
+                                <CandidateRow
+                                    key={candidate.rank}
+                                    node={node}
+                                    candidate={candidate}
+                                    groupLabel="途中の"
+                                    onPreviewPv={onPreviewPv}
+                                    onAddPvAsVariation={onAddPvAsVariation}
+                                />
+                            ))}
+                        </ol>
+                    )}
                 </div>
             )}
 
@@ -435,15 +502,6 @@ export function StudyCandidatesPanel({
                         {revision.from === null ? "問題なし" : KIND_LABEL[revision.from]}）
                     </span>
                 </p>
-            )}
-
-            {mate && (
-                <StudyMateResult
-                    node={node}
-                    state={mate.state}
-                    onPreviewPv={onPreviewPv}
-                    onAddPvAsVariation={onAddPvAsVariation}
-                />
             )}
 
             {alternative && (
@@ -483,16 +541,23 @@ export function StudyCandidatesPanel({
                 全体の解析の結果は、最善手だけを 1 行で添える。 */}
             <div className="flex flex-col gap-1">
                 {/* 悪手・疑問手の局面では「この手の代わりに」と分けるため、ここにも見出しと注記を置く。 */}
-                {alternative && (
+                {alternative ? (
                     <div className="flex flex-col px-1">
                         <h3 className="text-sm font-medium text-wafuu-sumi">この局面の候補手</h3>
                         {mainResult && (
-                            <span className="text-xs text-muted-foreground">
-                                {deeperResult ? "深く解析・" : ""}
-                                {resultNote(mainResult)}
-                            </span>
+                            <span className="text-xs text-muted-foreground">{mainNote}</span>
                         )}
                     </div>
+                ) : (
+                    mainResult && (
+                        // 1 行に収まらないときは省略し、全文はマウスを載せると見られるようにする。
+                        <p
+                            className="truncate px-1 text-xs text-muted-foreground"
+                            title={mainNote ?? undefined}
+                        >
+                            {mainNote}
+                        </p>
+                    )
                 )}
                 {mainResult ? (
                     <ol className="flex flex-col">
@@ -508,7 +573,8 @@ export function StudyCandidatesPanel({
                         ))}
                     </ol>
                 ) : (
-                    alternative && (
+                    // 深く解析している間は、上の途中経過で分かる。
+                    !live && (
                         <p className="px-1 text-sm text-muted-foreground">
                             この局面はまだ解析していません。
                         </p>
@@ -518,6 +584,15 @@ export function StudyCandidatesPanel({
                     <ShallowResultLine node={node} result={positionResult} />
                 )}
             </div>
+
+            {mate && (
+                <StudyMateResult
+                    node={node}
+                    state={mate.state}
+                    onPreviewPv={onPreviewPv}
+                    onAddPvAsVariation={onAddPvAsVariation}
+                />
+            )}
 
             {source && (sourceText !== "" || source.pv) && (
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-t border-border pt-2 text-xs text-muted-foreground">

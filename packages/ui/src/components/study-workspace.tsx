@@ -46,7 +46,11 @@ import {
 import { boardToGrid } from "./shogi-match/utils/positionUtils";
 import type { StudyAnalysisRunState } from "./study-workspace/StudyAnalysisRunControls";
 import { StudyAnalysisSettings } from "./study-workspace/StudyAnalysisSettings";
-import { StudyCandidatesPanel, type StudyPvRequest } from "./study-workspace/StudyCandidatesPanel";
+import {
+    StudyCandidatesPanel,
+    type StudyElsewhereActivity,
+    type StudyPvRequest,
+} from "./study-workspace/StudyCandidatesPanel";
 import {
     isStudyCommentOverLimit,
     StudyCommentBox,
@@ -484,18 +488,52 @@ export function StudyWorkspaceView({
         if (displayLayerId === null) startFull();
         else void analysis.resumeLayer(displayLayerId);
     };
+    /** 解析・詰み探索は 1 つずつ動かす。押した操作を優先し、動いている詰み探索は止める。 */
+    const stopMate = (): void => {
+        if (mateRunning) mate?.stop();
+    };
+    /** 深く解析を始められない（準備中か、全体の解析の途中）。 */
+    const deepBlocked = analysis.isPreparing || analysis.mode === "full";
+    /**
+     * 解析・詰み探索の操作の通し番号。前の解析を止め終わるのを待ってから始める操作は、待っている間に
+     * 別の操作をした・画面を離れたら始めない（待っている間の操作のほうを優先する）。
+     */
+    const actionSerialRef = useRef(0);
+    useEffect(
+        () => () => {
+            actionSerialRef.current += 1;
+        },
+        [],
+    );
     const startDeep = (): void => {
-        if (locked || mateRunning) return;
+        if (locked || deepBlocked) return;
+        actionSerialRef.current += 1;
+        stopMate();
         setDeepNodeId(currentNodeId);
         void analysis.startDeep(currentNodeId);
     };
     // パスの局面は、足した手が文書に入って画面のツリーに現れてから解析を始める（解析は画面のツリーから
     // 手順を読むので、足した直後に始めると局面が見つからずに何もしない）。
     const [pendingPassDeepNodeId, setPendingPassDeepNodeId] = useState<string | null>(null);
+    /** パスを足すのを待っている間に別の操作をしたら、待っていた解析は始めない。 */
+    const passRequestRef = useRef(0);
+    // パスを足している間に押し直しても無視する（足す処理は 2 回目を受け付けないので、
+    // 押し直しを別の操作として数えると、1 回目の解析まで取りやめてしまう）。
+    const passingRef = useRef(false);
     const startDeepAfterPass = async (): Promise<void> => {
-        if (locked || analysisBlocked || analysis.mode !== null) return;
-        const passNodeId = await editing.passFromCurrent();
-        if (passNodeId !== null) setPendingPassDeepNodeId(passNodeId);
+        if (locked || deepBlocked || passingRef.current) return;
+        const request = ++actionSerialRef.current;
+        passRequestRef.current = request;
+        passingRef.current = true;
+        let passNodeId: string | null;
+        try {
+            passNodeId = await editing.passFromCurrent();
+        } finally {
+            passingRef.current = false;
+        }
+        if (passNodeId !== null && actionSerialRef.current === request) {
+            setPendingPassDeepNodeId(passNodeId);
+        }
     };
     // 依存配列を付けず、描画のたびに「待っている局面がツリーに現れたか」を確かめる。
     useEffect(() => {
@@ -507,19 +545,76 @@ export function StudyWorkspaceView({
         }
         if (!tree.nodes.has(pendingPassDeepNodeId)) return;
         setPendingPassDeepNodeId(null);
-        // 待っている間に詰み探索や別の解析が始まっていたら、重ねて動かさない。
-        if (locked || analysisBlocked || analysis.mode !== null) return;
+        // 待っている間に別の操作をした・全体の解析が始まっていたら、重ねて動かさない。
+        if (locked || deepBlocked || actionSerialRef.current !== passRequestRef.current) return;
+        actionSerialRef.current += 1;
+        stopMate();
         setDeepNodeId(pendingPassDeepNodeId);
         void analysis.startDeep(pendingPassDeepNodeId);
     });
     const continueDeep = (): void => {
         if (locked) return;
+        actionSerialRef.current += 1;
+        stopMate();
         setDeepNodeId(currentNodeId);
         void analysis.continueDeep();
     };
     const cancelAnalysis = (): void => {
+        actionSerialRef.current += 1;
         void analysis.cancel();
     };
+    const stopMateByUser = (): void => {
+        actionSerialRef.current += 1;
+        mate?.stop();
+    };
+    const startMate = async (): Promise<void> => {
+        if (!mate || deepBlocked) return;
+        const node = currentNode;
+        const request = ++actionSerialRef.current;
+        // 深く解析している読みは止める（そこまでの結果は残る）。別の局面の詰み探索も止める。
+        if (analysis.mode === "deep") {
+            await analysis.cancel();
+            if (actionSerialRef.current !== request) return;
+        }
+        stopMate();
+        mate.start(node);
+    };
+    /** 別の局面で動いている解析・詰み探索の局面の表記（例: `12手目 ☗7六歩`）。 */
+    const positionLabelOf = (nodeId: string): string => {
+        const node = tree.nodes.get(nodeId);
+        if (!node) return "別の局面";
+        return node.ply === 0 ? "開始局面" : `${node.ply}手目 ${studyMoveLabel(tree, nodeId)}`;
+    };
+    const elsewhere: StudyElsewhereActivity | undefined = (() => {
+        if (analysis.mode === "full") {
+            return { kind: "full", progress: analysis.progress, onStop: cancelAnalysis };
+        }
+        const deepLive = analysis.live;
+        if (analysis.mode === "deep" && deepLive && deepLive.nodeId !== currentNodeId) {
+            return {
+                kind: "deep",
+                positionLabel: positionLabelOf(deepLive.nodeId),
+                live: deepLive,
+                onGo: () => {
+                    navigateTo(deepLive.nodeId);
+                    // 戻った局面では、深く解析した結果を開いて見せる（移るときに閉じるので、移ってから開く）。
+                    setDeepNodeId(deepLive.nodeId);
+                },
+                onStop: cancelAnalysis,
+            };
+        }
+        const mateNodeId = mate?.runningNodeId ?? null;
+        if (mate && mateNodeId !== null && mateNodeId !== currentNodeId) {
+            return {
+                kind: "mate",
+                positionLabel: positionLabelOf(mateNodeId),
+                state: mate.results.get(mateNodeId),
+                onGo: () => navigateTo(mateNodeId),
+                onStop: stopMateByUser,
+            };
+        }
+        return undefined;
+    })();
     const analysisRun: StudyAnalysisRunState = {
         mode: analysis.mode,
         progress: analysis.progress,
@@ -739,16 +834,12 @@ export function StudyWorkspaceView({
                 mate?.supported
                     ? {
                           state: mate.results.get(currentNode.id),
-                          busyElsewhere:
-                              mate.runningNodeId !== null && mate.runningNodeId !== currentNode.id,
-                          onStart: () => {
-                              if (analysis.mode !== null || analysis.isPreparing) return;
-                              mate.start(currentNode);
-                          },
-                          onStop: mate.stop,
+                          onStart: () => void startMate(),
+                          onStop: stopMateByUser,
                       }
                     : undefined
             }
+            elsewhere={elsewhere}
         />
     );
     const commentBox = (

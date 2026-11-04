@@ -137,7 +137,10 @@ export interface StudyAnalysisController {
      * 設定の画面に残っている値は使わない。
      */
     resumeLayer: (layerId: string) => Promise<void>;
-    /** 指定した局面を長い時間で解析する。 */
+    /**
+     * 指定した局面を長い時間で解析する。別の局面を深く解析している途中なら、それを止めて
+     * （そこまでの結果は残る）切り替える。
+     */
     startDeep: (nodeId: string) => Promise<void>;
     /** 止めた「深く解析」を続きから読める局面。無ければ null。 */
     continuableDeepNodeId: string | null;
@@ -544,10 +547,11 @@ export function useStudyAnalysis({
     const withPreparation = async (
         request: { kind: "full" } | { kind: "deep"; nodeId: string },
         task: (isCurrent: () => boolean) => Promise<void>,
+        /** 直前に `cancel` を待ち終えた（描画前なので、実行中かの state はまだ古い値のまま）。 */
+        afterCancel = false,
     ): Promise<void> => {
-        if (pool.isRunning || isDeepSearching || preparingRef.current || !mountedRef.current) {
-            return;
-        }
+        if (!afterCancel && (pool.isRunning || isDeepSearching)) return;
+        if (preparingRef.current || !mountedRef.current) return;
         if (lockedRef.current) return;
         // 解析のエンジンは、玉の無い側がある局面を読めない
         const { tree: currentTree } = latestRef.current;
@@ -666,94 +670,125 @@ export function useStudyAnalysis({
         await startFullWith(selection, target);
     };
 
-    const startDeepWith = (nodeId: string, selection: NnueSelection): Promise<void> =>
-        withPreparation({ kind: "deep", nodeId }, async (isCurrent) => {
-            const limits = { timeMs: STUDY_DEEP_TIME_MS, depth: STUDY_DEEP_DEPTH };
-            const multiPv = Math.min(
-                STUDY_LIMITS.multiPv,
-                Math.max(STUDY_DEEP_MIN_MULTI_PV, settings.multiPv),
-            );
-            const prepared = await prepareLayer(selection, limits, multiPv);
-            if (!isCurrent() || !prepared || lockedRef.current) return;
-            if (!canUseLayer(prepared.layer.layerId)) return;
-            const current = latestRef.current;
-            const node = current.tree.nodes.get(nodeId);
-            if (!node) return;
-            const moves: string[] = [];
-            for (const id of studyPathTo(current.tree, nodeId)) {
-                const move = current.tree.nodes.get(id)?.usiMove;
-                if (move) moves.push(move);
-            }
-            if (canResumeDeep && studyLineFitsPassLimit(current.tree.startSfen, moves)) {
-                const passRights = studyPassRightsForLine(current.tree.startSfen, moves);
-                deepLayerIdRef.current = prepared.layer.layerId;
-                const started = await deep.start({
-                    nodeId,
-                    sfen: current.tree.startSfen,
-                    moves,
-                    sideToMove: node.positionAfter.turn,
-                    loadOptions: passRights ? { passRights } : undefined,
-                    layer: prepared.layer,
-                    setup: {
-                        nnueId: prepared.resolved?.nnueId ?? null,
-                        layerStacks: prepared.resolved?.layerStacks,
-                        fvScale: prepared.resolved?.fvScale,
-                        materialFallback: true,
-                        multiPv,
-                        threads: resolveThreadCount(
-                            settings.deepAnalysisThreads,
-                            engineOption?.maxThreads,
-                        ),
-                    },
-                });
-                if (started) {
-                    onLayerStarted(prepared.layer.layerId, "deep");
-                    track("analysis_start", { kind: "single" });
-                    return;
+    const startDeepWith = (
+        nodeId: string,
+        selection: NnueSelection,
+        afterCancel = false,
+    ): Promise<void> =>
+        withPreparation(
+            { kind: "deep", nodeId },
+            async (isCurrent) => {
+                const limits = { timeMs: STUDY_DEEP_TIME_MS, depth: STUDY_DEEP_DEPTH };
+                const multiPv = Math.min(
+                    STUDY_LIMITS.multiPv,
+                    Math.max(STUDY_DEEP_MIN_MULTI_PV, settings.multiPv),
+                );
+                const prepared = await prepareLayer(selection, limits, multiPv);
+                if (!isCurrent() || !prepared || lockedRef.current) return;
+                if (!canUseLayer(prepared.layer.layerId)) return;
+                const current = latestRef.current;
+                const node = current.tree.nodes.get(nodeId);
+                if (!node) return;
+                const moves: string[] = [];
+                for (const id of studyPathTo(current.tree, nodeId)) {
+                    const move = current.tree.nodes.get(id)?.usiMove;
+                    if (move) moves.push(move);
                 }
-                // 続きから読める探索が使えないと分かったら、1 回だけの読みに切り替える。
-                if (!isCurrent() || lockedRef.current) return;
-            }
-            setLive({
-                nodeId,
-                depth: null,
-                startedAt: Date.now(),
-                budgetMs: limits.timeMs,
-                preview: null,
-            });
-            run(
-                [
-                    {
-                        ply: node.ply,
+                if (canResumeDeep && studyLineFitsPassLimit(current.tree.startSfen, moves)) {
+                    const passRights = studyPassRightsForLine(current.tree.startSfen, moves);
+                    deepLayerIdRef.current = prepared.layer.layerId;
+                    const started = await deep.start({
+                        nodeId,
                         sfen: current.tree.startSfen,
                         moves,
-                        timeMs: limits.timeMs,
-                        depth: limits.depth,
-                        nodeId,
                         sideToMove: node.positionAfter.turn,
-                    },
-                ],
-                prepared,
-                multiPv,
-                "deep",
-            );
-        });
+                        loadOptions: passRights ? { passRights } : undefined,
+                        layer: prepared.layer,
+                        setup: {
+                            nnueId: prepared.resolved?.nnueId ?? null,
+                            layerStacks: prepared.resolved?.layerStacks,
+                            fvScale: prepared.resolved?.fvScale,
+                            materialFallback: true,
+                            multiPv,
+                            threads: resolveThreadCount(
+                                settings.deepAnalysisThreads,
+                                engineOption?.maxThreads,
+                            ),
+                        },
+                    });
+                    if (started) {
+                        onLayerStarted(prepared.layer.layerId, "deep");
+                        track("analysis_start", { kind: "single" });
+                        return;
+                    }
+                    // 続きから読める探索が使えないと分かったら、1 回だけの読みに切り替える。
+                    if (!isCurrent() || lockedRef.current) return;
+                }
+                setLive({
+                    nodeId,
+                    depth: null,
+                    startedAt: Date.now(),
+                    budgetMs: limits.timeMs,
+                    preview: null,
+                });
+                run(
+                    [
+                        {
+                            ply: node.ply,
+                            sfen: current.tree.startSfen,
+                            moves,
+                            timeMs: limits.timeMs,
+                            depth: limits.depth,
+                            nodeId,
+                            sideToMove: node.positionAfter.turn,
+                        },
+                    ],
+                    prepared,
+                    multiPv,
+                    "deep",
+                );
+            },
+            afterCancel,
+        );
 
-    const cancel = async (): Promise<void> => {
+    const startDeep = async (nodeId: string): Promise<void> => {
+        if (activeMode !== "deep") return startDeepWith(nodeId, analysisNnueSelection);
+        // 深く解析している読みは 1 つだけにする。止めた読みの結果は「途中まで」として残る。
+        // `cancel` は世代を同期で進めるので、止め終わるまでに別の中止・開始があれば世代が変わる。
+        const stopped = cancel();
+        const generation = generationRef.current;
+        await stopped;
+        if (!mountedRef.current || generationRef.current !== generation) return;
+        await startDeepWith(nodeId, analysisNnueSelection, true);
+    };
+
+    /**
+     * 止めている途中の処理。止め終わる前にもう一度止めたら、同じ処理の終わりを待つ（2 回目の
+     * `pool.cancel` は止めるものが無いのですぐ戻り、1 回目の後始末が後から始めた解析の状態を消すため）。
+     */
+    const stoppingRef = useRef<Promise<void> | null>(null);
+    const cancel = (): Promise<void> => {
         // 準備中の解析も、ここで無効にする。
         generationRef.current += 1;
         preparingRef.current = false;
         requestRef.current = null;
         if (mountedRef.current) setIsPreparing(false);
-        // 深く解析している読みは、続きから読めるよう止めるだけにする（止めた時点の結果は保存される）。
-        await deep.stop();
-        // 止めた探索は、そこまでの結果が「中断」として `onPositionAnalyzed` に届く。
-        await pool.cancel();
-        flushResults();
-        if (!mountedRef.current) return;
-        setMode(null);
-        setLive(null);
-        latestRef.current.onFlush?.();
+        if (stoppingRef.current) return stoppingRef.current;
+        const stopping = (async () => {
+            // 深く解析している読みは、続きから読めるよう止めるだけにする（止めた時点の結果は保存される）。
+            await deep.stop();
+            // 止めた探索は、そこまでの結果が「中断」として `onPositionAnalyzed` に届く。
+            await pool.cancel();
+            flushResults();
+            if (!mountedRef.current) return;
+            setMode(null);
+            setLive(null);
+            latestRef.current.onFlush?.();
+        })().finally(() => {
+            stoppingRef.current = null;
+        });
+        stoppingRef.current = stopping;
+        return stopping;
     };
     cancelRef.current = cancel;
 
@@ -837,7 +872,7 @@ export function useStudyAnalysis({
             fullTargetCount,
             startFull: () => startFullWith(analysisNnueSelection),
             resumeLayer,
-            startDeep: (nodeId) => startDeepWith(nodeId, analysisNnueSelection),
+            startDeep,
             continuableDeepNodeId:
                 deep.state.phase === "paused" && deep.state.canContinue ? deep.state.nodeId : null,
             continueDeep,

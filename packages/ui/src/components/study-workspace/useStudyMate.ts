@@ -9,7 +9,7 @@
  */
 
 import { type KifuNode, positionToSfen } from "@shogi/app-core";
-import type { EngineClient, MateMode, MateResult } from "@shogi/engine-client";
+import type { EngineClient, MateMode, MateOutcome, MateResult } from "@shogi/engine-client";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import type { EngineOption } from "../shogi-match/types";
 
@@ -21,7 +21,11 @@ const MATE_THREADS = 4;
 type StudyDoneState = {
     status: "done";
     mate: MateResult;
+    /** 詰みを調べるのに掛かった時間（ミリ秒）。 */
+    mateMs: number;
     threat: MateResult | null;
+    /** 詰めろを調べるのに掛かった時間（ミリ秒）。詰めろを調べていなければ null。 */
+    threatMs: number | null;
 };
 
 export type StudyMateState =
@@ -37,11 +41,13 @@ export type StudyMateState =
     | {
           status: "done";
           mate: MateResult;
+          mateMs: number;
           /**
            * 手番を相手に渡した局面の結果。手番側に詰みがあるとき・王手されているとき（手番を渡せない）・
            * 手番側の玉が無いときは null。
            */
           threat: MateResult | null;
+          threatMs: number | null;
       }
     | { status: "error"; message: string };
 
@@ -146,7 +152,7 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
             sfen: string,
             phase: "mate" | "threat",
             mode: MateMode,
-        ): Promise<MateResult> => {
+        ): Promise<MateOutcome> => {
             await client.loadPosition(sfen, []);
             checkCurrent();
             if (!client.mate) throw new Error("このエンジンでは詰み探索を使えません");
@@ -159,7 +165,7 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
                 },
             );
             checkCurrent();
-            return outcome.result;
+            return outcome;
         };
 
         void (async () => {
@@ -171,8 +177,14 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
                     throw new Error("このエンジンでは詰み探索を使えません");
                 }
                 // 詰みは局面だけで決まる（それまでの手順は見ない）ので、局面を SFEN にして渡す
-                const mate = await solve(positionToSfen(node.positionAfter), "mate", "Power");
+                const mateOutcome = await solve(
+                    positionToSfen(node.positionAfter),
+                    "mate",
+                    "Power",
+                );
+                const mate = mateOutcome.result;
                 let threat: MateResult | null = null;
+                let threatMs: number | null = null;
                 if (mate.kind !== "mate") {
                     setResult(nodeId, {
                         status: "running",
@@ -182,12 +194,21 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
                         previous,
                     });
                     // 詰めろは不詰のことが多いので、不詰の判定が速い Speed で読む
-                    const result = await solve(threatSfen(node), "threat", "Speed");
+                    const outcome = await solve(threatSfen(node), "threat", "Speed");
                     // 王手されている局面は手番を渡せない。手番側の玉が無い局面（詰将棋の攻め方）は
                     // 詰まされることが無い。どちらもエンジンは扱えない局面として返す
-                    threat = result.kind === "unsupported" ? null : result;
+                    if (outcome.result.kind !== "unsupported") {
+                        threat = outcome.result;
+                        threatMs = outcome.elapsedMs;
+                    }
                 }
-                setResult(nodeId, { status: "done", mate, threat });
+                setResult(nodeId, {
+                    status: "done",
+                    mate,
+                    mateMs: mateOutcome.elapsedMs,
+                    threat,
+                    threatMs,
+                });
             } catch (error) {
                 if (error instanceof StudyMateCancelled || runRef.current !== run) return;
                 setResult(nodeId, {
