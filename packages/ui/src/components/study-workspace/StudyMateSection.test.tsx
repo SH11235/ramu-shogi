@@ -12,14 +12,14 @@ function renderControl(state: StudyMateState | undefined, { disabled = false } =
     return handlers;
 }
 
-/** ▲7六歩 △3四歩 の後 (先手番) の局面。 */
+/** 既定は ▲7六歩 △3四歩 の後 (先手番) の局面。`index` で開始局面からの手数を選ぶ。 */
 function renderResult(
     state: StudyMateState | undefined,
-    { moveLabel = "☖3四歩(33)" }: { moveLabel?: string | null } = {},
+    { index = 2, moveLabel = "☖3四歩(33)" }: { index?: number; moveLabel?: string | null } = {},
 ) {
     const { doc, ids } = createTestStudy();
     const { tree } = buildStudyViewTree(doc, TEST_LAYER_ID);
-    const node = tree.nodes.get(ids[2]);
+    const node = tree.nodes.get(ids[index]);
     if (!node) throw new Error("node");
     const handlers = { onPreviewPv: vi.fn(), onAddPvAsVariation: vi.fn() };
     const { container } = render(
@@ -141,6 +141,23 @@ describe("StudyMateResult", () => {
         expect(screen.queryByRole("button", { name: "詰み手順を盤で見る" })).toBeNull();
     });
 
+    it("後手番の局面では、先手の玉の詰みと後手の玉への詰めろを調べたことになる", () => {
+        // ▲7六歩 の後 (後手番)
+        renderResult(
+            {
+                status: "done",
+                mate: { kind: "noMate" },
+                mateMs: 1_000,
+                threat: { kind: "mate", pv: ["8h2b+"] },
+                threatMs: 2_000,
+            },
+            { index: 1, moveLabel: "☗7六歩(77)" },
+        );
+        screen.getByText("☗玉の詰み");
+        screen.getByText("☖玉に詰めろ");
+        screen.getByText("☗7六歩(77) は詰めろ。☖が受けないと、次の手順で詰まされる");
+    });
+
     it("開始局面の詰めろは、直前の手を言わずに伝える", () => {
         renderResult(
             {
@@ -150,8 +167,9 @@ describe("StudyMateResult", () => {
                 threat: { kind: "mate", pv: ["2b8h+"] },
                 threatMs: 2_000,
             },
-            { moveLabel: null },
+            { index: 0, moveLabel: null },
         );
+        screen.getByText("☗玉に詰めろ");
         screen.getByText("☗が受けないと、次の手順で詰まされる");
     });
 

@@ -279,6 +279,30 @@ describe("StudyWorkspaceView", () => {
         expect(analysis.startDeep).toHaveBeenCalledWith(doc.tree.rootId);
     });
 
+    it("詰めろの結果には、この局面に至った手を添える（開始局面では添えない）", () => {
+        const { doc, ids } = createTestStudy();
+        const done: StudyMateState = {
+            status: "done",
+            mate: { kind: "noMate" },
+            mateMs: 500,
+            threat: { kind: "mate", pv: ["8h2b+"] },
+            threatMs: 500,
+        };
+        const mate = createMate({
+            results: new Map<string, StudyMateState>([
+                [doc.tree.rootId, { ...done, threat: { kind: "mate", pv: ["2b8h+"] } }],
+                [ids[1], done],
+            ]),
+        });
+        render(<Harness initialDoc={doc} mate={mate} />);
+        const candidates = screen.getByRole("region", { name: "候補手" });
+        within(candidates).getByText("☗が受けないと、次の手順で詰まされる");
+        fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
+        within(screen.getByRole("region", { name: "候補手" })).getByText(
+            /^☗7六歩.* は詰めろ。☖が受けないと、次の手順で詰まされる$/,
+        );
+    });
+
     it("別の局面の詰み探索は、どの局面かを伝え、その局面へ移る・止めることができる", () => {
         const { doc, ids } = createTestStudy();
         const mate = createMate({
