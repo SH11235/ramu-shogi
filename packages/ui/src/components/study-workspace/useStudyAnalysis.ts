@@ -768,7 +768,8 @@ export function useStudyAnalysis({
      */
     const stoppingRef = useRef<Promise<void> | null>(null);
     const cancel = (): Promise<void> => {
-        // 準備中の解析も、ここで無効にする。
+        // 準備中の解析も、ここで無効にする。世代は同期で進める（呼び出し側は直後の世代を覚えて、
+        // 止め終わるまでに別の中止・開始があったかを見分ける）。
         generationRef.current += 1;
         preparingRef.current = false;
         requestRef.current = null;

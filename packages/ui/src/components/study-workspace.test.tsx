@@ -300,9 +300,7 @@ describe("StudyWorkspaceView", () => {
         render(<Harness initialDoc={doc} mate={mate} />);
         const candidates = screen.getByRole("region", { name: "候補手" });
         within(candidates).getByText("なし");
-        expect(candidates.textContent).toContain(
-            "3手目 ☗2六歩(27)：詰みを調べています（4 / 10 秒）",
-        );
+        expect(candidates.textContent).toContain("3手目：詰みを調べ中（4 / 10 秒）");
         fireEvent.click(within(candidates).getByRole("button", { name: "止める" }));
         expect(mate.stop).toHaveBeenCalledTimes(1);
         fireEvent.click(within(candidates).getByRole("button", { name: "その局面へ" }));
@@ -1041,7 +1039,7 @@ describe("StudyWorkspaceView", () => {
         });
         render(<Harness initialDoc={doc} analysis={analysis} />);
         const panel = screen.getByRole("region", { name: "候補手" });
-        expect(panel.textContent).toMatch(/3手目 ☗2六歩\(27\)を深く解析中（残り 2\d 秒）/);
+        expect(panel.textContent).toMatch(/3手目を深く解析中（残り 2\d 秒）/);
         fireEvent.click(within(panel).getByRole("button", { name: "その局面へ" }));
         expect(currentMove()).toContain("☗2六歩(27)");
         expect(panel.textContent).not.toContain("を深く解析中（");

@@ -579,11 +579,18 @@ export function StudyWorkspaceView({
         stopMate();
         mate.start(node);
     };
-    /** 別の局面で動いている解析・詰み探索の局面の表記（例: `12手目 ☗7六歩`）。 */
-    const positionLabelOf = (nodeId: string): string => {
+    /**
+     * 別の局面で動いている解析・詰み探索の局面の表記。狭い列でも 1 行に収まるよう手数だけにし、
+     * 指し手まで含めた表記はマウスを載せると見られるようにする。
+     */
+    const positionOf = (nodeId: string): { positionLabel: string; positionTitle: string } => {
         const node = tree.nodes.get(nodeId);
-        if (!node) return "別の局面";
-        return node.ply === 0 ? "開始局面" : `${node.ply}手目 ${studyMoveLabel(tree, nodeId)}`;
+        if (!node) return { positionLabel: "別の局面", positionTitle: "別の局面" };
+        if (node.ply === 0) return { positionLabel: "開始局面", positionTitle: "開始局面" };
+        return {
+            positionLabel: `${node.ply}手目`,
+            positionTitle: `${node.ply}手目 ${studyMoveLabel(tree, nodeId)}`,
+        };
     };
     const elsewhere: StudyElsewhereActivity | undefined = (() => {
         if (analysis.mode === "full") {
@@ -593,7 +600,7 @@ export function StudyWorkspaceView({
         if (analysis.mode === "deep" && deepLive && deepLive.nodeId !== currentNodeId) {
             return {
                 kind: "deep",
-                positionLabel: positionLabelOf(deepLive.nodeId),
+                ...positionOf(deepLive.nodeId),
                 live: deepLive,
                 onGo: () => {
                     navigateTo(deepLive.nodeId);
@@ -607,7 +614,7 @@ export function StudyWorkspaceView({
         if (mate && mateNodeId !== null && mateNodeId !== currentNodeId) {
             return {
                 kind: "mate",
-                positionLabel: positionLabelOf(mateNodeId),
+                ...positionOf(mateNodeId),
                 state: mate.results.get(mateNodeId),
                 onGo: () => navigateTo(mateNodeId),
                 onStop: stopMateByUser,

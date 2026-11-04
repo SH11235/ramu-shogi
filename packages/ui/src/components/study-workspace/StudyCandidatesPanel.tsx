@@ -56,8 +56,10 @@ export interface StudyPvRequest {
 export type StudyElsewhereActivity =
     | {
           kind: "deep";
-          /** 解析している局面の表記（例: `12手目 ☗7六歩`）。 */
+          /** 解析している局面の短い表記（例: `12手目`）。 */
           positionLabel: string;
+          /** 指し手まで含めた表記（例: `12手目 ☗7六歩`）。マウスを載せると出す。 */
+          positionTitle: string;
           live: StudyLiveSearch;
           onGo: () => void;
           onStop: () => void;
@@ -65,6 +67,7 @@ export type StudyElsewhereActivity =
     | {
           kind: "mate";
           positionLabel: string;
+          positionTitle: string;
           state: StudyMateState | undefined;
           onGo: () => void;
           onStop: () => void;
@@ -189,8 +192,19 @@ function DeepProgressNote({ live }: { live: StudyLiveSearch }): ReactElement | n
     return remaining !== null ? <>（残り {remaining} 秒）</> : null;
 }
 
-function ElsewhereActivityLine({ activity }: { activity: StudyElsewhereActivity }): ReactElement {
-    const text =
+/**
+ * 別の局面で動いているものの 1 行。高さを固定し、何も動いていないときも同じ高さの空きを置く
+ * （裏で動いていた解析が終わっても、下の候補手が上下に動かないように）。1 行に収めるため、局面の
+ * 表記だけを省略し、何をしているか・残りの時間は省略しない。
+ */
+function ElsewhereActivityLine({
+    activity,
+}: {
+    activity: StudyElsewhereActivity | undefined;
+}): ReactElement {
+    if (!activity) return <div aria-hidden="true" className="h-7" />;
+    const label = activity.kind === "full" ? null : activity.positionLabel;
+    const status =
         activity.kind === "full" ? (
             <>
                 全体を解析中
@@ -202,21 +216,27 @@ function ElsewhereActivityLine({ activity }: { activity: StudyElsewhereActivity 
             </>
         ) : activity.kind === "deep" ? (
             <>
-                {activity.positionLabel}を深く解析中
+                を深く解析中
                 <DeepProgressNote live={activity.live} />
             </>
         ) : (
             <>
-                {activity.positionLabel}：
+                ：
                 {activity.state?.status === "running"
-                    ? studyMateProgressText(activity.state)
-                    : "詰みを調べています"}
+                    ? studyMateProgressText(activity.state, { short: true })
+                    : // 調べ始めた直後で、途中経過がまだ届いていない
+                      "詰みを調べ中"}
             </>
         );
     return (
-        <div className="flex items-center gap-1 rounded-md bg-muted/40 py-0.5 pl-2 pr-0.5 text-xs text-muted-foreground">
-            <output aria-live="polite" className="min-w-0 flex-1 tabular-nums">
-                {text}
+        <div className="flex h-7 items-center gap-1 rounded-md bg-muted/40 pl-2 pr-0.5 text-xs text-muted-foreground">
+            <output
+                aria-live="polite"
+                className="flex min-w-0 flex-1 whitespace-nowrap tabular-nums"
+                title={activity.kind === "full" ? undefined : activity.positionTitle}
+            >
+                {label !== null && <span className="truncate">{label}</span>}
+                <span className="shrink-0">{status}</span>
             </output>
             {activity.kind !== "full" && (
                 <Button
@@ -460,7 +480,7 @@ export function StudyCandidatesPanel({
                         />
                     )}
                 </div>
-                {elsewhere && <ElsewhereActivityLine activity={elsewhere} />}
+                <ElsewhereActivityLine activity={elsewhere} />
             </div>
 
             {/* 読んでいる途中の候補。満足したら「止める」で、その時点の結果を残せる。 */}

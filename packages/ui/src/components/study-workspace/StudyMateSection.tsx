@@ -27,13 +27,17 @@ const UNKNOWN_TEXT = `${LIMIT_SECONDS} 秒では読み切れませんでした`;
 
 /**
  * 調べている途中の表示（例: `詰みを調べています（3 / 10 秒）`）。上限も出し、すぐ終わったのが
- * 打ち切りではないと分かるようにする。狭い列でも 1 行に収まる長さにする。
+ * 打ち切りではないと分かるようにする。狭い列でも 1 行に収まる長さにする。`short` は、局面の表記と
+ * 並べる別の局面の行に使う短い言い方（`詰みを調べ中`）。
  */
-export function studyMateProgressText(state: StudyMateState & { status: "running" }): string {
-    const what = state.phase === "mate" ? "詰み" : "詰めろ";
+export function studyMateProgressText(
+    state: StudyMateState & { status: "running" },
+    { short = false }: { short?: boolean } = {},
+): string {
+    const what = `${state.phase === "mate" ? "詰み" : "詰めろ"}を${short ? "調べ中" : "調べています"}`;
     // 最初の途中経過はエンジンの起動を待つ間なので、数字を出さない
-    if (state.nodes === 0) return `${what}を調べています`;
-    return `${what}を調べています（${Math.floor(state.elapsedMs / 1000)} / ${LIMIT_SECONDS} 秒）`;
+    if (state.nodes === 0) return what;
+    return `${what}（${Math.floor(state.elapsedMs / 1000)} / ${LIMIT_SECONDS} 秒）`;
 }
 
 /** 調べるのに掛かった時間。一瞬で終わっても、調べ終えたことが分かるように 0 秒とは書かない。 */
@@ -287,12 +291,12 @@ function MateResults({
                     ) : undefined
                 }
             />
-            {threat && (
+            {threat && threatMs !== null && (
                 <MateLine
                     label="詰めろ"
                     mover={opponent(turn)}
                     result={threat}
-                    elapsedMs={threatMs ?? 0}
+                    elapsedMs={threatMs}
                     moves={threatMoves}
                 />
             )}
