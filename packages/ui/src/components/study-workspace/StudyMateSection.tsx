@@ -301,6 +301,8 @@ function MateResults({
             : [];
     const request: StudyPvRequest | null =
         mate.kind === "mate" ? { nodeId: node.id, pv: mate.pv, score: null } : null;
+    // 開始局面は直前の手が無いので、どの手が詰めろかは言わない
+    const threatPrefix = moveLabel ? `${moveLabel} は詰めろ。` : "";
     return (
         <>
             <MateLine
@@ -340,7 +342,7 @@ function MateResults({
                     mover={opponent(turn)}
                     result={threat}
                     elapsedMs={threatMs}
-                    caption={`${moveLabel ? `${moveLabel} は詰めろ。` : ""}${sideMark(turn)}が受けないと、次の手順で詰まされる`}
+                    caption={`${threatPrefix}${sideMark(turn)}が受けないと、次の手順で詰まされる`}
                     moves={threatMoves}
                 />
             )}
