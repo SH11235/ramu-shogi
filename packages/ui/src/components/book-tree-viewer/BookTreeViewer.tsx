@@ -16,9 +16,16 @@ import { BookTreeGraph, moveLabel } from "./BookTreeGraph";
 import { useBookTree } from "./useBookTree";
 
 export const MAX_BOOK_FILE_BYTES = 64 * 1024 * 1024;
-/** 盤・指し手の列と木を左右に並べる幅。これより狭ければ盤を上、木を下に置く。 */
+/**
+ * 盤・指し手の列と木を左右に並べる幅。これより狭ければ盤を上、木を下に置く。
+ * 横長で高さの低い画面（横向きのスマホ）は、縦に積むと収まらないので、狭くても左右に並べる。
+ */
 const WIDE_MIN_WIDTH = 900;
-const MIN_CELL = 24;
+const LANDSCAPE_MIN_WIDTH = 560;
+const MIN_CELL = 18;
+const NARROW_MIN_CELL = 16;
+/** 縦に並べるとき、木の欄に残したい高さ（px）。 */
+const NARROW_TREE_MIN_HEIGHT = 160;
 const MAX_CELL = 48;
 /** 横に並べるとき、盤の下に残す指し手の一覧の高さ（px）。 */
 const MOVE_LIST_MIN_HEIGHT = 150;
@@ -49,20 +56,20 @@ function useElementSize(element: HTMLElement | null) {
  * 横に並べるときは、盤の下に指し手の一覧と操作の行が入る高さと、木に半分以上の幅を残す。
  */
 function wideCellSize(width: number, height: number) {
-    const byHeight = (height - MOVE_LIST_MIN_HEIGHT - 48 - 40) / 9;
+    // 高さの低い画面では指し手の一覧の高さを諦め、盤と操作の行を収める。
+    const listHeight = height >= 600 ? MOVE_LIST_MIN_HEIGHT : 0;
+    const byHeight = (height - listHeight - 48 - 40) / 9;
     const byWidth = (width * 0.5 - 100) / 10.6;
     return Math.max(MIN_CELL, Math.min(MAX_CELL, Math.floor(Math.min(byHeight, byWidth))));
 }
 
 /**
  * 縦に並べるとき（スマホ）の 1 マスの上限。盤の上下の持ち駒の段（マスの 0.8 倍と枠）と、
- * 盤の下の操作の行・切り替え・木の欄（最低 220px）が画面の高さに収まる大きさにする。
+ * 盤の下の操作の行・切り替え・木の欄が画面の高さに収まる大きさにする。
  */
 function narrowMaxCell(height: number) {
-    return Math.max(
-        22,
-        Math.min(MAX_CELL, Math.floor((height - 220 - 40 - 36 - 24 - 32 - 33) / 10.6)),
-    );
+    const rest = NARROW_TREE_MIN_HEIGHT + 40 + 36 + 24 + 32 + 33;
+    return Math.max(NARROW_MIN_CELL, Math.min(MAX_CELL, Math.floor((height - rest) / 10.6)));
 }
 
 /**
@@ -99,12 +106,21 @@ export function BookTreeViewer({
     const node = tree?.nodes[selected];
     const position = node?.position ?? INITIAL_POSITION;
 
-    // 未展開の手を選んだら、その先を組み立てる。
+    // 自動の組み立てが上限で止まったあと、未展開の手を選んだら、その先を組み立てる。組み立て中は
+    // 自動の展開がいずれ届くので頼まない。同じ手は一度だけ頼む（木が更新されるたびに積まないように）。
+    const requested = useRef<{ session: unknown; ids: Set<number> }>({
+        session: null,
+        ids: new Set(),
+    });
     useEffect(() => {
-        if (!session || !tree) return;
+        if (!session || !tree || tree.building) return;
         const target = tree.nodes[selected];
         const source = target?.mergeTo === undefined ? target : tree.nodes[target.mergeTo];
-        if (source?.status === "pending") void session.builder.expandFrom(source.id);
+        if (source?.status !== "pending") return;
+        if (requested.current.session !== session) requested.current = { session, ids: new Set() };
+        if (requested.current.ids.has(source.id)) return;
+        requested.current.ids.add(source.id);
+        void session.builder.expandFrom(source.id);
     }, [session, tree, selected]);
 
     async function loadFile(file: File) {
@@ -201,7 +217,10 @@ export function BookTreeViewer({
         return () => window.removeEventListener("keydown", listener);
     }, []);
 
-    const wide = (size?.width ?? 0) >= WIDE_MIN_WIDTH;
+    const wide =
+        !!size &&
+        (size.width >= WIDE_MIN_WIDTH ||
+            (size.width >= LANDSCAPE_MIN_WIDTH && size.width > size.height));
     const ply = (position.ply ?? 1) - 1;
     const board = (
         <StaticBoardView
@@ -218,7 +237,7 @@ export function BookTreeViewer({
                 wide
                     ? undefined
                     : {
-                          minCellSize: 22,
+                          minCellSize: NARROW_MIN_CELL,
                           maxCellSize: size ? narrowMaxCell(size.height) : MAX_CELL,
                           viewportInset: 32,
                       }
@@ -293,7 +312,7 @@ export function BookTreeViewer({
                     {busy ? "読み込み中…" : book?.name}
                 </output>
                 {book && (
-                    <span className="text-xs text-muted-foreground">
+                    <span className="hidden text-xs text-muted-foreground sm:inline">
                         {book.data.stats.positions.toLocaleString("ja-JP")} 局面・
                         {book.data.stats.moves.toLocaleString("ja-JP")} 手
                     </span>
@@ -386,7 +405,7 @@ export function BookTreeViewer({
                                 book={book.data}
                                 nodeId={selected}
                                 onSelect={setSelected}
-                                className="min-h-40 flex-1 rounded-lg border border-wafuu-border bg-background"
+                                className="min-h-0 flex-1 rounded-lg border border-wafuu-border bg-background"
                             />
                         ) : (
                             <BookTreeGraph
@@ -395,7 +414,7 @@ export function BookTreeViewer({
                                 book={book.data}
                                 selected={selected}
                                 onSelect={setSelected}
-                                className="min-h-40 flex-1 rounded-lg border border-wafuu-border bg-wafuu-washi"
+                                className="min-h-0 flex-1 rounded-lg border border-wafuu-border bg-wafuu-washi"
                             />
                         )}
                     </div>
