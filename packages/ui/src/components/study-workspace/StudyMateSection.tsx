@@ -15,7 +15,13 @@ import type { StudyPvRequest } from "./StudyCandidatesPanel";
 import { StudyIconButton } from "./StudyIconButton";
 import { AddBranchIcon, PlayIcon } from "./StudyIcons";
 import { studyFirstMoveLabel } from "./studyView";
-import { STUDY_MATE_TIME_MS, type StudyMateState } from "./useStudyMate";
+import {
+    STUDY_MATE_TIME_MS,
+    STUDY_SHORTEST_MATE_TIME_MS,
+    type StudyMateState,
+    type StudyShortestLine,
+    type StudyShortestState,
+} from "./useStudyMate";
 
 type Side = "sente" | "gote";
 
@@ -26,6 +32,7 @@ const king = (side: Side): string => `${sideMark(side)}玉`;
 
 const LIMIT_SECONDS = STUDY_MATE_TIME_MS / 1000;
 const UNKNOWN_TEXT = `${LIMIT_SECONDS} 秒では読み切れませんでした`;
+const SHORTEST_LIMIT_SECONDS = STUDY_SHORTEST_MATE_TIME_MS / 1000;
 
 /**
  * 調べている途中の表示（例: `詰みを調べています（3 / 10 秒）`）。上限も出し、すぐ終わったのが
@@ -40,6 +47,16 @@ export function studyMateProgressText(
     // 最初の途中経過はエンジンの起動を待つ間なので、数字を出さない
     if (state.nodes === 0) return what;
     return `${what}（${Math.floor(state.elapsedMs / 1000)} / ${LIMIT_SECONDS} 秒）`;
+}
+
+/** 最短手順を求めている途中の表示（例: `最短手順を求めています（3 / 120 秒）`）。 */
+export function studyShortestProgressText(
+    state: StudyShortestState & { status: "running" },
+    { short = false }: { short?: boolean } = {},
+): string {
+    const what = `最短手順を${short ? "求め中" : "求めています"}`;
+    if (state.nodes === 0) return what;
+    return `${what}（${Math.floor(state.elapsedMs / 1000)} / ${SHORTEST_LIMIT_SECONDS} 秒）`;
 }
 
 /** 調べるのに掛かった時間。一瞬で終わっても、調べ終えたことが分かるように 0 秒とは書かない。 */
@@ -187,6 +204,7 @@ export function StudyMateResult({
     node,
     moveLabel,
     state,
+    shortest,
     onPreviewPv,
     onAddPvAsVariation,
 }: {
@@ -194,6 +212,8 @@ export function StudyMateResult({
     /** この局面に至った手の表記（例: `☗7六歩(77)`）。開始局面は null。 */
     moveLabel: string | null;
     state: StudyMateState | undefined;
+    /** 最短手順。詰みがあると分かった局面で出す（渡さなければ出さない）。 */
+    shortest?: StudyShortestProps;
     onPreviewPv: (request: StudyPvRequest) => void;
     onAddPvAsVariation: (request: StudyPvRequest) => void;
 }): ReactElement | null {
@@ -233,6 +253,17 @@ export function StudyMateResult({
                         onPreviewPv={onPreviewPv}
                         onAddPvAsVariation={onAddPvAsVariation}
                     />
+                    {shortest && done.mate.kind === "mate" && (
+                        <StudyShortestMate
+                            node={node}
+                            shortest={{
+                                ...shortest,
+                                disabled: shortest.disabled || state.status === "running",
+                            }}
+                            onPreviewPv={onPreviewPv}
+                            onAddPvAsVariation={onAddPvAsVariation}
+                        />
+                    )}
                 </div>
             )}
             <MateGlossary />
@@ -284,15 +315,7 @@ function MateResults({
 }): ReactElement {
     const turn = node.positionAfter.turn;
     const { mate, mateMs, threat, threatMs } = state;
-    const mateMoves =
-        mate.kind === "mate"
-            ? [
-                  studyFirstMoveLabel(node, mate.pv) ?? "",
-                  ...convertPvToDisplay(mate.pv, node.positionAfter)
-                      .slice(1)
-                      .map((move) => move.displayText),
-              ]
-            : [];
+    const mateMoves = mate.kind === "mate" ? mateMovesText(node, mate.pv) : [];
     const threatMoves =
         threat?.kind === "mate"
             ? convertPvToDisplay(threat.pv, { ...node.positionAfter, turn: opponent(turn) }).map(
@@ -319,20 +342,11 @@ function MateResults({
                 }
                 actions={
                     request ? (
-                        <div className="flex shrink-0 items-center self-start">
-                            <StudyIconButton
-                                label="詰み手順を盤で見る"
-                                onClick={() => onPreviewPv(request)}
-                            >
-                                <PlayIcon />
-                            </StudyIconButton>
-                            <StudyIconButton
-                                label="詰み手順を変化として追加"
-                                onClick={() => onAddPvAsVariation(request)}
-                            >
-                                <AddBranchIcon />
-                            </StudyIconButton>
-                        </div>
+                        <PvActions
+                            request={request}
+                            onPreviewPv={onPreviewPv}
+                            onAddPvAsVariation={onAddPvAsVariation}
+                        />
                     ) : undefined
                 }
             />
@@ -347,5 +361,154 @@ function MateResults({
                 />
             )}
         </>
+    );
+}
+
+/** 手番側の詰み手順の表記（1 手目は局面に至った手との同・不同を見て書く）。 */
+function mateMovesText(node: KifuNode, pv: string[]): string[] {
+    return [
+        studyFirstMoveLabel(node, pv) ?? "",
+        ...convertPvToDisplay(pv, node.positionAfter)
+            .slice(1)
+            .map((move) => move.displayText),
+    ];
+}
+
+/** 詰み手順を盤で見る・変化として足すボタン。 */
+function PvActions({
+    request,
+    onPreviewPv,
+    onAddPvAsVariation,
+}: {
+    request: StudyPvRequest;
+    onPreviewPv: (request: StudyPvRequest) => void;
+    onAddPvAsVariation: (request: StudyPvRequest) => void;
+}): ReactElement {
+    return (
+        <div className="flex shrink-0 items-center self-start">
+            <StudyIconButton label="詰み手順を盤で見る" onClick={() => onPreviewPv(request)}>
+                <PlayIcon />
+            </StudyIconButton>
+            <StudyIconButton
+                label="詰み手順を変化として追加"
+                onClick={() => onAddPvAsVariation(request)}
+            >
+                <AddBranchIcon />
+            </StudyIconButton>
+        </div>
+    );
+}
+
+/** 最短手順の段階ごとの言い方。推定・上限の手順は最短と言わない。 */
+function shortestLineText({ stage, pv }: StudyShortestLine): string {
+    switch (stage) {
+        case "estimated":
+            return `推定した手順（${pv.length} 手、未証明）`;
+        case "bounded":
+            return `${pv.length} 手以内に詰むことを証明`;
+        case "proven":
+            return `最短 ${pv.length} 手（証明済み）`;
+    }
+}
+
+/** 最短手順の操作と結果を出す。 */
+export interface StudyShortestProps {
+    /** この局面の最短手順（求めていなければ undefined）。 */
+    state: StudyShortestState | undefined;
+    /** 準備中か、全体の解析・この局面の詰み探索の途中。 */
+    disabled: boolean;
+    onStart: () => void;
+    onStop: () => void;
+}
+
+/**
+ * 詰みのある局面の最短手順（詰将棋のルールで無駄合いを数えない）。求めている間は、途中で分かった手順
+ * （推定 → N 手以内の証明）を順に出す。時間切れや中止で求め終わらなくても、分かった手順は残す。
+ */
+function StudyShortestMate({
+    node,
+    shortest,
+    onPreviewPv,
+    onAddPvAsVariation,
+}: {
+    node: KifuNode;
+    shortest: StudyShortestProps;
+    onPreviewPv: (request: StudyPvRequest) => void;
+    onAddPvAsVariation: (request: StudyPvRequest) => void;
+}): ReactElement {
+    const { state, disabled, onStart, onStop } = shortest;
+    const line = state && state.status !== "error" ? state.line : null;
+    const finished = line?.stage === "proven";
+    const request: StudyPvRequest | null = line
+        ? { nodeId: node.id, pv: line.pv, score: null }
+        : null;
+    return (
+        <div className="flex flex-col gap-0.5 px-1 py-1">
+            <div className="flex items-center gap-2">
+                <span className="w-20 shrink-0 text-xs text-muted-foreground">最短手順</span>
+                <div className="flex min-w-0 flex-1 items-baseline">
+                    {state?.status === "running" ? (
+                        <output
+                            aria-live="polite"
+                            className="text-xs text-muted-foreground tabular-nums"
+                        >
+                            {studyShortestProgressText(state)}
+                        </output>
+                    ) : state?.status === "done" && !finished ? (
+                        <span className="text-xs text-muted-foreground">
+                            {line
+                                ? "求め終わりませんでした"
+                                : `${SHORTEST_LIMIT_SECONDS} 秒では求め切れませんでした`}
+                        </span>
+                    ) : state?.status === "error" ? (
+                        <span role="alert" className="text-xs text-destructive">
+                            {state.message}
+                        </span>
+                    ) : null}
+                </div>
+                {state?.status === "running" ? (
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        aria-label="最短手順を求めるのを中止"
+                        className={COMPACT_BUTTON_CLASS}
+                        onClick={onStop}
+                    >
+                        中止
+                    </Button>
+                ) : (
+                    !finished && (
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            title={`詰将棋のルール（無駄合いを数えない）で最短の詰み手順を求めます（最大 ${SHORTEST_LIMIT_SECONDS} 秒）`}
+                            className={COMPACT_BUTTON_CLASS}
+                            onClick={onStart}
+                            disabled={disabled}
+                        >
+                            最短手順を求める
+                        </Button>
+                    )
+                )}
+            </div>
+            {line && request && (
+                <div className="flex items-baseline gap-2">
+                    <span className="w-20 shrink-0" />
+                    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <p className="text-xs text-wafuu-sumi">{shortestLineText(line)}</p>
+                        <p className="line-clamp-2 text-xs text-muted-foreground">
+                            {mateMovesText(node, line.pv).join(" ")}
+                        </p>
+                    </div>
+                    <PvActions
+                        request={request}
+                        onPreviewPv={onPreviewPv}
+                        onAddPvAsVariation={onAddPvAsVariation}
+                    />
+                </div>
+            )}
+        </div>
     );
 }

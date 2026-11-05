@@ -30,6 +30,7 @@ import {
     StudyMateControl,
     StudyMateResult,
     studyMateProgressText,
+    studyShortestProgressText,
 } from "./StudyMateSection";
 import {
     formatStudyScore,
@@ -39,7 +40,7 @@ import {
     studyScoreSide,
 } from "./studyView";
 import type { StudyLiveSearch } from "./useStudyAnalysis";
-import type { StudyMateState } from "./useStudyMate";
+import type { StudyMateState, StudyShortestState } from "./useStudyMate";
 
 /** 読み筋を盤で見る・変化として足すときに渡す内容。 */
 export interface StudyPvRequest {
@@ -69,6 +70,8 @@ export type StudyElsewhereActivity =
           positionLabel: string;
           positionTitle: string;
           state: StudyMateState | undefined;
+          /** 最短手順を求めているときの途中経過。 */
+          shortest?: StudyShortestState;
           onGo: () => void;
           onStop: () => void;
       }
@@ -144,6 +147,12 @@ interface StudyCandidatesPanelProps {
         moveLabel: string | null;
         onStart: () => void;
         onStop: () => void;
+        /** この局面の最短手順の操作と結果。 */
+        shortest: {
+            state: StudyShortestState | undefined;
+            onStart: () => void;
+            onStop: () => void;
+        };
     };
     /** 別の局面で動いている解析・詰み探索（無ければ undefined）。 */
     elsewhere?: StudyElsewhereActivity;
@@ -269,10 +278,12 @@ function ElsewhereActivityLine({ activity }: { activity: StudyElsewhereActivity 
         ) : (
             <>
                 ：
-                {activity.state?.status === "running"
-                    ? studyMateProgressText(activity.state, { short: true })
-                    : // 調べ始めた直後で、途中経過がまだ届いていない
-                      "詰みを調べ中"}
+                {activity.shortest?.status === "running"
+                    ? studyShortestProgressText(activity.shortest, { short: true })
+                    : activity.state?.status === "running"
+                      ? studyMateProgressText(activity.state, { short: true })
+                      : // 調べ始めた直後で、途中経過がまだ届いていない
+                        "詰みを調べ中"}
             </>
         );
     return (
@@ -536,6 +547,7 @@ export function StudyCandidatesPanel({
                     node={node}
                     moveLabel={mate.moveLabel}
                     state={mate.state}
+                    shortest={{ ...mate.shortest, disabled: startDisabled }}
                     onPreviewPv={onPreviewPv}
                     onAddPvAsVariation={onAddPvAsVariation}
                 />

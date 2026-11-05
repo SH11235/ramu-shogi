@@ -1,11 +1,11 @@
 import type { KifuNode } from "@shogi/app-core";
-import type { EngineClient, MateParams, MateResult } from "@shogi/engine-client";
+import type { EngineClient, MateLine, MateParams, MateResult } from "@shogi/engine-client";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { EngineOption } from "../shogi-match/types";
 import { createTestStudy, TEST_LAYER_ID } from "./study-test-support";
 import { buildStudyViewTree } from "./studyView";
-import { useStudyMate } from "./useStudyMate";
+import { STUDY_SHORTEST_MATE_TIME_MS, useStudyMate } from "./useStudyMate";
 
 /** ▲7六歩 △3四歩 の後 (先手番) の局面と、手番だけ後手に替えた局面。 */
 const AFTER_TWO = "lnsgkgsnl/1r5b1/pppppp1pp/6p2/9/2P6/PP1PPPPPP/1B5R1/LNSGKGSNL b - 1";
@@ -14,8 +14,14 @@ const AFTER_TWO_PASSED = "lnsgkgsnl/1r5b1/pppppp1pp/6p2/9/2P6/PP1PPPPPP/1B5R1/LN
 const MATE: MateResult = { kind: "mate", pv: ["G*5b"] };
 const NO_MATE: MateResult = { kind: "noMate" };
 
-/** 読み込んだ局面ごとに決めた結果を返す詰み探索のエンジン。`hold` の段階は `release` まで待つ。 */
-function createMateEngine(resultFor: (sfen: string) => MateResult) {
+/**
+ * 読み込んだ局面ごとに決めた結果を返す詰み探索のエンジン。`hold` の段階は `release` まで待つ。
+ * 最短手順では `shortest.lines` を知らせてから待ち、`shortest.result` を返す。
+ */
+function createMateEngine(
+    resultFor: (sfen: string) => MateResult,
+    shortest: { lines: MateLine[]; result: MateResult } = { lines: [], result: MATE },
+) {
     const loads: string[] = [];
     const solves: MateParams[] = [];
     const created: Array<{ dispose: ReturnType<typeof vi.fn> }> = [];
@@ -44,8 +50,14 @@ function createMateEngine(resultFor: (sfen: string) => MateResult) {
             search: vi.fn(),
             mate: {
                 available: () => true,
-                async solve(params, onProgress) {
+                async solve(params, onProgress, onLine) {
                     solves.push(params);
+                    if (params.shortest) {
+                        onProgress?.({ nodes: 7, elapsedMs: 1_000 });
+                        for (const line of shortest.lines) onLine?.(line);
+                        if (holdAt === "solve") await wait();
+                        return { result: shortest.result, nodes: 9, elapsedMs: 3_000 };
+                    }
                     if (holdAt === "solve") {
                         await wait();
                         onProgress?.({ nodes: 5, elapsedMs: 5 });
@@ -74,7 +86,10 @@ function createMateEngine(resultFor: (sfen: string) => MateResult) {
     };
 }
 
-function setup(resultFor: (sfen: string) => MateResult) {
+function setup(
+    resultFor: (sfen: string) => MateResult,
+    shortest?: { lines: MateLine[]; result: MateResult },
+) {
     const { doc, ids } = createTestStudy();
     const { tree } = buildStudyViewTree(doc, TEST_LAYER_ID);
     const node = (index: number): KifuNode => {
@@ -82,7 +97,7 @@ function setup(resultFor: (sfen: string) => MateResult) {
         if (!found) throw new Error(`node ${index}`);
         return found;
     };
-    const engine = createMateEngine(resultFor);
+    const engine = createMateEngine(resultFor, shortest);
     const hook = renderHook(() => useStudyMate({ engineOption: engine.option, hashMb: 16 }));
     return { node, engine, hook };
 }
@@ -285,5 +300,110 @@ describe("useStudyMate", () => {
             }),
         );
         expect(result.current.supported).toBe(false);
+    });
+
+    describe("最短手順", () => {
+        const ESTIMATED: MateLine = { kind: "estimated", pv: ["G*5b", "5a4a", "G*4b"] };
+        const BOUNDED: MateLine = { kind: "bounded", pv: ["G*5b"] };
+
+        it("途中で分かった手順を出し、最短を証明したら証明済みの手順にする", async () => {
+            const { node, engine, hook } = setup(() => MATE, {
+                lines: [ESTIMATED, BOUNDED],
+                result: MATE,
+            });
+            engine.hold("solve");
+            act(() => hook.result.current.startShortest(node(2)));
+            await waitFor(() =>
+                expect(hook.result.current.shortestResults.get(node(2).id)).toEqual({
+                    status: "running",
+                    nodes: 7,
+                    elapsedMs: 1_000,
+                    line: { stage: "bounded", pv: ["G*5b"] },
+                }),
+            );
+            expect(hook.result.current.runningNodeId).toBe(node(2).id);
+            expect(hook.result.current.runningKind).toBe("shortest");
+            expect(engine.loads).toEqual([AFTER_TWO]);
+            expect(engine.solves[0]).toMatchObject({
+                mode: "Power",
+                hashMb: 16,
+                timeMs: STUDY_SHORTEST_MATE_TIME_MS,
+                shortest: "tsume",
+            });
+            await act(async () => engine.release());
+            await waitFor(() =>
+                expect(hook.result.current.shortestResults.get(node(2).id)).toEqual({
+                    status: "done",
+                    line: { stage: "proven", pv: ["G*5b"] },
+                    elapsedMs: 3_000,
+                }),
+            );
+            expect(hook.result.current.runningKind).toBeNull();
+            expect(engine.created[0].dispose).toHaveBeenCalled();
+            // 詰み・詰めろの結果とは別に覚える
+            expect(hook.result.current.results.has(node(2).id)).toBe(false);
+        });
+
+        it("時間内に求め終わらなければ、分かったところまでの手順を残す", async () => {
+            const { node, hook } = setup(() => MATE, {
+                lines: [ESTIMATED],
+                result: { kind: "unknown" },
+            });
+            act(() => hook.result.current.startShortest(node(2)));
+            await waitFor(() =>
+                expect(hook.result.current.shortestResults.get(node(2).id)).toEqual({
+                    status: "done",
+                    line: { stage: "estimated", pv: ESTIMATED.pv },
+                    elapsedMs: 3_000,
+                }),
+            );
+        });
+
+        it("中止しても分かった手順は残し、後から返った結果は捨てる", async () => {
+            const { node, engine, hook } = setup(() => MATE, {
+                lines: [ESTIMATED],
+                result: MATE,
+            });
+            engine.hold("solve");
+            act(() => hook.result.current.startShortest(node(2)));
+            await waitFor(() =>
+                expect(hook.result.current.shortestResults.get(node(2).id)).toMatchObject({
+                    status: "running",
+                    line: { stage: "estimated" },
+                }),
+            );
+            act(() => hook.result.current.stop());
+            const stopped = {
+                status: "done",
+                line: { stage: "estimated", pv: ESTIMATED.pv },
+                elapsedMs: 1_000,
+            };
+            expect(hook.result.current.shortestResults.get(node(2).id)).toEqual(stopped);
+            expect(hook.result.current.runningNodeId).toBeNull();
+            expect(engine.created[0].dispose).toHaveBeenCalled();
+            await act(async () => engine.release());
+            expect(hook.result.current.shortestResults.get(node(2).id)).toEqual(stopped);
+        });
+
+        it("手順が分かる前に中止したら、何も残さない", async () => {
+            const { node, engine, hook } = setup(() => MATE);
+            engine.hold("init");
+            act(() => hook.result.current.startShortest(node(2)));
+            await waitFor(() => expect(engine.created).toHaveLength(1));
+            act(() => hook.result.current.stop());
+            await act(async () => engine.release());
+            expect(hook.result.current.shortestResults.has(node(2).id)).toBe(false);
+            expect(engine.solves).toHaveLength(0);
+        });
+
+        it("詰み探索の途中では始めない", async () => {
+            const { node, engine, hook } = setup(() => MATE);
+            engine.hold("solve");
+            act(() => hook.result.current.start(node(2)));
+            await waitFor(() => expect(engine.solves).toHaveLength(1));
+            act(() => hook.result.current.startShortest(node(2)));
+            expect(engine.created).toHaveLength(1);
+            expect(hook.result.current.runningKind).toBe("mate");
+        });
     });
 });

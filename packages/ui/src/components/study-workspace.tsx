@@ -573,7 +573,8 @@ export function StudyWorkspaceView({
         actionSerialRef.current += 1;
         mate?.stop();
     };
-    const startMate = async (): Promise<void> => {
+    /** 詰み・詰めろか最短手順を調べ始める。 */
+    const startMate = async (kind: "mate" | "shortest"): Promise<void> => {
         if (!mate || deepBlocked) return;
         const node = currentNode;
         const request = ++actionSerialRef.current;
@@ -583,7 +584,8 @@ export function StudyWorkspaceView({
             if (actionSerialRef.current !== request) return;
         }
         stopMate();
-        mate.start(node);
+        if (kind === "mate") mate.start(node);
+        else mate.startShortest(node);
     };
     /**
      * 別の局面で動いている解析・詰み探索の局面の表記。狭い列でも 1 行に収まるよう手数だけにし、
@@ -622,6 +624,10 @@ export function StudyWorkspaceView({
                 kind: "mate",
                 ...positionOf(mateNodeId),
                 state: mate.results.get(mateNodeId),
+                shortest:
+                    mate.runningKind === "shortest"
+                        ? mate.shortestResults.get(mateNodeId)
+                        : undefined,
                 onGo: () => navigateTo(mateNodeId),
                 onStop: stopMateByUser,
             };
@@ -917,8 +923,13 @@ export function StudyWorkspaceView({
                           state: mate.results.get(currentNode.id),
                           moveLabel:
                               currentNode.ply === 0 ? null : studyMoveLabel(tree, currentNodeId),
-                          onStart: () => void startMate(),
+                          onStart: () => void startMate("mate"),
                           onStop: stopMateByUser,
+                          shortest: {
+                              state: mate.shortestResults.get(currentNode.id),
+                              onStart: () => void startMate("shortest"),
+                              onStop: stopMateByUser,
+                          },
                       }
                     : undefined
             }
