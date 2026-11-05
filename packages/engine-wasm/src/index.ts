@@ -9,6 +9,7 @@ import type {
     LayerStacksOptions,
     LoadPositionOptions,
     MateClient,
+    MateLine,
     MateMode,
     MateOutcome,
     MateParams,
@@ -145,6 +146,9 @@ function normalizeMateParams(params: MateParams): MateParams {
     if (params.mode !== undefined && !MATE_MODES.includes(params.mode)) {
         throw new RangeError(`未知の詰み探索のモードです: ${String(params.mode)}`);
     }
+    if (params.shortest !== undefined && params.shortest !== "tsume") {
+        throw new RangeError(`未知の最短手順の求め方です: ${String(params.shortest)}`);
+    }
     const threads = nonNegativeInteger("threads", params.threads);
     const hashMb = nonNegativeInteger("hashMb", params.hashMb);
     return {
@@ -153,6 +157,7 @@ function normalizeMateParams(params: MateParams): MateParams {
         hashMb: hashMb === undefined ? undefined : Math.min(MAX_MATE_HASH_MB, Math.max(1, hashMb)),
         timeMs: nonNegativeInteger("timeMs", params.timeMs),
         nodes: nonNegativeInteger("nodes", params.nodes),
+        shortest: params.shortest,
     };
 }
 
@@ -460,6 +465,7 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
             resolve: (outcome: MateOutcome) => void;
             reject: (error: Error) => void;
             onProgress?: (progress: MateProgress) => void;
+            onLine?: (line: MateLine) => void;
         }
     >();
 
@@ -495,6 +501,9 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
         switch (message.type) {
             case "mateProgress":
                 pending.onProgress?.(message.progress);
+                return;
+            case "mateLine":
+                pending.onLine?.(message.line);
                 return;
             case "mateFinished":
                 pendingMates.delete(message.requestId);
@@ -988,7 +997,7 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
 
     const mateClient: MateClient = {
         available: () => initialized && (backend === "single" || backend === "threaded"),
-        async solve(params, onProgress) {
+        async solve(params, onProgress, onLine) {
             assertIdle();
             if (normalSearches > 0 || searchesStarting > 0) {
                 throw new Error("通常探索を停止してから詰み探索を始めてください");
@@ -1012,7 +1021,7 @@ export function createWasmEngineClient(options: WasmEngineClientOptions = {}): W
             const threads = Math.min(normalized.threads ?? 1, activeThreads ?? 1);
             const requestId = createRequestId();
             return new Promise<MateOutcome>((resolve, reject) => {
-                pendingMates.set(requestId, { resolve, reject, onProgress });
+                pendingMates.set(requestId, { resolve, reject, onProgress, onLine });
                 try {
                     postToWorker({
                         type: "solveMate",

@@ -55,9 +55,13 @@ try {
             if (event.type === "error" && event.severity !== "warning")
                 console.error(JSON.stringify(event));
         });
-        const solve = async (sfen, params, onProgress) => {
+        const solve = async (sfen, params, onProgress, onLine) => {
             await client.loadPosition(sfen);
-            return client.mate.solve({ threads: mateThreads, hashMb: 16, ...params }, onProgress);
+            return client.mate.solve(
+                { threads: mateThreads, hashMb: 16, ...params },
+                onProgress,
+                onLine,
+            );
         };
         try {
             await client.init({ threads: engineThreads, ttSizeMb: 4 });
@@ -71,6 +75,18 @@ try {
                     throw new Error(`${mode}: ${JSON.stringify(outcome)}`);
                 modes[mode] = outcome.nodes;
             }
+            // 最短手順: 途中の手順は推定・上限の証明のどちらかで、結論は最短の手順
+            const lines = [];
+            const shortest = await solve(
+                "4k4/9/4P4/9/9/9/9/9/4K4 b G 1",
+                { mode: "Power", timeMs: 10000, shortest: "tsume" },
+                undefined,
+                (line) => lines.push(line),
+            );
+            if (shortest.result.kind !== "mate" || shortest.result.pv.join(" ") !== "G*5b")
+                throw new Error(`shortest: ${JSON.stringify(shortest)}`);
+            if (!lines.every((l) => ["estimated", "bounded"].includes(l.kind) && l.pv.length > 0))
+                throw new Error(`shortest lines: ${JSON.stringify(lines)}`);
             const noMate = await solve("4k4/9/9/9/9/9/9/9/4K4 b - 1", { timeMs: 10000 });
             if (noMate.result.kind !== "noMate") throw new Error(JSON.stringify(noMate));
             const progress = [];
@@ -107,6 +123,7 @@ try {
                 backend: client.getBackendStatus(),
                 engineThreads: client.getThreadInfo(),
                 modes,
+                shortestLines: lines.map((l) => `${l.kind}:${l.pv.length}`),
                 zukou: { kind: zukou.result.kind, nodes: zukou.nodes, elapsedMs: zukou.elapsedMs },
                 progress: progress.length,
                 bestmove: move,

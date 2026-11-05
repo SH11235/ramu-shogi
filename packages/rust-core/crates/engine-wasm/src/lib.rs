@@ -14,7 +14,10 @@ mod yo_sfnn;
 use rshogi_core::eval::{
     MaterialLevel, disable_material, set_eval_hash_enabled, set_material_level,
 };
-use rshogi_core::mate::dfpn::{DfpnSolver, MateLimits, MateMode, MateProgress, MateResult};
+use rshogi_core::mate::dfpn::{
+    DfpnSolver, MateLimits, MateLine, MateLineKind, MateMode, MateProgress, MateResult,
+    ShortestMode,
+};
 use rshogi_core::movegen::{MoveList, generate_legal_allowing_missing_kings};
 use rshogi_core::nnue::{init_nnue_from_bytes, set_fv_scale_override};
 use rshogi_core::position::{Position, SFEN_HIRATE};
@@ -1036,6 +1039,8 @@ struct JsMateParams {
     time_ms: Option<u64>,
     /// ノード数の上限 (0 か省略で無制限)
     nodes: Option<u64>,
+    /// "tsume" で詰将棋のルールの最短手順を求める (省略で通常の詰み判定)
+    shortest: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -1057,6 +1062,19 @@ struct JsMateOutcome {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+enum JsMateLineKind {
+    Estimated,
+    Bounded,
+}
+
+#[derive(Serialize)]
+struct JsMateLine {
+    kind: JsMateLineKind,
+    pv: Vec<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct JsMateProgress {
     nodes: u64,
     elapsed_ms: u64,
@@ -1066,10 +1084,13 @@ struct JsMateProgress {
 ///
 /// 終わるまで戻らない (`time_ms` / `nodes` で打ち切る)。`on_progress` は約 1 秒ごとに
 /// `{ nodes, elapsedMs }` で呼ばれる。置換表は解くたびに空にするが、確保した領域は持ち回る。
+/// `shortest: "tsume"` では、最短手順を求め終わる前に分かった手順を `on_line` に
+/// `{ kind: "estimated" | "bounded", pv }` で知らせる。
 #[wasm_bindgen]
 pub fn solve_mate(
     params: Option<JsValue>,
     on_progress: Option<js_sys::Function>,
+    on_line: Option<js_sys::Function>,
 ) -> Result<JsValue, JsValue> {
     let params: JsMateParams = match params {
         Some(value) if !value.is_null() && !value.is_undefined() => swb::from_value(value)
@@ -1080,6 +1101,11 @@ pub fn solve_mate(
         Some(name) => MateMode::from_name(name)
             .ok_or_else(|| JsValue::from_str(&format!("unknown mate mode: {name}")))?,
         None => MateMode::default(),
+    };
+    let shortest = match params.shortest.as_deref() {
+        Some("tsume") => Some(ShortestMode::Tsume),
+        Some(name) => return Err(JsValue::from_str(&format!("unknown shortest mode: {name}"))),
+        None => None,
     };
     let hash_mb = params
         .hash_mb
@@ -1103,11 +1129,14 @@ pub fn solve_mate(
             solver: DfpnSolver::with_mode(hash_mb, mode),
         });
         state.solver.set_threads(params.threads.unwrap_or(1));
+        state.solver.set_shortest(shortest);
         let stop = std::sync::atomic::AtomicBool::new(false);
         let started = js_sys::Date::now();
-        let result = state
-            .solver
-            .solve(&mut engine.position, &limits, &stop, |p: MateProgress| {
+        let result = state.solver.solve_with_lines(
+            &mut engine.position,
+            &limits,
+            &stop,
+            |p: MateProgress| {
                 if let Some(callback) = on_progress.as_ref()
                     && let Ok(value) = swb::to_value(&JsMateProgress {
                         nodes: p.nodes,
@@ -1116,7 +1145,21 @@ pub fn solve_mate(
                 {
                     let _ = callback.call1(&JsValue::NULL, &value);
                 }
-            });
+            },
+            |line: MateLine<'_>| {
+                if let Some(callback) = on_line.as_ref()
+                    && let Ok(value) = swb::to_value(&JsMateLine {
+                        kind: match line.kind {
+                            MateLineKind::Estimated => JsMateLineKind::Estimated,
+                            MateLineKind::Bounded => JsMateLineKind::Bounded,
+                        },
+                        pv: line.pv.iter().map(|m| m.to_usi()).collect(),
+                    })
+                {
+                    let _ = callback.call1(&JsValue::NULL, &value);
+                }
+            },
+        );
         let outcome = JsMateOutcome {
             result: match result {
                 MateResult::Mate(pv) => JsMateResult::Mate {

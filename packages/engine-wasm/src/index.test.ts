@@ -1211,6 +1211,23 @@ describe("詰み探索 (mate.solve)", () => {
         expect(progress).toHaveBeenCalledWith({ nodes: 10, elapsedMs: 1000 });
     });
 
+    it("最短手順では shortest を送り、途中で分かった手順を受け取る", async () => {
+        const { client, worker } = await createReadyClient();
+        const onLine = vi.fn();
+        const solving = client.mate?.solve({ shortest: "tsume" }, undefined, onLine);
+        await vi.waitFor(() => expect(solveCalls(worker())).toHaveLength(1));
+        const [call] = solveCalls(worker());
+        expect(call.params).toMatchObject({ shortest: "tsume" });
+        const line = { kind: "bounded", pv: ["G*5b"] };
+        reply(worker(), { type: "mateLine", requestId: call.requestId, line });
+        reply(worker(), { type: "mateLine", requestId: "other", line });
+        const outcome = { result: { kind: "unknown" }, nodes: 12, elapsedMs: 3 };
+        reply(worker(), { type: "mateFinished", requestId: call.requestId, outcome });
+        await expect(solving).resolves.toEqual(outcome);
+        expect(onLine).toHaveBeenCalledTimes(1);
+        expect(onLine).toHaveBeenCalledWith(line);
+    });
+
     it("スレッド版ではエンジンのスレッド数を上限に丸める", async () => {
         vi.stubGlobal("crossOriginIsolated", true);
         vi.stubGlobal("SharedArrayBuffer", class {});
@@ -1241,6 +1258,7 @@ describe("詰み探索 (mate.solve)", () => {
         await expect(client.mate?.solve({ mode: "Auto" as never })).rejects.toThrow(RangeError);
         await expect(client.mate?.solve({ hashMb: Number.NaN })).rejects.toThrow(RangeError);
         await expect(client.mate?.solve({ timeMs: -1 })).rejects.toThrow(RangeError);
+        await expect(client.mate?.solve({ shortest: "all" as never })).rejects.toThrow(RangeError);
         expect(solveCalls(worker())).toHaveLength(0);
     });
 
