@@ -35,18 +35,18 @@ const LIMIT_SECONDS = STUDY_MATE_TIME_MS / 1000;
 const UNKNOWN_TEXT = `${LIMIT_SECONDS} 秒では読み切れませんでした`;
 const SHORTEST_LIMIT_SECONDS = STUDY_SHORTEST_MATE_TIME_MS / 1000;
 
-// PC の 3 列の画面の候補手の列（約 300px）では、名前と操作の間に残る幅が数文字分しかないので、枠が
-// 20rem 未満のときは結論を操作の上まで、手順と説明を名前の下まで広げ、操作は手順の横に置く。
+// 名前と操作で約 11rem を取るので、枠が 28rem 未満（PC の候補手の列・スマホ・タブレット）で名前の
+// 列に手順を置くと結論や説明が細かく折れる。その幅では結論を操作の上へ、手順と説明を名前の下へ広げる。
 const RESULT_ROW_CLASS =
-    "grid grid-cols-[5rem_minmax(0,1fr)_auto] items-baseline gap-x-2 gap-y-0.5 px-1";
-const RESULT_HEADLINE_CLASS = "col-span-2 col-start-2 row-start-1 min-w-0 @xs:col-span-1";
+    "grid grid-cols-[5rem_minmax(0,1fr)_auto] items-baseline gap-x-2 gap-y-0.5";
+const RESULT_HEADLINE_CLASS = "col-span-2 col-start-2 row-start-1 min-w-0 @md:col-span-1";
 // 名前の無い行（最短手順の段）の 1 段目。狭い枠では名前の列から使う
 const RESULT_UNLABELED_HEADLINE_CLASS =
-    "col-span-3 col-start-1 row-start-1 min-w-0 @xs:col-span-1 @xs:col-start-2";
+    "col-span-3 col-start-1 row-start-1 min-w-0 @md:col-span-1 @md:col-start-2";
 const RESULT_DETAIL_CLASS =
-    "col-span-2 col-start-1 row-start-2 flex min-w-0 flex-col gap-0.5 @xs:col-span-1 @xs:col-start-2";
+    "col-span-2 col-start-1 row-start-2 flex min-w-0 flex-col gap-0.5 @md:col-span-1 @md:col-start-2";
 // 広い枠では 2 段にまたがせ、ボタンの高さで 1 段目が伸びて手順が下がらないようにする
-const RESULT_ACTIONS_CLASS = "col-start-3 row-start-2 self-start @xs:row-span-2 @xs:row-start-1";
+const RESULT_ACTIONS_CLASS = "col-start-3 row-start-2 self-start @md:row-span-2 @md:row-start-1";
 
 /**
  * 調べている途中の表示（例: `詰みを調べています（3 / 10 秒）`）。上限も出し、すぐ終わったのが
@@ -123,7 +123,7 @@ function MateLine({
     actions?: ReactElement;
 }): ReactElement {
     return (
-        <div className={cn(RESULT_ROW_CLASS, "py-1")}>
+        <div className={cn(RESULT_ROW_CLASS, "px-1 py-1")}>
             <span className="col-start-1 row-start-1 text-xs text-muted-foreground">{label}</span>
             <div className={RESULT_HEADLINE_CLASS}>
                 {result.kind === "mate" ? (
@@ -248,8 +248,8 @@ export function StudyMateResult({
             aria-label="詰み探索"
             className="@container flex flex-col rounded-lg border border-border px-1 py-1"
         >
-            <div className="flex items-baseline gap-1.5 px-1 py-0.5 text-xs text-muted-foreground">
-                <h3 className="font-medium text-wafuu-sumi">詰み探索</h3>
+            <div className="flex flex-wrap items-baseline gap-x-1.5 px-1 py-0.5 text-xs text-muted-foreground">
+                <h3 className="shrink-0 font-medium text-wafuu-sumi">詰み探索</h3>
                 {state.status === "running" ? (
                     <output aria-live="polite" className="tabular-nums">
                         {studyMateProgressText(state)}
