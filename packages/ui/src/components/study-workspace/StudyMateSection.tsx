@@ -16,6 +16,7 @@ import { StudyIconButton } from "./StudyIconButton";
 import { AddBranchIcon, PlayIcon } from "./StudyIcons";
 import { studyFirstMoveLabel } from "./studyView";
 import {
+    betterShortestLine,
     STUDY_MATE_TIME_MS,
     STUDY_SHORTEST_MATE_TIME_MS,
     type StudyMateState,
@@ -439,8 +440,13 @@ function StudyShortestMate({
     const { state, disabled, onStart, onStop } = shortest;
     const line = state && state.status !== "error" ? state.line : null;
     const finished = line?.stage === "proven";
-    // 調べ直している間は、今回の手順が分かるまで前の手順を薄く出しておく
-    const previousLine = state?.status === "running" ? (state.previous?.line ?? null) : null;
+    // 調べ直している間は、今回の手順が前の手順より進むまで前の手順を薄く出しておく
+    const previousLine =
+        state?.status === "running" &&
+        state.previous?.line &&
+        betterShortestLine(state.previous.line, line) === state.previous.line
+            ? state.previous.line
+            : null;
     return (
         <div className="flex flex-col gap-0.5 px-1 py-1">
             <div className="flex items-center gap-2">
@@ -453,6 +459,10 @@ function StudyShortestMate({
                         >
                             {studyShortestProgressText(state)}
                         </output>
+                    ) : state?.status === "done" && state.message ? (
+                        <span role="alert" className="text-xs text-destructive">
+                            {state.message}
+                        </span>
                     ) : state?.status === "done" && !finished ? (
                         <span className="text-xs text-muted-foreground">
                             求め終わりませんでした
@@ -490,14 +500,7 @@ function StudyShortestMate({
                     )
                 )}
             </div>
-            {line ? (
-                <ShortestLineBlock
-                    node={node}
-                    line={line}
-                    onPreviewPv={onPreviewPv}
-                    onAddPvAsVariation={onAddPvAsVariation}
-                />
-            ) : previousLine ? (
+            {previousLine ? (
                 <div aria-busy={true} className="opacity-50">
                     <ShortestLineBlock
                         node={node}
@@ -506,9 +509,17 @@ function StudyShortestMate({
                         onAddPvAsVariation={onAddPvAsVariation}
                     />
                 </div>
+            ) : line ? (
+                <ShortestLineBlock
+                    node={node}
+                    line={line}
+                    onPreviewPv={onPreviewPv}
+                    onAddPvAsVariation={onAddPvAsVariation}
+                />
             ) : (
-                state?.status === "running" && (
-                    // 手順が届いたときに下の候補手がずれないよう、求めている間は手順の欄の高さを空けておく
+                state !== undefined && (
+                    // 手順が届いたとき・手順なしで終わったときに下の候補手がずれないよう、一度求め始めた
+                    // 局面では手順の欄の高さを空けておく
                     <div aria-hidden="true" className="invisible">
                         <ShortestLineBlock
                             node={node}

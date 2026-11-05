@@ -88,6 +88,8 @@ export type StudyShortestState =
           /** 分かった手順。`proven` でなければ、時間切れか中止で求め終わっていない。 */
           line: StudyShortestLine | null;
           elapsedMs: number;
+          /** 失敗で終わったときの理由（分かった手順は残して添える）。 */
+          message?: string;
       }
     | { status: "error"; message: string };
 
@@ -341,6 +343,18 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
     const startShortest = (node: KifuNode): void => {
         const nodeId = node.id;
         const before = shortestResults.get(nodeId);
+        /** 失敗で終わった。分かった手順（前回と比べて強いほう）があれば残して理由を添える。 */
+        const fail = (message: string, line: StudyShortestLine | null, elapsedMs: number) => {
+            const previousLine = shortestLineOf(before);
+            const best = betterShortestLine(previousLine, line);
+            if (!best) {
+                setShortest(nodeId, { status: "error", message });
+                return;
+            }
+            const kept =
+                best === line ? elapsedMs : before?.status === "done" ? before.elapsedMs : 0;
+            setShortest(nodeId, { status: "done", line: best, elapsedMs: kept, message });
+        };
         const begun = beginRun(
             node,
             (engineId) => ({
@@ -351,7 +365,7 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
                 line: null,
                 elapsedMs: 0,
             }),
-            (message) => setShortest(nodeId, { status: "error", message }),
+            (message) => fail(message, null, 0),
         );
         if (!begun) return;
         const { client, run } = begun;
@@ -430,7 +444,8 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
                 }
             } catch (error) {
                 if (error instanceof StudyMateCancelled || runRef.current !== run) return;
-                setShortest(nodeId, { status: "error", message: studyMateErrorMessage(error) });
+                const active = current();
+                fail(studyMateErrorMessage(error), active?.line ?? null, active?.elapsedMs ?? 0);
             } finally {
                 finishRun(run);
             }
@@ -464,7 +479,7 @@ function shortestLineOf(state: StudyShortestState | undefined): StudyShortestLin
  * 分かっていることの多い手順（推定 < N 手以内の証明 < 最短の証明）。同じ段階なら短い手順（N 手以内の
  * 証明はより狭い上限）、それも同じなら `current`（同じ手順なら、経過時間などを新しい実行のものにする）。
  */
-function betterShortestLine(
+export function betterShortestLine(
     previous: StudyShortestLine | null,
     current: StudyShortestLine | null,
 ): StudyShortestLine | null {

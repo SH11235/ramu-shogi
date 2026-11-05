@@ -413,6 +413,7 @@ describe("useStudyMate", () => {
                 onProgress?: (progress: { nodes: number; elapsedMs: number }) => void;
                 onLine?: (line: MateLine) => void;
                 finish: (result: MateResult) => void;
+                fail: (error: Error) => void;
             }> = [];
             const disposed: Array<ReturnType<typeof vi.fn>> = [];
             const option: EngineOption = {
@@ -434,8 +435,9 @@ describe("useStudyMate", () => {
                         mate: {
                             available: () => true,
                             solve: (params, onProgress, onLine) =>
-                                new Promise((resolve) => {
+                                new Promise((resolve, reject) => {
                                     calls.push({
+                                        fail: reject,
                                         params,
                                         onProgress,
                                         onLine,
@@ -557,6 +559,39 @@ describe("useStudyMate", () => {
             expect(hook.result.current.shortestResults.get(node(2).id)).toMatchObject({
                 status: "done",
                 line: { stage: "bounded", pv: BOUNDED.pv },
+            });
+        });
+
+        it("手順が届いた後に失敗したら、分かった手順を残して理由を添える", async () => {
+            const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+            const { node, engine, hook } = setupControlled();
+            act(() => hook.result.current.startShortest(node(2)));
+            await waitFor(() => expect(engine.calls).toHaveLength(1));
+            act(() => engine.calls[0].onLine?.(ESTIMATED));
+            await act(async () => engine.calls[0].fail(new Error("worker replaced")));
+            expect(hook.result.current.shortestResults.get(node(2).id)).toMatchObject({
+                status: "done",
+                line: { stage: "estimated", pv: ESTIMATED.pv },
+                message: expect.stringContaining("読み込み直して"),
+            });
+            consoleError.mockRestore();
+        });
+
+        it("調べ直しが前より弱い手順のまま失敗したら、前の手順を残して理由を添える", async () => {
+            const { node, engine, hook } = setupControlled();
+            act(() => hook.result.current.startShortest(node(2)));
+            await waitFor(() => expect(engine.calls).toHaveLength(1));
+            act(() => engine.calls[0].onLine?.(BOUNDED));
+            await act(async () => engine.calls[0].finish({ kind: "unknown" }));
+            act(() => hook.result.current.startShortest(node(2)));
+            await waitFor(() => expect(engine.calls).toHaveLength(2));
+            act(() => engine.calls[1].onLine?.(ESTIMATED));
+            await act(async () => engine.calls[1].finish({ kind: "noMate" }));
+            expect(hook.result.current.shortestResults.get(node(2).id)).toEqual({
+                status: "done",
+                line: { stage: "bounded", pv: BOUNDED.pv },
+                elapsedMs: 3_000,
+                message: "最短手順を求められませんでした",
             });
         });
 

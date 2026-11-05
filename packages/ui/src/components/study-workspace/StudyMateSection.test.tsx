@@ -321,6 +321,51 @@ describe("最短手順", () => {
         expect(screen.getAllByRole("button", { name: "詰み手順を盤で見る" })).toHaveLength(1);
     });
 
+    it("失敗で終わっても、欄の高さは空けたままにする", () => {
+        const { container } = renderShortest({
+            status: "error",
+            message: "最短手順を求められませんでした",
+        });
+        expect(screen.getByRole("alert").textContent).toBe("最短手順を求められませんでした");
+        expect(container.querySelector('[aria-hidden="true"].invisible')).not.toBeNull();
+    });
+
+    it("分かった手順を残して失敗したときは、手順と理由を出す", () => {
+        renderShortest({
+            status: "done",
+            line: { stage: "bounded", pv: PV },
+            elapsedMs: 1_000,
+            message: "最短手順を求められませんでした",
+        });
+        screen.getByText("3 手以内に詰むことを証明");
+        expect(screen.getByRole("alert").textContent).toBe("最短手順を求められませんでした");
+    });
+
+    it("調べ直しで前より弱い段階の手順が届いても、前の手順を出しておく", () => {
+        const { container } = renderShortest({
+            status: "running",
+            nodes: 1,
+            elapsedMs: 1_000,
+            line: { stage: "estimated", pv: PV },
+            previous: { status: "done", line: { stage: "bounded", pv: PV }, elapsedMs: 9_000 },
+        });
+        screen.getByText("3 手以内に詰むことを証明");
+        expect(screen.queryByText("推定した手順（3 手、未証明）")).toBeNull();
+        expect(container.querySelector('[aria-busy="true"].opacity-50')).not.toBeNull();
+    });
+
+    it("調べ直しで前より進んだ手順が届いたら、それを出す", () => {
+        const { container } = renderShortest({
+            status: "running",
+            nodes: 1,
+            elapsedMs: 1_000,
+            line: { stage: "bounded", pv: PV },
+            previous: { status: "done", line: { stage: "estimated", pv: PV }, elapsedMs: 9_000 },
+        });
+        screen.getByText("3 手以内に詰むことを証明");
+        expect(container.querySelector('[aria-busy="true"].opacity-50')).toBeNull();
+    });
+
     it("推定した手順は未証明と伝える", () => {
         renderShortest({
             status: "running",
@@ -346,9 +391,10 @@ describe("最短手順", () => {
     });
 
     it("手順が分からないまま終わったら、時間切れと決めつけずに伝える", () => {
-        renderShortest({ status: "done", line: null, elapsedMs: 120_000 });
+        const { container } = renderShortest({ status: "done", line: null, elapsedMs: 120_000 });
         screen.getByText("求め終わりませんでした");
-        expect(screen.queryByText(/無駄合い/)).toBeNull();
+        // 手順は無いが、求めていた間の欄の高さは空けたままにする
+        expect(container.querySelector('[aria-hidden="true"].invisible')).not.toBeNull();
     });
 
     it("詰み・詰めろを調べ直している間は押せない", () => {
