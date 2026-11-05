@@ -31,6 +31,18 @@ const NARROW_MIN_CELL = 16;
 /** 縦に並べるとき、木の欄に残したい高さ（px）。 */
 const NARROW_TREE_MIN_HEIGHT = 160;
 const MAX_CELL = 48;
+/** 盤の大きさの見積もりに使う寸法（px）。盤の枠と座標、盤の下の操作の行、スマホの木と指し手の切り替え。 */
+const BOARD_FRAME_HEIGHT = 48;
+const CONTROLS_HEIGHT = 40;
+const PANE_SWITCH_HEIGHT = 36;
+/** 縦に並べるときの、盤・操作の行・切り替え・木の間の 3 つの隙間。 */
+const NARROW_GAPS_HEIGHT = 24;
+/** 盤の上下の持ち駒の段の、マスに比例しない部分（枠と余白、2 段分）。 */
+const HAND_ROWS_FIXED_HEIGHT = 32;
+/** 盤の左右の駒台の、マスに比例しない部分（枠・余白と盤との隙間、2 列分）と盤の枠。 */
+const SIDE_HANDS_FIXED_WIDTH = 100;
+/** 盤と持ち駒 2 列（段）がマス何個分か（9 + 0.8 × 2）。 */
+const BOARD_WIDTH_IN_CELLS = 10.6;
 /** 横に並べるとき、盤の下に残す指し手の一覧の高さ（px）。 */
 const MOVE_LIST_MIN_HEIGHT = 150;
 const INITIAL_POSITION = createInitialPositionState();
@@ -62,8 +74,9 @@ function useElementSize(element: HTMLElement | null) {
 function wideCellSize(width: number, height: number) {
     // 高さの低い画面では指し手の一覧の高さを諦め、盤と操作の行を収める。
     const listHeight = height >= 600 ? MOVE_LIST_MIN_HEIGHT : 0;
-    const byHeight = (height - listHeight - 48 - 40) / 9;
-    const byWidth = (width * 0.5 - 100) / 10.6;
+    const byHeight = (height - listHeight - BOARD_FRAME_HEIGHT - CONTROLS_HEIGHT) / 9;
+    // 幅はマス 9 個と左右の駒台（それぞれマスの 0.8 倍）、駒台の枠・余白と盤の枠。
+    const byWidth = (width * 0.5 - SIDE_HANDS_FIXED_WIDTH) / BOARD_WIDTH_IN_CELLS;
     return Math.max(MIN_CELL, Math.min(MAX_CELL, Math.floor(Math.min(byHeight, byWidth))));
 }
 
@@ -72,8 +85,18 @@ function wideCellSize(width: number, height: number) {
  * 盤の下の操作の行・切り替え・木の欄が画面の高さに収まる大きさにする。
  */
 function narrowMaxCell(height: number) {
-    const rest = NARROW_TREE_MIN_HEIGHT + 40 + 36 + 24 + 32 + 33;
-    return Math.max(NARROW_MIN_CELL, Math.min(MAX_CELL, Math.floor((height - rest) / 10.6)));
+    const rest =
+        NARROW_TREE_MIN_HEIGHT +
+        CONTROLS_HEIGHT +
+        PANE_SWITCH_HEIGHT +
+        NARROW_GAPS_HEIGHT +
+        HAND_ROWS_FIXED_HEIGHT +
+        BOARD_FRAME_HEIGHT;
+    // 高さはマス 9 個と上下の持ち駒の段（それぞれマスの 0.8 倍）。
+    return Math.max(
+        NARROW_MIN_CELL,
+        Math.min(MAX_CELL, Math.floor((height - rest) / BOARD_WIDTH_IN_CELLS)),
+    );
 }
 
 /**
@@ -161,8 +184,10 @@ export function BookTreeViewer({
             event.preventDefault();
             setDragging(true);
         };
+        // 子の要素の境目でも dragleave が起きるので、画面の外へ出たときだけ消す。
         const leave = (event: DragEvent) => {
-            if (event.target === root) setDragging(false);
+            if (!(event.relatedTarget instanceof Node && root.contains(event.relatedTarget)))
+                setDragging(false);
         };
         const drop = (event: DragEvent) => {
             event.preventDefault();

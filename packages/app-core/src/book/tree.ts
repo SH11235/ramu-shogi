@@ -68,11 +68,12 @@ export function createBookTreeBuilder({
             tree.legalMovesFailed = true;
         }
         if (cancelled) return;
+        const inBookMoves = new Set(registered);
         const seen = new Set<string>();
         for (const move of [...registered, ...legal]) {
             if (seen.has(move)) continue;
             seen.add(move);
-            const inBook = seen.size <= registered.length;
+            const inBook = inBookMoves.has(move);
             const result = inBook
                 ? applyUsiMoveStrict(node.position, move)
                 : applyMoveWithState(node.position, move);

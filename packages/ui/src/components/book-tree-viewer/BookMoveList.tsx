@@ -20,11 +20,21 @@ export function BookMoveList({
     const current = tree?.nodes[nodeId];
     const source = current?.mergeTo === undefined ? current : tree?.nodes[current.mergeTo];
     const entries = source ? book.positions.get(source.key) : undefined;
-    const children = source?.children.map((id) => tree?.nodes[id]).filter((node) => !!node) ?? [];
+    const rows =
+        tree && source
+            ? source.children.map((id) => {
+                  const node = tree.nodes[id];
+                  return {
+                      node,
+                      label: moveLabel(tree, node),
+                      entry: entries?.find((move) => move.usi === node.move),
+                  };
+              })
+            : [];
     let message: string | null = null;
     if (!tree || !source) message = "定跡の木を組み立てています…";
     else if (source.status === "pending") message = "この先を読み込んでいます…";
-    else if (children.length === 0) message = "この先は定跡にありません";
+    else if (rows.length === 0) message = "この先は定跡にありません";
     return (
         <section
             aria-label="この局面の指し手"
@@ -53,9 +63,7 @@ export function BookMoveList({
                         </tr>
                     </thead>
                     <tbody>
-                        {children.map((child) => {
-                            const entry = entries?.find((move) => move.usi === child.move);
-                            const label = moveLabel(tree as BookTree, child);
+                        {rows.map(({ node: child, label, entry }) => {
                             return (
                                 <tr
                                     key={child.id}
@@ -78,7 +86,7 @@ export function BookMoveList({
                                                 {label.slice(0, 1)}
                                             </span>
                                             <span>{label.slice(1)}</span>
-                                            {!child.inBook && (
+                                            {child.inBook === false && (
                                                 <span className="text-xs text-muted-foreground">
                                                     （登録なし・定跡へつながる）
                                                 </span>
