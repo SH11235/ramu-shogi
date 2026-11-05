@@ -9,6 +9,8 @@ interface ImportMetaEnv {
     readonly VITE_APP_VERSION?: string;
     /** 内蔵エンジン（rshogi-core）の版（build 時に Cargo.lock から埋め込む。例: `0.8.1+05d89777`） */
     readonly VITE_RSHOGI_CORE_VERSION?: string;
+    /** ルーム作成で使う Turnstile の sitekey。未設定ならトークンを付けずに送る */
+    readonly VITE_TURNSTILE_SITE_KEY?: string;
 }
 
 interface ImportMeta {

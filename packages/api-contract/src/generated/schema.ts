@@ -608,6 +608,7 @@ export interface components {
         };
         CreateRoomRequest: {
             settings: components["schemas"]["RoomSettings"];
+            turnstileToken?: string;
         };
         RoomSettings: {
             startSfen: string;
@@ -1953,6 +1954,15 @@ export interface operations {
             };
             /** @description Invalid room settings */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Turnstile token is missing or was rejected */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

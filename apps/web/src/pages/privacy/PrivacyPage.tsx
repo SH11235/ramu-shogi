@@ -28,7 +28,7 @@ export default function PrivacyPage(): ReactElement {
                 right={<HeaderNav />}
             />
             <PageContainer width="narrow">
-                <PageHeading title="プライバシーポリシー" description="最終更新日：2026年11月2日" />
+                <PageHeading title="プライバシーポリシー" description="最終更新日：2026年11月6日" />
 
                 <Section className="gap-6 p-6">
                     <PolicySection title="1. はじめに">
@@ -125,6 +125,10 @@ export default function PrivacyPage(): ReactElement {
                                 Cloudflareのプライバシーポリシー
                             </a>
                             をご参照ください。
+                        </p>
+                        <p className="mt-2">
+                            オンライン対局の部屋を作成するときは、自動化された不正な利用を防ぐためにCloudflare
+                            Turnstileを利用します。確認のため、ブラウザの情報やIPアドレスがCloudflareに送信されます。
                         </p>
                         <p className="mt-2">
                             また、本サービスをより使いやすくするため、どの画面や機能がどのくらい使われているかを集計しています。集計に使うのは次の情報で、個人を特定できる情報は含みません。
