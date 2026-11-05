@@ -21,8 +21,12 @@ export const MAX_BOOK_FILE_BYTES = 64 * 1024 * 1024;
  * 横長で高さの低い画面（横向きのスマホ）は、縦に積むと収まらないので、狭くても左右に並べる。
  */
 const WIDE_MIN_WIDTH = 900;
-const LANDSCAPE_MIN_WIDTH = 560;
-const MIN_CELL = 18;
+const LANDSCAPE_MIN_WIDTH = 480;
+const MIN_CELL = 14;
+/** 横に並べるとき、盤の下に指し手の一覧を出す本文の高さ（px）。 */
+const MOVE_LIST_MIN_BODY_HEIGHT = 400;
+/** 横に並べるとき、盤の下に操作の行を置ける本文の高さ（px）。 */
+const CONTROLS_BELOW_MIN_HEIGHT = 260;
 const NARROW_MIN_CELL = 16;
 /** 縦に並べるとき、木の欄に残したい高さ（px）。 */
 const NARROW_TREE_MIN_HEIGHT = 160;
@@ -222,6 +226,10 @@ export function BookTreeViewer({
         (size.width >= WIDE_MIN_WIDTH ||
             (size.width >= LANDSCAPE_MIN_WIDTH && size.width > size.height));
     const ply = (position.ply ?? 1) - 1;
+    // 高さのごく低い画面（横向きの小さいスマホ）では、盤の下に操作の行が入らないので木の上に置く。
+    const controlsBesideTree = wide && !!size && size.height < CONTROLS_BELOW_MIN_HEIGHT;
+    // 横に並べて高さの低いときは、盤の下の指し手の一覧が細い帯になって読めないので出さない（評価値は木の箱にも出る）。
+    const showMoveList = !wide || (!!size && size.height >= MOVE_LIST_MIN_BODY_HEIGHT);
     const board = (
         <StaticBoardView
             position={position}
@@ -364,27 +372,32 @@ export function BookTreeViewer({
                     <div className="flex min-h-0 min-w-0 flex-1 gap-3">
                         <div className="flex min-h-0 shrink-0 flex-col gap-2">
                             {board}
-                            {controls}
-                            <BookMoveList
-                                tree={tree}
-                                book={book.data}
-                                nodeId={selected}
-                                onSelect={setSelected}
-                                className="flex-1 rounded-lg border border-wafuu-border bg-background"
-                            />
+                            {!controlsBesideTree && controls}
+                            {showMoveList && (
+                                <BookMoveList
+                                    tree={tree}
+                                    book={book.data}
+                                    nodeId={selected}
+                                    onSelect={setSelected}
+                                    className="w-0 min-w-full flex-1 rounded-lg border border-wafuu-border bg-background"
+                                />
+                            )}
                         </div>
-                        {tree ? (
-                            <BookTreeGraph
-                                key={book.id}
-                                tree={tree}
-                                book={book.data}
-                                selected={selected}
-                                onSelect={setSelected}
-                                className="min-w-0 flex-1 rounded-lg border border-wafuu-border bg-wafuu-washi"
-                            />
-                        ) : (
-                            <div className="flex-1 rounded-lg border border-wafuu-border" />
-                        )}
+                        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
+                            {controlsBesideTree && controls}
+                            {tree ? (
+                                <BookTreeGraph
+                                    key={book.id}
+                                    tree={tree}
+                                    book={book.data}
+                                    selected={selected}
+                                    onSelect={setSelected}
+                                    className="min-h-0 flex-1 rounded-lg border border-wafuu-border bg-wafuu-washi"
+                                />
+                            ) : (
+                                <div className="flex-1 rounded-lg border border-wafuu-border" />
+                            )}
+                        </div>
                     </div>
                 ) : (
                     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
