@@ -40,6 +40,9 @@ const SHORTEST_LIMIT_SECONDS = STUDY_SHORTEST_MATE_TIME_MS / 1000;
 const RESULT_ROW_CLASS =
     "grid grid-cols-[5rem_minmax(0,1fr)_auto] items-baseline gap-x-2 gap-y-0.5 px-1";
 const RESULT_HEADLINE_CLASS = "col-span-2 col-start-2 row-start-1 min-w-0 @xs:col-span-1";
+// 名前の無い行（最短手順の段）の 1 段目。狭い枠では名前の列から使う
+const RESULT_UNLABELED_HEADLINE_CLASS =
+    "col-span-3 col-start-1 row-start-1 min-w-0 @xs:col-span-1 @xs:col-start-2";
 const RESULT_DETAIL_CLASS =
     "col-span-2 col-start-1 row-start-2 flex min-w-0 flex-col gap-0.5 @xs:col-span-1 @xs:col-start-2";
 // 広い枠では 2 段にまたがせ、ボタンの高さで 1 段目が伸びて手順が下がらないようにする
@@ -116,6 +119,7 @@ function MateLine({
     moves: string[];
     /** 扱えない局面のときの文言（詰めろの行は扱えない局面を出さないので省く）。 */
     unsupportedText?: string;
+    /** 手順の操作。詰みがあるときだけ出す。 */
     actions?: ReactElement;
 }): ReactElement {
     return (
@@ -560,7 +564,7 @@ function ShortestLineBlock({
 }): ReactElement {
     return (
         <div className={RESULT_ROW_CLASS}>
-            <p className="col-span-3 col-start-1 row-start-1 text-xs text-wafuu-sumi @xs:col-span-1 @xs:col-start-2">
+            <p className={cn(RESULT_UNLABELED_HEADLINE_CLASS, "text-xs text-wafuu-sumi")}>
                 {shortestLineText(line)}
             </p>
             <div className={RESULT_DETAIL_CLASS}>
