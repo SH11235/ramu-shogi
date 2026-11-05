@@ -208,6 +208,8 @@ export default function CreateRoomPage(): ReactElement {
 
                 const data = (await res.json()) as CreateRoomResponse;
                 usageClient.track("online_room", { action: "create" });
+                // 応答を待つあいだに別の画面へ移っていたら、そこから引き戻さない
+                if (abort.signal.aborted) return;
                 await navigate({
                     to: "/online/$roomId",
                     params: { roomId: data.roomId },
