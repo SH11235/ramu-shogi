@@ -333,10 +333,10 @@ export function withNpsRecording<T extends EngineClient>(
     const mate: MateClient | undefined = innerMate
         ? {
               available: innerMate.available.bind(innerMate),
-              async solve(params, onProgress) {
+              async solve(params, onProgress, onLine) {
                   markSearching(true);
                   try {
-                      return await innerMate.solve(params, onProgress);
+                      return await innerMate.solve(params, onProgress, onLine);
                   } finally {
                       markSearching(false);
                   }

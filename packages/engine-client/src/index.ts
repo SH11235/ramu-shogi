@@ -525,6 +525,11 @@ export interface MateParams {
     timeMs?: number;
     /** ノード数の上限。0 か省略で無制限 */
     nodes?: number;
+    /**
+     * `tsume` で詰将棋のルール (無駄合いを数えない) の最短手順を求めて `mate` の `pv` に返す。
+     * 省略で通常の詰み判定 (手順は最短とは限らない)。
+     */
+    shortest?: "tsume";
 }
 /**
  * 詰み探索の結論。
@@ -548,6 +553,17 @@ export interface MateProgress {
     nodes: number;
     elapsedMs: number;
 }
+/**
+ * 最短手順モードで、最短の手順を求め終わる前に分かった詰み手順 (USI 形式、攻め方の手から)。
+ * - `estimated`: 推定した手順。この手数で詰むことも、最短であることも証明していない
+ * - `bounded`: 根がこの手数以内で詰むことを証明した (最短とは限らない)
+ *
+ * 後で打ち切られて結論が `unknown` になっても、知らせた手順の意味はそのまま成り立つ。
+ */
+export interface MateLine {
+    kind: "estimated" | "bounded";
+    pv: string[];
+}
 export interface MateClient {
     /** 初期化後に使えるか。 */
     available(): boolean;
@@ -557,6 +573,11 @@ export interface MateClient {
      * (stop() はエンジンを作り直して止め、待っている solve は失敗する)。
      * 通常の探索・解析の最中に呼ぶと失敗する。
      * @param onProgress 約 1 秒ごとに呼ばれる
+     * @param onLine `shortest` を指定したとき、途中で分かった手順ごとに呼ばれる (呼ばれないこともある)
      */
-    solve(params: MateParams, onProgress?: (progress: MateProgress) => void): Promise<MateOutcome>;
+    solve(
+        params: MateParams,
+        onProgress?: (progress: MateProgress) => void,
+        onLine?: (line: MateLine) => void,
+    ): Promise<MateOutcome>;
 }

@@ -55,9 +55,13 @@ try {
             if (event.type === "error" && event.severity !== "warning")
                 console.error(JSON.stringify(event));
         });
-        const solve = async (sfen, params, onProgress) => {
+        const solve = async (sfen, params, onProgress, onLine) => {
             await client.loadPosition(sfen);
-            return client.mate.solve({ threads: mateThreads, hashMb: 16, ...params }, onProgress);
+            return client.mate.solve(
+                { threads: mateThreads, hashMb: 16, ...params },
+                onProgress,
+                onLine,
+            );
         };
         try {
             await client.init({ threads: engineThreads, ttSizeMb: 4 });
@@ -71,6 +75,23 @@ try {
                     throw new Error(`${mode}: ${JSON.stringify(outcome)}`);
                 modes[mode] = outcome.nodes;
             }
+            // 最短手順: 途中で分かった手順を知らせ、結論は最短の手順
+            const lines = [];
+            const shortest = await solve(
+                "4k4/9/4P4/9/9/9/9/9/4K4 b G 1",
+                { mode: "Power", timeMs: 10000, shortest: "tsume" },
+                undefined,
+                (line) => lines.push(line),
+            );
+            if (shortest.result.kind !== "mate" || shortest.result.pv.join(" ") !== "G*5b")
+                throw new Error(`shortest: ${JSON.stringify(shortest)}`);
+            // この局面では推定 → 上限の証明の順に、どちらも最短と同じ手順が届く
+            const expectedLines = [
+                { kind: "estimated", pv: ["G*5b"] },
+                { kind: "bounded", pv: ["G*5b"] },
+            ];
+            if (JSON.stringify(lines) !== JSON.stringify(expectedLines))
+                throw new Error(`shortest lines: ${JSON.stringify(lines)}`);
             const noMate = await solve("4k4/9/9/9/9/9/9/9/4K4 b - 1", { timeMs: 10000 });
             if (noMate.result.kind !== "noMate") throw new Error(JSON.stringify(noMate));
             const progress = [];
@@ -107,6 +128,7 @@ try {
                 backend: client.getBackendStatus(),
                 engineThreads: client.getThreadInfo(),
                 modes,
+                shortestLines: lines.map((l) => `${l.kind}:${l.pv.length}`),
                 zukou: { kind: zukou.result.kind, nodes: zukou.nodes, elapsedMs: zukou.elapsedMs },
                 progress: progress.length,
                 bestmove: move,

@@ -585,14 +585,21 @@
       }
     },
     {
-      "name": "開始手数が i32 の上限ちょうどで手が無い",
-      "startSfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 2147483647",
+      "name": "開始手数が SFEN で読める上限ちょうどで手が無い",
+      "startSfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1073741823",
       "passRights": null,
       "moves": [],
       "expected": {
         "ok": true,
-        "finalSfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 2147483647"
+        "finalSfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1073741823"
       }
+    },
+    {
+      "name": "開始手数が SFEN で読める上限を超える",
+      "startSfen": "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1073741824",
+      "passRights": null,
+      "moves": [],
+      "expectedError": true
     },
     {
       "name": "読めない SFEN",

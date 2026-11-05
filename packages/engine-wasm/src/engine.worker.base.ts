@@ -5,6 +5,7 @@ import type {
     EngineEvent,
     EngineInitOptions,
     LayerStacksOptions,
+    MateLine,
     MateOutcome,
     MateParams,
     MateProgress,
@@ -31,7 +32,11 @@ type WasmWorkerBindings = {
     ) => { runId: number; address: number };
     runAnalysis?: (runId: number) => Omit<AnalysisFinished, "sessionId">;
     releaseAnalysis?: () => void;
-    solveMate?: (params: MateParams, onProgress: (progress: MateProgress) => void) => MateOutcome;
+    solveMate?: (
+        params: MateParams,
+        onProgress: (progress: MateProgress) => void,
+        onLine: (line: MateLine) => void,
+    ) => MateOutcome;
     initWasm: (input?: WasmInitInput) => Promise<unknown>;
     applyMoves: (moves: string[]) => Promise<void> | void;
     disposeEngine: () => void;
@@ -649,14 +654,25 @@ export function createEngineWorker(bindings: WasmWorkerBindings) {
                 case "solveMate": {
                     await ensureEngineReady();
                     if (!bindings.solveMate) throw new Error("詰み探索は利用できません");
-                    const outcome = bindings.solveMate(command.params, (progress) => {
-                        const message: MateMessage = {
-                            type: "mateProgress",
-                            requestId: command.requestId,
-                            progress,
-                        };
-                        ctx.postMessage(message);
-                    });
+                    const outcome = bindings.solveMate(
+                        command.params,
+                        (progress) => {
+                            const message: MateMessage = {
+                                type: "mateProgress",
+                                requestId: command.requestId,
+                                progress,
+                            };
+                            ctx.postMessage(message);
+                        },
+                        (line) => {
+                            const message: MateMessage = {
+                                type: "mateLine",
+                                requestId: command.requestId,
+                                line,
+                            };
+                            ctx.postMessage(message);
+                        },
+                    );
                     const message: MateMessage = {
                         type: "mateFinished",
                         requestId: command.requestId,

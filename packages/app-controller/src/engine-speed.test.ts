@@ -327,6 +327,21 @@ describe("withNpsRecording", () => {
         expect(store.getSnapshot().records).toEqual([]);
     });
 
+    it("詰み探索の進捗と途中の手順をそのまま渡す", async () => {
+        const fake = createFakeClient();
+        const solve = vi.fn().mockResolvedValue({
+            result: { kind: "unknown" },
+            nodes: 1,
+            elapsedMs: 1,
+        });
+        fake.client.mate = { available: () => true, solve };
+        const client = await start(fake);
+        const onProgress = vi.fn();
+        const onLine = vi.fn();
+        await client.mate?.solve({ shortest: "tsume" }, onProgress, onLine);
+        expect(solve).toHaveBeenCalledWith({ shortest: "tsume" }, onProgress, onLine);
+    });
+
     it("探索中に断られた詰み探索が、探索中の印を外さない", async () => {
         const fake = createFakeClient();
         fake.client.mate = {
