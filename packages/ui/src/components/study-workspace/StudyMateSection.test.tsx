@@ -296,6 +296,31 @@ describe("最短手順", () => {
         expect(handlers.onPreviewPv).toHaveBeenCalledWith({ nodeId: node.id, pv: PV, score: null });
     });
 
+    it("調べ直している間は、今回の手順が分かるまで前の手順を薄く出しておく", () => {
+        const { container } = renderShortest({
+            status: "running",
+            nodes: 0,
+            elapsedMs: 0,
+            line: null,
+            previous: { status: "done", line: { stage: "bounded", pv: PV }, elapsedMs: 9_000 },
+        });
+        screen.getByText("3 手以内に詰むことを証明");
+        expect(container.querySelector('[aria-busy="true"].opacity-50')).not.toBeNull();
+    });
+
+    it("手順が分かる前から、手順の欄の高さを空けておく", () => {
+        const { container } = renderShortest({
+            status: "running",
+            nodes: 0,
+            elapsedMs: 0,
+            line: null,
+        });
+        const placeholder = container.querySelector('[aria-hidden="true"].invisible');
+        expect(placeholder?.textContent).toContain("推定した手順");
+        // 空けた欄のボタンは押せない
+        expect(screen.getAllByRole("button", { name: "詰み手順を盤で見る" })).toHaveLength(1);
+    });
+
     it("推定した手順は未証明と伝える", () => {
         renderShortest({
             status: "running",

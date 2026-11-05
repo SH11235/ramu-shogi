@@ -439,9 +439,8 @@ function StudyShortestMate({
     const { state, disabled, onStart, onStop } = shortest;
     const line = state && state.status !== "error" ? state.line : null;
     const finished = line?.stage === "proven";
-    const request: StudyPvRequest | null = line
-        ? { nodeId: node.id, pv: line.pv, score: null }
-        : null;
+    // 調べ直している間は、今回の手順が分かるまで前の手順を薄く出しておく
+    const previousLine = state?.status === "running" ? (state.previous?.line ?? null) : null;
     return (
         <div className="flex flex-col gap-0.5 px-1 py-1">
             <div className="flex items-center gap-2">
@@ -491,25 +490,68 @@ function StudyShortestMate({
                     )
                 )}
             </div>
-            {line && request && (
-                <div className="flex items-baseline gap-2">
-                    <span className="w-20 shrink-0" />
-                    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                        <p className="text-xs text-wafuu-sumi">{shortestLineText(line)}</p>
-                        <p className="line-clamp-2 text-xs text-muted-foreground">
-                            {mateMovesText(node, line.pv).join(" ")}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                            詰将棋のルールの手順なので、最後に受け方の無駄合いが残ることがあります
-                        </p>
-                    </div>
-                    <PvActions
-                        request={request}
+            {line ? (
+                <ShortestLineBlock
+                    node={node}
+                    line={line}
+                    onPreviewPv={onPreviewPv}
+                    onAddPvAsVariation={onAddPvAsVariation}
+                />
+            ) : previousLine ? (
+                <div aria-busy={true} className="opacity-50">
+                    <ShortestLineBlock
+                        node={node}
+                        line={previousLine}
                         onPreviewPv={onPreviewPv}
                         onAddPvAsVariation={onAddPvAsVariation}
                     />
                 </div>
+            ) : (
+                state?.status === "running" && (
+                    // 手順が届いたときに下の候補手がずれないよう、求めている間は手順の欄の高さを空けておく
+                    <div aria-hidden="true" className="invisible">
+                        <ShortestLineBlock
+                            node={node}
+                            line={{ stage: "estimated", pv: [] }}
+                            onPreviewPv={onPreviewPv}
+                            onAddPvAsVariation={onAddPvAsVariation}
+                        />
+                    </div>
+                )
             )}
+        </div>
+    );
+}
+
+/** 最短手順の段階と手順。手順は 2 行分の高さを取り、届いた手順の長さで欄の高さを変えない。 */
+function ShortestLineBlock({
+    node,
+    line,
+    onPreviewPv,
+    onAddPvAsVariation,
+}: {
+    node: KifuNode;
+    line: StudyShortestLine;
+    onPreviewPv: (request: StudyPvRequest) => void;
+    onAddPvAsVariation: (request: StudyPvRequest) => void;
+}): ReactElement {
+    return (
+        <div className="flex items-baseline gap-2">
+            <span className="w-20 shrink-0" />
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <p className="text-xs text-wafuu-sumi">{shortestLineText(line)}</p>
+                <p className="line-clamp-2 min-h-8 text-xs text-muted-foreground">
+                    {line.pv.length > 0 ? mateMovesText(node, line.pv).join(" ") : null}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                    詰将棋のルールの手順なので、最後に受け方の無駄合いが残ることがあります
+                </p>
+            </div>
+            <PvActions
+                request={{ nodeId: node.id, pv: line.pv, score: null }}
+                onPreviewPv={onPreviewPv}
+                onAddPvAsVariation={onAddPvAsVariation}
+            />
         </div>
     );
 }

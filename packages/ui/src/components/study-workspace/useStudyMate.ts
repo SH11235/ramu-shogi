@@ -80,6 +80,8 @@ export type StudyShortestState =
           elapsedMs: number;
           /** いままでに分かった手順（まだ無ければ null）。 */
           line: StudyShortestLine | null;
+          /** 調べ直す前の結果（今回の手順が分かるまで出しておき、欄の高さを変えない）。 */
+          previous?: StudyShortestState & { status: "done" };
       }
     | {
           status: "done";
@@ -361,7 +363,8 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
             const active = activeRef.current;
             return runRef.current === run && active?.kind === "shortest" ? active : null;
         };
-        setShortest(nodeId, { status: "running", nodes: 0, elapsedMs: 0, line: null });
+        const previous = before?.status === "done" ? before : undefined;
+        setShortest(nodeId, { status: "running", nodes: 0, elapsedMs: 0, line: null, previous });
 
         void (async () => {
             try {
@@ -383,8 +386,14 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
                         const active = current();
                         if (!active) return;
                         nodes = progress.nodes;
+                        // 中止は同期で ref から分かった手順と経過を読むので、state とは別に ref にも書く
                         active.elapsedMs = progress.elapsedMs;
-                        setShortest(nodeId, { status: "running", ...progress, line: active.line });
+                        setShortest(nodeId, {
+                            status: "running",
+                            ...progress,
+                            line: active.line,
+                            previous,
+                        });
                     },
                     (line: MateLine) => {
                         const active = current();
@@ -395,6 +404,7 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
                             nodes,
                             elapsedMs: active.elapsedMs,
                             line: active.line,
+                            previous,
                         });
                     },
                 );
@@ -452,7 +462,7 @@ function shortestLineOf(state: StudyShortestState | undefined): StudyShortestLin
 
 /**
  * 分かっていることの多い手順（推定 < N 手以内の証明 < 最短の証明）。同じ段階なら短い手順（N 手以内の
- * 証明はより狭い上限）、それも同じなら `current`。
+ * 証明はより狭い上限）、それも同じなら `current`（同じ手順なら、経過時間などを新しい実行のものにする）。
  */
 function betterShortestLine(
     previous: StudyShortestLine | null,

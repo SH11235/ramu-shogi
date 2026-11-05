@@ -520,6 +520,11 @@ describe("useStudyMate", () => {
             expect(hook.result.current.shortestResults.get(node(2).id)).toEqual(previous);
             act(() => hook.result.current.startShortest(node(2)));
             await waitFor(() => expect(engine.calls).toHaveLength(2));
+            expect(hook.result.current.shortestResults.get(node(2).id)).toMatchObject({
+                status: "running",
+                line: null,
+                previous,
+            });
             act(() => engine.calls[1].onLine?.(ESTIMATED));
             act(() => hook.result.current.stop());
             expect(hook.result.current.shortestResults.get(node(2).id)).toEqual(previous);

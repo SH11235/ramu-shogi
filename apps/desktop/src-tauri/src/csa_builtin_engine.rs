@@ -665,7 +665,7 @@ fn is_final_result_line(line: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rshogi_core::types::{Color, Value};
+    use rshogi_core::types::{Bound, Color, Value};
 
     fn fresh_engine_state() -> Arc<EngineState> {
         Arc::new(EngineState::default())
@@ -810,6 +810,7 @@ mod tests {
             depth: 12,
             sel_depth: 14,
             score: Value::new(150),
+            bound: Bound::Exact,
             nodes: 12345,
             time_ms: 200,
             nps: 60_000,
@@ -834,6 +835,7 @@ mod tests {
             depth: 7,
             sel_depth: 7,
             score: Value::new(-25),
+            bound: Bound::Exact,
             nodes: 0,
             time_ms: 0,
             nps: 12_000,
