@@ -36,7 +36,6 @@ const preset: Omit<Config, "content"> = {
                 },
                 accent: {
                     DEFAULT: "hsl(var(--accent))",
-                    foreground: "hsl(var(--accent-foreground))",
                 },
                 popover: {
                     DEFAULT: "hsl(var(--popover))",

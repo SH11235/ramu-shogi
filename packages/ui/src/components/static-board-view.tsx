@@ -2,7 +2,7 @@ import type { Player, PositionState } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import { type CSSProperties, type ReactElement, useState } from "react";
 import { DEFAULT_SHOGI_CELL_SIZE, ShogiBoard } from "./shogi-board";
-import { HandPiecesDisplay } from "./shogi-match/components/HandPiecesDisplay";
+import { type HandFrame, HandPiecesDisplay } from "./shogi-match/components/HandPiecesDisplay";
 import { cellSizeForWidth, useElementWidth } from "./shogi-match/hooks/useMobileCellSize";
 import type { SquareNotation } from "./shogi-match/types";
 import { boardToGrid } from "./shogi-match/utils/positionUtils";
@@ -34,6 +34,15 @@ interface StaticBoardViewProps {
     reserveHandHeight?: boolean;
     /** 置き場所の幅に合わせる。省くとマスは既定の大きさ */
     fit?: BoardFit;
+    /** マスの大きさを呼び出し側で決める（画面の高さに合わせるときなど）。`fit` より優先する */
+    cellSize?: number;
+    /**
+     * 持ち駒の置き場所。"rows" は盤の上下、"sides" は盤の左右（対局画面・研究ノートと同じ。
+     * 上側の持ち駒は盤の左上、下側は右下）。
+     */
+    handPlacement?: "rows" | "sides";
+    /** 駒台の枠の見た目（対局画面・研究ノートは "outline"） */
+    handFrame?: HandFrame;
     className?: string;
 }
 
@@ -63,6 +72,9 @@ export function StaticBoardView({
     hideEmptyHandPieces = false,
     reserveHandHeight = false,
     fit,
+    cellSize: fixedCellSize,
+    handPlacement = "rows",
+    handFrame,
     className,
 }: StaticBoardViewProps): ReactElement {
     const [root, setRoot] = useState<HTMLDivElement | null>(null);
@@ -73,18 +85,21 @@ export function StaticBoardView({
         (typeof document === "undefined"
             ? FALLBACK_WIDTH
             : document.documentElement.clientWidth - (fit?.viewportInset ?? 0));
-    const cellSize = fit
-        ? Math.max(
-              fit.minCellSize,
-              Math.min(cellSizeForWidth(width, fit.minCellSize), fit.maxCellSize),
-          )
-        : DEFAULT_SHOGI_CELL_SIZE;
+    const cellSize =
+        fixedCellSize ??
+        (fit
+            ? Math.max(
+                  fit.minCellSize,
+                  Math.min(cellSizeForWidth(width, fit.minCellSize), fit.maxCellSize),
+              )
+            : DEFAULT_SHOGI_CELL_SIZE);
     const resolvedHandSize = handSize === "auto" ? handSizeForWidth(width) : handSize;
 
     // ShogiBoard は grid を並べ替えないので、後手を手前にするときは盤の並びをここで逆にする。
     const grid = boardToGrid(position.board);
     const orientedGrid = flipBoard ? [...grid].reverse().map((row) => [...row].reverse()) : grid;
-    const hand = (owner: Player) => (
+    const sides = handPlacement === "sides";
+    const hand = (owner: Player, verticalAlign: "start" | "end") => (
         <HandPiecesDisplay
             owner={owner}
             hand={position.hands[owner]}
@@ -92,24 +107,39 @@ export function StaticBoardView({
             size={resolvedHandSize}
             hideEmptyPieces={hideEmptyHandPieces}
             reserveHeight={reserveHandHeight}
+            vertical={sides}
+            verticalAlign={verticalAlign}
+            frame={handFrame}
         />
     );
+    const board = (
+        <ShogiBoard
+            grid={orientedGrid}
+            flipBoard={flipBoard}
+            lastMove={lastMove}
+            squareNotation={squareNotation}
+            showBoardLabels={showBoardLabels}
+        />
+    );
+    const style = { "--shogi-cell-size": `${cellSize}px` } as CSSProperties;
+
+    if (sides) {
+        // 駒台は盤と同じ高さで、幅は駒 1 つ分（マスの 0.8 倍）と枠・余白。空のときも同じ幅を取る（盤が横に動かないように）。
+        const sideZone = "w-[calc(var(--shogi-cell-size,48px)*0.8+20px)] shrink-0 self-stretch";
+        return (
+            <div ref={setRoot} className={cn("flex items-stretch gap-2", className)} style={style}>
+                <div className={sideZone}>{hand(flipBoard ? "sente" : "gote", "start")}</div>
+                {board}
+                <div className={sideZone}>{hand(flipBoard ? "gote" : "sente", "end")}</div>
+            </div>
+        );
+    }
 
     return (
-        <div
-            ref={setRoot}
-            className={cn("flex flex-col", className)}
-            style={{ "--shogi-cell-size": `${cellSize}px` } as CSSProperties}
-        >
-            {hand(flipBoard ? "sente" : "gote")}
-            <ShogiBoard
-                grid={orientedGrid}
-                flipBoard={flipBoard}
-                lastMove={lastMove}
-                squareNotation={squareNotation}
-                showBoardLabels={showBoardLabels}
-            />
-            {hand(flipBoard ? "gote" : "sente")}
+        <div ref={setRoot} className={cn("flex flex-col", className)} style={style}>
+            {hand(flipBoard ? "sente" : "gote", "start")}
+            {board}
+            {hand(flipBoard ? "gote" : "sente", "end")}
         </div>
     );
 }

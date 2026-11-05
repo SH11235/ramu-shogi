@@ -24,14 +24,13 @@ function fixture() {
 
 describe("book tree", () => {
     it.each([
-        { moves: [], side: "sente" as const, illegal: "7g7e", legal: "7g7f" },
+        { moves: [], illegal: "7g7e", legal: "7g7f" },
         {
             moves: ["7g7f", "7c7d", "7f7e", "7d7e", "2g2f"],
-            side: "gote" as const,
             illegal: "P*3d",
             legal: "8c8d",
         },
-    ])("違法手 $illegal を除外して合法な子を残す", async ({ moves, side, illegal, legal }) => {
+    ])("違法手 $illegal を除外して合法な子を残す", async ({ moves, illegal, legal }) => {
         const entries = moves.map(
             (move, index) => `sfen ${key(...moves.slice(0, index))}\n${move}`,
         );
@@ -42,7 +41,6 @@ describe("book tree", () => {
         const legalMoves = vi.fn(async (sfen: string) => responses.get(sfen) ?? []);
         const builder = createBookTreeBuilder({
             book: parseBook(entries.join("\n")),
-            side,
             legalMoves,
         });
         await builder.start();
@@ -51,11 +49,6 @@ describe("book tree", () => {
         expect(node?.children.map((id) => builder.tree.nodes[id].move)).toEqual([legal]);
         expect(builder.tree.nodes.some((node) => node.move === illegal)).toBe(false);
         expect(builder.tree.legalMovesFailed).toBe(false);
-        expect(
-            legalMoves.mock.calls.every(
-                ([sfen]) => sfen.split(" ")[1] === (side === "sente" ? "w" : "b"),
-            ),
-        ).toBe(true);
     });
     it("中止後は予約済みの展開も通知も木の変更もしない", async () => {
         let finish: (moves: string[]) => void = () => {};
@@ -68,7 +61,6 @@ describe("book tree", () => {
         const onChange = vi.fn();
         const builder = createBookTreeBuilder({
             ...fixture(),
-            side: "sente",
             legalMoves,
             onChange,
         });
@@ -86,11 +78,12 @@ describe("book tree", () => {
     });
     it("幅優先で定跡順・接続する合法手を展開し、合流を葉にして最初の手順を返す", async () => {
         const input = fixture();
-        const builder = createBookTreeBuilder({ ...input, side: "sente" });
+        const builder = createBookTreeBuilder(input);
         await builder.start();
         const { tree } = builder;
         expect(tree.nodes[0].children.map((id) => tree.nodes[id].move)).toEqual(["7g7f", "2g2f"]);
-        expect(input.legalMoves.mock.calls.slice(0, 2).map(([sfen]) => sfen)).toEqual([
+        expect(input.legalMoves.mock.calls.slice(0, 3).map(([sfen]) => sfen)).toEqual([
+            `${key()} 1`,
             `${key("7g7f")} 1`,
             `${key("2g2f")} 1`,
         ]);
@@ -105,8 +98,7 @@ describe("book tree", () => {
         expect(
             tree.nodes.filter((node) => node.key === key(...first) && node.status !== "merge"),
         ).toHaveLength(1);
-        expect(tree.complete).toBe(true);
-        expect(tree.unreachable).toEqual([]);
+        expect(tree.building).toBe(false);
         expect(bookTreeRow(tree, 0).map((node) => node.id)).toEqual([0]);
         expect(bookTreeRow(tree, tree.nodes[0].children[0]).map((node) => node.move)).toEqual([
             ...first,
@@ -116,27 +108,24 @@ describe("book tree", () => {
             input.legalMoves.mock.calls.length,
         );
     });
-    it("後手の木は根の合法手から後手定跡へ接続する", async () => {
-        const legalMoves = vi.fn(async () => ["2g2f", "7g7f"]);
+    it("登録の無い手でも定跡の局面へつながれば子にし、登録の手と見分ける", async () => {
+        const legalMoves = vi.fn(async (sfen: string) =>
+            sfen === `${key()} 1` ? ["2g2f", "7g7f"] : [],
+        );
         const builder = createBookTreeBuilder({
             book: parseBook(`sfen ${key("7g7f")}\n8c8d`),
-            side: "gote",
             legalMoves,
         });
         await builder.start();
-        expect(bookTreeRow(builder.tree, 0).map((node) => node.move)).toEqual([
-            undefined,
-            "7g7f",
-            "8c8d",
-        ]);
-        expect(legalMoves).toHaveBeenCalledTimes(2);
+        const row = bookTreeRow(builder.tree, 0);
+        expect(row.map((node) => node.move)).toEqual([undefined, "7g7f", "8c8d"]);
+        expect(row.map((node) => node.inBook)).toEqual([undefined, false, true]);
     });
     it("上限では未展開を残し、その枝だけを追加展開する", async () => {
-        const builder = createBookTreeBuilder({ ...fixture(), side: "sente", limit: 1 });
+        const builder = createBookTreeBuilder({ ...fixture(), limit: 1 });
         await builder.start();
         expect(builder.tree.expanded).toBe(1);
         expect(builder.tree.capped).toBe(true);
-        expect(builder.tree.complete).toBe(false);
         expect(builder.tree.nodes[1].status).toBe("pending");
         const previous = builder.tree.nodes[1];
         await builder.expandFrom(1);
@@ -154,56 +143,48 @@ describe("book tree", () => {
                     resolve = done;
                 }),
         );
-        const old = createBookTreeBuilder({ ...fixture(), side: "sente", legalMoves });
+        const old = createBookTreeBuilder({ ...fixture(), legalMoves });
         const pending = old.start();
         await vi.waitFor(() => expect(legalMoves).toHaveBeenCalledOnce());
         old.cancel();
-        const fresh = createBookTreeBuilder({ book: parseBook(""), side: "sente", legalMoves });
+        const fresh = createBookTreeBuilder({
+            book: parseBook(""),
+            legalMoves: async () => ["7g7f"],
+        });
         await fresh.start();
         resolve(["8c8d"]);
         await pending;
-        expect(old.tree.nodes).toHaveLength(3);
+        expect(old.tree.nodes).toHaveLength(1);
+        expect(old.tree.expanded).toBe(0);
         expect(fresh.tree.nodes).toHaveLength(1);
         expect(legalMoves).toHaveBeenCalledOnce();
     });
     it("開始前の中止と複数回の start は二重構築しない", async () => {
         const input = fixture();
-        const cancelled = createBookTreeBuilder({ ...input, side: "gote" });
+        const cancelled = createBookTreeBuilder(input);
         const pending = cancelled.start();
         cancelled.cancel();
         await pending;
         expect(input.legalMoves).not.toHaveBeenCalled();
-        const builder = createBookTreeBuilder({ ...input, side: "sente" });
+        const builder = createBookTreeBuilder(input);
         expect(builder.start()).toBe(builder.start());
         await builder.start();
-        expect(builder.tree.complete).toBe(true);
+        expect(builder.tree.building).toBe(false);
     });
     it("合法手の失敗をノードに記録し、他の枝の展開を続ける", async () => {
         const input = fixture();
         const builder = createBookTreeBuilder({
             ...input,
-            side: "sente",
             legalMoves: async (sfen) => {
                 if (sfen === `${key("7g7f")} 1`) throw new Error("unavailable");
                 return input.legalMoves(sfen);
             },
         });
         await builder.start();
-        expect(builder.tree.complete).toBe(false);
-        expect(builder.tree.unreachable).toEqual([]);
         expect(builder.tree.legalMovesFailed).toBe(true);
         expect(builder.tree.nodes[1].status).toBe("error");
         expect(builder.tree.nodes[1].error).toContain("合法手");
         expect(builder.tree.firstByKey.has(key(...second))).toBe(true);
-    });
-    it("到達不能は完了時だけ、見る側の局面を数える", async () => {
-        const builder = createBookTreeBuilder({
-            book: parseBook(`sfen ${key(...first)}\n6g6f\nsfen ${key("7g7f")}\n8c8d`),
-            side: "sente",
-            legalMoves: async () => [],
-        });
-        await builder.start();
-        expect(builder.tree.unreachable).toEqual([key(...first)]);
     });
     it("分割パースは同期版と一致し、途中で中止できる", async () => {
         const text = `sfen ${key()}\n7g7f\n${"# comment\n".repeat(600)}sfen ${key("7g7f")}\n8c8d`;
