@@ -109,6 +109,8 @@ async function describeCreateRoomError(res: Response): Promise<string> {
         if (err?.error === "TURNSTILE_REQUIRED" || err?.error === "TURNSTILE_FAILED") {
             return TURNSTILE_FAILED_MESSAGE;
         }
+        // サーバー側の設定の誤りで、利用者に英語の理由を見せても役に立たない
+        if (err?.error === "TURNSTILE_NOT_CONFIGURED") return "ルームの作成に失敗しました";
         if (err?.message) return err.message;
     } catch {
         // 本文が JSON でない失敗（プロキシの 502 など）は、parse エラーの英語を出さずに既定の文言にする
@@ -126,6 +128,8 @@ export default function CreateRoomPage(): ReactElement {
     const [error, setError] = useState<string | null>(null);
     const didAutofillNameRef = useRef(false);
     const turnstileContainerRef = useRef<HTMLDivElement>(null);
+    // 確認を待つあいだに画面を離れたら、確認を打ち切ってルームを作らない
+    const submitAbortRef = useRef<AbortController | null>(null);
 
     function set<K extends keyof RoomFormState>(key: K, value: RoomFormState[K]): void {
         setSettings((prev) => ({ ...prev, [key]: value }));
@@ -150,14 +154,17 @@ export default function CreateRoomPage(): ReactElement {
     // 送信時の待ちを減らすため、画面を開いた時点で script だけ読んでおく
     useEffect(() => {
         if (turnstileSiteKey()) loadTurnstile().catch(() => undefined);
+        return () => submitAbortRef.current?.abort();
     }, []);
 
-    async function fetchTurnstileToken(): Promise<string | undefined> {
+    async function fetchTurnstileToken(signal: AbortSignal): Promise<string | undefined> {
         const sitekey = turnstileSiteKey();
-        const container = turnstileContainerRef.current;
-        if (!sitekey || !container) return undefined;
+        if (!sitekey) return undefined;
         try {
-            return await requestTurnstileToken(await loadTurnstile(), container, sitekey);
+            const api = await loadTurnstile();
+            const container = turnstileContainerRef.current;
+            if (!container || signal.aborted) return undefined;
+            return await requestTurnstileToken(api, container, sitekey, signal);
         } catch {
             return undefined;
         }
@@ -175,19 +182,24 @@ export default function CreateRoomPage(): ReactElement {
         setError(null);
         if (!session?.authenticated) saveLocalPlayerName(trimmedName);
         const requestBody = buildCreateRoomRequest(settings);
+        const abort = new AbortController();
+        submitAbortRef.current = abort;
 
         await syncProfileDisplayNameIfNeeded(session, trimmedName)
-            .then(() => fetchTurnstileToken())
+            .then(() => fetchTurnstileToken(abort.signal))
             .then((turnstileToken) =>
-                fetch("/api/rooms", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(
-                        turnstileToken ? { ...requestBody, turnstileToken } : requestBody,
-                    ),
-                }),
+                abort.signal.aborted
+                    ? null
+                    : fetch("/api/rooms", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify(
+                              turnstileToken ? { ...requestBody, turnstileToken } : requestBody,
+                          ),
+                      }),
             )
             .then(async (res) => {
+                if (!res) return;
                 if (!res.ok) {
                     setError(await describeCreateRoomError(res));
                     setIsCreating(false);

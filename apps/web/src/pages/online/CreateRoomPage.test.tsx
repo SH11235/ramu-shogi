@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RATE_LIMITED_MESSAGE } from "../../lib/rateLimitMessage";
@@ -259,5 +259,51 @@ describe("CreateRoomPage", () => {
         fireEvent.click(screen.getByRole("button", { name: "部屋を作成する" }));
 
         expect(await screen.findByText(/アクセスの確認に失敗しました/)).toBeTruthy();
+    });
+
+    it.each([
+        ["TURNSTILE_REQUIRED", 403, /アクセスの確認に失敗しました/],
+        ["TURNSTILE_NOT_CONFIGURED", 500, /^ルームの作成に失敗しました$/],
+    ] as const)("%s は本文の英語ではなく日本語で伝える", async (error, status, expected) => {
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async () => Response.json({ error, message: "English reason" }, { status })),
+        );
+        render(<CreateRoomPage />);
+        fireEvent.change(screen.getByPlaceholderText("プレイヤー名"), {
+            target: { value: "Alice" },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "部屋を作成する" }));
+
+        expect(await screen.findByText(expected)).toBeTruthy();
+    });
+
+    it("確認を待つあいだに画面を離れたら、ルームを作らない", async () => {
+        vi.stubEnv("VITE_TURNSTILE_SITE_KEY", "sitekey-1");
+        let rendered = false;
+        const removed: string[] = [];
+        window.turnstile = {
+            render: () => {
+                rendered = true;
+                return "widget-1";
+            },
+            remove: (id) => removed.push(id),
+        };
+        const fetchMock = vi.fn();
+        vi.stubGlobal("fetch", fetchMock);
+        const { unmount } = render(<CreateRoomPage />);
+        fireEvent.change(screen.getByPlaceholderText("プレイヤー名"), {
+            target: { value: "Alice" },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "部屋を作成する" }));
+        await waitFor(() => expect(rendered).toBe(true));
+
+        unmount();
+        await act(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(removed).toEqual(["widget-1"]);
     });
 });

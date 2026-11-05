@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { requestTurnstileToken, type TurnstileApi } from "./turnstile";
+import { loadTurnstile, requestTurnstileToken, type TurnstileApi } from "./turnstile";
 
 type RenderOptions = Parameters<TurnstileApi["render"]>[1];
 
@@ -69,5 +69,70 @@ describe("requestTurnstileToken", () => {
         await expect(
             requestTurnstileToken(api, document.createElement("div"), "sitekey"),
         ).resolves.toBeUndefined();
+    });
+
+    it("操作の要らない判定が期限までに終わらなければトークンなしで返す", async () => {
+        vi.useFakeTimers();
+        const { api, removed } = createFakeApi(() => undefined);
+        const promise = requestTurnstileToken(api, document.createElement("div"), "sitekey");
+        vi.advanceTimersByTime(15_000);
+        await expect(promise).resolves.toBeUndefined();
+        vi.runAllTimers();
+        expect(removed).toEqual(["widget-1"]);
+    });
+
+    it("操作を求められたら期限で打ち切らない", async () => {
+        vi.useFakeTimers();
+        let options: RenderOptions | undefined;
+        const { api } = createFakeApi((o) => {
+            options = o;
+        });
+        const promise = requestTurnstileToken(api, document.createElement("div"), "sitekey");
+        options?.["before-interactive-callback"]?.();
+        vi.advanceTimersByTime(60_000);
+        options?.callback?.("token-after-click");
+        await expect(promise).resolves.toBe("token-after-click");
+    });
+
+    it("中断されたらトークンなしで返し、ウィジェットを外す", async () => {
+        vi.useFakeTimers();
+        const { api, removed } = createFakeApi(() => undefined);
+        const abort = new AbortController();
+        const promise = requestTurnstileToken(
+            api,
+            document.createElement("div"),
+            "sitekey",
+            abort.signal,
+        );
+        abort.abort();
+        await expect(promise).resolves.toBeUndefined();
+        vi.runAllTimers();
+        expect(removed).toEqual(["widget-1"]);
+    });
+});
+
+describe("loadTurnstile", () => {
+    afterEach(() => {
+        vi.useRealTimers();
+        vi.restoreAllMocks();
+    });
+
+    it("script が期限までに読めなければ失敗し、次の呼び出しで読み直す", async () => {
+        vi.useFakeTimers();
+        // 応答が返らない読み込みを再現するため、head には入れずに受け取るだけにする
+        const appended: Node[] = [];
+        vi.spyOn(document.head, "appendChild").mockImplementation(<T extends Node>(node: T) => {
+            appended.push(node);
+            return node;
+        });
+        const first = loadTurnstile(1000);
+        vi.advanceTimersByTime(1000);
+        await expect(first).rejects.toThrow("timed out");
+
+        const second = loadTurnstile(1000);
+        expect(second).not.toBe(first);
+        expect(appended).toHaveLength(2);
+        vi.advanceTimersByTime(1000);
+        await expect(second).rejects.toThrow("timed out");
     });
 });
