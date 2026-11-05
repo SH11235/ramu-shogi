@@ -13,7 +13,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  RUST_NIGHTLY_TOOLCHAIN: nightly-2025-12-25
+  RUST_NIGHTLY_TOOLCHAIN: nightly-2026-04-03
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

@@ -14,8 +14,8 @@ rustup default stable
 rustup target add wasm32-unknown-unknown
 
 # threaded 用の nightly ツールチェーン（固定版）
-rustup toolchain install nightly-2025-12-25
-rustup component add rust-src --toolchain nightly-2025-12-25
+rustup toolchain install nightly-2026-04-03
+rustup component add rust-src --toolchain nightly-2026-04-03
 
 # wasm-bindgen-cli を固定バージョンでインストール
 cargo install wasm-bindgen-cli --version 0.2.106
@@ -101,9 +101,9 @@ Material評価のみを計測する場合は `--material` を指定します。
 
 ### ビルドエラー
 
-1. **nightly ツールチェーンが見つからない**: `rustup toolchain install nightly-2025-12-25` を実行
+1. **nightly ツールチェーンが見つからない**: `rustup toolchain install nightly-2026-04-03` を実行
 2. **wasm-bindgen バージョン不一致**: `cargo install wasm-bindgen-cli --version 0.2.106` を実行
-3. **rust-src が見つからない**: `rustup component add rust-src --toolchain nightly-2025-12-25` を実行
+3. **rust-src が見つからない**: `rustup component add rust-src --toolchain nightly-2026-04-03` を実行
 
 ## パフォーマンスチューニング
 
