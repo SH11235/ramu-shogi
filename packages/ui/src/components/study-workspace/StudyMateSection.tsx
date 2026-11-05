@@ -35,6 +35,16 @@ const LIMIT_SECONDS = STUDY_MATE_TIME_MS / 1000;
 const UNKNOWN_TEXT = `${LIMIT_SECONDS} 秒では読み切れませんでした`;
 const SHORTEST_LIMIT_SECONDS = STUDY_SHORTEST_MATE_TIME_MS / 1000;
 
+// PC の 3 列の画面の候補手の列（約 300px）では、名前と操作の間に残る幅が数文字分しかないので、枠が
+// 20rem 未満のときは結論を操作の上まで、手順と説明を名前の下まで広げ、操作は手順の横に置く。
+const RESULT_ROW_CLASS =
+    "grid grid-cols-[5rem_minmax(0,1fr)_auto] items-baseline gap-x-2 gap-y-0.5 px-1";
+const RESULT_HEADLINE_CLASS = "col-span-2 col-start-2 row-start-1 min-w-0 @xs:col-span-1";
+const RESULT_DETAIL_CLASS =
+    "col-span-2 col-start-1 row-start-2 flex min-w-0 flex-col gap-0.5 @xs:col-span-1 @xs:col-start-2";
+// 広い枠では 2 段にまたがせ、ボタンの高さで 1 段目が伸びて手順が下がらないようにする
+const RESULT_ACTIONS_CLASS = "col-start-3 row-start-2 self-start @xs:row-span-2 @xs:row-start-1";
+
 /**
  * 調べている途中の表示（例: `詰みを調べています（3 / 10 秒）`）。上限も出し、すぐ終わったのが
  * 打ち切りではないと分かるようにする。狭い列でも 1 行に収まる長さにする。`short` は、局面の表記と
@@ -109,25 +119,17 @@ function MateLine({
     actions?: ReactElement;
 }): ReactElement {
     return (
-        <div className="flex items-baseline gap-2 px-1 py-1">
-            <span className="w-20 shrink-0 text-xs text-muted-foreground">{label}</span>
-            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <div className={cn(RESULT_ROW_CLASS, "py-1")}>
+            <span className="col-start-1 row-start-1 text-xs text-muted-foreground">{label}</span>
+            <div className={RESULT_HEADLINE_CLASS}>
                 {result.kind === "mate" ? (
-                    <>
-                        {/* 見つけた手順は最短とも、受けの最善とも限らないので「N 手詰め」とは言わない */}
-                        <span className="flex flex-wrap items-baseline gap-x-1.5">
-                            <span className={cn("text-sm font-medium", sideClass(mover))}>
-                                あり
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                                （{result.pv.length} 手・{formatMateSeconds(elapsedMs)}）
-                            </span>
+                    // 見つけた手順は最短とも、受けの最善とも限らないので「N 手詰め」とは言わない
+                    <span className="flex flex-wrap items-baseline gap-x-1.5">
+                        <span className={cn("text-sm font-medium", sideClass(mover))}>あり</span>
+                        <span className="text-xs text-muted-foreground">
+                            （{result.pv.length} 手・{formatMateSeconds(elapsedMs)}）
                         </span>
-                        <p className="text-xs text-wafuu-sumi">{caption}</p>
-                        <p className="line-clamp-2 text-xs text-muted-foreground">
-                            {moves.join(" ")}
-                        </p>
-                    </>
+                    </span>
                 ) : result.kind === "noMate" ? (
                     // 「なし」は打ち切りではなく、王手を続けて詰む手順が無いと読み切った結論
                     <span className="flex flex-wrap items-baseline gap-x-1.5">
@@ -142,7 +144,17 @@ function MateLine({
                     </span>
                 )}
             </div>
-            {result.kind === "mate" && actions}
+            {result.kind === "mate" && (
+                <>
+                    <div className={RESULT_DETAIL_CLASS}>
+                        <p className="text-xs text-wafuu-sumi">{caption}</p>
+                        <p className="line-clamp-2 text-xs text-muted-foreground">
+                            {moves.join(" ")}
+                        </p>
+                    </div>
+                    <div className={RESULT_ACTIONS_CLASS}>{actions}</div>
+                </>
+            )}
         </div>
     );
 }
@@ -230,7 +242,7 @@ export function StudyMateResult({
     return (
         <section
             aria-label="詰み探索"
-            className="flex flex-col rounded-lg border border-border px-1 py-1"
+            className="@container flex flex-col rounded-lg border border-border px-1 py-1"
         >
             <div className="flex items-baseline gap-1.5 px-1 py-0.5 text-xs text-muted-foreground">
                 <h3 className="font-medium text-wafuu-sumi">詰み探索</h3>
@@ -386,7 +398,7 @@ function PvActions({
     onAddPvAsVariation: (request: StudyPvRequest) => void;
 }): ReactElement {
     return (
-        <div className="flex shrink-0 items-center self-start">
+        <div className="flex items-center">
             <StudyIconButton label="詰み手順を盤で見る" onClick={() => onPreviewPv(request)}>
                 <PlayIcon />
             </StudyIconButton>
@@ -547,10 +559,11 @@ function ShortestLineBlock({
     onAddPvAsVariation: (request: StudyPvRequest) => void;
 }): ReactElement {
     return (
-        <div className="flex items-baseline gap-2">
-            <span className="w-20 shrink-0" />
-            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <p className="text-xs text-wafuu-sumi">{shortestLineText(line)}</p>
+        <div className={RESULT_ROW_CLASS}>
+            <p className="col-span-3 col-start-1 row-start-1 text-xs text-wafuu-sumi @xs:col-span-1 @xs:col-start-2">
+                {shortestLineText(line)}
+            </p>
+            <div className={RESULT_DETAIL_CLASS}>
                 <p className="line-clamp-2 min-h-8 text-xs text-muted-foreground">
                     {line.pv.length > 0 ? mateMovesText(node, line.pv).join(" ") : null}
                 </p>
@@ -558,11 +571,13 @@ function ShortestLineBlock({
                     詰将棋のルールの手順なので、最後に受け方の無駄合いが残ることがあります
                 </p>
             </div>
-            <PvActions
-                request={{ nodeId: node.id, pv: line.pv, score: null }}
-                onPreviewPv={onPreviewPv}
-                onAddPvAsVariation={onAddPvAsVariation}
-            />
+            <div className={RESULT_ACTIONS_CLASS}>
+                <PvActions
+                    request={{ nodeId: node.id, pv: line.pv, score: null }}
+                    onPreviewPv={onPreviewPv}
+                    onAddPvAsVariation={onAddPvAsVariation}
+                />
+            </div>
         </div>
     );
 }
