@@ -140,6 +140,8 @@ interface StudyCandidatesPanelProps {
     mate?: {
         /** この局面の結果（調べていなければ undefined）。 */
         state: StudyMateState | undefined;
+        /** この局面に至った手の表記。開始局面は null。 */
+        moveLabel: string | null;
         onStart: () => void;
         onStop: () => void;
     };
@@ -532,6 +534,7 @@ export function StudyCandidatesPanel({
             {mate && (
                 <StudyMateResult
                     node={node}
+                    moveLabel={mate.moveLabel}
                     state={mate.state}
                     onPreviewPv={onPreviewPv}
                     onAddPvAsVariation={onAddPvAsVariation}
