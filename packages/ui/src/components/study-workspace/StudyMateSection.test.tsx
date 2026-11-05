@@ -134,8 +134,8 @@ describe("StudyMateResult", () => {
         });
     });
 
-    it("詰めろは手番の側の玉の名前で出し、直前の手が詰めろだと伝える", () => {
-        renderResult({
+    it("詰めろは手番の側の玉の名前で出し、直前の手が詰めろだと伝え、パスから盤で見られる", () => {
+        const { node, handlers } = renderResult({
             status: "done",
             mate: { kind: "noMate" },
             mateMs: 1_000,
@@ -147,8 +147,12 @@ describe("StudyMateResult", () => {
         screen.getByText("☗玉に詰めろ");
         screen.getByText("（1 手・2.0 秒）");
         screen.getByText("☖3四歩(33) は詰めろ。☗が受けないと、次の手順で詰まされる");
-        // 詰めろの手順は手番を渡した局面からなので、盤で見る・変化に足す操作は出さない
         expect(screen.queryByRole("button", { name: "詰み手順を盤で見る" })).toBeNull();
+        const request = { nodeId: node.id, pv: ["pass", "2b8h+"], score: null };
+        fireEvent.click(screen.getByRole("button", { name: "詰めろの手順を盤で見る" }));
+        expect(handlers.onPreviewPv).toHaveBeenCalledWith(request);
+        fireEvent.click(screen.getByRole("button", { name: "詰めろの手順を変化として追加" }));
+        expect(handlers.onAddPvAsVariation).toHaveBeenCalledWith(request);
     });
 
     it("後手番の局面では、先手の玉の詰みと後手の玉への詰めろを調べたことになる", () => {
@@ -377,10 +381,34 @@ describe("最短手順", () => {
     });
 
     it("最短を証明したら手数を言い切り、ボタンを出さない", () => {
-        renderShortest({ status: "done", line: { stage: "proven", pv: PV }, elapsedMs: 5_000 });
-        screen.getByText("最短 3 手（証明済み）");
+        renderShortest({
+            status: "done",
+            line: { stage: "proven", pv: ["2g2f"] },
+            elapsedMs: 5_000,
+        });
+        screen.getByText("最短 1 手（証明済み）");
+        screen.getByText("☗が王手を続けて詰ませる手順");
         screen.getByText("詰将棋のルールの手順なので、最後に受け方の無駄合いが残ることがあります");
         expect(screen.queryByRole("button", { name: "最短手順を求める" })).toBeNull();
+    });
+
+    it("証明した最短手順が詰みの手順と同じなら、詰みの行に最短と書き添えて 1 つにまとめる", () => {
+        renderShortest({ status: "done", line: { stage: "proven", pv: PV }, elapsedMs: 5_000 });
+        screen.getByText("最短と証明した詰み手順");
+        screen.getByText("詰将棋のルールの手順なので、最後に受け方の無駄合いが残ることがあります");
+        expect(screen.queryByText("最短手順")).toBeNull();
+        expect(screen.queryByText("最短 3 手（証明済み）")).toBeNull();
+        expect(screen.getAllByRole("button", { name: "詰み手順を盤で見る" })).toHaveLength(1);
+    });
+
+    it("最短手順が詰みの手順と同じ手数でも、手順が違えば 2 段のまま出す", () => {
+        renderShortest({
+            status: "done",
+            line: { stage: "proven", pv: ["2g2f", "8c8d", "2f2d"] },
+            elapsedMs: 5_000,
+        });
+        screen.getByText("☗が王手を続けて詰ませる手順");
+        screen.getByText("最短 3 手（証明済み）");
     });
 
     it("求め終わらなかったら、分かったところまでの手順を残して、そう伝える", () => {

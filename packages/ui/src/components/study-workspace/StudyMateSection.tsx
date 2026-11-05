@@ -4,7 +4,7 @@
  * 話かで言う（詰み・詰めろという言葉に慣れていなくても、どちらが危ないかが分かるように）。
  */
 
-import type { KifuNode } from "@shogi/app-core";
+import { type KifuNode, STUDY_PASS_MOVE } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { MateResult } from "@shogi/engine-client";
 import type { ReactElement } from "react";
@@ -34,19 +34,23 @@ const king = (side: Side): string => `${sideMark(side)}玉`;
 const LIMIT_SECONDS = STUDY_MATE_TIME_MS / 1000;
 const UNKNOWN_TEXT = `${LIMIT_SECONDS} 秒では読み切れませんでした`;
 const SHORTEST_LIMIT_SECONDS = STUDY_SHORTEST_MATE_TIME_MS / 1000;
+const TSUME_RULE_NOTE = "詰将棋のルールの手順なので、最後に受け方の無駄合いが残ることがあります";
 
-// PC の 3 列の画面の候補手の列（約 300px）では、名前と操作の間に残る幅が数文字分しかないので、枠が
-// 20rem 未満のときは結論を操作の上まで、手順と説明を名前の下まで広げ、操作は手順の横に置く。
+const sameMoves = (a: readonly string[], b: readonly string[]): boolean =>
+    a.length === b.length && a.every((move, index) => move === b[index]);
+
+// 名前と操作で約 11rem を取るので、枠が 28rem 未満（PC の候補手の列・スマホ・タブレット）で名前の
+// 列に手順を置くと結論や説明が細かく折れる。その幅では結論を操作の上へ、手順と説明を名前の下へ広げる。
 const RESULT_ROW_CLASS =
-    "grid grid-cols-[5rem_minmax(0,1fr)_auto] items-baseline gap-x-2 gap-y-0.5 px-1";
-const RESULT_HEADLINE_CLASS = "col-span-2 col-start-2 row-start-1 min-w-0 @xs:col-span-1";
+    "grid grid-cols-[5rem_minmax(0,1fr)_auto] items-baseline gap-x-2 gap-y-0.5";
+const RESULT_HEADLINE_CLASS = "col-span-2 col-start-2 row-start-1 min-w-0 @md:col-span-1";
 // 名前の無い行（最短手順の段）の 1 段目。狭い枠では名前の列から使う
 const RESULT_UNLABELED_HEADLINE_CLASS =
-    "col-span-3 col-start-1 row-start-1 min-w-0 @xs:col-span-1 @xs:col-start-2";
+    "col-span-3 col-start-1 row-start-1 min-w-0 @md:col-span-1 @md:col-start-2";
 const RESULT_DETAIL_CLASS =
-    "col-span-2 col-start-1 row-start-2 flex min-w-0 flex-col gap-0.5 @xs:col-span-1 @xs:col-start-2";
+    "col-span-2 col-start-1 row-start-2 flex min-w-0 flex-col gap-0.5 @md:col-span-1 @md:col-start-2";
 // 広い枠では 2 段にまたがせ、ボタンの高さで 1 段目が伸びて手順が下がらないようにする
-const RESULT_ACTIONS_CLASS = "col-start-3 row-start-2 self-start @xs:row-span-2 @xs:row-start-1";
+const RESULT_ACTIONS_CLASS = "col-start-3 row-start-2 self-start @md:row-span-2 @md:row-start-1";
 
 /**
  * 調べている途中の表示（例: `詰みを調べています（3 / 10 秒）`）。上限も出し、すぐ終わったのが
@@ -104,6 +108,7 @@ function MateLine({
     elapsedMs,
     caption,
     moves,
+    note,
     unsupportedText,
     actions,
 }: {
@@ -117,13 +122,14 @@ function MateLine({
     /** 見つけた手順の前に添える、何の手順かの説明。 */
     caption: string;
     moves: string[];
+    note?: string;
     /** 扱えない局面のときの文言（詰めろの行は扱えない局面を出さないので省く）。 */
     unsupportedText?: string;
-    /** 手順の操作。詰みがあるときだけ出す。 */
+    /** 手順の操作。手順があるときだけ出す。 */
     actions?: ReactElement;
 }): ReactElement {
     return (
-        <div className={cn(RESULT_ROW_CLASS, "py-1")}>
+        <div className={cn(RESULT_ROW_CLASS, "px-1 py-1")}>
             <span className="col-start-1 row-start-1 text-xs text-muted-foreground">{label}</span>
             <div className={RESULT_HEADLINE_CLASS}>
                 {result.kind === "mate" ? (
@@ -155,6 +161,7 @@ function MateLine({
                         <p className="line-clamp-2 text-xs text-muted-foreground">
                             {moves.join(" ")}
                         </p>
+                        {note && <p className="text-xs text-muted-foreground">{note}</p>}
                     </div>
                     <div className={RESULT_ACTIONS_CLASS}>{actions}</div>
                 </>
@@ -243,13 +250,20 @@ export function StudyMateResult({
         );
     }
     const done = state.status === "done" ? state : (state.previous ?? null);
+    const shortestState = shortest?.state;
+    // 最短と証明した手順が詰みの手順と同じなら、同じ手順を 2 度並べず、詰みの行に最短だと書き添える
+    const mateIsProvenShortest =
+        done?.mate.kind === "mate" &&
+        shortestState?.status === "done" &&
+        shortestState.line?.stage === "proven" &&
+        sameMoves(shortestState.line.pv, done.mate.pv);
     return (
         <section
             aria-label="詰み探索"
             className="@container flex flex-col rounded-lg border border-border px-1 py-1"
         >
-            <div className="flex items-baseline gap-1.5 px-1 py-0.5 text-xs text-muted-foreground">
-                <h3 className="font-medium text-wafuu-sumi">詰み探索</h3>
+            <div className="flex flex-wrap items-baseline gap-x-1.5 px-1 py-0.5 text-xs text-muted-foreground">
+                <h3 className="shrink-0 font-medium text-wafuu-sumi">詰み探索</h3>
                 {state.status === "running" ? (
                     <output aria-live="polite" className="tabular-nums">
                         {studyMateProgressText(state)}
@@ -267,10 +281,11 @@ export function StudyMateResult({
                         node={node}
                         moveLabel={moveLabel}
                         state={done}
+                        mateIsProvenShortest={mateIsProvenShortest}
                         onPreviewPv={onPreviewPv}
                         onAddPvAsVariation={onAddPvAsVariation}
                     />
-                    {shortest && done.mate.kind === "mate" && (
+                    {shortest && done.mate.kind === "mate" && !mateIsProvenShortest && (
                         <StudyShortestMate
                             node={node}
                             shortest={{
@@ -321,12 +336,14 @@ function MateResults({
     node,
     moveLabel,
     state,
+    mateIsProvenShortest,
     onPreviewPv,
     onAddPvAsVariation,
 }: {
     node: KifuNode;
     moveLabel: string | null;
     state: StudyMateState & { status: "done" };
+    mateIsProvenShortest: boolean;
     onPreviewPv: (request: StudyPvRequest) => void;
     onAddPvAsVariation: (request: StudyPvRequest) => void;
 }): ReactElement {
@@ -341,6 +358,11 @@ function MateResults({
             : [];
     const request: StudyPvRequest | null =
         mate.kind === "mate" ? { nodeId: node.id, pv: mate.pv, score: null } : null;
+    // 詰めろの手順は手番を相手に渡した局面から始まるので、盤で見る・変化に足すときはパスを先に置く
+    const threatRequest: StudyPvRequest | null =
+        threat?.kind === "mate"
+            ? { nodeId: node.id, pv: [STUDY_PASS_MOVE, ...threat.pv], score: null }
+            : null;
     // 開始局面は直前の手が無いので、どの手が詰めろかは言わない
     const threatPrefix = moveLabel ? `${moveLabel} は詰めろ。` : "";
     return (
@@ -350,8 +372,13 @@ function MateResults({
                 mover={turn}
                 result={mate}
                 elapsedMs={mateMs}
-                caption={`${sideMark(turn)}が王手を続けて詰ませる手順`}
+                caption={
+                    mateIsProvenShortest
+                        ? "最短と証明した詰み手順"
+                        : `${sideMark(turn)}が王手を続けて詰ませる手順`
+                }
                 moves={mateMoves}
+                note={mateIsProvenShortest ? TSUME_RULE_NOTE : undefined}
                 unsupportedText={
                     sidesWithoutKing(node.positionAfter).includes(opponent(turn))
                         ? "相手の玉が無い局面は調べられません"
@@ -360,6 +387,7 @@ function MateResults({
                 actions={
                     request ? (
                         <PvActions
+                            what="詰み手順"
                             request={request}
                             onPreviewPv={onPreviewPv}
                             onAddPvAsVariation={onAddPvAsVariation}
@@ -375,6 +403,16 @@ function MateResults({
                     elapsedMs={threatMs}
                     caption={`${threatPrefix}${sideMark(turn)}が受けないと、次の手順で詰まされる`}
                     moves={threatMoves}
+                    actions={
+                        threatRequest ? (
+                            <PvActions
+                                what="詰めろの手順"
+                                request={threatRequest}
+                                onPreviewPv={onPreviewPv}
+                                onAddPvAsVariation={onAddPvAsVariation}
+                            />
+                        ) : undefined
+                    }
                 />
             )}
         </>
@@ -393,21 +431,23 @@ function mateMovesText(node: KifuNode, pv: string[]): string[] {
 
 /** 詰み手順を盤で見る・変化として足すボタン。 */
 function PvActions({
+    what,
     request,
     onPreviewPv,
     onAddPvAsVariation,
 }: {
+    what: "詰み手順" | "詰めろの手順";
     request: StudyPvRequest;
     onPreviewPv: (request: StudyPvRequest) => void;
     onAddPvAsVariation: (request: StudyPvRequest) => void;
 }): ReactElement {
     return (
         <div className="flex items-center">
-            <StudyIconButton label="詰み手順を盤で見る" onClick={() => onPreviewPv(request)}>
+            <StudyIconButton label={`${what}を盤で見る`} onClick={() => onPreviewPv(request)}>
                 <PlayIcon />
             </StudyIconButton>
             <StudyIconButton
-                label="詰み手順を変化として追加"
+                label={`${what}を変化として追加`}
                 onClick={() => onAddPvAsVariation(request)}
             >
                 <AddBranchIcon />
@@ -571,12 +611,11 @@ function ShortestLineBlock({
                 <p className="line-clamp-2 min-h-8 text-xs text-muted-foreground">
                     {line.pv.length > 0 ? mateMovesText(node, line.pv).join(" ") : null}
                 </p>
-                <p className="text-xs text-muted-foreground">
-                    詰将棋のルールの手順なので、最後に受け方の無駄合いが残ることがあります
-                </p>
+                <p className="text-xs text-muted-foreground">{TSUME_RULE_NOTE}</p>
             </div>
             <div className={RESULT_ACTIONS_CLASS}>
                 <PvActions
+                    what="詰み手順"
                     request={{ nodeId: node.id, pv: line.pv, score: null }}
                     onPreviewPv={onPreviewPv}
                     onAddPvAsVariation={onAddPvAsVariation}
