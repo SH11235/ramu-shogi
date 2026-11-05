@@ -298,7 +298,7 @@ export function StudyWorkspaceView({
     const [deepNodeId, setDeepNodeId] = useState<string | null>(null);
     /** 別の局面で終わった解析・詰み探索（候補手の欄で知らせる。局面を移ると消す）。 */
     const [finishedElsewhere, setFinishedElsewhere] = useState<{
-        what: "deep" | "mate" | "full";
+        what: "deep" | "mate" | "shortest" | "full";
         nodeId: string | null;
     } | null>(null);
     const [pvPreview, setPvPreview] = useState<{
@@ -640,7 +640,10 @@ export function StudyWorkspaceView({
         running === undefined
             ? null
             : {
-                  what: running.kind,
+                  what:
+                      running.kind === "mate" && mate?.runningKind === "shortest"
+                          ? ("shortest" as const)
+                          : running.kind,
                   nodeId:
                       running.kind === "deep"
                           ? running.live.nodeId

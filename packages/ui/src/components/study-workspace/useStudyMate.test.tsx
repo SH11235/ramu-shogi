@@ -405,5 +405,168 @@ describe("useStudyMate", () => {
             expect(engine.created).toHaveLength(1);
             expect(hook.result.current.runningKind).toBe("mate");
         });
+
+        /** solve ごとに途中の通知と結果を外から送れるエンジン。 */
+        function createControlledEngine(id = "wasm") {
+            const calls: Array<{
+                params: MateParams;
+                onProgress?: (progress: { nodes: number; elapsedMs: number }) => void;
+                onLine?: (line: MateLine) => void;
+                finish: (result: MateResult) => void;
+            }> = [];
+            const disposed: Array<ReturnType<typeof vi.fn>> = [];
+            const option: EngineOption = {
+                id,
+                label: "内蔵エンジン",
+                kind: "internal",
+                supportsMate: true,
+                createClient: () => {
+                    const dispose = vi.fn().mockResolvedValue(undefined);
+                    disposed.push(dispose);
+                    return {
+                        init: vi.fn().mockResolvedValue(undefined),
+                        loadPosition: vi.fn().mockResolvedValue(undefined),
+                        setOption: vi.fn().mockResolvedValue(undefined),
+                        stop: vi.fn().mockResolvedValue(undefined),
+                        dispose,
+                        subscribe: () => () => {},
+                        search: vi.fn(),
+                        mate: {
+                            available: () => true,
+                            solve: (params, onProgress, onLine) =>
+                                new Promise((resolve) => {
+                                    calls.push({
+                                        params,
+                                        onProgress,
+                                        onLine,
+                                        finish: (result) =>
+                                            resolve({ result, nodes: 9, elapsedMs: 3_000 }),
+                                    });
+                                }),
+                        },
+                    };
+                },
+            };
+            return { option, calls, disposed };
+        }
+
+        function setupControlled() {
+            const { node } = setup(() => MATE);
+            const engine = createControlledEngine();
+            const hook = renderHook(
+                ({ option }) => useStudyMate({ engineOption: option, hashMb: 16 }),
+                { initialProps: { option: engine.option } },
+            );
+            return { node, engine, hook };
+        }
+
+        it("中止した実行の途中の通知・結果が後から届いても、次の実行を変えない", async () => {
+            const { node, engine, hook } = setupControlled();
+            act(() => hook.result.current.startShortest(node(1)));
+            await waitFor(() => expect(engine.calls).toHaveLength(1));
+            act(() => hook.result.current.stop());
+            act(() => hook.result.current.startShortest(node(2)));
+            await waitFor(() => expect(engine.calls).toHaveLength(2));
+            const [first] = engine.calls;
+            await act(async () => {
+                first.onProgress?.({ nodes: 99, elapsedMs: 9_000 });
+                first.onLine?.(BOUNDED);
+                first.finish(MATE);
+            });
+            expect(hook.result.current.shortestResults.get(node(2).id)).toEqual({
+                status: "running",
+                nodes: 0,
+                elapsedMs: 0,
+                line: null,
+            });
+            expect(hook.result.current.shortestResults.has(node(1).id)).toBe(false);
+            expect(hook.result.current.runningNodeId).toBe(node(2).id);
+        });
+
+        it("求めている途中でエンジンが変わったら取り消し、分かった手順は残す", async () => {
+            const { node, engine, hook } = setupControlled();
+            act(() => hook.result.current.startShortest(node(2)));
+            await waitFor(() => expect(engine.calls).toHaveLength(1));
+            act(() => engine.calls[0].onLine?.(ESTIMATED));
+            hook.rerender({ option: createControlledEngine("wasm-2").option });
+            expect(engine.disposed[0]).toHaveBeenCalled();
+            expect(hook.result.current.runningNodeId).toBeNull();
+            await act(async () => engine.calls[0].finish(MATE));
+            expect(hook.result.current.shortestResults.get(node(2).id)).toMatchObject({
+                status: "done",
+                line: { stage: "estimated" },
+            });
+        });
+
+        it("求めている途中で画面を閉じると、エンジンを捨てる", async () => {
+            const { node, engine, hook } = setupControlled();
+            act(() => hook.result.current.startShortest(node(2)));
+            await waitFor(() => expect(engine.calls).toHaveLength(1));
+            hook.unmount();
+            expect(engine.disposed[0]).toHaveBeenCalled();
+        });
+
+        it("前の結果がある局面を調べ直して、前より進まないうちに中止すると前の結果に戻す", async () => {
+            const { node, engine, hook } = setupControlled();
+            act(() => hook.result.current.startShortest(node(2)));
+            await waitFor(() => expect(engine.calls).toHaveLength(1));
+            act(() => engine.calls[0].onLine?.(BOUNDED));
+            await act(async () => engine.calls[0].finish({ kind: "unknown" }));
+            const previous = {
+                status: "done",
+                line: { stage: "bounded", pv: BOUNDED.pv },
+                elapsedMs: 3_000,
+            };
+            expect(hook.result.current.shortestResults.get(node(2).id)).toEqual(previous);
+            act(() => hook.result.current.startShortest(node(2)));
+            await waitFor(() => expect(engine.calls).toHaveLength(2));
+            act(() => engine.calls[1].onLine?.(ESTIMATED));
+            act(() => hook.result.current.stop());
+            expect(hook.result.current.shortestResults.get(node(2).id)).toEqual(previous);
+        });
+
+        it("調べ直して前より進まないまま時間切れになったら、前の結果を残す", async () => {
+            const { node, engine, hook } = setupControlled();
+            act(() => hook.result.current.startShortest(node(2)));
+            await waitFor(() => expect(engine.calls).toHaveLength(1));
+            act(() => engine.calls[0].onLine?.(BOUNDED));
+            await act(async () => engine.calls[0].finish({ kind: "unknown" }));
+            const previous = hook.result.current.shortestResults.get(node(2).id);
+            act(() => hook.result.current.startShortest(node(2)));
+            await waitFor(() => expect(engine.calls).toHaveLength(2));
+            act(() => engine.calls[1].onLine?.(ESTIMATED));
+            await act(async () => engine.calls[1].finish({ kind: "unknown" }));
+            expect(hook.result.current.shortestResults.get(node(2).id)).toBe(previous);
+        });
+
+        it("調べ直して前より進んだところで中止したら、進んだ手順を残す", async () => {
+            const { node, engine, hook } = setupControlled();
+            act(() => hook.result.current.startShortest(node(2)));
+            await waitFor(() => expect(engine.calls).toHaveLength(1));
+            act(() => engine.calls[0].onLine?.(ESTIMATED));
+            await act(async () => engine.calls[0].finish({ kind: "unknown" }));
+            act(() => hook.result.current.startShortest(node(2)));
+            await waitFor(() => expect(engine.calls).toHaveLength(2));
+            act(() => engine.calls[1].onLine?.(BOUNDED));
+            act(() => hook.result.current.stop());
+            expect(hook.result.current.shortestResults.get(node(2).id)).toMatchObject({
+                status: "done",
+                line: { stage: "bounded", pv: BOUNDED.pv },
+            });
+        });
+
+        it("最初の判定と食い違う結果は、読み込み直しを促さずに求められなかったと伝える", async () => {
+            const consoleError = vi.spyOn(console, "error");
+            const { node, engine, hook } = setupControlled();
+            act(() => hook.result.current.startShortest(node(2)));
+            await waitFor(() => expect(engine.calls).toHaveLength(1));
+            await act(async () => engine.calls[0].finish({ kind: "noMate" }));
+            expect(hook.result.current.shortestResults.get(node(2).id)).toEqual({
+                status: "error",
+                message: "最短手順を求められませんでした",
+            });
+            expect(consoleError).not.toHaveBeenCalled();
+            consoleError.mockRestore();
+        });
     });
 });

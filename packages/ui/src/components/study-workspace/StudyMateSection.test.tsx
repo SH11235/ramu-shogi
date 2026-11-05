@@ -309,6 +309,7 @@ describe("最短手順", () => {
     it("最短を証明したら手数を言い切り、ボタンを出さない", () => {
         renderShortest({ status: "done", line: { stage: "proven", pv: PV }, elapsedMs: 5_000 });
         screen.getByText("最短 3 手（証明済み）");
+        screen.getByText("詰将棋のルールの手順なので、最後に受け方の無駄合いが残ることがあります");
         expect(screen.queryByRole("button", { name: "最短手順を求める" })).toBeNull();
     });
 
@@ -319,9 +320,10 @@ describe("最短手順", () => {
         screen.getByRole("button", { name: "最短手順を求める" });
     });
 
-    it("手順が分からないまま時間切れになったら、そう伝える", () => {
+    it("手順が分からないまま終わったら、時間切れと決めつけずに伝える", () => {
         renderShortest({ status: "done", line: null, elapsedMs: 120_000 });
-        screen.getByText("120 秒では求め切れませんでした");
+        screen.getByText("求め終わりませんでした");
+        expect(screen.queryByText(/無駄合い/)).toBeNull();
     });
 
     it("詰み・詰めろを調べ直している間は押せない", () => {

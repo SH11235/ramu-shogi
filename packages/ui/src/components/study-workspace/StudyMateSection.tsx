@@ -456,9 +456,7 @@ function StudyShortestMate({
                         </output>
                     ) : state?.status === "done" && !finished ? (
                         <span className="text-xs text-muted-foreground">
-                            {line
-                                ? "求め終わりませんでした"
-                                : `${SHORTEST_LIMIT_SECONDS} 秒では求め切れませんでした`}
+                            求め終わりませんでした
                         </span>
                     ) : state?.status === "error" ? (
                         <span role="alert" className="text-xs text-destructive">
@@ -500,6 +498,9 @@ function StudyShortestMate({
                         <p className="text-xs text-wafuu-sumi">{shortestLineText(line)}</p>
                         <p className="line-clamp-2 text-xs text-muted-foreground">
                             {mateMovesText(node, line.pv).join(" ")}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                            詰将棋のルールの手順なので、最後に受け方の無駄合いが残ることがあります
                         </p>
                     </div>
                     <PvActions

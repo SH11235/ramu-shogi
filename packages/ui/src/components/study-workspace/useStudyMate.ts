@@ -169,8 +169,8 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
     };
 
     /**
-     * 調べている実行を取り消す（世代を進め、エンジンを捨てる）。詰み・詰めろは途中の表示を調べる前の
-     * 結果に戻し、最短手順は分かった手順があれば求め終わっていない結果として残す。
+     * 調べている実行を取り消す（世代を進め、エンジンを捨てる）。途中の表示は調べる前の結果に戻す。
+     * 最短手順は、今回分かった手順が調べる前の手順より進んでいれば、求め終わっていない結果として残す。
      */
     const cancelActive = (): void => {
         const active = activeRef.current;
@@ -179,7 +179,11 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
         disposeClient();
         setRunning(null);
         if (!active) return;
-        if (active.kind === "shortest" && active.line) {
+        if (
+            active.kind === "shortest" &&
+            active.line &&
+            betterShortestLine(shortestLineOf(active.previous), active.line) === active.line
+        ) {
             setShortest(active.nodeId, {
                 status: "done",
                 line: active.line,
@@ -404,10 +408,15 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
                         elapsedMs,
                     });
                 } else if (result.kind === "unknown") {
-                    setShortest(nodeId, { status: "done", line: active?.line ?? null, elapsedMs });
+                    const previousLine = shortestLineOf(before);
+                    const line = betterShortestLine(previousLine, active?.line ?? null);
+                    // 今回が前回より進まずに終わったら、前回の結果をそのまま残す
+                    if (before && previousLine && line === previousLine)
+                        setShortest(nodeId, before);
+                    else setShortest(nodeId, { status: "done", line, elapsedMs });
                 } else {
-                    // 詰みのある局面から始めるので、不詰・扱えない局面は返らないはず
-                    throw new Error(`unexpected shortest mate result: ${result.kind}`);
+                    // 詰みを見つけた局面から始めるので、不詰・扱えない局面は通常は返らない
+                    throw new StudyMateUnavailable("最短手順を求められませんでした");
                 }
             } catch (error) {
                 if (error instanceof StudyMateCancelled || runRef.current !== run) return;
@@ -433,6 +442,27 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
         startShortest,
         stop,
     };
+}
+
+const SHORTEST_STAGE_RANK = { estimated: 1, bounded: 2, proven: 3 } as const;
+
+function shortestLineOf(state: StudyShortestState | undefined): StudyShortestLine | null {
+    return state && state.status !== "error" ? state.line : null;
+}
+
+/**
+ * 分かっていることの多い手順（推定 < N 手以内の証明 < 最短の証明）。同じ段階なら短い手順（N 手以内の
+ * 証明はより狭い上限）、それも同じなら `current`。
+ */
+function betterShortestLine(
+    previous: StudyShortestLine | null,
+    current: StudyShortestLine | null,
+): StudyShortestLine | null {
+    if (!previous) return current;
+    if (!current) return previous;
+    const diff = SHORTEST_STAGE_RANK[current.stage] - SHORTEST_STAGE_RANK[previous.stage];
+    if (diff !== 0) return diff > 0 ? current : previous;
+    return current.pv.length <= previous.pv.length ? current : previous;
 }
 
 /** 手番を相手に渡した局面（いまの手番側に詰めろが掛かっているかを調べる）。 */

@@ -83,7 +83,7 @@ export type StudyElsewhereActivity =
     | {
           /** 別の局面で動いていたものが終わった（局面を移る・閉じるまで残す）。 */
           kind: "finished";
-          what: "deep" | "mate" | "full";
+          what: "deep" | "mate" | "shortest" | "full";
           /** 全体の解析では null。 */
           position: { positionLabel: string; positionTitle: string; onGo: () => void } | null;
           onDismiss: () => void;
@@ -211,7 +211,11 @@ function DeepProgressNote({ live }: { live: StudyLiveSearch }): ReactElement | n
     return remaining !== null ? <>（残り {remaining} 秒）</> : null;
 }
 
-const FINISHED_TEXT = { deep: "の深く解析が終わりました", mate: "の詰み探索が終わりました" };
+const FINISHED_TEXT = {
+    deep: "の深く解析が終わりました",
+    mate: "の詰み探索が終わりました",
+    shortest: "の最短手順の探索が終わりました",
+};
 
 /**
  * 別の局面で動いているもの・終わったものの 1 行。終わっても行を消さずに知らせに替えるので、裏の

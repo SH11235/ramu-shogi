@@ -1162,6 +1162,22 @@ describe("StudyWorkspaceView", () => {
         expect(panel.textContent).not.toContain("終わりました");
     });
 
+    it("別の局面の最短手順が終わったら、最短手順の探索が終わったと知らせる", () => {
+        const { doc, ids } = createTestStudy();
+        const running = createMate({
+            runningNodeId: ids[3],
+            runningKind: "shortest",
+            shortestResults: new Map([
+                [ids[3], { status: "running", nodes: 10, elapsedMs: 4_200, line: null }],
+            ]),
+        });
+        const view = render(<Harness initialDoc={doc} mate={running} />);
+        const panel = screen.getByRole("region", { name: "候補手" });
+        expect(panel.textContent).toContain("3手目：最短手順を求め中");
+        view.rerender(<Harness initialDoc={doc} mate={createMate()} />);
+        expect(panel.textContent).toContain("3手目の最短手順の探索が終わりました");
+    });
+
     it("別の局面の深く解析を止めたときは、終わったと知らせない", () => {
         const { doc, ids } = createTestStudy();
         const analysis = createAnalysis({

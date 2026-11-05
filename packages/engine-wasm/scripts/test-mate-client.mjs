@@ -75,7 +75,7 @@ try {
                     throw new Error(`${mode}: ${JSON.stringify(outcome)}`);
                 modes[mode] = outcome.nodes;
             }
-            // 最短手順: 途中の手順は推定・上限の証明のどちらかで、結論は最短の手順
+            // 最短手順: 途中で分かった手順を知らせ、結論は最短の手順
             const lines = [];
             const shortest = await solve(
                 "4k4/9/4P4/9/9/9/9/9/4K4 b G 1",
@@ -85,7 +85,12 @@ try {
             );
             if (shortest.result.kind !== "mate" || shortest.result.pv.join(" ") !== "G*5b")
                 throw new Error(`shortest: ${JSON.stringify(shortest)}`);
-            if (!lines.every((l) => ["estimated", "bounded"].includes(l.kind) && l.pv.length > 0))
+            // この局面では推定 → 上限の証明の順に、どちらも最短と同じ手順が届く
+            const expectedLines = [
+                { kind: "estimated", pv: ["G*5b"] },
+                { kind: "bounded", pv: ["G*5b"] },
+            ];
+            if (JSON.stringify(lines) !== JSON.stringify(expectedLines))
                 throw new Error(`shortest lines: ${JSON.stringify(lines)}`);
             const noMate = await solve("4k4/9/9/9/9/9/9/9/4K4 b - 1", { timeMs: 10000 });
             if (noMate.result.kind !== "noMate") throw new Error(JSON.stringify(noMate));
