@@ -9,7 +9,7 @@ interface TurnstileRenderOptions {
     action?: string;
     appearance?: "always" | "execute" | "interaction-only";
     callback?: (token: string) => void;
-    "error-callback"?: (code: string) => boolean;
+    "error-callback"?: (code: string) => void;
     "timeout-callback"?: () => void;
     "unsupported-callback"?: () => void;
     "before-interactive-callback"?: () => void;
@@ -95,10 +95,7 @@ export function requestTurnstileToken(
                 action: "create-room",
                 appearance: "interaction-only",
                 callback: (token) => finish(token),
-                "error-callback": () => {
-                    finish(undefined);
-                    return true;
-                },
+                "error-callback": () => finish(undefined),
                 "timeout-callback": () => finish(undefined),
                 "unsupported-callback": () => finish(undefined),
                 "before-interactive-callback": () => clearTimeout(deadline),
