@@ -100,6 +100,8 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           DEPLOY_MODE: ${{ (github.event_name == 'push' || inputs.target == 'staging') && 'stg' || 'prod' }}
           ENGINE_WASM_THREADED_TARGET_DIR: ${{ runner.temp }}/wasm-threaded-target
+          # sitekey は公開値。GitHub Environment ごとに variable で持つ (未設定ならトークンを付けない)
+          VITE_TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
         run: bash scripts/deploy-web.sh "$DEPLOY_MODE"
       - name: Save threaded wasm target
         if: github.ref == 'refs/heads/main' && steps.threaded-target.outputs.cache-hit != 'true'

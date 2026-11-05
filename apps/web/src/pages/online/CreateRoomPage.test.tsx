@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RATE_LIMITED_MESSAGE } from "../../lib/rateLimitMessage";
@@ -52,6 +52,8 @@ const { default: CreateRoomPage } = await import("./CreateRoomPage");
 
 afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    delete window.turnstile;
 });
 
 describe("CreateRoomPage", () => {
@@ -198,5 +200,64 @@ describe("CreateRoomPage", () => {
         fireEvent.click(screen.getByRole("button", { name: "部屋を作成する" }));
 
         expect(await screen.findByText("ルームの作成に失敗しました")).toBeTruthy();
+    });
+
+    it("sitekey があれば Turnstile のトークンを付けて送る", async () => {
+        vi.stubEnv("VITE_TURNSTILE_SITE_KEY", "sitekey-1");
+        window.turnstile = {
+            render: (_container, options) => {
+                options.callback?.("token-1");
+                return "widget-1";
+            },
+            remove: () => undefined,
+        };
+        const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) =>
+            Response.json({ error: "RATE_LIMITED" }, { status: 429 }),
+        );
+        vi.stubGlobal("fetch", fetchMock);
+        render(<CreateRoomPage />);
+        fireEvent.change(screen.getByPlaceholderText("プレイヤー名"), {
+            target: { value: "Alice" },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "部屋を作成する" }));
+
+        await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+        const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+        expect(body.turnstileToken).toBe("token-1");
+    });
+
+    it("sitekey が無ければトークンを付けずに送る", async () => {
+        const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) =>
+            Response.json({ error: "RATE_LIMITED" }, { status: 429 }),
+        );
+        vi.stubGlobal("fetch", fetchMock);
+        render(<CreateRoomPage />);
+        fireEvent.change(screen.getByPlaceholderText("プレイヤー名"), {
+            target: { value: "Alice" },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "部屋を作成する" }));
+
+        await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+        const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+        expect(body).not.toHaveProperty("turnstileToken");
+    });
+
+    it("Turnstile で拒まれた 403 は、本文の英語ではなく再読み込みを促す", async () => {
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async () =>
+                Response.json(
+                    { error: "TURNSTILE_FAILED", message: "Turnstile verification failed" },
+                    { status: 403 },
+                ),
+            ),
+        );
+        render(<CreateRoomPage />);
+        fireEvent.change(screen.getByPlaceholderText("プレイヤー名"), {
+            target: { value: "Alice" },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "部屋を作成する" }));
+
+        expect(await screen.findByText(/アクセスの確認に失敗しました/)).toBeTruthy();
     });
 });

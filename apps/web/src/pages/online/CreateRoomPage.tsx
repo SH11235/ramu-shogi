@@ -10,6 +10,7 @@ import { PageHeading } from "../../components/PageHeading";
 import { syncProfileDisplayNameIfNeeded, useAuthSession } from "../../hooks/useAuthSession";
 import { getLocalPlayerName, saveLocalPlayerName } from "../../hooks/useLocalPlayerName";
 import { RATE_LIMITED_MESSAGE } from "../../lib/rateLimitMessage";
+import { loadTurnstile, requestTurnstileToken, turnstileSiteKey } from "../../lib/turnstile";
 import { usageClient } from "../../platform/usage";
 
 // ─── ルーム設定の型 ───────────────────────────────────────────────────────────
@@ -96,12 +97,18 @@ function buildCreateRoomRequest(settings: RoomFormState): CreateRoomRequest {
 const INVALID_SETTINGS_MESSAGE =
     "この設定では部屋を作れません。開始局面の駒の数や手数を確認してください。";
 
+const TURNSTILE_FAILED_MESSAGE =
+    "アクセスの確認に失敗しました。ページを再読み込みしてからもう一度お試しください";
+
 async function describeCreateRoomError(res: Response): Promise<string> {
     if (res.status === 429) return RATE_LIMITED_MESSAGE;
     // 画面で止めきれない設定 (駒の数が多すぎる開始局面など) は、サーバーが英語の理由で 400 を返す
     if (res.status === 400) return INVALID_SETTINGS_MESSAGE;
     try {
         const err = (await res.json()) as ApiErrorResponse | null;
+        if (err?.error === "TURNSTILE_REQUIRED" || err?.error === "TURNSTILE_FAILED") {
+            return TURNSTILE_FAILED_MESSAGE;
+        }
         if (err?.message) return err.message;
     } catch {
         // 本文が JSON でない失敗（プロキシの 502 など）は、parse エラーの英語を出さずに既定の文言にする
@@ -118,6 +125,7 @@ export default function CreateRoomPage(): ReactElement {
     const [isCreating, setIsCreating] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const didAutofillNameRef = useRef(false);
+    const turnstileContainerRef = useRef<HTMLDivElement>(null);
 
     function set<K extends keyof RoomFormState>(key: K, value: RoomFormState[K]): void {
         setSettings((prev) => ({ ...prev, [key]: value }));
@@ -139,6 +147,22 @@ export default function CreateRoomPage(): ReactElement {
         });
     }, [session]);
 
+    // 送信時の待ちを減らすため、画面を開いた時点で script だけ読んでおく
+    useEffect(() => {
+        if (turnstileSiteKey()) loadTurnstile().catch(() => undefined);
+    }, []);
+
+    async function fetchTurnstileToken(): Promise<string | undefined> {
+        const sitekey = turnstileSiteKey();
+        const container = turnstileContainerRef.current;
+        if (!sitekey || !container) return undefined;
+        try {
+            return await requestTurnstileToken(await loadTurnstile(), container, sitekey);
+        } catch {
+            return undefined;
+        }
+    }
+
     // "" は SFEN 直接入力の局面がまだ決まっていない印で、サーバーへ送れる開始局面ではない。
     // 平手などに置き換えて作ると、選んだ覚えの無い局面の部屋ができる
     const startSfenMissing = settings.startSfen === "";
@@ -153,11 +177,14 @@ export default function CreateRoomPage(): ReactElement {
         const requestBody = buildCreateRoomRequest(settings);
 
         await syncProfileDisplayNameIfNeeded(session, trimmedName)
-            .then(() =>
+            .then(() => fetchTurnstileToken())
+            .then((turnstileToken) =>
                 fetch("/api/rooms", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(requestBody),
+                    body: JSON.stringify(
+                        turnstileToken ? { ...requestBody, turnstileToken } : requestBody,
+                    ),
                 }),
             )
             .then(async (res) => {
@@ -478,6 +505,9 @@ export default function CreateRoomPage(): ReactElement {
                         </div>
                     )}
                 </div>
+
+                {/* 確認が必要と判定されたときだけ Turnstile がチェックボックスを出す */}
+                <div ref={turnstileContainerRef} />
 
                 {error && <p className="text-sm text-destructive">{error}</p>}
 
