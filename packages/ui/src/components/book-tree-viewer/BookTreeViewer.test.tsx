@@ -67,6 +67,24 @@ describe("BookTreeViewer", () => {
         fireEvent.click(screen.getByRole("button", { name: "開始局面へ" }));
         expect(current()).toBe("開始局面");
     });
+    it("全画面で木を広げ、手のダブルクリックか Esc で盤の画面に戻る", async () => {
+        render(<BookTreeViewer fetchLegalMoves={async () => []} />);
+        await upload(`sfen ${key()}
+7g7f
+2g2f
+sfen ${key("7g7f")}
+8c8d`);
+        await built();
+        fireEvent.click(screen.getByRole("button", { name: "全画面" }));
+        const dialog = screen.getByRole("dialog", { name: "定跡の木（全画面）" });
+        expect(within(dialog).getByRole("region", { name: "定跡の木" })).toBeTruthy();
+        fireEvent.keyDown(window, { key: "Escape" });
+        expect(screen.queryByRole("dialog")).toBeNull();
+        fireEvent.click(screen.getByRole("button", { name: "全画面" }));
+        fireEvent.doubleClick(tree().getByRole("button", { name: /^☖8四歩\(83\)/ }));
+        expect(screen.queryByRole("dialog")).toBeNull();
+        expect(current()).toBe("2手目 ☖8四歩(83)");
+    });
     it("登録の無い手でも定跡の局面へつながれば、登録の無い手として出す", async () => {
         render(
             <BookTreeViewer
