@@ -123,6 +123,9 @@ export {
     getReasonText,
     getWinnerLabel,
 } from "./game/result";
+// game/selfplay-jsonl
+export type { SelfplayJsonlLog } from "./game/selfplay-jsonl";
+export { looksLikeSelfplayJsonl, parseSelfplayJsonl } from "./game/selfplay-jsonl";
 
 // ============================================================
 // nnue モジュール
@@ -313,6 +316,8 @@ export {
     studyScoreToKifuEval,
     studyScoreToLegacyEval,
 } from "./study/score";
+// study/selfplay-import
+export { createStudyDocumentFromSelfplayGame } from "./study/selfplay-import";
 // study/sfen
 export { parseStudySfen } from "./study/sfen";
 // study/sha256

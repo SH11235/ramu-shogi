@@ -140,3 +140,69 @@ describe("parseKif の評価値コメント", () => {
         expect(parseEval("*評価値=詰3手").evalCp).toBeUndefined();
     });
 });
+
+describe("parseKif の局面図（BOD）", () => {
+    const BOD = [
+        "後手の持駒：角　",
+        "  ９ ８ ７ ６ ５ ４ ３ ２ １",
+        "+---------------------------+",
+        "|v香 ・v銀v金 ・ ・ ・v桂v香|一",
+        "| ・v飛 ・ ・ ・v玉v金 ・ ・|二",
+        "|v歩 ・v桂v歩v歩v歩v銀v歩 ・|三",
+        "| ・ ・v歩 ・ ・ ・v歩 ・v歩|四",
+        "| ・v歩 ・ ・ ・ ・ ・ 歩 ・|五",
+        "| ・ ・ 歩 ・ ・ 歩 歩 ・ 歩|六",
+        "| 歩 歩 銀 歩 歩 ・ 桂 ・ ・|七",
+        "| ・ ・ ・ ・ ・ 銀 ・ 飛 ・|八",
+        "| 香 桂 ・ 金 玉 金 ・ ・ 香|九",
+        "+---------------------------+",
+        "先手の持駒：角　",
+    ];
+
+    it("局面図を開始局面にし、成る手（香成）も読む", () => {
+        const result = parseKif(
+            [
+                "開始日時：2026/11/06 18:53:43",
+                ...BOD,
+                "手数----指手---------消費時間--",
+                "   1 ▲７八金(69)   ( 0:07/00:00:07)",
+                "*info",
+                "**評価値=+50",
+                "   2 △６二銀(71)   ( 0:00/00:00:00)",
+                "   3 ▲１一香成(15)   ( 0:01/00:00:08)",
+                "   4 投了",
+                "",
+                "まで3手で先手の勝ち",
+            ].join("\n"),
+        );
+        expect(result.success).toBe(true);
+        expect(result.startSfen).toBe(
+            "l1sg3nl/1r3kg2/p1npppsp1/2p3p1p/1p5P1/2P2PP1P/PPSPP1N2/5S1R1/LN1GKG2L b Bb 1",
+        );
+        expect(result.moves).toEqual(["6i7h", "7a6b", "1e1a+"]);
+    });
+
+    it("手合割より局面図を優先し、後手番・手数・持ち駒の枚数を読む", () => {
+        const result = parseKif(
+            [
+                "手合割：平手",
+                ...BOD.slice(0, -1),
+                "先手の持駒：飛　歩十二　",
+                "後手番",
+                "手数＝22",
+                "手数----指手---------消費時間--",
+            ].join("\n"),
+        );
+        expect(result.startSfen).toBe(
+            "l1sg3nl/1r3kg2/p1npppsp1/2p3p1p/1p5P1/2P2PP1P/PPSPP1N2/5S1R1/LN1GKG2L w R12Pb 23",
+        );
+    });
+
+    it("段の欠けた局面図は断る", () => {
+        const result = parseKif(
+            [...BOD.slice(0, 5), "先手の持駒：なし", "1 ７六歩(77)"].join("\n"),
+        );
+        expect(result.success).toBe(false);
+        expect(result.error).toContain("局面図");
+    });
+});

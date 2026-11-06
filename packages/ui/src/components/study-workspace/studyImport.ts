@@ -12,9 +12,12 @@ import {
     isKingInCheck,
     isStudyUsiMove,
     kifuEvalToStudyScore,
+    looksLikeSelfplayJsonl,
     normalizeStudyStartSfen,
     parseCsaGameRecord,
+    parseSelfplayJsonl,
     parseStudySfen,
+    type SelfplayJsonlLog,
     type StudyImportAnnotation,
 } from "@shogi/app-core";
 import { sidesWithoutKing, validateEditedPosition } from "../shogi-match/utils/boardUtils";
@@ -34,7 +37,34 @@ export type StudyKifuSource =
           annotations?: (StudyImportAnnotation | null)[];
           /** `annotations` の出どころ（`source.kind`）。 */
           sourceKind?: string;
-      };
+      }
+    /** 連続対局の JSONL（1 局ずつ研究ノートにする）。 */
+    | { kind: "selfplay_jsonl"; log: SelfplayJsonlLog; sourceName?: string };
+
+/**
+ * 連続対局の JSONL から一度に作るノートの数の上限。局を選んで取り込む手段ができるまでの仮の上限で、
+ * ノートの数の上限（`STUDY_LIMITS.studiesPerUser`）より十分小さくしておく。
+ */
+const MAX_SELFPLAY_GAMES_PER_IMPORT = 50;
+
+const selfplaySource = (text: string, sourceName: string | undefined): StudyKifuSource => {
+    let log: SelfplayJsonlLog;
+    try {
+        log = parseSelfplayJsonl(text);
+    } catch (error) {
+        throw new Error(
+            `JSONL の解析に失敗しました: ${error instanceof Error ? error.message : String(error)}`,
+        );
+    }
+    if (log.games.length === 0) throw new Error("JSONL に対局（move の行）がありません");
+    if (log.games.length > MAX_SELFPLAY_GAMES_PER_IMPORT) {
+        throw new Error(
+            `JSONL に ${log.games.length} 局あります。一度に取り込めるのは ${MAX_SELFPLAY_GAMES_PER_IMPORT} 局までです。`,
+        );
+    }
+    for (const game of log.games) assertStandardMoves(game.moves, `第${game.gameId}局の `);
+    return { kind: "selfplay_jsonl", log, ...(sourceName ? { sourceName } : {}) };
+};
 
 /**
  * 指し手の無いノートの開始局面が、局面として成り立つかを確かめる。基準は対局画面の局面編集と
@@ -128,9 +158,18 @@ const isKifNonMoveLine = (line: string): boolean => {
         /^手数-+指手-+(?:消費時間-+)?$/.test(trimmed) ||
         /^まで\d+手で(?:中断|(?:先手|後手|下手|上手)の勝ち|千日手|持将棋)$/.test(trimmed) ||
         KIF_HEADER_LINE.test(trimmed) ||
-        KIF_START_POSITION_LINE.test(trimmed)
+        KIF_START_POSITION_LINE.test(trimmed) ||
+        KIF_BOD_LINE.test(trimmed)
     );
 };
+
+/**
+ * KIF の局面図（BOD）の行: 持ち駒の欄・筋の番号・枠・9 段の盤・手番・手数。
+ * 局面図があれば開始局面が明示されている（KIF の解析は手合割より局面図を優先する）。
+ */
+const KIF_BOD_LINE =
+    /^(?:(?:先手|後手|下手|上手)の持駒[：:].*|[１２３４５６７８９ ]+|\+-+\+|\|.*\|.*|(?:先手|後手|下手|上手)番|手数[＝=]\d+.*)$/;
+const KIF_BOD_ROW = /^\|.*\|/;
 
 /** KIF の「手合割：平手」の行（平手の開始局面を明示している）。 */
 const KIF_HIRATE_LINE = /^手合割[：:][\s　]*平手[\s　]*$/;
@@ -143,28 +182,34 @@ const KIF_HIRATE_LINE = /^手合割[：:][\s　]*平手[\s　]*$/;
  */
 const isKifPositionOnly = (text: string): boolean => {
     const lines = text.split(/\r?\n/);
-    const hasStartPosition = lines.some((line) => KIF_START_POSITION_LINE.test(line.trim()));
-    const hasHirate = lines.some((line) => KIF_HIRATE_LINE.test(line.trim()));
+    const hasBod = lines.some((line) => KIF_BOD_ROW.test(line.trim()));
+    const hasStartPosition =
+        hasBod || lines.some((line) => KIF_START_POSITION_LINE.test(line.trim()));
+    const hasHirate = !hasBod && lines.some((line) => KIF_HIRATE_LINE.test(line.trim()));
     return (
         hasStartPosition !== hasHirate &&
         lines.every((line) => isKifNonMoveLine(line) || KIF_HIRATE_LINE.test(line.trim()))
     );
 };
 
-const assertStandardMoves = (moves: readonly string[]): void => {
+const assertStandardMoves = (moves: readonly string[], prefix = ""): void => {
     const index = moves.findIndex((move) => !isStudyUsiMove(move));
     if (index >= 0) {
-        throw new Error(`${index + 1} 手目（${moves[index]}）は研究ノートにできない手です`);
+        throw new Error(
+            `${prefix}${index + 1} 手目（${moves[index]}）は研究ノートにできない手です`,
+        );
     }
 };
 
 /**
  * 棋譜テキストを判別して、研究ノートの材料にする。失敗時は利用者向けの文言で例外を投げる。
+ * `sourceName`（ファイル名など）は、連続対局の JSONL のノートに出どころとして添える。
  */
-export function parseKifuTextForStudy(text: string): StudyKifuSource {
+export function parseKifuTextForStudy(text: string, sourceName?: string): StudyKifuSource {
     if (!text.trim()) {
         throw new Error("入力が空です");
     }
+    if (looksLikeSelfplayJsonl(text)) return selfplaySource(text, sourceName);
     const format = detectKifuTextFormat(text);
     if (format === "csa") {
         let record: ReturnType<typeof parseCsaGameRecord>;

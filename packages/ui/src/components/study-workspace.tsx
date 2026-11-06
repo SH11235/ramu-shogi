@@ -63,6 +63,7 @@ import {
     StudyEvalGraphPanel,
     type StudyGraphSeries,
 } from "./study-workspace/StudyEvalGraphPanel";
+import { StudyGameInfo } from "./study-workspace/StudyGameInfo";
 import { StudyIconButton } from "./study-workspace/StudyIconButton";
 import { CommentIcon, FlipIcon } from "./study-workspace/StudyIcons";
 import {
@@ -955,6 +956,7 @@ export function StudyWorkspaceView({
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1.5 text-xs text-muted-foreground">
             {playersLabel && <span className="truncate">{playersLabel}</span>}
             <span className="truncate">{originLink ?? studyOriginLabel(doc.origin)}</span>
+            <StudyGameInfo meta={doc.meta} className="order-last basis-full" />
             {/* スマートフォンで保存の状態の帯を出している間は、同じ案内をここに重ねない。 */}
             {!(isMobile && showsStudySaveStrip(saveStatus, localOnly)) && (
                 <StudySaveIndicator

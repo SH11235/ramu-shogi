@@ -44,6 +44,8 @@ interface StudyImportInput {
     annotations?: ReadonlyArray<StudyImportAnnotation | null | undefined>;
     /** 対局時の評価値の出どころ（`source.kind`）。既定は `"csa"`。 */
     sourceKind?: string;
+    /** `moves` と同じ順の、各手のコメントの初期値。 */
+    comments?: ReadonlyArray<string | null | undefined>;
     meta?: StudyMeta;
 }
 
@@ -140,7 +142,7 @@ export function createStudyDocumentFromMoves(input: StudyImportInput): StudyDocu
             parentId,
             usiMove: move,
             children: [],
-            comment: "",
+            comment: input.comments?.[index] ?? "",
             bookmarked: false,
             source: toSource(sourceKind, input.annotations?.[index]),
         };

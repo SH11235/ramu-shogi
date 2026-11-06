@@ -12,6 +12,7 @@ import {
     createStudyDocumentFromCsa,
     createStudyDocumentFromKifuTree,
     createStudyDocumentFromMoves,
+    createStudyDocumentFromSelfplayGame,
     generateStudyId,
     getPositionService,
     isStudyUsiMove,
@@ -311,6 +312,9 @@ export async function createStudyFromKifuSource(
     deps: StudyImportDeps,
 ): Promise<OpenOrCreateStudyResult> {
     const origin: StudyOrigin = { kind: "paste", ref: null };
+    if (source.kind === "selfplay_jsonl") {
+        return createStudiesFromSelfplayLog(source, deps);
+    }
     if (source.kind === "moves") {
         await assertLegalLine(source.startSfen, source.moves, deps.replayMovesStrict);
     }
@@ -332,6 +336,39 @@ export async function createStudyFromKifuSource(
                       sourceKind: source.sourceKind,
                   }),
     });
+}
+
+/**
+ * 連続対局の JSONL の全局を、1 局ずつ研究ノートにする。どれか 1 局でも指せない手・上限超過があれば、
+ * どのノートも作らない（何局目かを添えて断る）。返すのは最初の局のノート。
+ */
+async function createStudiesFromSelfplayLog(
+    source: Extract<StudyKifuSource, { kind: "selfplay_jsonl" }>,
+    deps: StudyImportDeps,
+): Promise<OpenOrCreateStudyResult> {
+    const origin: StudyOrigin = { kind: "paste", ref: null };
+    const docs: StudyDocument[] = [];
+    for (const game of source.log.games) {
+        try {
+            await assertLegalLine(game.startSfen, game.moves, deps.replayMovesStrict);
+            const doc = createStudyDocumentFromSelfplayGame({
+                id: generateStudyId(),
+                game,
+                meta: source.log.meta,
+                origin,
+                sourceName: source.sourceName,
+            });
+            explainLimits(doc);
+            docs.push(doc);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            throw new Error(`第${game.gameId}局: ${message}`);
+        }
+    }
+    for (const doc of docs) await deps.sync.createStudy(doc);
+    const first = docs[0];
+    if (!first) throw new Error("JSONL に対局がありません");
+    return { studyId: first.id, existing: false };
 }
 
 /**

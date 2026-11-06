@@ -252,3 +252,34 @@ describe("parseKifuTextForStudy", () => {
         });
     });
 });
+
+describe("parseKifuTextForStudy の連続対局の JSONL", () => {
+    const START = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1";
+    const move = (gameId: number) =>
+        JSON.stringify({
+            type: "move",
+            game_id: gameId,
+            ply: 1,
+            sfen_before: START,
+            move_usi: "7g7f",
+        });
+
+    it("全局を読み、ファイル名を出どころに添える", () => {
+        const source = parseKifuTextForStudy([move(1), move(2)].join("\n"), "pair.jsonl");
+        expect(source.kind).toBe("selfplay_jsonl");
+        if (source.kind !== "selfplay_jsonl") return;
+        expect(source.log.games.map((game) => game.gameId)).toEqual([1, 2]);
+        expect(source.sourceName).toBe("pair.jsonl");
+    });
+
+    it("一度に取り込める局数を超えたら断る", () => {
+        const text = Array.from({ length: 51 }, (_, i) => move(i + 1)).join("\n");
+        expect(() => parseKifuTextForStudy(text)).toThrow("51 局あります");
+    });
+
+    it("対局の無い JSONL は断る", () => {
+        expect(() => parseKifuTextForStudy(JSON.stringify({ type: "meta" }))).toThrow(
+            "対局（move の行）がありません",
+        );
+    });
+});

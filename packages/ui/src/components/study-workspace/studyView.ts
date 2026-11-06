@@ -455,3 +455,61 @@ export function studyPlayersLabel(meta: StudyDocument["meta"]): string | null {
     if (!black && !white) return null;
     return `☗${black || "先手"} 対 ☖${white || "後手"}`;
 }
+
+/** 研究ノートの meta の項目名と、画面に出す見出し（並びもこの順）。 */
+const STUDY_META_LABELS: ReadonlyArray<readonly [string, string]> = [
+    ["event", "棋戦"],
+    ["playedAt", "対局日時"],
+    ["venue", "場所"],
+    ["result", "結果"],
+    ["termination", "終局"],
+    ["timeControl", "持ち時間"],
+    ["searchSettings", "探索の条件"],
+    ["blackEngine", "先手のエンジン"],
+    ["whiteEngine", "後手のエンジン"],
+    ["engineOptionsDiff", "オプションの違い"],
+    ["engineOptions", "共通の USI オプション"],
+];
+
+const STUDY_RESULT_LABELS: Readonly<Record<string, string>> = {
+    WIN_BLACK: "先手の勝ち",
+    WIN_WHITE: "後手の勝ち",
+};
+
+const pad2 = (value: number): string => String(value).padStart(2, "0");
+
+/** 対局日時（ISO 8601）を、端末の時刻の `YYYY/MM/DD HH:MM:SS` にする。読めなければそのまま。 */
+const formatPlayedAt = (value: string): string => {
+    const time = new Date(value);
+    if (Number.isNaN(time.getTime())) return value;
+    return `${time.getFullYear()}/${pad2(time.getMonth() + 1)}/${pad2(time.getDate())} ${pad2(time.getHours())}:${pad2(time.getMinutes())}:${pad2(time.getSeconds())}`;
+};
+
+const formatMetaValue = (key: string, value: string): string => {
+    if (key === "result") return STUDY_RESULT_LABELS[value] ?? value;
+    if (key === "playedAt") return formatPlayedAt(value);
+    return value;
+};
+
+/**
+ * 研究ノートの meta のうち、対局者名のほかに画面に出す項目（見出しと値）。
+ * 既知の項目を決まった順に並べ、知らない項目は項目名のまま後ろに付ける。
+ */
+export function studyMetaEntries(
+    meta: StudyDocument["meta"],
+): Array<{ key: string; label: string; value: string }> {
+    const entries: Array<{ key: string; label: string; value: string }> = [];
+    const known = new Set(["blackName", "whiteName"]);
+    for (const [key, label] of STUDY_META_LABELS) {
+        known.add(key);
+        const value = meta[key]?.trim();
+        if (!value) continue;
+        entries.push({ key, label, value: formatMetaValue(key, value) });
+    }
+    for (const [key, raw] of Object.entries(meta)) {
+        const value = raw.trim();
+        if (known.has(key) || !value) continue;
+        entries.push({ key, label: key, value });
+    }
+    return entries;
+}
