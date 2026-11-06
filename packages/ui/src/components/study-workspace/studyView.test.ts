@@ -23,6 +23,7 @@ import {
     studyDeletableBranchHead,
     studyLineEvalHistory,
     studyMainLineIds,
+    studyMetaEntries,
     studyMoveLabel,
     studyPlayersLabel,
 } from "./studyView";
@@ -221,5 +222,28 @@ describe("変化の削除の対象", () => {
         expect(studyDeletableBranchHead(tree, first)).toBe(first);
         expect(studyDeletableBranchHead(tree, firstNext)).toBe(first);
         expect(studyDeletableBranchHead(tree, second)).toBe(second);
+    });
+});
+
+describe("studyMetaEntries", () => {
+    it("対局者名のほかの項目を決まった順に見出し付きで並べ、知らない項目は後ろに付ける", () => {
+        expect(
+            studyMetaEntries({
+                blackName: "base",
+                whiteName: "test",
+                custom: "x",
+                timeControl: "180秒",
+                result: "WIN_WHITE",
+                event: "連続対局 第1局",
+                venue: " ",
+                playedAt: "not a date",
+            }),
+        ).toEqual([
+            { key: "event", label: "棋戦", value: "連続対局 第1局" },
+            { key: "playedAt", label: "対局日時", value: "not a date" },
+            { key: "result", label: "結果", value: "後手の勝ち" },
+            { key: "timeControl", label: "持ち時間", value: "180秒" },
+            { key: "custom", label: "custom", value: "x" },
+        ]);
     });
 });

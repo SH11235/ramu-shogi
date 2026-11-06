@@ -14,6 +14,7 @@ import {
     type StudyApi,
     type StudySync,
 } from "@shogi/study-client";
+import { parseKifuTextForStudy } from "@shogi/ui/components/study-workspace/studyImport";
 import { describe, expect, it, vi } from "vitest";
 import {
     canOpenGameRecordAsStudy,
@@ -434,5 +435,105 @@ describe("/play に読み込んだ棋譜からの入口", () => {
         );
         await openStudyAtLastMove(studyId, { sync });
         expect(setViewState).not.toHaveBeenCalled();
+    });
+});
+
+describe("createStudyFromKifuSource の連続対局の JSONL", () => {
+    const START = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1";
+    const AFTER = "lnsgkgsnl/1r5b1/ppppppppp/9/9/2P6/PP1PPPPPP/1B5R1/LNSGKGSNL w - 2";
+    const row = (value: object) => JSON.stringify(value);
+    const JSONL = [
+        row({
+            type: "meta",
+            settings: { btime: 1000 },
+            engine_cmd: { label_black: "base", label_white: "test" },
+        }),
+        ...[1, 2].flatMap((gameId) => [
+            row({
+                type: "move",
+                game_id: gameId,
+                ply: 1,
+                sfen_before: START,
+                move_usi: "7g7f",
+                engine: gameId === 1 ? "base" : "test",
+            }),
+            row({
+                type: "move",
+                game_id: gameId,
+                ply: 2,
+                sfen_before: AFTER,
+                move_usi: "3c3d",
+                engine: gameId === 1 ? "test" : "base",
+            }),
+        ]),
+    ].join("\n");
+    const replay = async (_sfen: string, moves: string[]) => ({ applied: moves });
+
+    it("全局を 1 局ずつノートにし、最初の局を返す", async () => {
+        const api = createApi();
+        const sync = createSync(api);
+        const source = parseKifuTextForStudy(JSONL, "pair.jsonl");
+        const result = await createStudyFromKifuSource(source, {
+            sync,
+            api,
+            replayMovesStrict: replay,
+        });
+        const titles = (await sync.listLocal()).map((item) => item.title).sort();
+        expect(titles).toEqual(["base 対 test（第1局）", "test 対 base（第2局）"]);
+        expect((await sync.load(result.studyId))?.doc.title).toBe("base 対 test（第1局）");
+    });
+
+    it("保存が途中で失敗したら、作ったノートを消して取り込み前に戻す", async () => {
+        const api = createApi();
+        const sync = createSync(api);
+        let calls = 0;
+        const failing: StudySync = {
+            ...sync,
+            createStudy: (doc) => {
+                calls += 1;
+                return calls === 2 ? Promise.reject(new Error("quota")) : sync.createStudy(doc);
+            },
+        };
+        const source = parseKifuTextForStudy(JSONL);
+        await expect(
+            createStudyFromKifuSource(source, { sync: failing, api, replayMovesStrict: replay }),
+        ).rejects.toThrow("quota");
+        expect(await sync.listLocal()).toEqual([]);
+    });
+});
+
+describe("createStudyFromKifuSource の巻き戻しの失敗", () => {
+    const START = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1";
+    const JSONL = [1, 2]
+        .map((gameId) =>
+            JSON.stringify({
+                type: "move",
+                game_id: gameId,
+                ply: 1,
+                sfen_before: START,
+                move_usi: "7g7f",
+            }),
+        )
+        .join("\n");
+
+    it("作りかけのノートを消せなかったときは、残った件数を知らせる", async () => {
+        const api = createApi();
+        const sync = createSync(api);
+        let calls = 0;
+        const failing: StudySync = {
+            ...sync,
+            createStudy: (doc) => {
+                calls += 1;
+                return calls === 2 ? Promise.reject(new Error("quota")) : sync.createStudy(doc);
+            },
+            deleteStudy: () => Promise.reject(new Error("quota")),
+        };
+        await expect(
+            createStudyFromKifuSource(parseKifuTextForStudy(JSONL), {
+                sync: failing,
+                api,
+                replayMovesStrict: async (_sfen, moves) => ({ applied: moves }),
+            }),
+        ).rejects.toThrow("1 件を消せませんでした");
     });
 });

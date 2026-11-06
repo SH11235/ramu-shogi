@@ -12,6 +12,7 @@ import {
     createStudyDocumentFromCsa,
     createStudyDocumentFromKifuTree,
     createStudyDocumentFromMoves,
+    createStudyDocumentFromSelfplayGame,
     generateStudyId,
     getPositionService,
     isStudyUsiMove,
@@ -34,6 +35,11 @@ interface StudyEntrySync {
     /** ログイン中のセッション。未ログインなら null。 */
     getSession(): unknown;
     createStudy(doc: StudyDocument): Promise<unknown>;
+    /**
+     * 何局もまとめて作る取り込みが途中で失敗したとき、作ったノートを消すのに使う。
+     * 1 件ずつ開く・作る入口では要らないので省略できる。無ければ、作ったノートは消せずに残り、その件数を知らせる。
+     */
+    deleteStudy?(studyId: string): Promise<void>;
 }
 
 /** 入口が使う、API の口（`@shogi/study-client` の `StudyApi` が満たす）。 */
@@ -311,6 +317,9 @@ export async function createStudyFromKifuSource(
     deps: StudyImportDeps,
 ): Promise<OpenOrCreateStudyResult> {
     const origin: StudyOrigin = { kind: "paste", ref: null };
+    if (source.kind === "selfplay_jsonl") {
+        return createStudiesFromSelfplayLog(source, deps);
+    }
     if (source.kind === "moves") {
         await assertLegalLine(source.startSfen, source.moves, deps.replayMovesStrict);
     }
@@ -332,6 +341,58 @@ export async function createStudyFromKifuSource(
                       sourceKind: source.sourceKind,
                   }),
     });
+}
+
+/**
+ * 連続対局の JSONL の全局を、1 局ずつ研究ノートにする。どれか 1 局でも指せない手・上限超過があれば、
+ * どのノートも作らない（何局目かを添えて断る）。保存が途中で失敗したときは、作ったノートを消す。
+ * 返すのは最初の局のノート。
+ */
+async function createStudiesFromSelfplayLog(
+    source: Extract<StudyKifuSource, { kind: "selfplay_jsonl" }>,
+    deps: StudyImportDeps,
+): Promise<OpenOrCreateStudyResult> {
+    const origin: StudyOrigin = { kind: "paste", ref: null };
+    const docs: StudyDocument[] = [];
+    for (const game of source.log.games) {
+        try {
+            await assertLegalLine(game.startSfen, game.moves, deps.replayMovesStrict);
+            const doc = createStudyDocumentFromSelfplayGame({
+                id: generateStudyId(),
+                game,
+                meta: source.log.meta,
+                origin,
+                sourceName: source.sourceName,
+            });
+            explainLimits(doc);
+            docs.push(doc);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            throw new Error(`第${game.gameId}局: ${message}`);
+        }
+    }
+    // 保存が途中で失敗したら、作ったぶんを消して、取り込み前に戻す（やり直しで同じ局が重複しないように）。
+    const created: string[] = [];
+    try {
+        for (const doc of docs) {
+            await deps.sync.createStudy(doc);
+            created.push(doc.id);
+        }
+    } catch (error) {
+        const removed = await Promise.allSettled(
+            created.map((id) => deps.sync.deleteStudy?.(id) ?? Promise.reject(new Error("delete"))),
+        );
+        const left = removed.filter((result) => result.status === "rejected").length;
+        if (left === 0) throw error;
+        // 容量不足などで消すこともできなかったときは、残ったことを知らせる（黙って残さない）。
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(
+            `${message}（途中まで作ったノートのうち ${left} 件を消せませんでした。一覧から消してください）`,
+        );
+    }
+    const first = docs[0];
+    if (!first) throw new Error("JSONL に対局がありません");
+    return { studyId: first.id, existing: false };
 }
 
 /**

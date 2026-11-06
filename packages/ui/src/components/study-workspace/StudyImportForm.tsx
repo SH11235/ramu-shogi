@@ -1,7 +1,8 @@
 /**
  * 棋譜を取り込んで研究ノートを作るフォーム（貼り付け・ファイル選択）。
  *
- * 形式（CSA / KIF / SFEN）は自動で判別する。読んだ内容をどう保存するかは呼び出し側が決める。
+ * 形式（CSA / KIF / SFEN、rshogi の連続対局の JSONL）は自動で判別する。読んだ内容をどう保存するかは
+ * 呼び出し側が決める。
  */
 
 import { cn } from "@shogi/design-system";
@@ -14,6 +15,14 @@ import {
     MAX_KIFU_FILE_BYTES,
 } from "../shogi-match/utils/kifuImport";
 import { parseKifuTextForStudy, type StudyKifuSource } from "./studyImport";
+
+/** 研究ノートの取り込みで受け付ける拡張子（棋譜に加えて、連続対局の JSONL）。 */
+const STUDY_FILE_ACCEPT = `${KIFU_FILE_ACCEPT},.jsonl`;
+/**
+ * 連続対局の JSONL の大きさの上限。1 局に 200 KB 前後の探索の記録が付き、一度に取り込めるのは
+ * 50 局までなので、それに見合う大きさにする。
+ */
+const MAX_JSONL_FILE_BYTES = 16 * 1024 * 1024;
 
 interface StudyImportFormProps {
     /** 取り込んだ棋譜で研究ノートを作る。失敗時は例外を投げると、その文言を表示する。 */
@@ -33,12 +42,12 @@ export function StudyImportForm({
     const [isBusy, setIsBusy] = useState(false);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-    const submit = async (input: string): Promise<void> => {
+    const submit = async (input: string, sourceName?: string): Promise<void> => {
         if (isBusy) return;
         setIsBusy(true);
         setError(null);
         try {
-            await onImport(parseKifuTextForStudy(input));
+            await onImport(parseKifuTextForStudy(input, sourceName));
         } catch (failure) {
             setError(failure instanceof Error ? failure.message : "取り込みに失敗しました");
         } finally {
@@ -52,8 +61,9 @@ export function StudyImportForm({
         // 同じファイルを続けて選び直しても change が発火するよう、選択を消しておく。
         input.value = "";
         if (!file) return;
-        if (file.size > MAX_KIFU_FILE_BYTES) {
-            setError(`ファイルが大きすぎます（上限 ${MAX_KIFU_FILE_BYTES / (1024 * 1024)}MB）`);
+        const maxBytes = /\.jsonl$/i.test(file.name) ? MAX_JSONL_FILE_BYTES : MAX_KIFU_FILE_BYTES;
+        if (file.size > maxBytes) {
+            setError(`ファイルが大きすぎます（上限 ${maxBytes / (1024 * 1024)}MB）`);
             return;
         }
         let content: string;
@@ -65,7 +75,7 @@ export function StudyImportForm({
             );
             return;
         }
-        await submit(content);
+        await submit(content, file.name);
     };
 
     return (
@@ -109,10 +119,10 @@ export function StudyImportForm({
                 <input
                     ref={fileInputRef}
                     type="file"
-                    accept={KIFU_FILE_ACCEPT}
+                    accept={STUDY_FILE_ACCEPT}
                     onChange={(event) => void handleFileChange(event)}
                     className="sr-only"
-                    aria-label="棋譜のファイル（.csa / .kif / .kifu / .sfen / .txt）"
+                    aria-label="棋譜のファイル（.csa / .kif / .kifu / .sfen / .txt / .jsonl）"
                     tabIndex={-1}
                 />
             </div>

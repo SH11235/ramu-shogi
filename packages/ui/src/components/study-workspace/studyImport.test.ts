@@ -252,3 +252,68 @@ describe("parseKifuTextForStudy", () => {
         });
     });
 });
+
+describe("parseKifuTextForStudy の連続対局の JSONL", () => {
+    const START = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1";
+    const move = (gameId: number) =>
+        JSON.stringify({
+            type: "move",
+            game_id: gameId,
+            ply: 1,
+            sfen_before: START,
+            move_usi: "7g7f",
+        });
+
+    it("全局を読み、ファイル名を出どころに添える", () => {
+        const source = parseKifuTextForStudy([move(1), move(2)].join("\n"), "pair.jsonl");
+        expect(source.kind).toBe("selfplay_jsonl");
+        if (source.kind !== "selfplay_jsonl") return;
+        expect(source.log.games.map((game) => game.gameId)).toEqual([1, 2]);
+        expect(source.sourceName).toBe("pair.jsonl");
+    });
+
+    it("一度に取り込める局数を超えたら断る", () => {
+        const text = Array.from({ length: 51 }, (_, i) => move(i + 1)).join("\n");
+        expect(() => parseKifuTextForStudy(text)).toThrow("51 局あります");
+    });
+
+    it("対局の無い JSONL は断る", () => {
+        expect(() => parseKifuTextForStudy(JSON.stringify({ type: "meta" }))).toThrow(
+            "対局（move の行）がありません",
+        );
+    });
+});
+
+describe("parseKifuTextForStudy の局面図（BOD）だけの KIF", () => {
+    const BOD = [
+        "後手の持駒：なし",
+        "  ９ ８ ７ ６ ５ ４ ３ ２ １",
+        "+---------------------------+",
+        "| ・ ・ ・ ・v玉 ・ ・ ・ ・|一",
+        ...["二", "三", "四", "五", "六", "七", "八"].map(
+            (rank) => `| ・ ・ ・ ・ ・ ・ ・ ・ ・|${rank}`,
+        ),
+        "| ・ ・ ・ ・ 玉 ・ ・ ・ ・|九",
+        "+---------------------------+",
+        "先手の持駒：金　",
+    ];
+
+    it("見出しの無い局面図だけでも、その局面のノートにする", () => {
+        expect(parseKifuTextForStudy(BOD.join("\n"))).toEqual({
+            kind: "moves",
+            startSfen: "4k4/9/9/9/9/9/9/9/4K4 b G 1",
+            moves: [],
+        });
+    });
+
+    it("半角の筋の番号の行がある局面図だけでも、その局面のノートにする", () => {
+        const [hand, ...rest] = BOD;
+        const source = parseKifuTextForStudy([hand, "  9 8 7 6 5 4 3 2 1", ...rest].join("\n"));
+        expect(source).toMatchObject({ kind: "moves", startSfen: "4k4/9/9/9/9/9/9/9/4K4 b G 1" });
+    });
+
+    it("駒落ちの手合割が付いていても、局面図を開始局面にする", () => {
+        const source = parseKifuTextForStudy(["手合割：角落ち", ...BOD].join("\n"));
+        expect(source).toMatchObject({ kind: "moves", startSfen: "4k4/9/9/9/9/9/9/9/4K4 b G 1" });
+    });
+});

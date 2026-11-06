@@ -79,6 +79,8 @@ export function detectKifuTextFormat(text: string): KifuTextFormat {
             normalized,
         ) ||
         /[▲△☗☖]/.test(normalized) ||
+        // 局面図（BOD）だけの KIF。
+        /^(?:先手|後手|下手|上手)の持駒[：:]/m.test(normalized) ||
         /[１２３４５６７８９1-9][一二三四五六七八九].*(歩|香|桂|銀|金|角|飛|玉|王|と|馬|龍|竜)/.test(
             normalized,
         );

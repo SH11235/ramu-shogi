@@ -246,6 +246,141 @@ function parseStartSfenLine(line: string): string | null {
     return parsed.sfen || null;
 }
 
+/** 局面図（BOD）の 1 マスの駒 → SFEN の駒（先手の文字。後手は小文字にする）。 */
+const BOD_PIECE_TO_SFEN: Readonly<Record<string, string>> = {
+    歩: "P",
+    香: "L",
+    桂: "N",
+    銀: "S",
+    金: "G",
+    角: "B",
+    飛: "R",
+    玉: "K",
+    王: "K",
+    と: "+P",
+    杏: "+L",
+    圭: "+N",
+    全: "+S",
+    馬: "+B",
+    龍: "+R",
+    竜: "+R",
+};
+
+const KANJI_DIGIT: Readonly<Record<string, number>> = {
+    一: 1,
+    二: 2,
+    三: 3,
+    四: 4,
+    五: 5,
+    六: 6,
+    七: 7,
+    八: 8,
+    九: 9,
+};
+
+/** 持ち駒の枚数（「二」「十」「十八」）。読めなければ null。 */
+function parseKanjiCount(text: string): number | null {
+    if (text === "") return 1;
+    // 算用数字（半角・全角）で書く書き手もある。
+    if (/^[0-9０-９]+$/.test(text)) {
+        const count = Number.parseInt(
+            text.replace(/[０-９]/g, (digit) => String(digit.charCodeAt(0) - 0xff10)),
+            10,
+        );
+        return count >= 1 ? count : null;
+    }
+    const match = text.match(/^(十)?([一二三四五六七八九])?$/);
+    if (!match || (!match[1] && !match[2])) return null;
+    return (match[1] ? 10 : 0) + (match[2] ? KANJI_DIGIT[match[2]] : 0);
+}
+
+/** 持ち駒の欄（`角　歩二　`、`なし`）を SFEN の持ち駒の並び（先手の文字）にする。読めなければ null。 */
+function parseBodHand(text: string): string | null {
+    const items = text.split(/[\s　]+/).filter((item) => item !== "");
+    if (items.length === 0 || (items.length === 1 && items[0] === "なし")) return "";
+    let sfen = "";
+    for (const item of items) {
+        const piece = PIECE_NAME_TO_USI[item[0]];
+        const count = parseKanjiCount(item.slice(1));
+        if (!piece || piece === "K" || count === null) return null;
+        sfen += count > 1 ? `${count}${piece}` : piece;
+    }
+    return sfen;
+}
+
+/** 局面図の 1 段（`|v香 ・v銀v金 ・ ・ ・v桂v香|一`）を SFEN の 1 段にする。読めなければ null。 */
+function parseBodRow(line: string): string | null {
+    const match = line.match(/^\|(.+)\|/);
+    if (!match) return null;
+    const cells = Array.from(match[1]);
+    if (cells.length !== 18) return null;
+    let row = "";
+    let empty = 0;
+    for (let i = 0; i < 18; i += 2) {
+        const [mark, name] = [cells[i], cells[i + 1]];
+        if (name === "・") {
+            empty += 1;
+            continue;
+        }
+        const piece = BOD_PIECE_TO_SFEN[name];
+        if (!piece || (mark !== "v" && mark !== " " && mark !== "^")) return null;
+        if (empty > 0) {
+            row += String(empty);
+            empty = 0;
+        }
+        row += mark === "v" ? piece.toLowerCase() : piece;
+    }
+    return empty > 0 ? row + String(empty) : row;
+}
+
+/**
+ * KIF の局面図（BOD）を SFEN にする。局面図が無ければ null、あるのに読めなければ例外。
+ *
+ * 書式: `後手の持駒：〜`、9 段の `|…|一`〜`|…|九`、`先手の持駒：〜`、後手から指すなら `後手番`。
+ * 駒落ちの `上手`（後手）・`下手`（先手）の書き方も読む。`手数＝N` があれば次の手を N+1 手目とする。
+ */
+function parseBodPosition(lines: readonly string[]): string | null {
+    const rows: string[] = [];
+    const hands: Array<{ side: string; text: string; line: string }> = [];
+    let turn: "b" | "w" = "b";
+    let moveNumber = 1;
+    for (const raw of lines) {
+        const line = raw.trim();
+        // 指し手の区切り行か、指し手として読める最初の行で止める（指し手のあとに書かれた局面図を
+        // 開始局面にしない）。筋の番号の行（`9  8  7 …`）は指し手として読めないので、ここでは止まらない。
+        if (/^手数-+/.test(line) || /^[▲△☗☖]/.test(line) || parseKifLine(line, null) !== null) {
+            break;
+        }
+        const hand = line.match(/^(先手|後手|下手|上手)の持駒[：:](.*)$/);
+        if (hand) {
+            hands.push({ side: hand[1], text: hand[2], line });
+            continue;
+        }
+        if (line.startsWith("|")) {
+            const row = parseBodRow(line);
+            if (row === null) throw new Error(`局面図の行を読めません: ${line}`);
+            rows.push(row);
+            continue;
+        }
+        if (/^(後手番|上手番)$/.test(line)) turn = "w";
+        const plyMatch = line.match(/^手数[＝=](\d+)/);
+        if (plyMatch) moveNumber = Number.parseInt(plyMatch[1], 10) + 1;
+    }
+    // 盤が無ければ局面図ではない（見出しに持ち駒の行だけがある KIF などは、ここでは読まない）。
+    if (rows.length === 0) return null;
+    if (rows.length !== 9) throw new Error("局面図の段が 9 段そろっていません");
+    let senteHand = "";
+    let goteHand = "";
+    for (const hand of hands) {
+        const parsed = parseBodHand(hand.text);
+        if (parsed === null) throw new Error(`持ち駒の欄を読めません: ${hand.line}`);
+        if (hand.side === "先手" || hand.side === "下手") senteHand = parsed;
+        else goteHand = parsed.toLowerCase();
+    }
+    const handsSfen = senteHand + goteHand;
+    return `${rows.join("/")} ${turn} ${handsSfen === "" ? "-" : handsSfen} ${moveNumber}`;
+}
+
 /**
  * 指し手文字列が「成り」を表すか判定する
  *
@@ -427,7 +562,19 @@ export function parseKif(kifText: string): KifParseResult {
     const moveData: KifMoveData[] = [];
     const warnings: string[] = [];
     let prevTo: string | null = null;
-    let startSfen: string | undefined;
+    // 局面図があれば、それが開始局面（「手合割」より優先する。局面図のある KIF の手合割は飾り）。
+    let bodSfen: string | null;
+    try {
+        bodSfen = parseBodPosition(lines);
+    } catch (error) {
+        return {
+            success: false,
+            moves: [],
+            moveData: [],
+            error: `KIF の局面図を読めません: ${error instanceof Error ? error.message : String(error)}`,
+        };
+    }
+    let startSfen: string | undefined = bodSfen ?? undefined;
 
     for (const line of lines) {
         const startSfenFromLine = parseStartSfenLine(line);
