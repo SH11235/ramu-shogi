@@ -67,6 +67,7 @@ function dockCellSize(width: number, height: number, narrow: boolean) {
 
 /** 見えている範囲の外にも、この幅（px、拡大率を掛ける前）までは手を描いておく（送ったときに描き遅れが見えないように）。 */
 const CULL_MARGIN = 400;
+const AREA_STEP = 200;
 
 interface Placed {
     id: number;
@@ -139,14 +140,28 @@ function boxLeft(col: number) {
 function boxTop(row: number) {
     return HEADER_HEIGHT + PAD + row * ROW_HEIGHT;
 }
-function edgePath(parent: Placed, child: Placed) {
+/**
+ * 親から子への線。描く範囲の外は切り落とす（遠い親から下りる縦線が数万 px になり、そのまま描くと
+ * 送るたびの描き直しが重い）。
+ */
+function edgePath(parent: Placed, child: Placed, area: GraphView) {
     const x1 = boxLeft(parent.col) + BOX_WIDTH;
     const x2 = boxLeft(child.col);
     // 曲がり角は子の手の近くに置く（親の手の右に出す開閉の丸と重ならないように）。
     const xm = x2 - 10;
     const y1 = boxTop(parent.row) + BOX_HEIGHT / 2;
     const y2 = boxTop(child.row) + BOX_HEIGHT / 2;
-    return y1 === y2 ? `M${x1} ${y1}H${x2}` : `M${x1} ${y1}H${xm}V${y2}H${x2}`;
+    const top = area.top;
+    const bottom = area.top + area.height;
+    const inside = (y: number) => y >= top && y <= bottom;
+    if (y1 === y2) return inside(y1) ? `M${x1} ${y1}H${x2}` : "";
+    const from = Math.max(y1, top);
+    const to = Math.min(y2, bottom);
+    return [
+        inside(y1) ? `M${x1} ${y1}H${xm}` : "",
+        from < to ? `M${xm} ${from}V${to}` : "",
+        inside(y2) ? `M${xm} ${y2}H${x2}` : "",
+    ].join("");
 }
 
 export function moveLabel(tree: BookTree, node: BookTreeNode): string {
@@ -226,7 +241,7 @@ function GraphNodes({
         if (!parent) continue;
         // 親から子へ下りる線は、両端が範囲の外でも途中が見えることがあるので、線の囲む範囲で決める。
         if (!near(boxLeft(parent.col) + BOX_WIDTH, boxTop(parent.row), x, y + BOX_HEIGHT)) continue;
-        (node.inBook === false ? dashed : solid).push(edgePath(parent, item));
+        (node.inBook === false ? dashed : solid).push(edgePath(parent, item, area));
     }
     return (
         <>
@@ -559,6 +574,9 @@ export function BookTreeGraph({
 
     // 選んだ手を見える位置へ送る。キーや一覧で選んだ手が端に寄ったら、左から 3 分の 1 の所まで送り、
     // この先の手を広く見せる（1 手ずつ進めるたびに少しずつ送られて、先が見えないままにならないように）。
+    const scrolledTo = useRef<string | null>(null);
+    /** 送り切れなかった横の位置と、そのときの位置。ホイール・引く・拡大縮小で動かされたら捨てる。 */
+    const shortOf = useRef<{ wanted: number; left: number; top: number } | null>(null);
     const followSelection = useEffectEvent((placed: BookGraphLayout, key: string) => {
         const element = frame.current;
         const target = placed.byId.get(selected);
@@ -607,13 +625,11 @@ export function BookTreeGraph({
         if (element.scrollLeft < x - 1)
             shortOf.current = { wanted: x, left: element.scrollLeft, top: element.scrollTop };
     });
-    const scrolledTo = useRef<string | null>(null);
-    /** 送り切れなかった横の位置と、そのときの位置。ホイール・引く・拡大縮小で動かされたら捨てる。 */
-    const shortOf = useRef<{ wanted: number; left: number; top: number } | null>(null);
     useEffect(() => {
         followSelection(layout, `${selected}:${explore}`);
     }, [selected, layout, explore]);
 
+    // 描く範囲。AREA_STEP 刻みにそろえ、刻みをまたいだときだけ描き直す（少し送るたびに描き直さないように）。
     const [view, setView] = useState<GraphView>({ left: 0, top: 0, width: 0, height: 0 });
     // 欄に出す手。手の上を通り過ぎるだけで切り替わらないように少し待ち、離れたら少し待って選んでいる手に戻す。
     const [docked, setDocked] = useState<number | null>(null);
@@ -632,12 +648,29 @@ export function BookTreeGraph({
     const measureView = useEffectEvent((scale: number) => {
         const element = frame.current;
         if (!element) return;
-        setView({
-            left: element.scrollLeft / scale,
-            top: element.scrollTop / scale,
-            width: element.clientWidth / scale,
-            height: element.clientHeight / scale,
-        });
+        const snap = (value: number) => Math.floor(value / AREA_STEP) * AREA_STEP;
+        const left = Math.max(0, snap(element.scrollLeft / scale - CULL_MARGIN));
+        const top = Math.max(0, snap(element.scrollTop / scale - CULL_MARGIN));
+        const next = {
+            left,
+            top,
+            width:
+                snap((element.scrollLeft + element.clientWidth) / scale + CULL_MARGIN) +
+                AREA_STEP -
+                left,
+            height:
+                snap((element.scrollTop + element.clientHeight) / scale + CULL_MARGIN) +
+                AREA_STEP -
+                top,
+        };
+        setView((current) =>
+            current.left === next.left &&
+            current.top === next.top &&
+            current.width === next.width &&
+            current.height === next.height
+                ? current
+                : next,
+        );
     });
     const onResize = useEffectEvent(() => measureView(zoom));
     useEffect(() => {
@@ -748,25 +781,18 @@ export function BookTreeGraph({
         setPanning(false);
     }
 
+    // 枠の大きさを測るまで（測れない環境も）は全部描く。
+    const area = view.width > 0 && view.height > 0 ? view : { left: 0, top: 0, width, height };
     const pathEdges: string[] = [];
     for (const id of path) {
         const node = tree.nodes[id];
         const child = layout.byId.get(id);
         const parent = node.parent === null ? undefined : layout.byId.get(node.parent);
-        if (child && parent) pathEdges.push(edgePath(parent, child));
+        if (child && parent) pathEdges.push(edgePath(parent, child, area));
     }
     const dock = explore && previewMode === "dock";
     const dockedId = docked !== null && tree.nodes[docked] ? docked : selected;
     const dockCell = dockCellSize(rootSize.width, rootSize.height, narrow);
-    const area =
-        view.width > 0 && view.height > 0
-            ? {
-                  left: Math.max(0, view.left - CULL_MARGIN),
-                  top: Math.max(0, view.top - CULL_MARGIN),
-                  width: view.width + CULL_MARGIN * 2,
-                  height: view.height + CULL_MARGIN * 2,
-              }
-            : { left: 0, top: 0, width, height };
     const board = (
         <DockedPosition
             tree={tree}

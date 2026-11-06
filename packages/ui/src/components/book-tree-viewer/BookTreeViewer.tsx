@@ -407,7 +407,7 @@ export function BookTreeViewer({
                             : "開始局面"}
                     </output>
                     <p className="hidden min-w-0 flex-1 truncate text-xs text-muted-foreground lg:block">
-                        手に置くと右の盤に局面を出し、ダブルクリックでその局面を盤の画面で開きます。Ctrl＋ホイールで拡大縮小、Esc
+                        手に置くと左下の盤に局面を出し、ダブルクリックでその局面を盤の画面で開きます。Ctrl＋ホイールで拡大縮小、Esc
                         で閉じます。
                     </p>
                     <fieldset className="order-last flex basis-full items-center gap-1.5 sm:order-none sm:ml-auto sm:basis-auto">

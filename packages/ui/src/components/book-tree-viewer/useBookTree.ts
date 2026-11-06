@@ -33,12 +33,14 @@ export function useBookTree(
         let publishedAt = -Infinity;
         function publish() {
             if (disposed) return;
-            if (builder.tree.building && performance.now() - publishedAt < 50) {
+            // 木を描き直す手間は手の数に比例するので、大きくなるほど間を空ける（組み立てを遅らせないように）。
+            const interval = Math.max(50, builder.tree.nodes.length / 50);
+            if (builder.tree.building && performance.now() - publishedAt < interval) {
                 if (timer === undefined)
                     timer = setTimeout(() => {
                         timer = undefined;
                         publish();
-                    }, 50);
+                    }, interval);
                 return;
             }
             clearTimeout(timer);
