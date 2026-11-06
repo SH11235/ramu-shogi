@@ -63,6 +63,8 @@ export {
     parseCsaEvalComment,
     parseCsaGameRecord,
 } from "./game/csa-record";
+// game/kif-pv
+export { parseKifPv } from "./game/kif-pv";
 // game/kifu-tree
 export type {
     AddMoveOptions,

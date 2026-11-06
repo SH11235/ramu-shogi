@@ -176,12 +176,16 @@ export function useKifuImportExport({
                 navigation.addMove(move, applyResult.next, {
                     elapsedMs: data?.elapsedMs,
                     eval:
-                        data?.evalCp !== undefined || data?.evalMate !== undefined
+                        data?.evalCp !== undefined ||
+                        data?.evalMate !== undefined ||
+                        data?.pv !== undefined ||
+                        data?.depth !== undefined
                             ? {
                                   scoreCp: data.evalCp,
                                   scoreMate: data.evalMate,
                                   depth: data.depth,
                                   normalized: true,
+                                  pv: data.pv,
                               }
                             : undefined,
                 });

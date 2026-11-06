@@ -4,6 +4,16 @@
  * KIF形式の棋譜をパースしてUSI形式の指し手配列に変換する
  */
 
+import {
+    applyMoveAllowingStudyPass,
+    normalizeStudyStartSfen,
+    type PositionState,
+    parseKifPv,
+    parseMove,
+    parseStudySfen,
+    type Square,
+} from "@shogi/app-core";
+
 // ============================================================
 // 漢数字逆引きテーブル
 // ============================================================
@@ -81,6 +91,8 @@ export interface KifMoveData {
     evalMate?: number;
     /** 探索深さ */
     depth?: number;
+    /** 読み筋（USI）。その手を指した後の局面から始まる（ShogiHome 形式のコメントから読む）。 */
+    pv?: string[];
 }
 
 interface KifParseResult {
@@ -210,6 +222,72 @@ function parseEvalComment(
     }
 
     return null;
+}
+
+/** ShogiHome 形式のコメントから読んだ探索の情報。 */
+interface SearchComment {
+    evalCp?: number;
+    evalMate?: number;
+    depth?: number;
+    /** 読み筋のテキスト（局面に照らして手順にするのは、棋譜を読み終えてから）。 */
+    pvText?: string;
+}
+
+/**
+ * ShogiHome 形式の探索の情報のコメント行を読む。KIF の行では `**評価値=80`・`**詰み=先手勝ち:3手`・
+ * `**読み筋=△３四歩▲２二角成`・`**深さ=20` のように書かれる（評価値・詰みは先手から見た向き。
+ * 読み筋はコメントを付けた手を指した後の局面からで、その手は含まない）。
+ * ShogiHome のほか、rshogi の `jsonl_to_kif` もこの形で書く（読み筋に移動元 `(33)` を付ける）。
+ * 詰みの手数は、ShogiHome と同じく指す前の局面から、その手を含めて数えた値のまま持つ。
+ * ShogiHome の検討の結果（`*#評価値=` など）は、対局時の評価値ではないので読まない。
+ */
+function parseSearchComment(line: string): SearchComment | null {
+    const trimmed = line.trim();
+    // ShogiHome 自身は小数も読むので、小数は丸めて読む。
+    const score = trimmed.match(/^\*\*評価値=([+-]?\d+(?:\.\d+)?)/);
+    if (score) return { evalCp: Math.round(Number.parseFloat(score[1])) };
+    const mate = trimmed.match(/^\*\*詰み=(先手勝ち|後手勝ち)(?::(\d+)手)?/);
+    if (mate) {
+        const plies = mate[2] !== undefined ? Number.parseInt(mate[2], 10) : Infinity;
+        return { evalMate: mate[1] === "先手勝ち" ? plies : -plies };
+    }
+    const depth = trimmed.match(/^\*\*深さ=(\d+)/);
+    if (depth) return { depth: Number.parseInt(depth[1], 10) };
+    if (trimmed.startsWith("**読み筋=")) return { pvText: trimmed.slice("**読み筋=".length) };
+    return null;
+}
+
+/**
+ * 読み筋のテキストを、本譜を開始局面から再生した局面に照らして USI の手順にする。
+ * 移動元の書かれていない読み筋（ShogiHome）は局面が無いと決められないため、棋譜を読み終えてから行う。
+ * 本譜が再生できなくなったら、そこから先の読み筋は付けない。
+ */
+function resolvePvTexts(
+    startSfen: string | undefined,
+    moveData: KifMoveData[],
+    pvTexts: Map<number, string>,
+): void {
+    if (pvTexts.size === 0) return;
+    let state: PositionState;
+    try {
+        state = parseStudySfen(normalizeStudyStartSfen(startSfen ?? "startpos"));
+    } catch {
+        return;
+    }
+    // 読み筋の 1 手目の「同」は直前の盤上の手の移動先（パスは移動先を持たないので、その前の手）。
+    let lastTo: Square | null = null;
+    for (const [index, data] of moveData.entries()) {
+        // パスを含む棋譜も再生できるよう、取り込みと同じくパスを進める。
+        const applied = applyMoveAllowingStudyPass(state, data.usiMove, { validateTurn: false });
+        if (!applied.ok) return;
+        state = applied.next;
+        const parsedMove = parseMove(data.usiMove);
+        if (parsedMove && "to" in parsedMove) lastTo = parsedMove.to;
+        const text = pvTexts.get(index);
+        if (text === undefined) continue;
+        const pv = parseKifPv(state, text, lastTo);
+        if (pv.length > 0) data.pv = pv;
+    }
 }
 
 /**
@@ -562,6 +640,8 @@ export function parseKif(kifText: string): KifParseResult {
     const moveData: KifMoveData[] = [];
     const warnings: string[] = [];
     let prevTo: string | null = null;
+    // 手の番号 → その手に付いた読み筋のテキスト。
+    const pvTexts = new Map<number, string>();
     // 局面図があれば、それが開始局面（「手合割」より優先する。局面図のある KIF の手合割は飾り）。
     let bodSfen: string | null;
     try {
@@ -584,6 +664,20 @@ export function parseKif(kifText: string): KifParseResult {
         }
 
         // まず評価値コメントかチェック
+        const searchData = parseSearchComment(line);
+        if (searchData) {
+            const lastMoveData = moveData.at(-1);
+            if (lastMoveData) {
+                const { pvText, ...rest } = searchData;
+                Object.assign(lastMoveData, rest);
+                // ShogiHome は詰みを見つけた後も前の評価値を併記する。詰みがあれば詰みだけを持つ。
+                if (lastMoveData.evalMate !== undefined) delete lastMoveData.evalCp;
+                if (pvText !== undefined) pvTexts.set(moveData.length - 1, pvText);
+            }
+            continue;
+        }
+
+        // ramu 自身の書き出す評価値コメント（`*評価値=+50 (深さ20)`）
         const evalData = parseEvalComment(line);
         if (evalData) {
             // 直前の指し手に評価値を追加
@@ -598,6 +692,8 @@ export function parseKif(kifText: string): KifParseResult {
                 if (evalData.depth !== undefined) {
                     lastMoveData.depth = evalData.depth;
                 }
+                // 書式が混ざっても、詰みがあれば詰みだけを持つ（ShogiHome 形式の行と同じ扱い）。
+                if (lastMoveData.evalMate !== undefined) delete lastMoveData.evalCp;
             }
             continue;
         }
@@ -613,6 +709,8 @@ export function parseKif(kifText: string): KifParseResult {
             prevTo = result.toSquare;
         }
     }
+
+    resolvePvTexts(startSfen, moveData, pvTexts);
 
     if (moves.length === 0) {
         return {

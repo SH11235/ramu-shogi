@@ -337,3 +337,99 @@ describe("parseKif の区切り行の無い KIF と局面図", () => {
         }
     });
 });
+
+describe("parseKif の ShogiHome 形式の探索の情報", () => {
+    it("評価値・詰み・深さと、指した後の局面からの読み筋（移動元付き）を読む", () => {
+        const result = parseKif(
+            [
+                "手合割：平手",
+                "手数----指手---------消費時間--",
+                "   1 ▲７六歩(77)   ( 0:01/00:00:01)",
+                "**評価値=50",
+                "**読み筋=△３四歩(33)▲２二角成(88)△同　銀(31)",
+                "**深さ=20",
+                "**ノード数=1000",
+                "   2 △３四歩(33)   ( 0:01/00:00:01)",
+                "**評価値=-30.4",
+                "   3 ▲２二角成(88)   ( 0:01/00:00:02)",
+                "**詰み=後手勝ち:5手",
+                "**評価値=-1200",
+                // 読み筋の 1 手目の「同」は、コメントを付けた手（３手目）の移動先。
+                "**読み筋=△同　銀(31)▲４五角打",
+                "   4 △同　銀(31)   ( 0:01/00:00:02)",
+                "**詰み=先手勝ち",
+            ].join("\n"),
+        );
+        expect(result.moves).toEqual(["7g7f", "3c3d", "8h2b+", "3a2b"]);
+        expect(result.moveData[0]).toMatchObject({
+            evalCp: 50,
+            depth: 20,
+            pv: ["3c3d", "8h2b+", "3a2b"],
+        });
+        expect(result.moveData[1].evalCp).toBe(-30);
+        // 詰みがあれば、併記された評価値は持たない。
+        expect(result.moveData[2]).toMatchObject({ evalMate: -5, pv: ["3a2b", "B*4e"] });
+        expect(result.moveData[2].evalCp).toBeUndefined();
+        expect(result.moveData[3].evalMate).toBe(Infinity);
+    });
+
+    it("ShogiHome が書く移動元なしの読み筋を局面に照らして読む", () => {
+        const result = parseKif(
+            [
+                "手合割：平手",
+                "1 ７六歩(77)",
+                "**評価値=10",
+                "**読み筋=△３四歩▲２二角成△同　銀▲４五角",
+                "2 ３四歩(33)",
+                "3 ６八銀(79)",
+                "4 ７二銀(71)",
+                // ５八の金は 6九・4九 の 2 枚が動けるので「右」で決める。
+                "**読み筋=▲５八金右",
+            ].join("\n"),
+        );
+        // 持ち駒の角は、盤上に動ける角が無いので「打」が無くても打つ手として読む。
+        expect(result.moveData[0].pv).toEqual(["3c3d", "8h2b+", "3a2b", "B*4e"]);
+        expect(result.moveData[3].pv).toEqual(["4i5h"]);
+    });
+
+    it("指せない手・紛れの残る手の手前で読み筋を打ち切る", () => {
+        const result = parseKif(
+            [
+                "手合割：平手",
+                "1 ７六歩(77)",
+                "**読み筋=△３四歩(33)▲７六歩(78)",
+                "2 ３四歩(33)",
+                "3 ６八銀(79)",
+                "4 ７二銀(71)",
+                "**読み筋=▲５八金",
+            ].join("\n"),
+        );
+        expect(result.moveData[0].pv).toEqual(["3c3d"]);
+        expect(result.moveData[3].pv).toBeUndefined();
+    });
+
+    it("本譜にパスがあっても、その後の手の読み筋を読む", () => {
+        const result = parseKif(
+            ["手合割：平手", "1 パス", "**読み筋=△３四歩", "2 ３四歩(33)", "**読み筋=▲７六歩"].join(
+                "\n",
+            ),
+        );
+        expect(result.moves).toEqual(["pass", "3c3d"]);
+        expect(result.moveData[0].pv).toEqual(["3c3d"]);
+        expect(result.moveData[1].pv).toEqual(["7g7f"]);
+    });
+
+    it("ramu 自身の評価値コメントと ShogiHome 形式が混ざっていても両方読む", () => {
+        const result = parseKif(
+            [
+                "手合割：平手",
+                "1 ７六歩(77)",
+                "*評価値=+40 (深さ12)",
+                "2 ３四歩(33)",
+                "**評価値=-20",
+            ].join("\n"),
+        );
+        expect(result.moveData[0]).toMatchObject({ evalCp: 40, depth: 12 });
+        expect(result.moveData[1].evalCp).toBe(-20);
+    });
+});

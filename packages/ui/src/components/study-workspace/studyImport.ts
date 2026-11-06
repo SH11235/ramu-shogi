@@ -253,8 +253,13 @@ export function parseKifuTextForStudy(text: string, sourceName?: string): StudyK
                 { scoreCp: data.evalCp, scoreMate: data.evalMate, normalized: true },
                 "sente",
             );
-            if (score === null && data.elapsedMs === undefined) return null;
-            return { score, elapsedMs: data.elapsedMs ?? null };
+            const pv = data.pv;
+            if (score === null && data.elapsedMs === undefined && !pv?.length) return null;
+            return {
+                score,
+                elapsedMs: data.elapsedMs ?? null,
+                ...(pv?.length ? { pv } : {}),
+            };
         });
         return {
             kind: "moves",
