@@ -221,4 +221,35 @@ sfen ${key("2g2f", "8c8d")} 3
             "8c8d",
         ]);
     });
+    it("合法手を取れなくても、定跡の中の局面から始める", async () => {
+        const builder = createBookTreeBuilder({
+            book: parseBook(`sfen ${key("7g7f", "3c3d")}\n2g2f`),
+            legalMoves: async () => {
+                throw new Error("unavailable");
+            },
+        });
+        await builder.start();
+        expect(builder.tree.nodes[0].key).toBe(key("7g7f", "3c3d"));
+        expect(builder.tree.nodes.map((node) => node.move)).toEqual([undefined, "2g2f"]);
+    });
+    it("手順が輪になっていて他から来ていない局面が無ければ、最初の局面から始める", async () => {
+        const base = ["7g7f", "3c3d"];
+        const loop = ["5i5h", "5a5b", "5h5i", "5b5a"];
+        const text = loop
+            .map((move, index) => `sfen ${key(...base, ...loop.slice(0, index))}\n${move}`)
+            .join("\n");
+        const builder = createBookTreeBuilder({
+            book: parseBook(text),
+            legalMoves: async () => [],
+        });
+        await builder.start();
+        expect(builder.tree.roots).toEqual([key(...base)]);
+        expect(builder.tree.nodes.map((node) => node.status)).toEqual([
+            "ready",
+            "ready",
+            "ready",
+            "ready",
+            "merge",
+        ]);
+    });
 });

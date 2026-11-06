@@ -623,16 +623,22 @@ export function BookTreeGraph({
         const siblings = tree.nodes[node.parent].children;
         return siblings[siblings.length - 1] === node.id;
     };
-    const isOpen = (node: BookTreeNode) => overrides.get(node.id) ?? openByDefault(node);
-    const layout = layoutBookGraph(tree, isOpen);
     const path = ancestorsOf(tree, selected);
+    // 選んでいる手の祖先はいつも開く（組み立て中に枝が大きくなってたたまれ、選んだ手が消えないように）。
+    const isOpen = (node: BookTreeNode) =>
+        (node.id !== selected && path.has(node.id)) ||
+        (overrides.get(node.id) ?? openByDefault(node));
+    const layout = layoutBookGraph(tree, isOpen);
     const width = PAD * 2 + layout.cols * COL_WIDTH;
     const height = HEADER_HEIGHT + PAD * 2 + layout.rows * ROW_HEIGHT;
 
     // たたんだ枝の中の手を選んだら（キー操作・一覧から）、その枝を開き直す。
     const reopenPath = useEffectEvent((ancestors: ReadonlySet<number>) => {
         const closed = [...ancestors].filter(
-            (id) => id !== selected && tree.nodes[id] && !isOpen(tree.nodes[id]),
+            (id) =>
+                id !== selected &&
+                tree.nodes[id] &&
+                !(overrides.get(id) ?? openByDefault(tree.nodes[id])),
         );
         if (closed.length === 0) return;
         setOverrides((current) => {
@@ -746,8 +752,11 @@ export function BookTreeGraph({
             y = top + box + margin - element.clientHeight;
         // 左下に重ねた盤の後ろに入るときは、盤の右へ送る。左の端の手で右へ送れなければ、盤の上へ送る。
         const above = element.clientHeight - dockSize.height - DOCK_INSET;
+        // 送り先が負なら 0 で止まるので、止まった位置で重なりを見る。
         const behindBoard =
-            dockSize.width > 0 && left - x < DOCK_INSET + dockSize.width && top + box > y + above;
+            dockSize.width > 0 &&
+            left - Math.max(0, x) < DOCK_INSET + dockSize.width &&
+            top + box > Math.max(0, y) + above;
         if (!kept && behindBoard) {
             const right = left - DOCK_INSET * 2 - dockSize.width;
             if (right >= 0) x = right;

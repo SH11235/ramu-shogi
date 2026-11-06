@@ -64,12 +64,16 @@ async function findBookRoots(book: BookData, cancelled: () => boolean): Promise<
             sliceStart = performance.now();
         }
     }
-    const roots = [...book.positions.keys()].filter((key) => !reached.has(key));
+    const keys = [...book.positions.keys()];
     const ply = (key: string) => book.plies?.get(key) ?? Number.POSITIVE_INFINITY;
-    return roots
-        .map((key, order) => ({ key, order }))
-        .sort((a, b) => ply(a.key) - ply(b.key) || a.order - b.order)
-        .map(({ key }) => key);
+    const ordered = (list: string[]) =>
+        list
+            .map((key, order) => ({ key, order }))
+            .sort((a, b) => ply(a.key) - ply(b.key) || a.order - b.order)
+            .map(({ key }) => key);
+    const roots = ordered(keys.filter((key) => !reached.has(key)));
+    // 全部の局面が他の局面から来ている（手順が輪になっている）ときは、手数の最も小さい局面から始める。
+    return roots.length > 0 ? roots : ordered(keys).slice(0, 1);
 }
 
 /**
@@ -106,11 +110,12 @@ export function createBookTreeBuilder({
     /** 平手からも、平手の次の局面からも定跡に入れなければ、開始局面を定跡の中の局面に差し替える。 */
     async function chooseRoot() {
         if (book.positions.has(key)) return;
+        // 合法手を取れなければ、平手からは定跡の登録の手でしか進めないので、平手の次の局面は調べない。
         let firstMoves: string[] = [];
         try {
             firstMoves = await legalMoves(`${key} 1`);
         } catch {
-            return;
+            firstMoves = [];
         }
         if (cancelled) return;
         for (const move of firstMoves) {
