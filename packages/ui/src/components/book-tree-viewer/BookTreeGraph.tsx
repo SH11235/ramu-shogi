@@ -170,11 +170,13 @@ export function moveLabel(tree: BookTree, node: BookTreeNode): string {
     return formatMoveSimple(node.move, parent.position.turn, parent.position.board);
 }
 
-/** 親の局面の定跡に書かれた、この手の評価値（指した側から見た値）。 */
-function bookValue(tree: BookTree, book: BookData, node: BookTreeNode): number | undefined {
+/** 親の局面の定跡に書かれた、この手の評価値。定跡は指した側から見た値なので、先手から見た値に直す。 */
+export function bookValue(tree: BookTree, book: BookData, node: BookTreeNode): number | undefined {
     if (node.parent === null) return undefined;
-    return book.positions.get(tree.nodes[node.parent].key)?.find((move) => move.usi === node.move)
-        ?.value;
+    const parent = tree.nodes[node.parent];
+    const value = book.positions.get(parent.key)?.find((move) => move.usi === node.move)?.value;
+    if (value === undefined) return undefined;
+    return parent.position.turn === "gote" ? -value : value;
 }
 
 /**
@@ -204,7 +206,6 @@ function GraphNodes({
     compact,
     onSelect,
     onToggle,
-    onActivate,
     onHover,
     area,
     keep,
@@ -216,7 +217,6 @@ function GraphNodes({
     compact: boolean;
     onSelect: (id: number) => void;
     onToggle: (id: number, open: boolean) => void;
-    onActivate?: (id: number) => void;
     onHover?: (id: number | null) => void;
     /** 描く範囲（見えている範囲と、その周り）。この中の手と線だけを描く（大きな定跡を全部開いても重くならないように）。 */
     area: GraphView;
@@ -286,7 +286,6 @@ function GraphNodes({
                                 .join("、")}
                             title={onHover ? undefined : [label, ...notes].join("\n")}
                             onClick={() => onSelect(id)}
-                            onDoubleClick={onActivate && (() => onActivate(id))}
                             onPointerMove={
                                 onHover &&
                                 ((event) => {
@@ -437,6 +436,7 @@ function DockedPosition({
     flipBoard,
     cellSize,
     overlay,
+    onOpen,
 }: {
     tree: BookTree;
     book: BookData;
@@ -445,6 +445,7 @@ function DockedPosition({
     flipBoard: boolean;
     cellSize: number;
     overlay: boolean;
+    onOpen?: (id: number) => void;
 }) {
     return (
         <aside
@@ -466,6 +467,17 @@ function DockedPosition({
                 flipBoard={flipBoard}
                 cellSize={cellSize}
             />
+            {onOpen && (
+                <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="self-stretch"
+                    onClick={() => onOpen(id)}
+                >
+                    この局面を盤で開く
+                </Button>
+            )}
         </aside>
     );
 }
@@ -507,7 +519,7 @@ export function BookTreeGraph({
     explore?: boolean;
     /** `explore` で局面を出す所。 */
     preview?: BookTreePreviewMode;
-    /** 手をダブルクリックしたとき（`explore` のときだけ）。 */
+    /** 局面の欄の「この局面を盤で開く」を押したとき（`explore` のときだけ）。 */
     onActivate?: (id: number) => void;
     className?: string;
 }): ReactElement {
@@ -610,7 +622,7 @@ export function BookTreeGraph({
         anchor.current = null;
         let x = kept ? left - kept.x : element.scrollLeft;
         let y = kept ? top - kept.y : element.scrollTop;
-        // 木の中で押した手は、隠れるときだけ動かす（端に寄せた余白の分だけ動くと、ダブルクリックの 2 回目が外れる）。
+        // 木の中で押した手は、隠れるときだけ動かす（押した手が指の下から逃げないように）。
         const margin = kept ? 0 : SCROLL_MARGIN;
         const offLeft = left - margin < x;
         const offRight = left + colWidth + margin > x + element.clientWidth;
@@ -802,6 +814,7 @@ export function BookTreeGraph({
             flipBoard={flipBoard}
             cellSize={dockCell}
             overlay={!narrow}
+            onOpen={onActivate}
         />
     );
     return (
@@ -860,7 +873,6 @@ export function BookTreeGraph({
                                 compact={compact}
                                 onSelect={selectFromGraph}
                                 onToggle={toggle}
-                                onActivate={explore ? onActivate : undefined}
                                 onHover={explore && previewMode !== "off" ? hover : undefined}
                                 area={area}
                                 keep={selected}

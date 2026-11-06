@@ -67,6 +67,20 @@ describe("BookTreeViewer", () => {
         fireEvent.click(screen.getByRole("button", { name: "開始局面へ" }));
         expect(current()).toBe("開始局面");
     });
+    it("評価値は手番によらず先手から見た値で出す", async () => {
+        render(<BookTreeViewer fetchLegalMoves={async () => []} />);
+        await upload(
+            `sfen ${key()}\n7g7f none 40 12 3\nsfen ${key("7g7f")}\n8c8d none 30 12 3\n3c3d none -20 12 3`,
+        );
+        await built();
+        await waitFor(() => expect(current()).toBe("1手目 ☗7六歩(77)"));
+        const value = (name: RegExp) =>
+            moves().getByRole("button", { name }).closest("tr")?.children[1].textContent;
+        expect(value(/8四歩/)).toBe("-30");
+        expect(value(/3四歩/)).toBe("20");
+        const node = tree().getByRole("button", { name: /^☖8四歩\(83\)/ });
+        expect(node.getAttribute("aria-label")).toContain("評価値 -30");
+    });
     it("開始局面から一本道が続く定跡は、最初に分かれる手を選んだ状態で開く", async () => {
         render(<BookTreeViewer fetchLegalMoves={async () => []} />);
         await upload(`sfen ${key()}
@@ -79,7 +93,7 @@ sfen ${key("7g7f", "8c8d")}
         await built();
         await waitFor(() => expect(current()).toBe("2手目 ☖8四歩(83)"));
     });
-    it("全画面で木を広げ、手のダブルクリックか Esc で盤の画面に戻る", async () => {
+    it("全画面で木を広げ、局面の欄のボタンか Esc で盤の画面に戻る", async () => {
         render(<BookTreeViewer fetchLegalMoves={async () => []} />);
         await upload(`sfen ${key()}
 7g7f
@@ -94,7 +108,10 @@ sfen ${key("7g7f")}
         expect(screen.queryByRole("dialog")).toBeNull();
         expect(document.activeElement).toBe(screen.getByRole("button", { name: "全画面" }));
         fireEvent.click(screen.getByRole("button", { name: "全画面" }));
-        fireEvent.doubleClick(tree().getByRole("button", { name: /^☖8四歩\(83\)/ }));
+        const reopened = screen.getByRole("dialog", { name: "定跡の木（全画面）" });
+        fireEvent.click(tree().getByRole("button", { name: /^☖8四歩\(83\)/ }));
+        expect(screen.getByRole("dialog")).toBeTruthy();
+        fireEvent.click(within(reopened).getByRole("button", { name: "この局面を盤で開く" }));
         expect(screen.queryByRole("dialog")).toBeNull();
         expect(current()).toBe("2手目 ☖8四歩(83)");
     });
