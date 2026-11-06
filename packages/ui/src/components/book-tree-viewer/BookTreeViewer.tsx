@@ -143,13 +143,15 @@ export function BookTreeViewer({
             const first = items[0];
             const last = items[items.length - 1];
             const active = document.activeElement;
-            if (event.shiftKey ? active === first || !dialog.contains(active) : active === last) {
+            const outside = !dialog.contains(active);
+            if (outside || (event.shiftKey ? active === first : active === last)) {
                 event.preventDefault();
                 (event.shiftKey ? last : first).focus();
             }
         };
-        dialog.addEventListener("keydown", trap);
-        return () => dialog.removeEventListener("keydown", trap);
+        // 押したボタンが無効になってフォーカスが外れても回せるように、文書全体で受ける。
+        document.addEventListener("keydown", trap);
+        return () => document.removeEventListener("keydown", trap);
     }, [dialog]);
     const { session, tree } = useBookTree(book?.data, fetchLegalMoves);
     const [body, setBody] = useState<HTMLDivElement | null>(null);

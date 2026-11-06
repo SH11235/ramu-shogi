@@ -593,8 +593,9 @@ export function BookTreeGraph({
         shortOf.current = null;
         const left = boxLeft(target.col) * zoom;
         const top = boxTop(target.row) * zoom;
-        const colWidth = COL_WIDTH * zoom;
+        // 押した手は箱そのものが見えていればよい。キーで選んだ手は、右の開閉の丸と線まで見せる。
         const kept = anchor.current?.id === selected ? anchor.current : null;
+        const colWidth = (kept ? BOX_WIDTH : COL_WIDTH) * zoom;
         anchor.current = null;
         let x = kept ? left - kept.x : element.scrollLeft;
         let y = kept ? top - kept.y : element.scrollTop;
