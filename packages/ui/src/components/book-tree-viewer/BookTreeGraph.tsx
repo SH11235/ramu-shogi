@@ -4,6 +4,7 @@ import {
     type ReactElement,
     type ReactNode,
     type PointerEvent as ReactPointerEvent,
+    type Ref,
     useEffect,
     useEffectEvent,
     useLayoutEffect,
@@ -437,6 +438,7 @@ function DockedPosition({
     cellSize,
     overlay,
     onOpen,
+    ref,
 }: {
     tree: BookTree;
     book: BookData;
@@ -446,9 +448,11 @@ function DockedPosition({
     cellSize: number;
     overlay: boolean;
     onOpen?: (id: number) => void;
+    ref?: Ref<HTMLElement>;
 }) {
     return (
         <aside
+            ref={ref}
             aria-label="局面"
             className={cn(
                 "flex shrink-0 flex-col gap-1 bg-background p-2",
@@ -587,6 +591,8 @@ export function BookTreeGraph({
     // 選んだ手を見える位置へ送る。キーや一覧で選んだ手が端に寄ったら、左から 3 分の 1 の所まで送り、
     // この先の手を広く見せる（1 手ずつ進めるたびに少しずつ送られて、先が見えないままにならないように）。
     const scrolledTo = useRef<string | null>(null);
+    /** 木に重ねた盤（広い画面で盤を出すとき）。 */
+    const dockBox = useRef<HTMLElement>(null);
     /** 送り切れなかった横の位置と、そのときの位置。ホイール・引く・拡大縮小で動かされたら捨てる。 */
     const shortOf = useRef<{ wanted: number; left: number; top: number } | null>(null);
     const followSelection = useEffectEvent((placed: BookGraphLayout, key: string) => {
@@ -630,9 +636,15 @@ export function BookTreeGraph({
         else if (offLeft) x = left - margin;
         else if (offRight) x = left + colWidth + margin - element.clientWidth;
         const header = HEADER_HEIGHT * zoom;
+        // 左下に重ねた盤の下へは送らない（盤の上に出す）。枠が低くて盤の上に収まらないときは盤を気にしない。
+        const covered = dockBox.current?.offsetHeight ?? 0;
+        const visible =
+            element.clientHeight - covered >= (BOX_HEIGHT * zoom + margin) * 2 + header
+                ? element.clientHeight - covered
+                : element.clientHeight;
         if (top - margin - header < y) y = top - margin - header;
-        else if (top + BOX_HEIGHT * zoom + margin > y + element.clientHeight)
-            y = top + BOX_HEIGHT * zoom + margin - element.clientHeight;
+        else if (top + BOX_HEIGHT * zoom + margin > y + visible)
+            y = top + BOX_HEIGHT * zoom + margin - visible;
         element.scrollTo({ left: Math.max(0, x), top: Math.max(0, y) });
         if (element.scrollLeft < x - 1)
             shortOf.current = { wanted: x, left: element.scrollLeft, top: element.scrollTop };
@@ -648,6 +660,13 @@ export function BookTreeGraph({
     const dockTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     useEffect(() => () => clearTimeout(dockTimer.current), []);
     const hovered = useRef<number | null>(null);
+    const hoverable = explore && previewMode !== "off";
+    useEffect(() => {
+        if (hoverable) return;
+        clearTimeout(dockTimer.current);
+        hovered.current = null;
+        setDocked(null);
+    }, [hoverable]);
     function hover(id: number | null) {
         if (id === hovered.current) return;
         hovered.current = id;
@@ -794,7 +813,16 @@ export function BookTreeGraph({
     }
 
     // 枠の大きさを測るまで（測れない環境も）は全部描く。
-    const area = view.width > 0 && view.height > 0 ? view : { left: 0, top: 0, width, height };
+    // 範囲は木の外へはみ出させない（線の層が木より大きいと、その分だけ送れる幅が増えてしまう）。
+    const area =
+        view.width > 0 && view.height > 0
+            ? {
+                  left: Math.min(view.left, width),
+                  top: Math.min(view.top, height),
+                  width: Math.max(0, Math.min(view.left + view.width, width) - view.left),
+                  height: Math.max(0, Math.min(view.top + view.height, height) - view.top),
+              }
+            : { left: 0, top: 0, width, height };
     const pathEdges: string[] = [];
     for (const id of path) {
         const node = tree.nodes[id];
@@ -815,6 +843,7 @@ export function BookTreeGraph({
             cellSize={dockCell}
             overlay={!narrow}
             onOpen={onActivate}
+            ref={narrow ? undefined : dockBox}
         />
     );
     return (
@@ -873,7 +902,7 @@ export function BookTreeGraph({
                                 compact={compact}
                                 onSelect={selectFromGraph}
                                 onToggle={toggle}
-                                onHover={explore && previewMode !== "off" ? hover : undefined}
+                                onHover={hoverable ? hover : undefined}
                                 area={area}
                                 keep={selected}
                             />

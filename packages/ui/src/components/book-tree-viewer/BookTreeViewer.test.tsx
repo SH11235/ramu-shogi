@@ -134,6 +134,8 @@ sfen ${key("7g7f")}
         expect(dock()?.textContent).toContain("マウスを置いた手");
         fireEvent.click(within(dialog).getByRole("button", { name: "出さない" }));
         expect(dock()).toBeNull();
+        fireEvent.click(within(dialog).getByRole("button", { name: "出す" }));
+        expect(dock()?.textContent).toContain("選んでいる手");
     });
     it("登録の無い手でも定跡の局面へつながれば、登録の無い手として出す", async () => {
         render(
