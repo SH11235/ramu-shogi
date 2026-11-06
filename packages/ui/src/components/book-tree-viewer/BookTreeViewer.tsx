@@ -117,6 +117,42 @@ export function BookTreeViewer({
     const [busy, setBusy] = useState(false);
     const [dragging, setDragging] = useState(false);
     const [mobilePane, setMobilePane] = useState<"tree" | "moves">("tree");
+    const [fullscreen, setFullscreen] = useState(false);
+    const [dialog, setDialog] = useState<HTMLDivElement | null>(null);
+    const fullscreenButton = useRef<HTMLButtonElement>(null);
+    const restoreFocus = useRef(false);
+    function closeFullscreen() {
+        restoreFocus.current = true;
+        setFullscreen(false);
+    }
+    // 閉じたら、開いたボタンへフォーカスを戻す（全画面の中のボタンは消えるので）。
+    useEffect(() => {
+        if (fullscreen || !restoreFocus.current) return;
+        restoreFocus.current = false;
+        fullscreenButton.current?.focus();
+    }, [fullscreen]);
+    // 全画面の間は Tab を中で回す（隠れた盤の画面のボタンへ移って、見えないまま押さないように）。
+    useEffect(() => {
+        if (!dialog) return;
+        const trap = (event: KeyboardEvent) => {
+            if (event.key !== "Tab") return;
+            const items = [
+                ...dialog.querySelectorAll<HTMLElement>("button:not(:disabled), [tabindex]"),
+            ].filter((element) => element.tabIndex >= 0);
+            if (items.length === 0) return;
+            const first = items[0];
+            const last = items[items.length - 1];
+            const active = document.activeElement;
+            const outside = !dialog.contains(active);
+            if (outside || (event.shiftKey ? active === first : active === last)) {
+                event.preventDefault();
+                (event.shiftKey ? last : first).focus();
+            }
+        };
+        // 押したボタンが無効になってフォーカスが外れても回せるように、文書全体で受ける。
+        document.addEventListener("keydown", trap);
+        return () => document.removeEventListener("keydown", trap);
+    }, [dialog]);
     const { session, tree } = useBookTree(book?.data, fetchLegalMoves);
     const [body, setBody] = useState<HTMLDivElement | null>(null);
     const size = useElementSize(body);
@@ -223,6 +259,11 @@ export function BookTreeViewer({
     // ←→ で手を戻す・進める、↑↓ で同じ局面からの別の手へ移る。
     const onKey = useEffectEvent((event: KeyboardEvent) => {
         if (event.altKey || event.ctrlKey || event.metaKey) return;
+        if (event.key === "Escape" && fullscreen) {
+            event.preventDefault();
+            closeFullscreen();
+            return;
+        }
         const target = event.target;
         if (
             target instanceof Element &&
@@ -314,6 +355,73 @@ export function BookTreeViewer({
             >
                 反転
             </Button>
+        </div>
+    );
+    // 全画面では木の欄そのものを画面いっぱいに広げる（別に描き直すと、開いた枝や送った位置が戻るので）。
+    const treePane = book && tree && (
+        <div
+            ref={fullscreen ? setDialog : undefined}
+            {...(fullscreen && {
+                role: "dialog",
+                "aria-modal": true,
+                "aria-label": "定跡の木（全画面）",
+            })}
+            className={cn(
+                "flex min-h-0 min-w-0 flex-col",
+                fullscreen
+                    ? "fixed inset-0 z-modal gap-2 bg-background p-3 text-wafuu-sumi"
+                    : "relative flex-1",
+            )}
+        >
+            {fullscreen && (
+                <div className="flex items-center gap-3">
+                    <h2 className="font-display text-base">定跡の木</h2>
+                    <output className="min-w-0 truncate text-sm">
+                        {node && node.parent !== null
+                            ? `${ply}手目 ${moveLabel(tree, node)}`
+                            : "開始局面"}
+                    </output>
+                    <p className="hidden min-w-0 flex-1 truncate text-xs text-muted-foreground lg:block">
+                        手に置くと局面、ダブルクリックでその局面を盤で開きます。Ctrl＋ホイールで拡大縮小、Esc
+                        で閉じます。
+                    </p>
+                    <Button
+                        autoFocus
+                        variant="outline"
+                        size="sm"
+                        className="ml-auto"
+                        onClick={closeFullscreen}
+                    >
+                        盤に戻る
+                    </Button>
+                </div>
+            )}
+            <BookTreeGraph
+                key={book.id}
+                tree={tree}
+                book={book.data}
+                selected={selected}
+                onSelect={setSelected}
+                flipBoard={flip}
+                explore={fullscreen}
+                onActivate={(id) => {
+                    setSelected(id);
+                    closeFullscreen();
+                }}
+                className="flex-1 rounded-lg border border-wafuu-border bg-wafuu-washi"
+            />
+            {!fullscreen && (
+                <Button
+                    ref={fullscreenButton}
+                    variant="outline"
+                    size="sm"
+                    className="absolute top-0.5 right-1 z-20 h-6 bg-background px-2 text-xs"
+                    title="盤を隠して木を画面いっぱいに広げる"
+                    onClick={() => setFullscreen(true)}
+                >
+                    全画面
+                </Button>
+            )}
         </div>
     );
     const status = !tree
@@ -410,16 +518,7 @@ export function BookTreeViewer({
                         </div>
                         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
                             {controlsBesideTree && controls}
-                            {tree ? (
-                                <BookTreeGraph
-                                    key={book.id}
-                                    tree={tree}
-                                    book={book.data}
-                                    selected={selected}
-                                    onSelect={setSelected}
-                                    className="min-h-0 flex-1 rounded-lg border border-wafuu-border bg-wafuu-washi"
-                                />
-                            ) : (
+                            {treePane || (
                                 <div className="flex-1 rounded-lg border border-wafuu-border" />
                             )}
                         </div>
@@ -446,14 +545,7 @@ export function BookTreeViewer({
                                 className="min-h-0 flex-1 rounded-lg border border-wafuu-border bg-background"
                             />
                         ) : (
-                            <BookTreeGraph
-                                key={book.id}
-                                tree={tree}
-                                book={book.data}
-                                selected={selected}
-                                onSelect={setSelected}
-                                className="min-h-0 flex-1 rounded-lg border border-wafuu-border bg-wafuu-washi"
-                            />
+                            treePane
                         )}
                     </div>
                 )}
