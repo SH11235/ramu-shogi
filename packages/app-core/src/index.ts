@@ -205,7 +205,6 @@ export { generateNnueId } from "./nnue/utils";
 
 export type { BookData, BookMove, BookWarning } from "./book/book";
 export {
-    findBookBranchesAsync,
     normalizeBookKey,
     parseBook,
     parseBookAsync,
@@ -215,7 +214,6 @@ export {
 } from "./book/book";
 export type { BookTree, BookTreeNode } from "./book/tree";
 export {
-    BOOK_TREE_AUTO_LIMIT,
     bookTreePath,
     bookTreeRow,
     createBookTreeBuilder,

@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { createInitialPositionState } from "../game/board";
 import { parseStudySfen } from "../study/sfen";
 import {
-    findBookBranchesAsync,
     normalizeBookKey,
     parseBook,
     parseBookExplore,
@@ -13,14 +12,6 @@ import {
 const initial = positionToBookKey(createInitialPositionState());
 const sparse = "4k4/9/9/4+p4/9/4+R4/9/9/4K4 w";
 describe("book", () => {
-    it("分かれ目を手番ごとに走査し、中止を反映する", async () => {
-        const book = parseBook(`sfen ${initial}\n7g7f\n2g2f\nsfen ${sparse} -\n5a4a\n5a6a`);
-        expect(await findBookBranchesAsync(book)).toEqual({
-            sente: [initial],
-            gote: [`${sparse} -`],
-        });
-        await expect(findBookBranchesAsync(book, () => true)).rejects.toThrow("中止");
-    });
     it("手がない局面と全手が不正な局面は警告して統計から除外する", () => {
         const result = parseBook(`sfen ${initial}\nsfen ${sparse} -\ninvalid`);
         expect(result.positions.size).toBe(0);

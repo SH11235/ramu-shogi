@@ -22,9 +22,22 @@ const KIFU_WITH_PV = [
     "+0055KA",
     "'** 50 -0033KA +5533UM -2133KE",
 ].join("\n");
-// 両者に持ち駒がある局面（KIFU_WITH_HANDS の 4 手目のあと）だけを入れた定跡。
-const BOOK_KEY_WITH_HANDS = "lnsgkg1nl/1r5s1/pppppp1pp/6p2/9/2P6/PP1PPPPPP/7R1/LNSGKGSNL b Bb";
-const BOOK_WITH_HANDS = `#YANEURAOU-DB2016 1.00\nsfen ${BOOK_KEY_WITH_HANDS} 9\nB*5e none 50 20 3\n`;
+// 平手から、両者に持ち駒がある局面（KIFU_WITH_HANDS の 4 手目のあと）までの定跡。
+// 定跡ビュアーは平手からたどるので、途中の局面も入れる。
+const BOOK_WITH_HANDS = [
+    "#YANEURAOU-DB2016 1.00",
+    "sfen lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
+    "7g7f none 50 20 3",
+    "sfen lnsgkgsnl/1r5b1/ppppppppp/9/9/2P6/PP1PPPPPP/1B5R1/LNSGKGSNL w - 2",
+    "3c3d none -50 20 3",
+    "sfen lnsgkgsnl/1r5b1/pppppp1pp/6p2/9/2P6/PP1PPPPPP/1B5R1/LNSGKGSNL b - 3",
+    "8h2b+ none 50 20 3",
+    "sfen lnsgkgsnl/1r5+B1/pppppp1pp/6p2/9/2P6/PP1PPPPPP/7R1/LNSGKGSNL w B 4",
+    "3a2b none -50 20 3",
+    "sfen lnsgkg1nl/1r5s1/pppppp1pp/6p2/9/2P6/PP1PPPPPP/7R1/LNSGKGSNL b Bb 5",
+    "B*5e none 50 20 3",
+    "",
+].join("\n");
 
 // AI の一覧（/nnue）や棋譜の一覧は API の応答で中身が変わるので、ここでは撮らない。
 interface Scene {
@@ -74,10 +87,15 @@ const openBookViewer = (flip: boolean) => async (page: Page) => {
         mimeType: "text/plain",
         buffer: Buffer.from(BOOK_WITH_HANDS),
     });
-    await page.getByRole("textbox", { name: "局面キー" }).fill(BOOK_KEY_WITH_HANDS);
-    await page.getByRole("button", { name: "局面へ移動" }).click();
-    await page.getByRole("region", { name: "指し手一覧" }).getByText("定跡の手").waitFor();
-    if (flip) await page.getByRole("button", { name: "盤を反転" }).click();
+    await page.getByText("hands.db").waitFor();
+    // スマホでは指し手の一覧を切り替えて出す。
+    const movesTab = page.getByRole("button", { name: "この局面の指し手" });
+    if (await movesTab.isVisible()) await movesTab.click();
+    const moves = page.getByRole("region", { name: "この局面の指し手" });
+    for (const move of [/7六歩/, /3四歩/, /2二角成/, /2二銀/])
+        await moves.getByRole("button", { name: move }).click();
+    await moves.getByRole("button", { name: /5五角打/ }).waitFor();
+    if (flip) await page.getByRole("button", { name: "反転" }).click();
 };
 
 /** 人どうしの対局を始め、マス（`7g` など）や成りの選択（`成る`）を順に押す。 */

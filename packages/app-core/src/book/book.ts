@@ -248,20 +248,3 @@ export async function parseBookAsync(
     }
     return result.value;
 }
-
-export async function findBookBranchesAsync(
-    book: BookData,
-    cancelled: () => boolean = () => false,
-): Promise<Record<PositionState["turn"], string[]>> {
-    const branches: Record<PositionState["turn"], string[]> = { sente: [], gote: [] };
-    let started = performance.now();
-    for (const [key, moves] of book.positions) {
-        if (cancelled()) throw new Error("読み込みを中止しました");
-        if (moves.length >= 2) branches[key.split(" ")[1] === "b" ? "sente" : "gote"].push(key);
-        if (performance.now() - started >= 12) {
-            await yieldTask();
-            started = performance.now();
-        }
-    }
-    return branches;
-}

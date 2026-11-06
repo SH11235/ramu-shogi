@@ -19,12 +19,12 @@ it("作り直しとアンマウント後の通知を捨て、間引きタイマ�
         return { ...create(options), start: () => Promise.resolve() };
     });
     const { result, rerender, unmount } = renderHook(
-        ({ side }: { side: "sente" | "gote" }) => useBookTree(book, side, async () => []),
-        { initialProps: { side: "sente" } },
+        ({ data }: { data: core.BookData }) => useBookTree(data, async () => []),
+        { initialProps: { data: book } },
     );
     act(() => notifications[0]());
     expect(vi.getTimerCount()).toBe(1);
-    rerender({ side: "gote" });
+    rerender({ data: core.parseBook("") });
     expect(vi.getTimerCount()).toBe(0);
     const current = result.current;
     await act(async () => {
@@ -46,13 +46,13 @@ it("作り直しとアンマウント後の通知を捨て、間引きタイマ�
 it("大量の通知を間引き、公開済みのスナップショットを変更しない", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
     const book = core.parseBook("");
-    const builder = core.createBookTreeBuilder({ book, side: "sente", legalMoves: async () => [] });
+    const builder = core.createBookTreeBuilder({ book, legalMoves: async () => [] });
     let notify = () => {};
     vi.spyOn(core, "createBookTreeBuilder").mockImplementation((options) => {
         notify = options.onChange ?? (() => {});
         return { ...builder, start: () => Promise.resolve() };
     });
-    const { result, unmount } = renderHook(() => useBookTree(book, "sente", async () => []));
+    const { result, unmount } = renderHook(() => useBookTree(book, async () => []));
     const initial = result.current.tree;
     const revision = result.current.revision;
     await act(async () => {

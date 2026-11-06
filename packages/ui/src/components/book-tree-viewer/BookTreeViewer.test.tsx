@@ -1,113 +1,146 @@
-import {
-    applyMoveWithState,
-    createInitialPositionState,
-    parseStudySfen,
-    positionToBookKey,
-} from "@shogi/app-core";
+import { applyMoveWithState, createInitialPositionState, positionToBookKey } from "@shogi/app-core";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BookTreeViewer, MAX_BOOK_FILE_BYTES } from "./BookTreeViewer";
 
-afterEach(cleanup);
-beforeEach(() => {
-    Element.prototype.scrollIntoView = vi.fn();
-});
 const initial = createInitialPositionState();
-const first = applyMoveWithState(initial, "7g7f").next;
-const second = applyMoveWithState(first, "8c8d").next;
-const key = positionToBookKey(initial);
+function key(...moves: string[]) {
+    return positionToBookKey(
+        moves.reduce((state, move) => applyMoveWithState(state, move).next, initial),
+    );
+}
+/** 測った幅を PC の幅にする（盤・指し手の一覧と木を横に並べる配置で試す）。 */
+function wideObserver(callback: ResizeObserverCallback) {
+    const observer = {
+        observe(target: Element) {
+            callback(
+                [{ target, contentRect: { width: 1200, height: 800 } } as ResizeObserverEntry],
+                observer as unknown as ResizeObserver,
+            );
+        },
+        disconnect() {},
+        unobserve() {},
+    };
+    return observer;
+}
+/** `new ResizeObserver(...)` で呼ばれるので、アロー関数ではなく関数宣言にする。 */
+function WideResizeObserver(callback: ResizeObserverCallback) {
+    return wideObserver(callback);
+}
+beforeEach(() => {
+    vi.stubGlobal("ResizeObserver", WideResizeObserver);
+});
+afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+});
+
 async function upload(text: string, name = "sample.db") {
     fireEvent.change(screen.getByLabelText("定跡ファイル"), {
         target: { files: [{ name, size: text.length, text: async () => text }] },
     });
     await screen.findByText(name);
 }
+const moves = () => within(screen.getByRole("region", { name: "この局面の指し手" }));
+const tree = () => within(screen.getByRole("region", { name: "定跡の木" }));
+const current = () =>
+    screen.getAllByRole("status").find((element) => /手目|開始局面/.test(element.textContent ?? ""))
+        ?.textContent;
+const built = () => screen.findByText(/局面を展開$/);
+
 describe("BookTreeViewer", () => {
-    it("駒の動きとして違法な定跡の手では局面も手順も進めない", async () => {
+    it("指し手の一覧と木のどちらから選んでも、盤の局面と木の選択がそろう", async () => {
         render(<BookTreeViewer fetchLegalMoves={async () => []} />);
-        await upload(`sfen ${key}\n7g7e\n7g7f`);
-        const list = within(screen.getByRole("region", { name: "指し手一覧" }));
-        fireEvent.click(list.getByRole("button", { name: /7五歩/ }));
-        expect(screen.getByRole("alert").textContent).toBe("この局面では指せない手です");
-        expect(screen.getByText(key)).toBeTruthy();
-        expect(within(screen.getByRole("navigation")).getAllByRole("button")).toHaveLength(1);
-        fireEvent.click(list.getByRole("button", { name: /7六歩/ }));
-        expect(screen.queryByRole("alert")).toBeNull();
-        expect(screen.getByText(positionToBookKey(first))).toBeTruthy();
+        await upload(
+            `sfen ${key()}\n7g7f 8c8d 100 12 3\nsfen ${key("7g7f")}\n8c8d\nsfen ${key("7g7f", "8c8d")}\n2g2f`,
+        );
+        await built();
+        const row = moves().getByRole("button", { name: /7六歩/ }).closest("tr");
+        expect(row?.textContent).toContain("100");
+        expect(row?.textContent).toContain("12");
+        fireEvent.click(moves().getByRole("button", { name: /7六歩/ }));
+        expect(current()).toBe("1手目 ☗7六歩(77)");
+        fireEvent.click(tree().getByRole("button", { name: /^☖8四歩\(83\)/ }));
+        expect(current()).toBe("2手目 ☖8四歩(83)");
+        expect(moves().getByRole("button", { name: /2六歩/ })).toBeTruthy();
+        fireEvent.click(screen.getByRole("button", { name: "開始局面へ" }));
+        expect(current()).toBe("開始局面");
     });
-    it("合流を越えても木を選択し、手の一覧で辿った手順を保つ", async () => {
-        const lines = [
-            ["7g7f", "8c8d", "2g2f", "3c3d", "6g6f"],
-            ["2g2f", "3c3d", "7g7f", "8c8d", "6g6f"],
-        ];
-        const entries = new Map<string, Set<string>>();
-        for (const moves of lines) {
-            let position = initial;
-            for (const move of moves) {
-                const key = positionToBookKey(position);
-                const choices = entries.get(key) ?? new Set<string>();
-                choices.add(move);
-                entries.set(key, choices);
-                position = applyMoveWithState(position, move).next;
-            }
-        }
+    it("登録の無い手でも定跡の局面へつながれば、登録の無い手として出す", async () => {
         render(
             <BookTreeViewer
-                fetchLegalMoves={async (sfen) => [...(entries.get(sfen.replace(/ 1$/, "")) ?? [])]}
+                fetchLegalMoves={async (sfen) => (sfen === `${key()} 1` ? ["2g2f", "7g7f"] : [])}
             />,
         );
+        await upload(`sfen ${key("7g7f")}\n8c8d`);
+        await built();
+        expect(
+            moves()
+                .getByText(/登録なし/)
+                .closest("button")?.textContent,
+        ).toContain("7六歩");
+        expect(moves().queryByRole("button", { name: /2六歩/ })).toBeNull();
+    });
+    it("指せない定跡の手は木に入れず、その局面に警告を出す", async () => {
+        render(<BookTreeViewer fetchLegalMoves={async () => []} />);
+        await upload(`sfen ${key()}\n7g7e\n7g7f`);
+        await built();
+        expect(moves().getByRole("alert").textContent).toBe("指せない定跡の手があります");
+        expect(moves().queryByRole("button", { name: /7五歩/ })).toBeNull();
+        expect(moves().getByRole("button", { name: /7六歩/ })).toBeTruthy();
+    });
+    it("合流した手を選ぶと合流先の続きを出し、→ で合流先の手へ進む", async () => {
+        const lines = [
+            ["7g7f", "8c8d", "2g2f", "3c3d", "6g6f"],
+            ["2g2f", "3c3d", "7g7f", "8c8d"],
+        ];
+        const entries = new Map<string, Set<string>>();
+        for (const line of lines)
+            for (const [index, move] of line.entries()) {
+                const position = key(...line.slice(0, index));
+                entries.set(position, (entries.get(position) ?? new Set()).add(move));
+            }
+        render(<BookTreeViewer fetchLegalMoves={async () => []} />);
         await upload(
-            [...entries].map(([key, moves]) => `sfen ${key}\n${[...moves].join("\n")}`).join("\n"),
+            [...entries]
+                .map(([position, list]) => `sfen ${position}\n${[...list].join("\n")}`)
+                .join("\n"),
         );
-        await screen.findByText(/組み立て完了/);
-        for (const label of [/2六歩/, /3四歩/, /7六歩/, /8四歩/, /6六歩/]) {
-            const list = within(screen.getByRole("region", { name: "指し手一覧" }));
-            const button = await list.findByRole("button", { name: label });
-            await act(async () => fireEvent.click(button));
-        }
-        const tree = screen.getByRole("region", { name: "定跡の木" });
-        expect(tree.querySelector('[aria-current="step"]')?.textContent).toContain("6六歩");
-        const steps = within(
-            screen.getByRole("navigation", { name: "現在局面までの手順" }),
-        ).getAllByRole("button");
-        expect(steps.map((step) => step.textContent)).toEqual([
-            "初期局面",
-            "1. ☗2六歩(27)",
-            "2. ☖3四歩(33)",
-            "3. ☗7六歩(77)",
-            "4. ☖8四歩(83)",
-            "5. ☗6六歩(67)",
-        ]);
-        fireEvent.click(within(tree).getByRole("button", { name: "すべて閉じる" }));
-        fireEvent.click(within(tree).getByRole("button", { name: "選択局面まで開く" }));
-        expect(tree.querySelector('[aria-current="step"]')?.textContent).toContain("6六歩");
+        await built();
+        for (const name of [/2六歩/, /3四歩/, /7六歩/, /8四歩/])
+            fireEvent.click(await moves().findByRole("button", { name }));
+        expect(screen.getByText(/前に出た局面に合流/)).toBeTruthy();
+        expect(moves().getByRole("button", { name: /6六歩/ })).toBeTruthy();
+        fireEvent.keyDown(window, { key: "ArrowRight" });
+        expect(current()).toBe("5手目 ☗6六歩(67)");
     });
-    it("単独表示の局面が後から木に現れるとそのノードを選択する", async () => {
-        let finish: (moves: string[]) => void = () => {};
-        const fetch = vi.fn(
-            () =>
-                new Promise<string[]>((resolve) => {
-                    finish = resolve;
-                }),
-        );
-        render(<BookTreeViewer fetchLegalMoves={fetch} />);
-        await upload(`sfen ${key}\n7g7f\nsfen ${positionToBookKey(second)}\n2g2f`);
-        await waitFor(() => expect(fetch).toHaveBeenCalled());
-        fireEvent.change(screen.getByLabelText("局面キー"), {
-            target: { value: positionToBookKey(second) },
-        });
-        fireEvent.click(screen.getByRole("button", { name: "局面へ移動" }));
-        expect(screen.getByRole("navigation").textContent).toBe("(手順なし)");
-        const tree = screen.getByRole("region", { name: "定跡の木" });
-        expect(tree.querySelector('[aria-current="step"]')).toBeNull();
-        await act(async () => finish(["8c8d"]));
-        await waitFor(() =>
-            expect(tree.querySelector('[aria-current="step"]')?.textContent).toContain("8四歩"),
-        );
-        expect(screen.getByRole("navigation").textContent).toContain("初期局面");
-        expect(screen.getByText(positionToBookKey(second))).toBeTruthy();
+    it("← → で手を戻し進め、↑ ↓ で同じ局面からの別の手へ移る", async () => {
+        render(<BookTreeViewer fetchLegalMoves={async () => []} />);
+        await upload(`sfen ${key()}\n7g7f\n2g2f\nsfen ${key("7g7f")}\n8c8d`);
+        await built();
+        fireEvent.keyDown(window, { key: "ArrowRight" });
+        expect(current()).toBe("1手目 ☗7六歩(77)");
+        fireEvent.keyDown(window, { key: "ArrowRight" });
+        expect(current()).toBe("2手目 ☖8四歩(83)");
+        fireEvent.keyDown(window, { key: "ArrowLeft" });
+        fireEvent.keyDown(window, { key: "ArrowDown" });
+        expect(current()).toBe("1手目 ☗2六歩(27)");
+        fireEvent.keyDown(window, { key: "ArrowUp" });
+        expect(current()).toBe("1手目 ☗7六歩(77)");
     });
-    it("上限超過ファイルは進行中の読み込みを中止しない", async () => {
+    it("選んでいる手の祖先をたたむと、たたんだ手を選び直す", async () => {
+        render(<BookTreeViewer fetchLegalMoves={async () => []} />);
+        await upload(`sfen ${key()}\n7g7f\n2g2f\nsfen ${key("7g7f")}\n8c8d`);
+        await built();
+        fireEvent.click(tree().getByRole("button", { name: /^☖8四歩\(83\)/ }));
+        fireEvent.click(tree().getByRole("button", { name: "開始局面 の先をたたむ" }));
+        expect(current()).toBe("開始局面");
+        expect(tree().queryByRole("button", { name: /^☗7六歩\(77\)/ })).toBeNull();
+        fireEvent.click(tree().getByRole("button", { name: /開始局面 の先を開く/ }));
+        expect(tree().getByRole("button", { name: /^☖8四歩\(83\)/ })).toBeTruthy();
+    });
+    it("上限超過のファイルは読まず、進行中の読み込みも中止しない", async () => {
         let finish: (text: string) => void = () => {};
         render(<BookTreeViewer fetchLegalMoves={async () => []} />);
         fireEvent.change(screen.getByLabelText("定跡ファイル"), {
@@ -131,264 +164,40 @@ describe("BookTreeViewer", () => {
         expect(screen.getByText("読み込み中…")).toBeTruthy();
         expect(screen.getByRole("alert").textContent).toContain("上限 64 MB");
         expect(text).not.toHaveBeenCalled();
-        await act(async () => finish(`sfen ${key}\n7g7f`));
+        await act(async () => finish(`sfen ${key()}\n7g7f`));
         await screen.findByText("pending.db");
         expect(screen.queryByText("読み込み中…")).toBeNull();
     });
-    it("パース前のタイマー待ちで読み込み中を表示する", async () => {
-        vi.stubGlobal("MessageChannel", undefined);
-        vi.useFakeTimers();
-        try {
-            render(<BookTreeViewer fetchLegalMoves={async () => []} />);
-            await act(async () => {
-                fireEvent.change(screen.getByLabelText("定跡ファイル"), {
-                    target: {
-                        files: [
-                            { name: "timer.db", size: 1, text: async () => `sfen ${key}\n7g7f` },
-                        ],
-                    },
-                });
+    it("読み直したら、前の定跡の遅れて届いた合法手で新しい木を変えない", async () => {
+        let finish: (moves: string[]) => void = () => {};
+        let first = true;
+        const fetch = vi.fn((sfen: string) => {
+            if (sfen !== `${key()} 1` || !first) return Promise.resolve([]);
+            first = false;
+            return new Promise<string[]>((resolve) => {
+                finish = resolve;
             });
-            expect(screen.getByText("読み込み中…")).toBeTruthy();
-            expect(screen.queryByRole("region", { name: "指し手一覧" })).toBeNull();
-            await act(async () => {
-                await vi.runAllTimersAsync();
-            });
-            expect(screen.getByText("timer.db")).toBeTruthy();
-            expect(screen.queryByText("読み込み中…")).toBeNull();
-        } finally {
-            vi.useRealTimers();
-            vi.unstubAllGlobals();
-        }
-    });
-    it("見る側の定跡がないと表示し、相手側の参考の手からも進める", async () => {
-        render(<BookTreeViewer fetchLegalMoves={async () => []} />);
-        await upload(`sfen ${positionToBookKey(first)}\n8c8d`);
-        expect(screen.getByText("この局面は定跡にありません")).toBeTruthy();
-        fireEvent.change(screen.getByLabelText("局面キー"), {
-            target: { value: positionToBookKey(first) },
         });
-        fireEvent.click(screen.getByRole("button", { name: "局面へ移動" }));
-        await screen.findByText("この先は定跡にありません");
-        fireEvent.click(
-            within(screen.getByRole("region", { name: "相手側の定跡" })).getByRole("button", {
-                name: /8四歩/,
-            }),
-        );
-        expect(screen.getByText(positionToBookKey(second))).toBeTruthy();
-    });
-    it("見る側で接続手・定跡の手・分かれ目を切り替え、局面と手順は保持する", async () => {
-        const other = applyMoveWithState(first, "3c3d").next;
-        const fetch = vi.fn().mockResolvedValue(["8c8d", "3c3d", "4c4d"]);
-        render(<BookTreeViewer fetchLegalMoves={fetch} />);
-        await upload(`sfen ${key}
-7g7f
-2g2f
-sfen ${positionToBookKey(first)}
-8c8d none -20 5 8
-4c4d
-sfen ${positionToBookKey(second)}
-2g2f
-sfen ${positionToBookKey(other)}
-2g2f`);
-        const list = within(screen.getByRole("region", { name: "指し手一覧" }));
-        const branches = within(screen.getByRole("region", { name: "分かれ目の一覧" }));
-        expect(branches.getByRole("heading").textContent).toBe("分かれ目の一覧（1 局面）");
-        expect(branches.getByRole("button").textContent).toContain("先手:");
-        fireEvent.click(list.getByRole("button", { name: /7六歩/ }));
-        await list.findByRole("button", { name: /3四歩/ });
-        expect(list.getByRole("button", { name: /8四歩/ }).textContent).toContain("定跡の手");
-        const reference = within(screen.getByRole("region", { name: "相手側の定跡" }));
-        expect(reference.getByText(/相手側（後手）/)).toBeTruthy();
-        expect(reference.getByRole("button", { name: /4四歩/ })).toBeTruthy();
-        expect(reference.queryByRole("button", { name: /8四歩/ })).toBeNull();
-        await act(async () =>
-            fireEvent.click(screen.getByRole("button", { name: "後手の定跡として見る" })),
-        );
-        expect(list.getByRole("heading", { name: "定跡の手" })).toBeTruthy();
-        expect(list.getByText("-20")).toBeTruthy();
-        expect(list.queryByRole("button", { name: /3四歩/ })).toBeNull();
-        expect(screen.getByText(positionToBookKey(first), { selector: "p" })).toBeTruthy();
-        expect(
-            within(screen.getByRole("navigation", { name: "現在局面までの手順" })).getAllByRole(
-                "button",
-            ),
-        ).toHaveLength(2);
-        expect(branches.getByRole("button").textContent).toContain("後手:");
-        expect(branches.getByRole("heading").textContent).toBe("分かれ目の一覧（1 局面）");
-        await act(async () => fireEvent.click(list.getByRole("button", { name: /4四歩/ })));
-        expect(
-            screen.getByText(positionToBookKey(applyMoveWithState(first, "4c4d").next)),
-        ).toBeTruthy();
-    });
-
-    it("分かれ目の表示件数を制限する", async () => {
-        render(<BookTreeViewer fetchLegalMoves={async () => []} />);
-        const board = key.split(" ")[0];
-        await upload(
-            Array.from(
-                { length: 51 },
-                (_, index) => `sfen ${board} b ${index + 1}P\n7g7f\n2g2f`,
-            ).join("\n"),
-        );
-        const branches = within(screen.getByRole("region", { name: "分かれ目の一覧" }));
-        expect(branches.getAllByRole("button")).toHaveLength(51);
-        fireEvent.click(branches.getByRole("button", { name: "さらに表示" }));
-        expect(branches.getAllByRole("button")).toHaveLength(51);
-        expect(branches.queryByRole("button", { name: "さらに表示" })).toBeNull();
-    });
-
-    it("合法手の取得失敗を表示する", async () => {
         render(
-            <BookTreeViewer
-                fetchLegalMoves={async () => {
-                    throw new Error("unavailable");
-                }}
-            />,
+            <StrictMode>
+                <BookTreeViewer fetchLegalMoves={fetch} />
+            </StrictMode>,
         );
-        await upload(`sfen ${key}\n7g7f`);
-        fireEvent.click(
-            within(screen.getByRole("region", { name: "指し手一覧" })).getByRole("button", {
-                name: /7六歩/,
-            }),
-        );
-        expect((await screen.findByRole("alert")).textContent).toBe("合法手を取得できませんでした");
-    });
-
-    it("定跡の手を優先し、接続手を探して進み、手順を戻れる", async () => {
-        const fetch = vi.fn().mockResolvedValue(["8c8d", "3c3d"]);
-        render(<BookTreeViewer fetchLegalMoves={fetch} />);
-        await upload(`sfen ${key}\n7g7f none 10 2 3\nsfen ${positionToBookKey(second)}\n2g2f`);
-
-        fireEvent.click(
-            within(screen.getByRole("region", { name: "指し手一覧" })).getByRole("button", {
-                name: /7六歩/,
-            }),
-        );
-        await within(screen.getByRole("region", { name: "指し手一覧" })).findByRole("button", {
-            name: /8四歩/,
+        await upload(`sfen ${key()}\n7g7f`, "old.db");
+        await waitFor(() => expect(fetch).toHaveBeenCalled());
+        await upload(`sfen ${key()}\n2g2f`, "new.db");
+        await built();
+        await act(async () => {
+            finish(["7g7f"]);
+            await new Promise((resolve) => setTimeout(resolve, 50));
         });
-        expect(screen.queryByRole("button", { name: /3四歩/ })).toBeNull();
-        fireEvent.click(
-            within(screen.getByRole("region", { name: "指し手一覧" })).getByRole("button", {
-                name: /8四歩/,
-            }),
-        );
-        expect(screen.getByRole("heading", { name: "定跡の手" })).toBeTruthy();
-        expect(
-            fetch.mock.calls.filter(([sfen]) => sfen === `${positionToBookKey(first)} 1`),
-        ).toHaveLength(1);
-        await act(async () => fireEvent.click(screen.getByRole("button", { name: "1 手戻る" })));
-        expect(screen.getByRole("heading", { name: "定跡につながる手" })).toBeTruthy();
-        fireEvent.click(screen.getByRole("button", { name: "初期局面" }));
-        expect(screen.getByRole("button", { name: "1 手戻る" }).hasAttribute("disabled")).toBe(
-            true,
-        );
+        expect(tree().queryByRole("button", { name: /^☗7六歩\(77\)/ })).toBeNull();
+        expect(tree().getByRole("button", { name: /^☗2六歩\(27\)/ })).toBeTruthy();
     });
-    it("木にある分かれ目を選び、反転、局面入力、読み直しができる", async () => {
+    it("警告のある行を数え、中身を開いて読める", async () => {
         render(<BookTreeViewer fetchLegalMoves={async () => []} />);
-        await upload(`sfen ${key}\n7g7f\n2g2f`);
-        await screen.findByRole("region", { name: "定跡の木" });
-        fireEvent.click(
-            within(screen.getByRole("region", { name: "分かれ目の一覧" })).getByRole("button"),
-        );
-        expect(screen.queryByText("(手順なし)")).toBeNull();
-        expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
-        fireEvent.click(screen.getByRole("button", { name: "盤を反転" }));
-        expect(screen.getByRole("button", { name: "盤を反転" }).getAttribute("aria-pressed")).toBe(
-            "true",
-        );
-        fireEvent.change(screen.getByLabelText("局面キー"), {
-            target: { value: `sfen ${positionToBookKey(first)} 12` },
-        });
-        fireEvent.click(screen.getByRole("button", { name: "局面へ移動" }));
-        await screen.findByText("この先は定跡にありません");
-        expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
-        await upload(`sfen ${key}\n2g2f`, "next.db");
-        expect(screen.queryByText("(手順なし)")).toBeNull();
-        expect(screen.getByRole("button", { name: "初期局面" })).toBeTruthy();
-    });
-    it("定跡にない A から B へ移動し、B の後に解決した A の合法手を捨てる", async () => {
-        const b = applyMoveWithState(initial, "2g2f").next;
-        const bNext = applyMoveWithState(b, "3c3d").next;
-        const pending = new Map<string, (moves: string[]) => void>();
-        const fetch = vi.fn(
-            (sfen: string) => new Promise<string[]>((resolve) => pending.set(sfen, resolve)),
-        );
-        render(<BookTreeViewer fetchLegalMoves={fetch} />);
-        await upload(`sfen ${positionToBookKey(second)}
-2g2f
-sfen ${positionToBookKey(bNext)}
-7g7f`);
-        function jumpTo(sfen: string) {
-            fireEvent.change(screen.getByLabelText("局面キー"), { target: { value: sfen } });
-            fireEvent.click(screen.getByRole("button", { name: "局面へ移動" }));
-        }
-        jumpTo(positionToBookKey(first));
-        await waitFor(() => expect(pending.has(`${positionToBookKey(first)} 1`)).toBe(true));
-        jumpTo(positionToBookKey(b));
-        await waitFor(() => expect(pending.has(`${positionToBookKey(b)} 1`)).toBe(true));
-        await act(async () => pending.get(`${positionToBookKey(b)} 1`)?.(["3c3d"]));
-        expect(screen.getByRole("button", { name: /3四歩/ })).toBeTruthy();
-        await act(async () => pending.get(`${positionToBookKey(first)} 1`)?.(["8c8d"]));
-        expect(screen.getByRole("button", { name: /3四歩/ })).toBeTruthy();
-        expect(screen.queryByText("合法手を読み込み中…")).toBeNull();
-        expect(screen.queryByRole("button", { name: /8四歩/ })).toBeNull();
-    });
-    it.each([
-        ["4k4/9/4P4/9/9/9/9/9/4K4 b -", "5c5b+", /5二歩成/],
-        ["4k4/9/9/9/9/9/9/9/4K4 b P", "P*5e", /5五歩打/],
-    ] as const)("成り・打ちを UI から進める: %s", async (sfen, move, label) => {
-        render(<BookTreeViewer fetchLegalMoves={async () => []} />);
-        await upload(`sfen ${sfen}
-${move}`);
-        fireEvent.change(screen.getByLabelText("局面キー"), { target: { value: sfen } });
-        fireEvent.click(screen.getByRole("button", { name: "局面へ移動" }));
-        await act(async () =>
-            fireEvent.click(
-                within(screen.getByRole("region", { name: "指し手一覧" })).getByRole("button", {
-                    name: label,
-                }),
-            ),
-        );
-        expect(
-            screen.getByText(
-                positionToBookKey(applyMoveWithState(parseStudySfen(sfen), move).next),
-            ),
-        ).toBeTruthy();
-    });
-    it("指せない定跡の手では局面を変えず、戻る操作でエラーを消す", async () => {
-        render(<BookTreeViewer fetchLegalMoves={async () => []} />);
-        await upload(`sfen ${key}
-7g7f
-sfen ${positionToBookKey(first)}
-5e5d`);
-        fireEvent.click(
-            within(screen.getByRole("region", { name: "指し手一覧" })).getByRole("button", {
-                name: /7六歩/,
-            }),
-        );
-        fireEvent.click(screen.getByRole("button", { name: "後手の定跡として見る" }));
-        const list = within(screen.getByRole("region", { name: "指し手一覧" }));
-        fireEvent.click(list.getByRole("button"));
-        expect(screen.getByRole("alert").textContent).toBe("この局面では指せない手です");
-        expect(screen.getByText(positionToBookKey(first))).toBeTruthy();
-        fireEvent.click(screen.getByRole("button", { name: /1\. / }));
-        expect(screen.queryByRole("alert")).toBeNull();
-        fireEvent.click(list.getByRole("button"));
-        await act(async () => fireEvent.click(screen.getByRole("button", { name: "1 手戻る" })));
-        expect(screen.queryByRole("alert")).toBeNull();
-        expect(screen.getByText(key)).toBeTruthy();
-    });
-    it("上限超過を読み込まず、警告を表示する", async () => {
-        render(<BookTreeViewer fetchLegalMoves={async () => []} />);
-        const text = vi.fn();
-        fireEvent.change(screen.getByLabelText("定跡ファイル"), {
-            target: { files: [{ name: "large.db", size: MAX_BOOK_FILE_BYTES + 1, text }] },
-        });
-        expect(screen.getByRole("alert").textContent).toContain("上限 64 MB");
-        expect(text).not.toHaveBeenCalled();
-        await upload(`bad\nsfen ${key}\n2g2f`);
-        await waitFor(() => expect(screen.getByText(/1 行目:/)).toBeTruthy());
+        await upload(`bad\nsfen ${key()}\n2g2f`);
+        expect(screen.getByText("警告 1 件")).toBeTruthy();
+        expect(screen.getByText(/1 行目:/)).toBeTruthy();
     });
 });

@@ -3,20 +3,16 @@ import {
     type BookTree,
     createBookTreeBuilder,
     type PositionService,
-    type PositionState,
 } from "@shogi/app-core";
 import { useEffect, useEffectEvent, useState } from "react";
 
 export function useBookTree(
     book: BookData | undefined,
-    side: PositionState["turn"],
     fetchLegalMoves: PositionService["getLegalMoves"],
 ) {
     const [session, setSession] = useState<{
         book: BookData;
-        side: PositionState["turn"];
         builder: ReturnType<typeof createBookTreeBuilder>;
-        legalMoves: (sfen: string) => Promise<string[]>;
     } | null>(null);
     const [revision, setRevision] = useState(0);
     const [tree, setTree] = useState<BookTree | null>(null);
@@ -53,17 +49,15 @@ export function useBookTree(
                 ...current,
                 nodes: [...current.nodes],
                 firstByKey: new Map(current.firstByKey),
-                unreachable: [...current.unreachable],
             });
             setRevision((value) => value + 1);
         }
         const builder = createBookTreeBuilder({
             book,
-            side,
             legalMoves,
             onChange: publish,
         });
-        setSession({ book, side, builder, legalMoves });
+        setSession({ book, builder });
         publish();
         void builder.start();
         return () => {
@@ -72,10 +66,10 @@ export function useBookTree(
             timer = undefined;
             builder.cancel();
         };
-    }, [book, side]);
+    }, [book]);
     return {
-        session: session && session.book === book && session.side === side ? session : null,
-        tree: session && session.book === book && session.side === side ? tree : null,
+        session: session && session.book === book ? session : null,
+        tree: session && session.book === book ? tree : null,
         revision,
     };
 }

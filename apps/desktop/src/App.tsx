@@ -237,7 +237,7 @@ function App() {
 
     if (appMode === "book-viewer") {
         return (
-            <main className="mx-auto flex max-w-[1100px] flex-col gap-3 p-4 md:px-5">
+            <main className="mx-auto flex h-dvh w-full max-w-[1600px] flex-col gap-3 p-4 md:px-5">
                 <BookViewerView onBackToLocal={() => setAppMode("local")} />
             </main>
         );
