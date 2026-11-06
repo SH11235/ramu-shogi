@@ -692,6 +692,8 @@ export function parseKif(kifText: string): KifParseResult {
                 if (evalData.depth !== undefined) {
                     lastMoveData.depth = evalData.depth;
                 }
+                // 書式が混ざっても、詰みがあれば詰みだけを持つ（ShogiHome 形式の行と同じ扱い）。
+                if (lastMoveData.evalMate !== undefined) delete lastMoveData.evalCp;
             }
             continue;
         }

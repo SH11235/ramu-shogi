@@ -17,6 +17,20 @@ describe("parseKifPv", () => {
         expect(parseKifPv(state, "▲５七銀直△５二玉(51)▲１一銀", null)).toEqual(["5h5g", "5a5b"]);
     });
 
+    it("後手の右・左は後手から見た向きで決める", () => {
+        // 後手の金が 6一・4一 にあり、どちらも 5二 へ動ける。後手から見て右は 6一。
+        const gote = parseStudySfen("4k4/9/9/9/9/9/9/9/4K4 w - 1");
+        const golds = parseStudySfen("3g1g3/4k4/9/9/9/9/9/9/4K4 w - 1");
+        expect(parseKifPv(gote, "△５二玉", null)).toEqual(["5a5b"]);
+        expect(parseKifPv(golds, "△５一金右", null)).toEqual(["6a5a"]);
+        expect(
+            parseKifPv(parseStudySfen("3g1g3/9/4k4/9/9/9/9/9/4K4 w - 1"), "△５二金右", null),
+        ).toEqual(["6a5b"]);
+        expect(
+            parseKifPv(parseStudySfen("3g1g3/9/4k4/9/9/9/9/9/4K4 w - 1"), "△５二金左", null),
+        ).toEqual(["4a5b"]);
+    });
+
     it("同じ筋の 2 枚は、右・左だけでは決めない", () => {
         const twoOnFile = parseStudySfen("k8/9/9/5S3/9/5S3/9/9/K8 b - 1");
         expect(parseKifPv(twoOnFile, "▲５五銀右", null)).toEqual([]);
