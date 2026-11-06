@@ -186,7 +186,7 @@ function GraphNodes({
     onSelect: (id: number) => void;
     onToggle: (id: number, open: boolean) => void;
     onActivate?: (id: number) => void;
-    onHover?: (id: number | null, box?: DOMRect) => void;
+    onHover?: (id: number | null, element?: HTMLElement) => void;
 }) {
     const solid: string[] = [];
     const dashed: string[] = [];
@@ -245,11 +245,11 @@ function GraphNodes({
                             title={onHover ? undefined : [label, ...notes].join("\n")}
                             onClick={() => onSelect(id)}
                             onDoubleClick={onActivate && (() => onActivate(id))}
-                            onPointerEnter={
+                            onPointerMove={
                                 onHover &&
                                 ((event) => {
                                     if (event.pointerType === "mouse")
-                                        onHover(id, event.currentTarget.getBoundingClientRect());
+                                        onHover(id, event.currentTarget);
                                 })
                             }
                             onPointerLeave={onHover && (() => onHover(null))}
@@ -574,10 +574,19 @@ export function BookTreeGraph({
             // 木の右端の手を選んで送り切れなかったときは、その先が描かれたら送り直す（動かされていなければ）。
             const short = shortOf.current;
             shortOf.current = null;
-            if (!short || Math.abs(element.scrollLeft - short.reached) > 1) return;
+            if (
+                !short ||
+                Math.abs(element.scrollLeft - short.left) > 1 ||
+                Math.abs(element.scrollTop - short.top) > 1
+            )
+                return;
             element.scrollTo({ left: short.wanted, top: element.scrollTop });
             if (element.scrollLeft < short.wanted - 1)
-                shortOf.current = { wanted: short.wanted, reached: element.scrollLeft };
+                shortOf.current = {
+                    wanted: short.wanted,
+                    left: element.scrollLeft,
+                    top: element.scrollTop,
+                };
             return;
         }
         scrolledTo.current = key;
@@ -589,21 +598,24 @@ export function BookTreeGraph({
         anchor.current = null;
         let x = kept ? left - kept.x : element.scrollLeft;
         let y = kept ? top - kept.y : element.scrollTop;
-        const offLeft = left - SCROLL_MARGIN < x;
-        const offRight = left + colWidth + SCROLL_MARGIN > x + element.clientWidth;
+        // 木の中で押した手は、隠れるときだけ動かす（端に寄せた余白の分だけ動くと、ダブルクリックの 2 回目が外れる）。
+        const margin = kept ? 0 : SCROLL_MARGIN;
+        const offLeft = left - margin < x;
+        const offRight = left + colWidth + margin > x + element.clientWidth;
         if (!kept && (offLeft || offRight)) x = left - element.clientWidth / FOLLOW_FRACTION;
-        else if (offLeft) x = left - SCROLL_MARGIN;
-        else if (offRight) x = left + colWidth + SCROLL_MARGIN - element.clientWidth;
+        else if (offLeft) x = left - margin;
+        else if (offRight) x = left + colWidth + margin - element.clientWidth;
         const header = HEADER_HEIGHT * zoom;
-        if (top - SCROLL_MARGIN - header < y) y = top - SCROLL_MARGIN - header;
-        else if (top + BOX_HEIGHT * zoom + SCROLL_MARGIN > y + element.clientHeight)
-            y = top + BOX_HEIGHT * zoom + SCROLL_MARGIN - element.clientHeight;
+        if (top - margin - header < y) y = top - margin - header;
+        else if (top + BOX_HEIGHT * zoom + margin > y + element.clientHeight)
+            y = top + BOX_HEIGHT * zoom + margin - element.clientHeight;
         element.scrollTo({ left: Math.max(0, x), top: Math.max(0, y) });
         if (element.scrollLeft < x - 1)
-            shortOf.current = { wanted: x, reached: element.scrollLeft };
+            shortOf.current = { wanted: x, left: element.scrollLeft, top: element.scrollTop };
     });
     const scrolledTo = useRef<string | null>(null);
-    const shortOf = useRef<{ wanted: number; reached: number } | null>(null);
+    /** 送り切れなかった横の位置と、そのときの位置。ホイール・引く・拡大縮小で動かされたら捨てる。 */
+    const shortOf = useRef<{ wanted: number; left: number; top: number } | null>(null);
     useEffect(() => {
         followSelection(layout, `${selected}:${explore}`);
     }, [selected, layout, explore]);
@@ -612,13 +624,25 @@ export function BookTreeGraph({
     const [preview, setPreview] = useState<{ id: number; anchor: DOMRect } | null>(null);
     const previewTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     useEffect(() => () => clearTimeout(previewTimer.current), []);
-    function hover(id: number | null, box?: DOMRect) {
+    // マウスを動かすたびに呼ばれる。同じ手の上で待っている・出している間は何もしない（送ったり拡大縮小
+    // したりして消えたあとは、手の上で少し動かせばまた出す）。
+    const hovered = useRef<number | null>(null);
+    function hover(id: number | null, element?: HTMLElement) {
+        if (id !== null && id === hovered.current) return;
+        hidePreview();
+        if (id === null || !element) return;
+        hovered.current = id;
+        // 出すときの位置を測る（待つ間に送ったり拡大縮小したりして、手が動いていることがある）。
+        previewTimer.current = setTimeout(() => {
+            previewTimer.current = undefined;
+            if (element.isConnected) setPreview({ id, anchor: element.getBoundingClientRect() });
+        }, PREVIEW_DELAY_MS);
+    }
+    function hidePreview() {
         clearTimeout(previewTimer.current);
-        if (id === null || !box) {
-            setPreview(null);
-            return;
-        }
-        previewTimer.current = setTimeout(() => setPreview({ id, anchor: box }), PREVIEW_DELAY_MS);
+        previewTimer.current = undefined;
+        hovered.current = null;
+        setPreview(null);
     }
     const measureView = useEffectEvent((scale: number) => {
         const element = frame.current;
@@ -651,17 +675,22 @@ export function BookTreeGraph({
             left: ((element.scrollLeft + x) / zoom) * target - x,
             top: ((element.scrollTop + y) / zoom) * target - y,
         };
-        setPreview(null);
+        shortOf.current = null;
+        hidePreview();
         setZoomSetting(target);
     }
     function fitAll() {
         const element = frame.current;
         if (!element) return;
-        pendingScroll.current = { left: 0, top: 0 };
-        setPreview(null);
-        setZoomSetting(
-            clampZoom(Math.min(1, element.clientWidth / width, element.clientHeight / height)),
+        shortOf.current = null;
+        hidePreview();
+        const target = clampZoom(
+            Math.min(1, element.clientWidth / width, element.clientHeight / height),
         );
+        // 拡大率が変わらないときは、拡大率の変化を待つ処理が走らないので、ここで原点へ送る。
+        if (target === zoom) element.scrollTo({ left: 0, top: 0 });
+        else pendingScroll.current = { left: 0, top: 0 };
+        setZoomSetting(target);
     }
     useLayoutEffect(() => {
         const element = frame.current;
@@ -673,6 +702,7 @@ export function BookTreeGraph({
     function jumpTo(x: number, y: number) {
         const element = frame.current;
         if (!element) return;
+        shortOf.current = null;
         element.scrollTo({
             left: x * zoom - element.clientWidth / 2,
             top: y * zoom - element.clientHeight / 2,
@@ -682,6 +712,7 @@ export function BookTreeGraph({
     const onWheel = useEffectEvent((event: WheelEvent) => {
         const element = frame.current;
         if (!element) return;
+        shortOf.current = null;
         if (explore && (event.ctrlKey || event.metaKey)) {
             event.preventDefault();
             const box = element.getBoundingClientRect();
@@ -722,6 +753,7 @@ export function BookTreeGraph({
             return;
         if (event.target instanceof Element && event.target.closest("button")) return;
         event.preventDefault();
+        shortOf.current = null;
         element.setPointerCapture(event.pointerId);
         pan.current = {
             x: event.clientX,
@@ -761,7 +793,7 @@ export function BookTreeGraph({
                 ref={frame}
                 aria-label="定跡の木"
                 onScroll={() => {
-                    if (preview) setPreview(null);
+                    if (preview || previewTimer.current !== undefined) hidePreview();
                     if (explore) measureView(zoom);
                 }}
                 onPointerDown={startPan}

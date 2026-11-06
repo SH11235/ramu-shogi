@@ -118,6 +118,39 @@ export function BookTreeViewer({
     const [dragging, setDragging] = useState(false);
     const [mobilePane, setMobilePane] = useState<"tree" | "moves">("tree");
     const [fullscreen, setFullscreen] = useState(false);
+    const [dialog, setDialog] = useState<HTMLDivElement | null>(null);
+    const fullscreenButton = useRef<HTMLButtonElement>(null);
+    const restoreFocus = useRef(false);
+    function closeFullscreen() {
+        restoreFocus.current = true;
+        setFullscreen(false);
+    }
+    // 閉じたら、開いたボタンへフォーカスを戻す（全画面の中のボタンは消えるので）。
+    useEffect(() => {
+        if (fullscreen || !restoreFocus.current) return;
+        restoreFocus.current = false;
+        fullscreenButton.current?.focus();
+    }, [fullscreen]);
+    // 全画面の間は Tab を中で回す（隠れた盤の画面のボタンへ移って、見えないまま押さないように）。
+    useEffect(() => {
+        if (!dialog) return;
+        const trap = (event: KeyboardEvent) => {
+            if (event.key !== "Tab") return;
+            const items = [
+                ...dialog.querySelectorAll<HTMLElement>("button:not(:disabled), [tabindex]"),
+            ].filter((element) => element.tabIndex >= 0);
+            if (items.length === 0) return;
+            const first = items[0];
+            const last = items[items.length - 1];
+            const active = document.activeElement;
+            if (event.shiftKey ? active === first || !dialog.contains(active) : active === last) {
+                event.preventDefault();
+                (event.shiftKey ? last : first).focus();
+            }
+        };
+        dialog.addEventListener("keydown", trap);
+        return () => dialog.removeEventListener("keydown", trap);
+    }, [dialog]);
     const { session, tree } = useBookTree(book?.data, fetchLegalMoves);
     const [body, setBody] = useState<HTMLDivElement | null>(null);
     const size = useElementSize(body);
@@ -226,7 +259,7 @@ export function BookTreeViewer({
         if (event.altKey || event.ctrlKey || event.metaKey) return;
         if (event.key === "Escape" && fullscreen) {
             event.preventDefault();
-            setFullscreen(false);
+            closeFullscreen();
             return;
         }
         const target = event.target;
@@ -325,6 +358,7 @@ export function BookTreeViewer({
     // 全画面では木の欄そのものを画面いっぱいに広げる（別に描き直すと、開いた枝や送った位置が戻るので）。
     const treePane = book && tree && (
         <div
+            ref={fullscreen ? setDialog : undefined}
             {...(fullscreen && {
                 role: "dialog",
                 "aria-modal": true,
@@ -354,7 +388,7 @@ export function BookTreeViewer({
                         variant="outline"
                         size="sm"
                         className="ml-auto"
-                        onClick={() => setFullscreen(false)}
+                        onClick={closeFullscreen}
                     >
                         盤に戻る
                     </Button>
@@ -370,12 +404,13 @@ export function BookTreeViewer({
                 explore={fullscreen}
                 onActivate={(id) => {
                     setSelected(id);
-                    setFullscreen(false);
+                    closeFullscreen();
                 }}
                 className="flex-1 rounded-lg border border-wafuu-border bg-wafuu-washi"
             />
             {!fullscreen && (
                 <Button
+                    ref={fullscreenButton}
                     variant="outline"
                     size="sm"
                     className="absolute top-0.5 right-1 z-20 h-6 bg-background px-2 text-xs"

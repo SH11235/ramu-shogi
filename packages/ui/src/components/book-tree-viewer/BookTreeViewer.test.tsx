@@ -80,6 +80,7 @@ sfen ${key("7g7f")}
         expect(within(dialog).getByRole("region", { name: "定跡の木" })).toBeTruthy();
         fireEvent.keyDown(window, { key: "Escape" });
         expect(screen.queryByRole("dialog")).toBeNull();
+        expect(document.activeElement).toBe(screen.getByRole("button", { name: "全画面" }));
         fireEvent.click(screen.getByRole("button", { name: "全画面" }));
         fireEvent.doubleClick(tree().getByRole("button", { name: /^☖8四歩\(83\)/ }));
         expect(screen.queryByRole("dialog")).toBeNull();
