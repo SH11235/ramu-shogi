@@ -17,6 +17,12 @@ describe("parseKifPv", () => {
         expect(parseKifPv(state, "▲５七銀直△５二玉(51)▲１一銀", null)).toEqual(["5h5g", "5a5b"]);
     });
 
+    it("同じ筋の 2 枚は、右・左だけでは決めない", () => {
+        const twoOnFile = parseStudySfen("k8/9/9/5S3/9/5S3/9/9/K8 b - 1");
+        expect(parseKifPv(twoOnFile, "▲５五銀右", null)).toEqual([]);
+        expect(parseKifPv(twoOnFile, "▲５五銀上", null)).toEqual(["4f5e"]);
+    });
+
     it("移動元付きの表記と「同」を読む", () => {
         expect(parseKifPv(state, "▲５七銀(48)△５二玉(51)", null)).toEqual(["4h5g", "5a5b"]);
         const capture = parseStudySfen("4k4/9/9/9/4p4/9/9/4R4/4K4 b - 1");

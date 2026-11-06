@@ -5,12 +5,13 @@
  */
 
 import {
-    applyMoveWithState,
+    applyMoveAllowingStudyPass,
     normalizeStudyStartSfen,
     type PositionState,
     parseKifPv,
     parseMove,
     parseStudySfen,
+    type Square,
 } from "@shogi/app-core";
 
 // ============================================================
@@ -273,14 +274,17 @@ function resolvePvTexts(
     } catch {
         return;
     }
+    // 読み筋の 1 手目の「同」は直前の盤上の手の移動先（パスは移動先を持たないので、その前の手）。
+    let lastTo: Square | null = null;
     for (const [index, data] of moveData.entries()) {
-        const applied = applyMoveWithState(state, data.usiMove, { validateTurn: false });
+        // パスを含む棋譜も再生できるよう、取り込みと同じくパスを進める。
+        const applied = applyMoveAllowingStudyPass(state, data.usiMove, { validateTurn: false });
         if (!applied.ok) return;
         state = applied.next;
+        const parsedMove = parseMove(data.usiMove);
+        if (parsedMove && "to" in parsedMove) lastTo = parsedMove.to;
         const text = pvTexts.get(index);
         if (text === undefined) continue;
-        const parsedMove = parseMove(data.usiMove);
-        const lastTo = parsedMove && "to" in parsedMove ? parsedMove.to : null;
         const pv = parseKifPv(state, text, lastTo);
         if (pv.length > 0) data.pv = pv;
     }

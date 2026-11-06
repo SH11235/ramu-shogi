@@ -408,6 +408,17 @@ describe("parseKif の ShogiHome 形式の探索の情報", () => {
         expect(result.moveData[3].pv).toBeUndefined();
     });
 
+    it("本譜にパスがあっても、その後の手の読み筋を読む", () => {
+        const result = parseKif(
+            ["手合割：平手", "1 パス", "**読み筋=△３四歩", "2 ３四歩(33)", "**読み筋=▲７六歩"].join(
+                "\n",
+            ),
+        );
+        expect(result.moves).toEqual(["pass", "3c3d"]);
+        expect(result.moveData[0].pv).toEqual(["3c3d"]);
+        expect(result.moveData[1].pv).toEqual(["7g7f"]);
+    });
+
     it("ramu 自身の評価値コメントと ShogiHome 形式が混ざっていても両方読む", () => {
         const result = parseKif(
             [

@@ -196,8 +196,10 @@ function narrowCandidates<T extends { from: Square }>(
         rest = rest.filter((c) => fileOf(c.from) === fileOf(to) && forwardOf(c.from) > 0);
     }
     if ((horizontal === "右" || horizontal === "左") && rest.length > 1) {
-        const sorted = [...rest].sort((a, b) => rightOf(b.from) - rightOf(a.from));
-        rest = [horizontal === "右" ? sorted[0] : sorted[sorted.length - 1]];
+        // いちばん右（左）の筋にある駒だけを残す。同じ筋に 2 枚あれば、上・引などが無いと決まらない。
+        const values = rest.map((c) => rightOf(c.from));
+        const edge = horizontal === "右" ? Math.max(...values) : Math.min(...values);
+        rest = rest.filter((c) => rightOf(c.from) === edge);
     }
     return rest.length === 1 ? rest[0] : null;
 }
