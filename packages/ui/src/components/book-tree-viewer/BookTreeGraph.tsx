@@ -2,6 +2,7 @@ import { type BookData, type BookTree, type BookTreeNode, deriveLastMove } from 
 import { cn } from "@shogi/design-system";
 import {
     type ReactElement,
+    type ReactNode,
     type PointerEvent as ReactPointerEvent,
     useEffect,
     useEffectEvent,
@@ -34,25 +35,38 @@ const COMPACT_ZOOM = 0.6;
 const WHEEL_ZOOM_RATE = 0.002;
 const WHEEL_LINE_PX = 16;
 /** 木の全体図の大きさの上限（px）。 */
-const MINIMAP_WIDTH = 220;
-const MINIMAP_HEIGHT = 130;
-/** 全体図を拡大縮小のボタンと並べるとき、ボタンの列に空けておく幅（px）と、全体図を出す最小の幅。 */
-const ZOOM_CONTROLS_WIDTH = 250;
-const MINIMAP_MIN_WIDTH = 80;
 /** 手の上にマウスを置いてから局面を出すまで（通り過ぎただけで出ないように）と、その盤のマス。 */
-const PREVIEW_DELAY_MS = 250;
-const PREVIEW_CELL = 22;
-const PREVIEW_GAP = 8;
 /** 盤の欄。手の上を通り過ぎるだけで盤が切り替わらないように少し待ち、手から離れたら少し待って選んでいる手に戻す。 */
 const DOCK_ENTER_MS = 80;
 const DOCK_LEAVE_MS = 300;
-const DOCK_CELL = 24;
-const DOCK_CELL_NARROW = 20;
+/**
+ * 局面の盤のマスの大きさ。広い画面は木の左下に重ねて幅の DOCK_WIDE_WIDTH・高さの DOCK_WIDE_HEIGHT まで、
+ * 狭い画面は木の下に高さの DOCK_NARROW_HEIGHT まで使い、盤の画面の盤と同じ上限まで大きくする。
+ * 盤の幅はおよそマス 10.6 個（盤と左右の駒台）と DOCK_FIXED_WIDTH、高さはマス 9 個と DOCK_FIXED_HEIGHT
+ * （見出し・座標・余白）。
+ */
+const DOCK_MIN_CELL = 16;
+const DOCK_MAX_CELL = 48;
+const DOCK_WIDE_WIDTH = 0.4;
+const DOCK_WIDE_HEIGHT = 0.6;
+const DOCK_NARROW_HEIGHT = 0.45;
+const DOCK_FIXED_WIDTH = 110;
+const DOCK_FIXED_HEIGHT = 110;
+const DOCK_WIDTH_IN_CELLS = 10.6;
 
-/** 手の数がこれ以下の木は全部開いて見せる。 */
-export const SMALL_TREE_NODES = 200;
-/** 選んだ手から先の本線（各局面の最初の手）を開いて見せる手数。 */
-const MAIN_LINE_PLIES = 60;
+function dockCellSize(width: number, height: number, narrow: boolean) {
+    const byWidth =
+        ((narrow ? width : width * DOCK_WIDE_WIDTH) - DOCK_FIXED_WIDTH) / DOCK_WIDTH_IN_CELLS;
+    const byHeight =
+        (height * (narrow ? DOCK_NARROW_HEIGHT : DOCK_WIDE_HEIGHT) - DOCK_FIXED_HEIGHT) / 9;
+    return Math.max(
+        DOCK_MIN_CELL,
+        Math.min(DOCK_MAX_CELL, Math.floor(Math.min(byWidth, byHeight))),
+    );
+}
+
+/** 見えている範囲の外にも、この幅（px、拡大率を掛ける前）までは手を描いておく（送ったときに描き遅れが見えないように）。 */
+const CULL_MARGIN = 400;
 
 interface Placed {
     id: number;
@@ -109,31 +123,6 @@ export function layoutBookGraph(
     return { items, byId: new Map(items.map((item) => [item.id, item])), cols, rows };
 }
 
-/** `start` から最初の手をたどった本線のうち、先のある手。 */
-export function mainLine(tree: BookTree, start: number): number[] {
-    const line: number[] = [];
-    let node = tree.nodes[start];
-    while (node && node.children.length > 0 && line.length < MAIN_LINE_PLIES) {
-        line.push(node.id);
-        node = tree.nodes[node.children[0]];
-    }
-    return line;
-}
-
-/**
- * 開いておく手。小さい木は全部。大きい木は、選んだ手までの道筋と、選んだ手から先の本線だけを開き、
- * 途中で分かれた手は閉じた箱で並べる（分かれた手どうしが、間の枝に押されて縦に遠く離れないように）。
- */
-export function focusOpenNodes(tree: BookTree, selected: number): Set<number> {
-    if (tree.nodes.length <= SMALL_TREE_NODES)
-        return new Set(
-            tree.nodes.filter((node) => node.children.length > 0).map((node) => node.id),
-        );
-    const open = ancestorsOf(tree, selected);
-    for (const id of mainLine(tree, selected)) open.add(id);
-    return open;
-}
-
 function ancestorsOf(tree: BookTree, id: number | undefined): Set<number> {
     const path = new Set<number>();
     let node = id === undefined ? undefined : tree.nodes[id];
@@ -173,6 +162,25 @@ function bookValue(tree: BookTree, book: BookData, node: BookTreeNode): number |
         ?.value;
 }
 
+/**
+ * 線の層。木全体の大きさの SVG は、大きな定跡で描き直すたびに重くなるので、描く範囲の大きさにして、
+ * 木の座標のまま描けるように viewBox をずらす。
+ */
+function AreaSvg({ area, children }: { area: GraphView; children: ReactNode }) {
+    return (
+        <svg
+            aria-hidden="true"
+            className="pointer-events-none absolute"
+            style={{ left: area.left, top: area.top }}
+            width={area.width}
+            height={area.height}
+            viewBox={`${area.left} ${area.top} ${area.width} ${area.height}`}
+        >
+            {children}
+        </svg>
+    );
+}
+
 function GraphNodes({
     tree,
     book,
@@ -183,6 +191,8 @@ function GraphNodes({
     onToggle,
     onActivate,
     onHover,
+    area,
+    keep,
 }: {
     tree: BookTree;
     book: BookData;
@@ -192,24 +202,35 @@ function GraphNodes({
     onSelect: (id: number) => void;
     onToggle: (id: number, open: boolean) => void;
     onActivate?: (id: number) => void;
-    onHover?: (id: number | null, element?: HTMLElement) => void;
+    onHover?: (id: number | null) => void;
+    /** 描く範囲（見えている範囲と、その周り）。この中の手と線だけを描く（大きな定跡を全部開いても重くならないように）。 */
+    area: GraphView;
+    /** 範囲の外でも描く手（フォーカスを持ち続けられるように、選んでいる手）。 */
+    keep: number;
 }) {
+    const near = (x1: number, y1: number, x2: number, y2: number) =>
+        x2 >= area.left &&
+        x1 <= area.left + area.width &&
+        y2 >= area.top &&
+        y1 <= area.top + area.height;
     const solid: string[] = [];
     const dashed: string[] = [];
+    const shown: Placed[] = [];
     for (const item of layout.items) {
         const node = tree.nodes[item.id];
+        const x = boxLeft(item.col);
+        const y = boxTop(item.row);
+        if (item.id === keep || near(x, y, x + COL_WIDTH, y + BOX_HEIGHT)) shown.push(item);
         if (node.parent === null) continue;
         const parent = layout.byId.get(node.parent);
-        if (parent) (node.inBook === false ? dashed : solid).push(edgePath(parent, item));
+        if (!parent) continue;
+        // 親から子へ下りる線は、両端が範囲の外でも途中が見えることがあるので、線の囲む範囲で決める。
+        if (!near(boxLeft(parent.col) + BOX_WIDTH, boxTop(parent.row), x, y + BOX_HEIGHT)) continue;
+        (node.inBook === false ? dashed : solid).push(edgePath(parent, item));
     }
     return (
         <>
-            <svg
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-0 overflow-visible"
-                width="100%"
-                height="100%"
-            >
+            <AreaSvg area={area}>
                 <path
                     d={solid.join("")}
                     className="fill-none stroke-wafuu-kincha"
@@ -221,8 +242,8 @@ function GraphNodes({
                     strokeWidth={1.5}
                     strokeDasharray="4 3"
                 />
-            </svg>
-            {layout.items.map(({ id, col, row }) => {
+            </AreaSvg>
+            {shown.map(({ id, col, row }) => {
                 const node = tree.nodes[id];
                 const label = moveLabel(tree, node);
                 const value = bookValue(tree, book, node);
@@ -254,8 +275,7 @@ function GraphNodes({
                             onPointerMove={
                                 onHover &&
                                 ((event) => {
-                                    if (event.pointerType === "mouse")
-                                        onHover(id, event.currentTarget);
+                                    if (event.pointerType === "mouse") onHover(id);
                                 })
                             }
                             onPointerLeave={onHover && (() => onHover(null))}
@@ -264,6 +284,9 @@ function GraphNodes({
                                 node.inBook === false
                                     ? "border-dashed border-wafuu-kincha bg-background"
                                     : "border-wafuu-border bg-wafuu-washi-warm",
+                                // 選んでいる手は盤の最後の一手と同じ金色で塗る（枠の太さだけでは見分けにくいので）。
+                                id === keep &&
+                                    "border-solid border-wafuu-sumi bg-wafuu-kin font-semibold",
                                 compact && mark === "☗" && "bg-wafuu-shu/25",
                                 compact && mark === "☖" && "bg-wafuu-ai/25",
                             )}
@@ -345,78 +368,6 @@ interface GraphView {
     height: number;
 }
 
-/** 木全体の縮図と、今見えている範囲の枠。押した所・引いた所を画面の中央へ送る。 */
-function Minimap({
-    layout,
-    path,
-    width,
-    height,
-    maxWidth,
-    view,
-    onJump,
-}: {
-    layout: BookGraphLayout;
-    path: ReadonlySet<number>;
-    width: number;
-    height: number;
-    maxWidth: number;
-    view: GraphView;
-    onJump: (x: number, y: number) => void;
-}) {
-    const scale = Math.min(maxWidth / width, MINIMAP_HEIGHT / height);
-    const boxes: string[] = [];
-    const pathBoxes: string[] = [];
-    for (const { id, col, row } of layout.items) {
-        const w = Math.max(1, BOX_WIDTH * scale);
-        const h = Math.max(1, BOX_HEIGHT * scale);
-        (path.has(id) ? pathBoxes : boxes).push(
-            `M${boxLeft(col) * scale} ${boxTop(row) * scale}h${w}v${h}h${-w}z`,
-        );
-    }
-    const dragging = useRef(false);
-    function jump(event: ReactPointerEvent<SVGSVGElement>) {
-        const box = event.currentTarget.getBoundingClientRect();
-        onJump((event.clientX - box.left) / scale, (event.clientY - box.top) / scale);
-    }
-    return (
-        <div className="absolute right-2 bottom-2 z-20 rounded-md border border-wafuu-border bg-background/90 p-1 shadow-popover">
-            <svg
-                role="img"
-                aria-label="木の全体図"
-                width={width * scale}
-                height={height * scale}
-                className="block cursor-pointer touch-none"
-                onPointerDown={(event) => {
-                    if (event.button !== 0) return;
-                    dragging.current = true;
-                    event.currentTarget.setPointerCapture(event.pointerId);
-                    jump(event);
-                }}
-                onPointerMove={(event) => {
-                    if (dragging.current) jump(event);
-                }}
-                onPointerUp={() => {
-                    dragging.current = false;
-                }}
-                onPointerCancel={() => {
-                    dragging.current = false;
-                }}
-            >
-                <path d={boxes.join("")} className="fill-wafuu-kincha/60" />
-                <path d={pathBoxes.join("")} className="fill-wafuu-sumi" />
-                <rect
-                    x={view.left * scale}
-                    y={view.top * scale}
-                    width={view.width * scale}
-                    height={view.height * scale}
-                    className="fill-wafuu-sumi/10 stroke-wafuu-shu"
-                    strokeWidth={1.5}
-                />
-            </svg>
-        </div>
-    );
-}
-
 /** 手を指した後の局面と、その手・評価値の見出し。 */
 function PositionSummary({
     tree,
@@ -460,75 +411,35 @@ function PositionSummary({
     );
 }
 
-/** 手の上にマウスを置いたときに浮かせる、その手を指した後の局面。 */
-function PositionPreview({
-    tree,
-    book,
-    id,
-    anchor,
-    flipBoard,
-}: {
-    tree: BookTree;
-    book: BookData;
-    id: number;
-    anchor: DOMRect;
-    flipBoard: boolean;
-}) {
-    const element = useRef<HTMLDivElement>(null);
-    // 大きさは描いてから測り、手の右（入らなければ左）に、画面からはみ出さないように置く。
-    useLayoutEffect(() => {
-        const box = element.current;
-        if (!box) return;
-        const { width, height } = box.getBoundingClientRect();
-        const right = anchor.right + PREVIEW_GAP;
-        const left =
-            right + width + PREVIEW_GAP <= window.innerWidth
-                ? right
-                : Math.max(PREVIEW_GAP, anchor.left - width - PREVIEW_GAP);
-        const top = Math.min(
-            Math.max(PREVIEW_GAP, anchor.top + anchor.height / 2 - height / 2),
-            window.innerHeight - height - PREVIEW_GAP,
-        );
-        box.style.left = `${left}px`;
-        box.style.top = `${Math.max(PREVIEW_GAP, top)}px`;
-        box.style.visibility = "visible";
-    }, [anchor]);
-    return (
-        <div
-            ref={element}
-            aria-hidden="true"
-            className="pointer-events-none invisible fixed top-0 left-0 z-popover flex flex-col gap-1 rounded-lg border border-wafuu-border bg-background p-2 shadow-popover"
-        >
-            <PositionSummary
-                tree={tree}
-                book={book}
-                id={id}
-                flipBoard={flipBoard}
-                cellSize={PREVIEW_CELL}
-            />
-        </div>
-    );
-}
-
-/** 木の横（狭い画面では下）に置く局面の欄。木に重ならないので、分かれた手を見比べながら局面を見られる。 */
+/**
+ * 局面の盤。広い画面は木の左下に重ねる（木は右と上へ伸びるので、左下は空きやすい）。狭い画面は木の下に置く。
+ */
 function DockedPosition({
     tree,
     book,
     id,
     hovering,
     flipBoard,
+    cellSize,
+    overlay,
 }: {
     tree: BookTree;
     book: BookData;
     id: number;
     hovering: boolean;
     flipBoard: boolean;
+    cellSize: number;
+    overlay: boolean;
 }) {
-    const narrow = useIsMobile();
     return (
         <aside
             aria-label="局面"
-            className="flex shrink-0 flex-col items-center gap-1 border-t border-wafuu-border bg-background p-2 md:items-start md:border-t-0 md:border-l"
+            className={cn(
+                "flex shrink-0 flex-col gap-1 bg-background p-2",
+                overlay
+                    ? "absolute bottom-2 left-2 z-20 rounded-lg border border-wafuu-border shadow-popover"
+                    : "items-center border-t border-wafuu-border",
+            )}
         >
             <p className="text-[11px] text-wafuu-sumi-light">
                 {hovering ? "マウスを置いた手" : "選んでいる手"}
@@ -538,14 +449,14 @@ function DockedPosition({
                 book={book}
                 id={id}
                 flipBoard={flipBoard}
-                cellSize={narrow ? DOCK_CELL_NARROW : DOCK_CELL}
+                cellSize={cellSize}
             />
         </aside>
     );
 }
 
-/** 全画面で局面を出す所。"dock" は木の横（狭い画面では下）の欄、"float" は手の横に浮かせる。 */
-export type BookTreePreviewMode = "dock" | "float" | "off";
+/** 全画面で局面の盤を出すか。 */
+export type BookTreePreviewMode = "dock" | "off";
 
 const clampZoom = (zoom: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
 /** ホイールの 1 目盛り（行・ページ単位で届く端末もある）を px にそろえる。 */
@@ -559,7 +470,7 @@ function wheelPixels(event: WheelEvent, delta: number, page: number) {
  * 定跡の木を横に広げて描く（左から右へ手が進み、分かれた手は下の行に並ぶ）。
  * 選んだ手までの道筋を強調し、選ぶたびにその手が見える位置まで送る。
  * 縦に送る余地が無いときは、ホイールを横に送る向きに使う。空いた所はマウスで引いて動かせる。
- * `explore` では、拡大縮小・木の全体図・手の上に置いたときの局面を出す（盤を隠して木を眺めるとき）。
+ * `explore` では、拡大縮小・木の全体図と、局面の欄を出す（盤の画面を隠して木を眺めるとき）。
  */
 export function BookTreeGraph({
     tree,
@@ -576,7 +487,7 @@ export function BookTreeGraph({
     book: BookData;
     selected: number;
     onSelect: (id: number) => void;
-    /** 手の上に置いたときに出す盤を、後手を手前にして描く。 */
+    /** 局面の欄の盤を、後手を手前にして描く。 */
     flipBoard?: boolean;
     explore?: boolean;
     /** `explore` で局面を出す所。 */
@@ -586,12 +497,22 @@ export function BookTreeGraph({
     className?: string;
 }): ReactElement {
     const frame = useRef<HTMLElement>(null);
+    const [root, setRoot] = useState<HTMLDivElement | null>(null);
+    const [rootSize, setRootSize] = useState({ width: 0, height: 0 });
+    const narrow = useIsMobile();
+    useEffect(() => {
+        if (!root) return;
+        const observer = new ResizeObserver(([entry]) =>
+            setRootSize({ width: entry.contentRect.width, height: entry.contentRect.height }),
+        );
+        observer.observe(root);
+        return () => observer.disconnect();
+    }, [root]);
     const [overrides, setOverrides] = useState<ReadonlyMap<number, boolean>>(() => new Map());
     const [zoomSetting, setZoomSetting] = useState(1);
     const zoom = explore ? zoomSetting : 1;
     const compact = zoom < COMPACT_ZOOM;
-    const focused = focusOpenNodes(tree, selected);
-    const isOpen = (node: BookTreeNode) => overrides.get(node.id) ?? focused.has(node.id);
+    const isOpen = (node: BookTreeNode) => overrides.get(node.id) ?? true;
     const layout = layoutBookGraph(tree, isOpen);
     const path = ancestorsOf(tree, selected);
     const width = PAD * 2 + layout.cols * COL_WIDTH;
@@ -612,10 +533,9 @@ export function BookTreeGraph({
     function toggle(id: number, open: boolean) {
         // 選んでいる手の祖先をたたむときは、たたんだ手を選び直す（選んだ手が見えなくならないように）。
         if (!open && path.has(id) && id !== selected) onSelect(id);
-        // 開くときは、その手から先の本線まで開く（1 段だけ開いて、また閉じた箱が並ぶだけにならないように）。
         setOverrides((current) => {
             const next = new Map(current);
-            if (open) for (const lineId of mainLine(tree, id)) next.set(lineId, true);
+            if (open) next.delete(id);
             else next.set(id, false);
             return next;
         });
@@ -695,43 +615,19 @@ export function BookTreeGraph({
     }, [selected, layout, explore]);
 
     const [view, setView] = useState<GraphView>({ left: 0, top: 0, width: 0, height: 0 });
-    const [preview, setPreview] = useState<{ id: number; anchor: DOMRect } | null>(null);
+    // 欄に出す手。手の上を通り過ぎるだけで切り替わらないように少し待ち、離れたら少し待って選んでいる手に戻す。
     const [docked, setDocked] = useState<number | null>(null);
-    const previewTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-    useEffect(() => () => clearTimeout(previewTimer.current), []);
-    // マウスを動かすたびに呼ばれる。同じ手の上で待っている・出している間は何もしない（送ったり拡大縮小
-    // したりして消えたあとは、手の上で少し動かせばまた出す）。
+    const dockTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+    useEffect(() => () => clearTimeout(dockTimer.current), []);
     const hovered = useRef<number | null>(null);
-    function hover(id: number | null, element?: HTMLElement) {
-        if (id !== null && id === hovered.current) return;
-        if (previewMode === "dock") {
-            hovered.current = id;
-            clearTimeout(previewTimer.current);
-            previewTimer.current = setTimeout(
-                () => {
-                    previewTimer.current = undefined;
-                    setDocked(id);
-                },
-                id === null ? DOCK_LEAVE_MS : DOCK_ENTER_MS,
-            );
-            return;
-        }
-        hidePreview();
-        if (id === null || !element) return;
+    function hover(id: number | null) {
+        if (id === hovered.current) return;
         hovered.current = id;
-        // 出すときの位置を測る（待つ間に送ったり拡大縮小したりして、手が動いていることがある）。
-        previewTimer.current = setTimeout(() => {
-            previewTimer.current = undefined;
-            if (element.isConnected) setPreview({ id, anchor: element.getBoundingClientRect() });
-        }, PREVIEW_DELAY_MS);
-    }
-    function hidePreview() {
-        // 欄の局面は送っても拡大縮小しても木に重ならないので、出したままにする。
-        if (previewMode === "dock") return;
-        clearTimeout(previewTimer.current);
-        previewTimer.current = undefined;
-        hovered.current = null;
-        setPreview(null);
+        clearTimeout(dockTimer.current);
+        dockTimer.current = setTimeout(
+            () => setDocked(id),
+            id === null ? DOCK_LEAVE_MS : DOCK_ENTER_MS,
+        );
     }
     const measureView = useEffectEvent((scale: number) => {
         const element = frame.current;
@@ -746,11 +642,11 @@ export function BookTreeGraph({
     const onResize = useEffectEvent(() => measureView(zoom));
     useEffect(() => {
         const element = frame.current;
-        if (!element || !explore) return;
+        if (!element) return;
         const observer = new ResizeObserver(() => onResize());
         observer.observe(element);
         return () => observer.disconnect();
-    }, [explore]);
+    }, []);
 
     // 拡大率を変えても、`at`（枠の中の位置。省くと枠の中央）の下にある木の位置を動かさない。
     const pendingScroll = useRef<{ left: number; top: number } | null>(null);
@@ -765,14 +661,12 @@ export function BookTreeGraph({
             top: ((element.scrollTop + y) / zoom) * target - y,
         };
         shortOf.current = null;
-        hidePreview();
         setZoomSetting(target);
     }
     function fitAll() {
         const element = frame.current;
         if (!element) return;
         shortOf.current = null;
-        hidePreview();
         const target = clampZoom(
             Math.min(1, element.clientWidth / width, element.clientHeight / height),
         );
@@ -788,15 +682,6 @@ export function BookTreeGraph({
         if (element && target) element.scrollTo({ left: target.left, top: target.top });
         measureView(zoom);
     }, [zoom]);
-    function jumpTo(x: number, y: number) {
-        const element = frame.current;
-        if (!element) return;
-        shortOf.current = null;
-        element.scrollTo({
-            left: x * zoom - element.clientWidth / 2,
-            top: y * zoom - element.clientHeight / 2,
-        });
-    }
 
     const onWheel = useEffectEvent((event: WheelEvent) => {
         const element = frame.current;
@@ -870,19 +755,35 @@ export function BookTreeGraph({
         const parent = node.parent === null ? undefined : layout.byId.get(node.parent);
         if (child && parent) pathEdges.push(edgePath(parent, child));
     }
-    // 狭い画面では、拡大縮小のボタンと重ならない幅に縮める。
-    const minimapWidth = Math.min(MINIMAP_WIDTH, view.width * zoom - ZOOM_CONTROLS_WIDTH);
-    const showMinimap =
-        explore &&
-        minimapWidth >= MINIMAP_MIN_WIDTH &&
-        (view.width < width - 1 || view.height < height - 1);
     const dock = explore && previewMode === "dock";
     const dockedId = docked !== null && tree.nodes[docked] ? docked : selected;
+    const dockCell = dockCellSize(rootSize.width, rootSize.height, narrow);
+    const area =
+        view.width > 0 && view.height > 0
+            ? {
+                  left: Math.max(0, view.left - CULL_MARGIN),
+                  top: Math.max(0, view.top - CULL_MARGIN),
+                  width: view.width + CULL_MARGIN * 2,
+                  height: view.height + CULL_MARGIN * 2,
+              }
+            : { left: 0, top: 0, width, height };
+    const board = (
+        <DockedPosition
+            tree={tree}
+            book={book}
+            id={dockedId}
+            hovering={dockedId !== selected}
+            flipBoard={flipBoard}
+            cellSize={dockCell}
+            overlay={!narrow}
+        />
+    );
     return (
         <div
+            ref={setRoot}
             className={cn(
                 "flex min-h-0 min-w-0 overflow-hidden",
-                dock && "flex-col md:flex-row",
+                dock && narrow && "flex-col",
                 className,
             )}
         >
@@ -891,8 +792,7 @@ export function BookTreeGraph({
                     ref={frame}
                     aria-label="定跡の木"
                     onScroll={() => {
-                        if (preview || previewTimer.current !== undefined) hidePreview();
-                        if (explore) measureView(zoom);
+                        measureView(zoom);
                     }}
                     onPointerDown={startPan}
                     onPointerMove={movePan}
@@ -936,19 +836,16 @@ export function BookTreeGraph({
                                 onToggle={toggle}
                                 onActivate={explore ? onActivate : undefined}
                                 onHover={explore && previewMode !== "off" ? hover : undefined}
+                                area={area}
+                                keep={selected}
                             />
-                            <svg
-                                aria-hidden="true"
-                                className="pointer-events-none absolute inset-0 overflow-visible"
-                                width="100%"
-                                height="100%"
-                            >
+                            <AreaSvg area={area}>
                                 <path
                                     d={pathEdges.join("")}
                                     className="fill-none stroke-wafuu-sumi"
                                     strokeWidth={compact ? 2.5 / zoom : 2.5}
                                 />
-                            </svg>
+                            </AreaSvg>
                             {[...path].map((id) => {
                                 const placed = layout.byId.get(id);
                                 if (!placed) return null;
@@ -979,7 +876,7 @@ export function BookTreeGraph({
                     </div>
                 </section>
                 {explore && (
-                    <div className="absolute bottom-2 left-2 z-20 flex items-center gap-1 rounded-md border border-wafuu-border bg-background/90 p-1 text-xs shadow-popover">
+                    <div className="absolute right-2 bottom-2 z-20 flex items-center gap-1 rounded-md border border-wafuu-border bg-background/90 p-1 text-xs shadow-popover">
                         <Button
                             variant="ghost"
                             size="sm"
@@ -1019,36 +916,9 @@ export function BookTreeGraph({
                         </Button>
                     </div>
                 )}
-                {showMinimap && (
-                    <Minimap
-                        layout={layout}
-                        path={path}
-                        width={width}
-                        height={height}
-                        maxWidth={minimapWidth}
-                        view={view}
-                        onJump={jumpTo}
-                    />
-                )}
+                {dock && !narrow && board}
             </div>
-            {dock && (
-                <DockedPosition
-                    tree={tree}
-                    book={book}
-                    id={dockedId}
-                    hovering={dockedId !== selected}
-                    flipBoard={flipBoard}
-                />
-            )}
-            {explore && previewMode === "float" && preview && tree.nodes[preview.id] && (
-                <PositionPreview
-                    tree={tree}
-                    book={book}
-                    id={preview.id}
-                    anchor={preview.anchor}
-                    flipBoard={flipBoard}
-                />
-            )}
+            {dock && narrow && board}
         </div>
     );
 }

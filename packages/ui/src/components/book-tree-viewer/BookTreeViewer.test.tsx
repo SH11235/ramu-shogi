@@ -67,6 +67,18 @@ describe("BookTreeViewer", () => {
         fireEvent.click(screen.getByRole("button", { name: "開始局面へ" }));
         expect(current()).toBe("開始局面");
     });
+    it("開始局面から一本道が続く定跡は、最初に分かれる手を選んだ状態で開く", async () => {
+        render(<BookTreeViewer fetchLegalMoves={async () => []} />);
+        await upload(`sfen ${key()}
+7g7f
+sfen ${key("7g7f")}
+8c8d
+sfen ${key("7g7f", "8c8d")}
+2g2f
+6g6f`);
+        await built();
+        await waitFor(() => expect(current()).toBe("2手目 ☖8四歩(83)"));
+    });
     it("全画面で木を広げ、手のダブルクリックか Esc で盤の画面に戻る", async () => {
         render(<BookTreeViewer fetchLegalMoves={async () => []} />);
         await upload(`sfen ${key()}
@@ -103,7 +115,7 @@ sfen ${key("7g7f")}
         });
         await waitFor(() => expect(dock()?.textContent).toContain("2手目 ☖8四歩(83)"));
         expect(dock()?.textContent).toContain("マウスを置いた手");
-        fireEvent.click(within(dialog).getByRole("button", { name: "浮かせる" }));
+        fireEvent.click(within(dialog).getByRole("button", { name: "出さない" }));
         expect(dock()).toBeNull();
     });
     it("登録の無い手でも定跡の局面へつながれば、登録の無い手として出す", async () => {
