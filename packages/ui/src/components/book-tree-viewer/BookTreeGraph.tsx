@@ -593,13 +593,26 @@ export function BookTreeGraph({
     const scrolledTo = useRef<string | null>(null);
     /** 木に重ねた盤（広い画面で盤を出すとき）。 */
     const dockBox = useRef<HTMLElement>(null);
+    /** 前に送ったときの選んだ手の上端（木の座標）。 */
+    const selectedTop = useRef<number | null>(null);
     /** 送り切れなかった横の位置と、そのときの位置。ホイール・引く・拡大縮小で動かされたら捨てる。 */
     const shortOf = useRef<{ wanted: number; left: number; top: number } | null>(null);
     const followSelection = useEffectEvent((placed: BookGraphLayout, key: string) => {
         const element = frame.current;
         const target = placed.byId.get(selected);
         if (!element || !target) return;
+        const placedTop = boxTop(target.row);
+        const lastTop = selectedTop.current;
+        selectedTop.current = placedTop;
         if (scrolledTo.current === key) {
+            // 組み立て中に上の枝が伸びて選んだ手が下へずれたら、見えていた手は同じ所に留める。
+            if (lastTop !== null && placedTop !== lastTop) {
+                const onScreen = lastTop * zoom - element.scrollTop;
+                if (onScreen > -BOX_HEIGHT * zoom && onScreen < element.clientHeight) {
+                    element.scrollTop += (placedTop - lastTop) * zoom;
+                    if (shortOf.current) shortOf.current.top = element.scrollTop;
+                }
+            }
             // 木の右端の手を選んで送り切れなかったときは、その先が描かれたら送り直す（動かされていなければ）。
             const short = shortOf.current;
             shortOf.current = null;
@@ -649,7 +662,8 @@ export function BookTreeGraph({
         if (element.scrollLeft < x - 1)
             shortOf.current = { wanted: x, left: element.scrollLeft, top: element.scrollTop };
     });
-    useEffect(() => {
+    // 描く前に送る（組み立て中に選んだ手がずれて見えるフレームを出さない）。
+    useLayoutEffect(() => {
         followSelection(layout, `${selected}:${explore}`);
     }, [selected, layout, explore]);
 
