@@ -335,3 +335,15 @@ describe("parseKifuTextForStudy の ShogiHome 形式の評価値", () => {
         });
     });
 });
+
+describe("parseKifuTextForStudy の ShogiHome 形式の読み筋だけの手", () => {
+    it("評価値が無くても、読み筋を対局時の読み筋として取り込む", () => {
+        const source = parseKifuTextForStudy(
+            ["手合割：平手", "1 ７六歩(77)", "**読み筋=△３四歩▲２六歩"].join("\n"),
+        );
+        expect(source).toMatchObject({
+            kind: "moves",
+            annotations: [{ score: null, elapsedMs: null, pv: ["3c3d", "2g2f"] }],
+        });
+    });
+});
