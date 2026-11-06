@@ -86,6 +86,26 @@ sfen ${key("7g7f")}
         expect(screen.queryByRole("dialog")).toBeNull();
         expect(current()).toBe("2手目 ☖8四歩(83)");
     });
+    it("全画面では木の横の欄に、マウスを置いた手か選んでいる手の局面を出す", async () => {
+        render(<BookTreeViewer fetchLegalMoves={async () => []} />);
+        await upload(`sfen ${key()}
+7g7f
+2g2f
+sfen ${key("7g7f")}
+8c8d`);
+        await built();
+        fireEvent.click(screen.getByRole("button", { name: "全画面" }));
+        const dialog = screen.getByRole("dialog", { name: "定跡の木（全画面）" });
+        const dock = () => within(dialog).queryByRole("complementary", { name: "局面" });
+        expect(dock()?.textContent).toContain("選んでいる手");
+        fireEvent.pointerMove(tree().getByRole("button", { name: /^☖8四歩\(83\)/ }), {
+            pointerType: "mouse",
+        });
+        await waitFor(() => expect(dock()?.textContent).toContain("2手目 ☖8四歩(83)"));
+        expect(dock()?.textContent).toContain("マウスを置いた手");
+        fireEvent.click(within(dialog).getByRole("button", { name: "浮かせる" }));
+        expect(dock()).toBeNull();
+    });
     it("登録の無い手でも定跡の局面へつながれば、登録の無い手として出す", async () => {
         render(
             <BookTreeViewer

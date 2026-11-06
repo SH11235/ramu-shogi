@@ -10,6 +10,7 @@ import {
     useState,
 } from "react";
 import { Button } from "../button";
+import { useIsMobile } from "../shogi-match/hooks/useMediaQuery";
 import { formatMoveSimple } from "../shogi-match/utils/kifFormat";
 import { StaticBoardView } from "../static-board-view";
 
@@ -42,6 +43,11 @@ const MINIMAP_MIN_WIDTH = 80;
 const PREVIEW_DELAY_MS = 250;
 const PREVIEW_CELL = 22;
 const PREVIEW_GAP = 8;
+/** 盤の欄。手の上を通り過ぎるだけで盤が切り替わらないように少し待ち、手から離れたら少し待って選んでいる手に戻す。 */
+const DOCK_ENTER_MS = 80;
+const DOCK_LEAVE_MS = 300;
+const DOCK_CELL = 24;
+const DOCK_CELL_NARROW = 20;
 
 /** 手の数がこれ以下の木は全部開いて見せる。 */
 export const SMALL_TREE_NODES = 200;
@@ -411,6 +417,49 @@ function Minimap({
     );
 }
 
+/** 手を指した後の局面と、その手・評価値の見出し。 */
+function PositionSummary({
+    tree,
+    book,
+    id,
+    flipBoard,
+    cellSize,
+}: {
+    tree: BookTree;
+    book: BookData;
+    id: number;
+    flipBoard: boolean;
+    cellSize: number;
+}) {
+    const node = tree.nodes[id];
+    const value = bookValue(tree, book, node);
+    return (
+        <>
+            <div className="flex items-baseline gap-2 text-xs text-wafuu-sumi">
+                <span className="font-medium">
+                    {node.parent === null
+                        ? "開始局面"
+                        : `${(node.position.ply ?? 1) - 1}手目 ${moveLabel(tree, node)}`}
+                </span>
+                {value !== undefined && (
+                    <span className="tabular-nums text-wafuu-sumi-light">評価値 {value}</span>
+                )}
+            </div>
+            <StaticBoardView
+                position={node.position}
+                flipBoard={flipBoard}
+                lastMove={deriveLastMove(node.move)}
+                cellSize={cellSize}
+                handPlacement="sides"
+                handFrame="outline"
+                handSize="compact"
+                hideEmptyHandPieces
+                reserveHandHeight
+            />
+        </>
+    );
+}
+
 /** 手の上にマウスを置いたときに浮かせる、その手を指した後の局面。 */
 function PositionPreview({
     tree,
@@ -426,8 +475,6 @@ function PositionPreview({
     flipBoard: boolean;
 }) {
     const element = useRef<HTMLDivElement>(null);
-    const node = tree.nodes[id];
-    const value = bookValue(tree, book, node);
     // 大きさは描いてから測り、手の右（入らなければ左）に、画面からはみ出さないように置く。
     useLayoutEffect(() => {
         const box = element.current;
@@ -452,30 +499,53 @@ function PositionPreview({
             aria-hidden="true"
             className="pointer-events-none invisible fixed top-0 left-0 z-popover flex flex-col gap-1 rounded-lg border border-wafuu-border bg-background p-2 shadow-popover"
         >
-            <div className="flex items-baseline gap-2 text-xs text-wafuu-sumi">
-                <span className="font-medium">
-                    {node.parent === null
-                        ? "開始局面"
-                        : `${(node.position.ply ?? 1) - 1}手目 ${moveLabel(tree, node)}`}
-                </span>
-                {value !== undefined && (
-                    <span className="tabular-nums text-wafuu-sumi-light">評価値 {value}</span>
-                )}
-            </div>
-            <StaticBoardView
-                position={node.position}
+            <PositionSummary
+                tree={tree}
+                book={book}
+                id={id}
                 flipBoard={flipBoard}
-                lastMove={deriveLastMove(node.move)}
                 cellSize={PREVIEW_CELL}
-                handPlacement="sides"
-                handFrame="outline"
-                handSize="compact"
-                hideEmptyHandPieces
-                reserveHandHeight
             />
         </div>
     );
 }
+
+/** 木の横（狭い画面では下）に置く局面の欄。木に重ならないので、分かれた手を見比べながら局面を見られる。 */
+function DockedPosition({
+    tree,
+    book,
+    id,
+    hovering,
+    flipBoard,
+}: {
+    tree: BookTree;
+    book: BookData;
+    id: number;
+    hovering: boolean;
+    flipBoard: boolean;
+}) {
+    const narrow = useIsMobile();
+    return (
+        <aside
+            aria-label="局面"
+            className="flex shrink-0 flex-col items-center gap-1 border-t border-wafuu-border bg-background p-2 md:items-start md:border-t-0 md:border-l"
+        >
+            <p className="text-[11px] text-wafuu-sumi-light">
+                {hovering ? "マウスを置いた手" : "選んでいる手"}
+            </p>
+            <PositionSummary
+                tree={tree}
+                book={book}
+                id={id}
+                flipBoard={flipBoard}
+                cellSize={narrow ? DOCK_CELL_NARROW : DOCK_CELL}
+            />
+        </aside>
+    );
+}
+
+/** 全画面で局面を出す所。"dock" は木の横（狭い画面では下）の欄、"float" は手の横に浮かせる。 */
+export type BookTreePreviewMode = "dock" | "float" | "off";
 
 const clampZoom = (zoom: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
 /** ホイールの 1 目盛り（行・ページ単位で届く端末もある）を px にそろえる。 */
@@ -498,6 +568,7 @@ export function BookTreeGraph({
     onSelect,
     flipBoard = false,
     explore = false,
+    preview: previewMode = "dock",
     onActivate,
     className,
 }: {
@@ -508,6 +579,8 @@ export function BookTreeGraph({
     /** 手の上に置いたときに出す盤を、後手を手前にして描く。 */
     flipBoard?: boolean;
     explore?: boolean;
+    /** `explore` で局面を出す所。 */
+    preview?: BookTreePreviewMode;
     /** 手をダブルクリックしたとき（`explore` のときだけ）。 */
     onActivate?: (id: number) => void;
     className?: string;
@@ -623,6 +696,7 @@ export function BookTreeGraph({
 
     const [view, setView] = useState<GraphView>({ left: 0, top: 0, width: 0, height: 0 });
     const [preview, setPreview] = useState<{ id: number; anchor: DOMRect } | null>(null);
+    const [docked, setDocked] = useState<number | null>(null);
     const previewTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     useEffect(() => () => clearTimeout(previewTimer.current), []);
     // マウスを動かすたびに呼ばれる。同じ手の上で待っている・出している間は何もしない（送ったり拡大縮小
@@ -630,6 +704,18 @@ export function BookTreeGraph({
     const hovered = useRef<number | null>(null);
     function hover(id: number | null, element?: HTMLElement) {
         if (id !== null && id === hovered.current) return;
+        if (previewMode === "dock") {
+            hovered.current = id;
+            clearTimeout(previewTimer.current);
+            previewTimer.current = setTimeout(
+                () => {
+                    previewTimer.current = undefined;
+                    setDocked(id);
+                },
+                id === null ? DOCK_LEAVE_MS : DOCK_ENTER_MS,
+            );
+            return;
+        }
         hidePreview();
         if (id === null || !element) return;
         hovered.current = id;
@@ -640,6 +726,8 @@ export function BookTreeGraph({
         }, PREVIEW_DELAY_MS);
     }
     function hidePreview() {
+        // 欄の局面は送っても拡大縮小しても木に重ならないので、出したままにする。
+        if (previewMode === "dock") return;
         clearTimeout(previewTimer.current);
         previewTimer.current = undefined;
         hovered.current = null;
@@ -788,147 +876,171 @@ export function BookTreeGraph({
         explore &&
         minimapWidth >= MINIMAP_MIN_WIDTH &&
         (view.width < width - 1 || view.height < height - 1);
+    const dock = explore && previewMode === "dock";
+    const dockedId = docked !== null && tree.nodes[docked] ? docked : selected;
     return (
-        <div className={cn("relative flex min-h-0 min-w-0 overflow-hidden", className)}>
-            <section
-                ref={frame}
-                aria-label="定跡の木"
-                onScroll={() => {
-                    if (preview || previewTimer.current !== undefined) hidePreview();
-                    if (explore) measureView(zoom);
-                }}
-                onPointerDown={startPan}
-                onPointerMove={movePan}
-                onPointerUp={endPan}
-                onPointerCancel={endPan}
-                className={cn(
-                    "relative min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain",
-                    panning ? "cursor-grabbing select-none" : "cursor-grab",
-                )}
-            >
-                <div className="relative" style={{ width: width * zoom, height: height * zoom }}>
-                    <div className="absolute top-0 left-0" style={{ width, height, zoom }}>
-                        <div
-                            aria-hidden="true"
-                            className="sticky top-0 z-10 border-b border-wafuu-border bg-wafuu-washi/95"
-                            style={{ width, height: HEADER_HEIGHT }}
-                        >
-                            {!compact &&
-                                Array.from({ length: layout.cols }, (_, col) => col).map((col) => (
-                                    <span
-                                        key={col}
-                                        className="absolute top-0 text-[11px] leading-[22px] tabular-nums text-wafuu-sumi-light"
-                                        style={{ left: boxLeft(col) + 4 }}
-                                    >
-                                        {col === 0 ? "開始" : `${col}手目`}
-                                    </span>
-                                ))}
-                        </div>
-                        <GraphNodes
-                            tree={tree}
-                            book={book}
-                            layout={layout}
-                            isOpen={isOpen}
-                            compact={compact}
-                            onSelect={selectFromGraph}
-                            onToggle={toggle}
-                            onActivate={explore ? onActivate : undefined}
-                            onHover={explore ? hover : undefined}
-                        />
-                        <svg
-                            aria-hidden="true"
-                            className="pointer-events-none absolute inset-0 overflow-visible"
-                            width="100%"
-                            height="100%"
-                        >
-                            <path
-                                d={pathEdges.join("")}
-                                className="fill-none stroke-wafuu-sumi"
-                                strokeWidth={compact ? 2.5 / zoom : 2.5}
-                            />
-                        </svg>
-                        {[...path].map((id) => {
-                            const placed = layout.byId.get(id);
-                            if (!placed) return null;
-                            return (
-                                <div
-                                    key={id}
-                                    aria-hidden="true"
-                                    className={cn(
-                                        "pointer-events-none absolute rounded",
-                                        compact
-                                            ? id === selected
-                                                ? "bg-wafuu-shu"
-                                                : "bg-wafuu-sumi"
-                                            : id === selected
-                                              ? "ring-2 ring-wafuu-sumi"
-                                              : "ring-1 ring-wafuu-sumi/70",
-                                    )}
-                                    style={{
-                                        left: boxLeft(placed.col),
-                                        top: boxTop(placed.row),
-                                        width: BOX_WIDTH,
-                                        height: BOX_HEIGHT,
-                                    }}
-                                />
-                            );
-                        })}
-                    </div>
-                </div>
-            </section>
-            {explore && (
-                <div className="absolute bottom-2 left-2 z-20 flex items-center gap-1 rounded-md border border-wafuu-border bg-background/90 p-1 text-xs shadow-popover">
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-7 p-0"
-                        aria-label="縮小"
-                        title="縮小（Ctrl＋ホイール）"
-                        disabled={zoom <= MIN_ZOOM}
-                        onClick={() => zoomTo(zoom / ZOOM_STEP)}
-                    >
-                        −
-                    </Button>
-                    <output className="w-10 text-center tabular-nums">
-                        {Math.round(zoom * 100)}%
-                    </output>
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-7 p-0"
-                        aria-label="拡大"
-                        title="拡大（Ctrl＋ホイール）"
-                        disabled={zoom >= MAX_ZOOM}
-                        onClick={() => zoomTo(zoom * ZOOM_STEP)}
-                    >
-                        ＋
-                    </Button>
-                    <Button variant="ghost" size="sm" className="h-7 px-2" onClick={fitAll}>
-                        全体
-                    </Button>
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2"
-                        disabled={zoom === 1}
-                        onClick={() => zoomTo(1)}
-                    >
-                        100%
-                    </Button>
-                </div>
+        <div
+            className={cn(
+                "flex min-h-0 min-w-0 overflow-hidden",
+                dock && "flex-col md:flex-row",
+                className,
             )}
-            {showMinimap && (
-                <Minimap
-                    layout={layout}
-                    path={path}
-                    width={width}
-                    height={height}
-                    maxWidth={minimapWidth}
-                    view={view}
-                    onJump={jumpTo}
+        >
+            <div className="relative flex min-h-0 min-w-0 flex-1">
+                <section
+                    ref={frame}
+                    aria-label="定跡の木"
+                    onScroll={() => {
+                        if (preview || previewTimer.current !== undefined) hidePreview();
+                        if (explore) measureView(zoom);
+                    }}
+                    onPointerDown={startPan}
+                    onPointerMove={movePan}
+                    onPointerUp={endPan}
+                    onPointerCancel={endPan}
+                    className={cn(
+                        "relative min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain",
+                        panning ? "cursor-grabbing select-none" : "cursor-grab",
+                    )}
+                >
+                    <div
+                        className="relative"
+                        style={{ width: width * zoom, height: height * zoom }}
+                    >
+                        <div className="absolute top-0 left-0" style={{ width, height, zoom }}>
+                            <div
+                                aria-hidden="true"
+                                className="sticky top-0 z-10 border-b border-wafuu-border bg-wafuu-washi/95"
+                                style={{ width, height: HEADER_HEIGHT }}
+                            >
+                                {!compact &&
+                                    Array.from({ length: layout.cols }, (_, col) => col).map(
+                                        (col) => (
+                                            <span
+                                                key={col}
+                                                className="absolute top-0 text-[11px] leading-[22px] tabular-nums text-wafuu-sumi-light"
+                                                style={{ left: boxLeft(col) + 4 }}
+                                            >
+                                                {col === 0 ? "開始" : `${col}手目`}
+                                            </span>
+                                        ),
+                                    )}
+                            </div>
+                            <GraphNodes
+                                tree={tree}
+                                book={book}
+                                layout={layout}
+                                isOpen={isOpen}
+                                compact={compact}
+                                onSelect={selectFromGraph}
+                                onToggle={toggle}
+                                onActivate={explore ? onActivate : undefined}
+                                onHover={explore && previewMode !== "off" ? hover : undefined}
+                            />
+                            <svg
+                                aria-hidden="true"
+                                className="pointer-events-none absolute inset-0 overflow-visible"
+                                width="100%"
+                                height="100%"
+                            >
+                                <path
+                                    d={pathEdges.join("")}
+                                    className="fill-none stroke-wafuu-sumi"
+                                    strokeWidth={compact ? 2.5 / zoom : 2.5}
+                                />
+                            </svg>
+                            {[...path].map((id) => {
+                                const placed = layout.byId.get(id);
+                                if (!placed) return null;
+                                return (
+                                    <div
+                                        key={id}
+                                        aria-hidden="true"
+                                        className={cn(
+                                            "pointer-events-none absolute rounded",
+                                            compact
+                                                ? id === selected
+                                                    ? "bg-wafuu-shu"
+                                                    : "bg-wafuu-sumi"
+                                                : id === selected
+                                                  ? "ring-2 ring-wafuu-sumi"
+                                                  : "ring-1 ring-wafuu-sumi/70",
+                                        )}
+                                        style={{
+                                            left: boxLeft(placed.col),
+                                            top: boxTop(placed.row),
+                                            width: BOX_WIDTH,
+                                            height: BOX_HEIGHT,
+                                        }}
+                                    />
+                                );
+                            })}
+                        </div>
+                    </div>
+                </section>
+                {explore && (
+                    <div className="absolute bottom-2 left-2 z-20 flex items-center gap-1 rounded-md border border-wafuu-border bg-background/90 p-1 text-xs shadow-popover">
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0"
+                            aria-label="縮小"
+                            title="縮小（Ctrl＋ホイール）"
+                            disabled={zoom <= MIN_ZOOM}
+                            onClick={() => zoomTo(zoom / ZOOM_STEP)}
+                        >
+                            −
+                        </Button>
+                        <output className="w-10 text-center tabular-nums">
+                            {Math.round(zoom * 100)}%
+                        </output>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0"
+                            aria-label="拡大"
+                            title="拡大（Ctrl＋ホイール）"
+                            disabled={zoom >= MAX_ZOOM}
+                            onClick={() => zoomTo(zoom * ZOOM_STEP)}
+                        >
+                            ＋
+                        </Button>
+                        <Button variant="ghost" size="sm" className="h-7 px-2" onClick={fitAll}>
+                            全体
+                        </Button>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2"
+                            disabled={zoom === 1}
+                            onClick={() => zoomTo(1)}
+                        >
+                            100%
+                        </Button>
+                    </div>
+                )}
+                {showMinimap && (
+                    <Minimap
+                        layout={layout}
+                        path={path}
+                        width={width}
+                        height={height}
+                        maxWidth={minimapWidth}
+                        view={view}
+                        onJump={jumpTo}
+                    />
+                )}
+            </div>
+            {dock && (
+                <DockedPosition
+                    tree={tree}
+                    book={book}
+                    id={dockedId}
+                    hovering={dockedId !== selected}
+                    flipBoard={flipBoard}
                 />
             )}
-            {explore && preview && tree.nodes[preview.id] && (
+            {explore && previewMode === "float" && preview && tree.nodes[preview.id] && (
                 <PositionPreview
                     tree={tree}
                     book={book}
