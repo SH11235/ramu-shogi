@@ -133,3 +133,10 @@ describe("selfplayGameMeta の上限", () => {
         expect(out.termination).toBe("2手で後手の勝ち（投了）");
     });
 });
+
+describe("selfplayGameMeta の結果の無い局", () => {
+    it("結果の行が無い局は、そう分かるように書く", () => {
+        const { result: _omit, ...unfinished } = game;
+        expect(selfplayGameMeta(unfinished, meta).termination).toBe("2手まで（結果の記録なし）");
+    });
+});

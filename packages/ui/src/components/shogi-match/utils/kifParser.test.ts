@@ -245,3 +245,55 @@ describe("parseKif の局面図（BOD）の崩れた入力", () => {
         expect(result.moves).toEqual(["5i5h"]);
     });
 });
+
+describe("parseKif の局面図（BOD）と見出し・指し手の並び", () => {
+    const board = [
+        "+---------------------------+",
+        "| ・ ・ ・ ・v玉 ・ ・ ・ ・|一",
+        ...["二", "三", "四", "五", "六", "七", "八"].map(
+            (rank) => `| ・ ・ ・ ・ ・ ・ ・ ・ ・|${rank}`,
+        ),
+        "| ・ ・ ・ ・ 玉 ・ ・ ・ ・|九",
+        "+---------------------------+",
+    ];
+
+    it("盤のあとに見出しがあっても、指し手の前の後手番を読む", () => {
+        const result = parseKif(
+            [
+                "後手の持駒：なし",
+                ...board,
+                "先手の持駒：金",
+                "先手：A",
+                "後手：B",
+                "後手番",
+                "手数----指手--",
+                "1 △５二玉(51)",
+            ].join("\n"),
+        );
+        expect(result.startSfen).toBe("4k4/9/9/9/9/9/9/9/4K4 w G 1");
+        expect(result.moves).toEqual(["5a5b"]);
+    });
+
+    it("指し手のあとに書かれた局面図は開始局面にしない", () => {
+        const result = parseKif(
+            [
+                "手合割：平手",
+                "手数----指手--",
+                "1 ７六歩(77)",
+                "まで1手で中断",
+                "後手の持駒：なし",
+                ...board,
+                "先手の持駒：なし",
+            ].join("\n"),
+        );
+        expect(result.startSfen).toBe("startpos");
+        expect(result.moves).toEqual(["7g7f"]);
+    });
+
+    it("持ち駒の枚数 0 は読めない欄として断る", () => {
+        const result = parseKif(
+            ["後手の持駒：歩0", ...board, "先手の持駒：なし", "1 ５八玉(59)"].join("\n"),
+        );
+        expect(result.success).toBe(false);
+    });
+});

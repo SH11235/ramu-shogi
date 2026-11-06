@@ -143,7 +143,10 @@ export function selfplayGameMeta(
     if (game.goteName) out.whiteName = game.goteName;
     if (meta?.timestamp) out.playedAt = meta.timestamp;
     out.event = `連続対局 第${game.gameId}局${sourceName ? `（${sourceName}）` : ""}`;
-    if (game.result) {
+    if (!game.result) {
+        // 対局中に書き出したログなど、結果の行が無い局。
+        out.termination = `${game.moves.length}手まで（結果の記録なし）`;
+    } else {
         const result = RESULT_BY_OUTCOME[game.result.outcome];
         if (result) out.result = result;
         const outcome = OUTCOME_LABEL[game.result.outcome] ?? game.result.outcome;
