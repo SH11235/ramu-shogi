@@ -317,3 +317,21 @@ describe("parseKifuTextForStudy の局面図（BOD）だけの KIF", () => {
         expect(source).toMatchObject({ kind: "moves", startSfen: "4k4/9/9/9/9/9/9/9/4K4 b G 1" });
     });
 });
+
+describe("parseKifuTextForStudy の ShogiHome 形式の評価値", () => {
+    it("評価値と読み筋を対局時の評価値として取り込む", () => {
+        const source = parseKifuTextForStudy(
+            [
+                "手合割：平手",
+                "手数----指手---------消費時間--",
+                "1 ７六歩(77) ( 0:05/00:00:05)",
+                "**評価値=-12",
+                "**読み筋=△３四歩(33)",
+            ].join("\n"),
+        );
+        expect(source).toMatchObject({
+            kind: "moves",
+            annotations: [{ score: { kind: "cp", value: -12 }, elapsedMs: 5000, pv: ["3c3d"] }],
+        });
+    });
+});

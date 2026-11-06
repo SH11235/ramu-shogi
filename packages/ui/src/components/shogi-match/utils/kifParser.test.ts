@@ -337,3 +337,43 @@ describe("parseKif の区切り行の無い KIF と局面図", () => {
         }
     });
 });
+
+describe("parseKif の ShogiHome 形式の探索の情報", () => {
+    it("評価値・詰み・深さと、指した後の局面からの読み筋を読む", () => {
+        const result = parseKif(
+            [
+                "手合割：平手",
+                "手数----指手---------消費時間--",
+                "   1 ▲７六歩(77)   ( 0:01/00:00:01)",
+                "**評価値=50",
+                "**読み筋=△３四歩(33)▲２二角成(88)△同　銀(31)",
+                "**深さ=20",
+                "**ノード数=1000",
+                "   2 △３四歩(33)   ( 0:01/00:00:01)",
+                "**評価値=-30",
+                "   3 ▲２二角成(88)   ( 0:01/00:00:02)",
+                "**詰み=後手勝ち:5手",
+                // 読み筋の 1 手目の「同」は、コメントを付けた手（３手目）の移動先。
+                "**読み筋=△同　銀(31)▲４五角打",
+                "   4 △同　銀(31)   ( 0:01/00:00:02)",
+                "**詰み=先手勝ち",
+            ].join("\n"),
+        );
+        expect(result.moves).toEqual(["7g7f", "3c3d", "8h2b+", "3a2b"]);
+        expect(result.moveData[0]).toMatchObject({
+            evalCp: 50,
+            depth: 20,
+            pv: ["3c3d", "8h2b+", "3a2b"],
+        });
+        expect(result.moveData[1].evalCp).toBe(-30);
+        expect(result.moveData[2]).toMatchObject({ evalMate: -5, pv: ["3a2b", "B*4e"] });
+        expect(result.moveData[3].evalMate).toBe(Infinity);
+    });
+
+    it("読めない手の手前で読み筋を打ち切る", () => {
+        const result = parseKif(
+            ["手合割：平手", "1 ７六歩(77)", "**評価値=10", "**読み筋=△３四歩(33)▲不明"].join("\n"),
+        );
+        expect(result.moveData[0]).toMatchObject({ evalCp: 10, pv: ["3c3d"] });
+    });
+});

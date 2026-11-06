@@ -81,6 +81,8 @@ export interface KifMoveData {
     evalMate?: number;
     /** 探索深さ */
     depth?: number;
+    /** 読み筋（USI）。その手を指した後の局面から始まる（ShogiHome 形式のコメントから読む）。 */
+    pv?: string[];
 }
 
 interface KifParseResult {
@@ -209,6 +211,48 @@ function parseEvalComment(
         return { evalCp, depth };
     }
 
+    return null;
+}
+
+/** ShogiHome 形式のコメントから読んだ探索の情報。 */
+interface SearchComment {
+    evalCp?: number;
+    evalMate?: number;
+    depth?: number;
+    pv?: string[];
+}
+
+/**
+ * ShogiHome 形式の探索の情報のコメント行を読む。KIF の行では `**評価値=80`・`**詰み=先手勝ち:3手`・
+ * `**読み筋=△３四歩(33)▲２六歩(27)`・`**深さ=20` のように書かれる（評価値・詰みは先手から見た向き。
+ * 読み筋はコメントを付けた手を指した後の局面からで、その手は含まない）。
+ * ShogiHome のほか、rshogi の `jsonl_to_kif` もこの形で書く。
+ * @param line KIF の 1 行
+ * @param lastTo コメントを付けた手の移動先（読み筋の 1 手目の「同」を解決する）
+ */
+function parseSearchComment(line: string, lastTo: string | null): SearchComment | null {
+    const trimmed = line.trim();
+    const score = trimmed.match(/^\*\*評価値=([+-]?\d+)/);
+    if (score) return { evalCp: Number.parseInt(score[1], 10) };
+    const mate = trimmed.match(/^\*\*詰み=(先手勝ち|後手勝ち)(?::(\d+)手)?/);
+    if (mate) {
+        const plies = mate[2] !== undefined ? Number.parseInt(mate[2], 10) : Infinity;
+        return { evalMate: mate[1] === "先手勝ち" ? plies : -plies };
+    }
+    const depth = trimmed.match(/^\*\*深さ=(\d+)/);
+    if (depth) return { depth: Number.parseInt(depth[1], 10) };
+    if (trimmed.startsWith("**読み筋=")) {
+        const pv: string[] = [];
+        let to = lastTo;
+        // 手番の印で 1 手ずつに分け、読めない手の手前で打ち切る。
+        for (const section of trimmed.slice("**読み筋=".length).split(/(?=[▲△☗☖])/)) {
+            const parsed = parseKifLine(section, to);
+            if (!parsed) break;
+            pv.push(parsed.usiMove);
+            to = parsed.toSquare;
+        }
+        return pv.length > 0 ? { pv } : {};
+    }
     return null;
 }
 
@@ -584,6 +628,13 @@ export function parseKif(kifText: string): KifParseResult {
         }
 
         // まず評価値コメントかチェック
+        const searchData = parseSearchComment(line, prevTo);
+        if (searchData) {
+            const lastMoveData = moveData.at(-1);
+            if (lastMoveData) Object.assign(lastMoveData, searchData);
+            continue;
+        }
+
         const evalData = parseEvalComment(line);
         if (evalData) {
             // 直前の指し手に評価値を追加

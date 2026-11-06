@@ -182,6 +182,7 @@ export function useKifuImportExport({
                                   scoreMate: data.evalMate,
                                   depth: data.depth,
                                   normalized: true,
+                                  pv: data.pv,
                               }
                             : undefined,
                 });
