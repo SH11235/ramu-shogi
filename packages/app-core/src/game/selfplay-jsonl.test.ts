@@ -240,3 +240,20 @@ describe("parseSelfplayJsonl の崩れた入力", () => {
         expect(game.goteName).toBe("base");
     });
 });
+
+describe("parseSelfplayJsonl の欠けた行", () => {
+    const B = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1";
+    const W = "lnsgkgsnl/1r5b1/ppppppppp/9/9/2P6/PP1PPPPPP/1B5R1/LNSGKGSNL w - 2";
+    const move = (ply: number, sfen: string, usi: string) =>
+        JSON.stringify({ type: "move", game_id: 1, ply, sfen_before: sfen, move_usi: usi });
+
+    it("途中の手の行が欠けていれば断る", () => {
+        const text = [move(1, B, "7g7f"), move(4, W, "8c8d")].join("\n");
+        expect(() => parseSelfplayJsonl(text)).toThrow("第1局の 2 手目の行がありません");
+    });
+
+    it("手番が交互でなければ断る", () => {
+        const text = [move(1, B, "7g7f"), move(2, B, "2g2f")].join("\n");
+        expect(() => parseSelfplayJsonl(text)).toThrow("手番が前の手と同じです");
+    });
+});

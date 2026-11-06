@@ -376,8 +376,16 @@ async function createStudiesFromSelfplayLog(
             created.push(doc.id);
         }
     } catch (error) {
-        await Promise.allSettled(created.map((id) => deps.sync.deleteStudy?.(id)));
-        throw error;
+        const removed = await Promise.allSettled(
+            created.map((id) => deps.sync.deleteStudy?.(id) ?? Promise.reject(new Error("delete"))),
+        );
+        const left = removed.filter((result) => result.status === "rejected").length;
+        if (left === 0) throw error;
+        // 容量不足などで消すこともできなかったときは、残ったことを知らせる（黙って残さない）。
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(
+            `${message}（途中まで作ったノートのうち ${left} 件を消せませんでした。一覧から消してください）`,
+        );
     }
     const first = docs[0];
     if (!first) throw new Error("JSONL に対局がありません");

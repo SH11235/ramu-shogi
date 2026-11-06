@@ -287,6 +287,19 @@ export function parseSelfplayJsonl(text: string): SelfplayJsonlLog {
         const infos: SelfplayJsonlMoveInfo[] = [];
         let senteName: string | undefined;
         let goteName: string | undefined;
+        rawMoves.forEach((raw, index) => {
+            // 行が欠けた・手番の壊れたログは、残りの手を別の手順として読んでしまうので断る。
+            if (raw.ply !== first.ply + index) {
+                throw new Error(`第${gameId}局の ${first.ply + index} 手目の行がありません`);
+            }
+            if (raw.turn === undefined) {
+                throw new Error(`第${gameId}局の ${raw.ply} 手目の sfen_before に手番がありません`);
+            }
+            const previous = rawMoves[index - 1];
+            if (previous && previous.turn === raw.turn) {
+                throw new Error(`第${gameId}局の ${raw.ply} 手目の手番が前の手と同じです`);
+            }
+        });
         for (const raw of rawMoves) {
             if (raw.turn === "b" && senteName === undefined) senteName = raw.engine;
             if (raw.turn === "w" && goteName === undefined) goteName = raw.engine;

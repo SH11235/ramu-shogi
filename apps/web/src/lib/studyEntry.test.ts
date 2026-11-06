@@ -501,3 +501,39 @@ describe("createStudyFromKifuSource の連続対局の JSONL", () => {
         expect(await sync.listLocal()).toEqual([]);
     });
 });
+
+describe("createStudyFromKifuSource の巻き戻しの失敗", () => {
+    const START = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1";
+    const JSONL = [1, 2]
+        .map((gameId) =>
+            JSON.stringify({
+                type: "move",
+                game_id: gameId,
+                ply: 1,
+                sfen_before: START,
+                move_usi: "7g7f",
+            }),
+        )
+        .join("\n");
+
+    it("作りかけのノートを消せなかったときは、残った件数を知らせる", async () => {
+        const api = createApi();
+        const sync = createSync(api);
+        let calls = 0;
+        const failing: StudySync = {
+            ...sync,
+            createStudy: (doc) => {
+                calls += 1;
+                return calls === 2 ? Promise.reject(new Error("quota")) : sync.createStudy(doc);
+            },
+            deleteStudy: () => Promise.reject(new Error("quota")),
+        };
+        await expect(
+            createStudyFromKifuSource(parseKifuTextForStudy(JSONL), {
+                sync: failing,
+                api,
+                replayMovesStrict: async (_sfen, moves) => ({ applied: moves }),
+            }),
+        ).rejects.toThrow("1 件を消せませんでした");
+    });
+});

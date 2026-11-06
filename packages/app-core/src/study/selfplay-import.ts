@@ -66,8 +66,10 @@ export function selfplayMoveComment(info: SelfplayJsonlMoveInfo, turn: "b" | "w"
 }
 
 const timeControlLabel = (settings: SelfplayJsonlMeta["settings"]): string | undefined => {
-    const btime = settings.btime;
-    if (typeof btime !== "number") return undefined;
+    // rshogi は 0 の持ち時間を省いて書くので、時計の項目がどれかあれば、無い項目は 0 とみなす。
+    const clockKeys = ["btime", "wtime", "binc", "winc", "byoyomi"];
+    if (!clockKeys.some((key) => typeof settings[key] === "number")) return undefined;
+    const btime = typeof settings.btime === "number" ? settings.btime : 0;
     const wtime = typeof settings.wtime === "number" ? settings.wtime : btime;
     const binc = typeof settings.binc === "number" ? settings.binc : 0;
     const winc = typeof settings.winc === "number" ? settings.winc : binc;

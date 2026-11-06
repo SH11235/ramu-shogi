@@ -140,3 +140,13 @@ describe("selfplayGameMeta の結果の無い局", () => {
         expect(selfplayGameMeta(unfinished, meta).termination).toBe("2手まで（結果の記録なし）");
     });
 });
+
+describe("selfplayGameMeta の持ち時間", () => {
+    it("0 で省かれた btime は 0 とみなして、秒読みや加算だけの持ち時間も書く", () => {
+        const withSettings = (settings: SelfplayJsonlMeta["settings"]) =>
+            selfplayGameMeta(game, { ...meta, settings }).timeControl;
+        expect(withSettings({ byoyomi: 1000, wtime: 0, winc: 0 })).toBe("0秒 秒読み1秒");
+        expect(withSettings({ binc: 1000, wtime: 0, winc: 1000 })).toBe("0秒+1秒");
+        expect(withSettings({ threads: 1 })).toBeUndefined();
+    });
+});
