@@ -306,6 +306,12 @@ describe("parseKifuTextForStudy の局面図（BOD）だけの KIF", () => {
         });
     });
 
+    it("半角の筋の番号の行がある局面図だけでも、その局面のノートにする", () => {
+        const [hand, ...rest] = BOD;
+        const source = parseKifuTextForStudy([hand, "  9 8 7 6 5 4 3 2 1", ...rest].join("\n"));
+        expect(source).toMatchObject({ kind: "moves", startSfen: "4k4/9/9/9/9/9/9/9/4K4 b G 1" });
+    });
+
     it("駒落ちの手合割が付いていても、局面図を開始局面にする", () => {
         const source = parseKifuTextForStudy(["手合割：角落ち", ...BOD].join("\n"));
         expect(source).toMatchObject({ kind: "moves", startSfen: "4k4/9/9/9/9/9/9/9/4K4 b G 1" });

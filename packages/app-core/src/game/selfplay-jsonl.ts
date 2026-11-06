@@ -301,11 +301,12 @@ export function parseSelfplayJsonl(text: string): SelfplayJsonlLog {
             }
         });
         // 末尾の行が欠けていないか、結果の手数と照らす。結果の手数は最後に記録した手の手数と同じ
-        // （打ち切りの局だけは、記録する前に止めた手のぶん 1 つ多いことがある）。
+        // （応答なし・対局時間の上限で止めた局だけは、記録する前に止めた手のぶん 1 つ多い）。
         const resultRowForCheck = resultsById.get(gameId);
         const resultPlies = num(resultRowForCheck?.plies);
         const lastPly = rawMoves[rawMoves.length - 1]?.ply ?? 0;
-        const slack = resultRowForCheck?.outcome === "in_progress" ? 1 : 0;
+        const reasonForCheck = resultRowForCheck?.reason;
+        const slack = reasonForCheck === "watchdog" || reasonForCheck === "game_time_limit" ? 1 : 0;
         if (resultPlies !== undefined && lastPly + slack < resultPlies) {
             throw new Error(
                 `第${gameId}局の末尾の手の行が欠けています（結果は ${resultPlies} 手、記録は ${lastPly} 手まで）`,

@@ -282,10 +282,12 @@ describe("parseSelfplayJsonl の末尾の欠け", () => {
         );
     });
 
-    it("打ち切りの局は、記録する前に止めた 1 手ぶんを許す", () => {
-        const text = [move, result({ outcome: "in_progress", reason: "watchdog", plies: 2 })].join(
-            "\n",
+    it("応答なしで止めた局は、記録する前に止めた 1 手ぶんを許す（中止は許さない）", () => {
+        const watchdog = [move, result({ outcome: "in_progress", reason: "watchdog", plies: 2 })];
+        expect(parseSelfplayJsonl(watchdog.join("\n")).games[0].moves).toEqual(["7g7f"]);
+        const cancelled = [move, result({ outcome: "in_progress", reason: "cancelled", plies: 2 })];
+        expect(() => parseSelfplayJsonl(cancelled.join("\n"))).toThrow(
+            "末尾の手の行が欠けています",
         );
-        expect(parseSelfplayJsonl(text).games[0].moves).toEqual(["7g7f"]);
     });
 });
