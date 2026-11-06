@@ -439,6 +439,8 @@ function DockedPosition({
     overlay,
     onOpen,
     ref,
+    onPointerEnter,
+    onPointerLeave,
 }: {
     tree: BookTree;
     book: BookData;
@@ -449,10 +451,14 @@ function DockedPosition({
     overlay: boolean;
     onOpen?: (id: number) => void;
     ref?: Ref<HTMLElement>;
+    onPointerEnter?: () => void;
+    onPointerLeave?: () => void;
 }) {
     return (
         <aside
             ref={ref}
+            onPointerEnter={onPointerEnter}
+            onPointerLeave={onPointerLeave}
             aria-label="局面"
             className={cn(
                 "flex shrink-0 flex-col gap-1 bg-background p-2",
@@ -591,8 +597,18 @@ export function BookTreeGraph({
     // 選んだ手を見える位置へ送る。キーや一覧で選んだ手が端に寄ったら、左から 3 分の 1 の所まで送り、
     // この先の手を広く見せる（1 手ずつ進めるたびに少しずつ送られて、先が見えないままにならないように）。
     const scrolledTo = useRef<string | null>(null);
-    /** 木に重ねた盤（広い画面で盤を出すとき）。 */
-    const dockBox = useRef<HTMLElement>(null);
+    /** 木に重ねた盤（広い画面で盤を出すとき）と、その高さ。 */
+    const [dockBox, setDockBox] = useState<HTMLElement | null>(null);
+    const [dockHeight, setDockHeight] = useState(0);
+    useEffect(() => {
+        if (!dockBox) {
+            setDockHeight(0);
+            return;
+        }
+        const observer = new ResizeObserver(() => setDockHeight(dockBox.offsetHeight));
+        observer.observe(dockBox);
+        return () => observer.disconnect();
+    }, [dockBox]);
     /** 前に送ったときの選んだ手の上端（木の座標）。 */
     const selectedTop = useRef<number | null>(null);
     /** 送り切れなかった横の位置と、そのときの位置。ホイール・引く・拡大縮小で動かされたら捨てる。 */
@@ -650,7 +666,7 @@ export function BookTreeGraph({
         else if (offRight) x = left + colWidth + margin - element.clientWidth;
         const header = HEADER_HEIGHT * zoom;
         // 左下に重ねた盤の下へは送らない（盤の上に出す）。枠が低くて盤の上に収まらないときは盤を気にしない。
-        const covered = dockBox.current?.offsetHeight ?? 0;
+        const covered = dockHeight;
         const visible =
             element.clientHeight - covered >= (BOX_HEIGHT * zoom + margin) * 2 + header
                 ? element.clientHeight - covered
@@ -674,13 +690,22 @@ export function BookTreeGraph({
     const dockTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     useEffect(() => () => clearTimeout(dockTimer.current), []);
     const hovered = useRef<number | null>(null);
-    const hoverable = explore && previewMode !== "off";
+    const hoverable = explore && previewMode === "dock";
     useEffect(() => {
         if (hoverable) return;
         clearTimeout(dockTimer.current);
         hovered.current = null;
         setDocked(null);
     }, [hoverable]);
+    // 欄の上にマウスがある間は、出している手を選んでいる手に戻さない（欄のボタンで、見ている局面を開けるように）。
+    function keepDocked() {
+        clearTimeout(dockTimer.current);
+    }
+    function releaseDocked() {
+        hovered.current = null;
+        clearTimeout(dockTimer.current);
+        dockTimer.current = setTimeout(() => setDocked(null), DOCK_LEAVE_MS);
+    }
     function hover(id: number | null) {
         if (id === hovered.current) return;
         hovered.current = id;
@@ -857,7 +882,9 @@ export function BookTreeGraph({
             cellSize={dockCell}
             overlay={!narrow}
             onOpen={onActivate}
-            ref={narrow ? undefined : dockBox}
+            ref={narrow ? undefined : setDockBox}
+            onPointerEnter={keepDocked}
+            onPointerLeave={releaseDocked}
         />
     );
     return (
@@ -887,7 +914,8 @@ export function BookTreeGraph({
                 >
                     <div
                         className="relative"
-                        style={{ width: width * zoom, height: height * zoom }}
+                        // 盤を重ねている間は、下の端の手も盤の上まで送れるだけの余白を足す。
+                        style={{ width: width * zoom, height: height * zoom + dockHeight }}
                     >
                         <div className="absolute top-0 left-0" style={{ width, height, zoom }}>
                             <div

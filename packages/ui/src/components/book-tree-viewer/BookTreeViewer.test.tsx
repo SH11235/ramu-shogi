@@ -132,6 +132,12 @@ sfen ${key("7g7f")}
         });
         await waitFor(() => expect(dock()?.textContent).toContain("2手目 ☖8四歩(83)"));
         expect(dock()?.textContent).toContain("マウスを置いた手");
+        fireEvent.pointerLeave(tree().getByRole("button", { name: /^☖8四歩\(83\)/ }));
+        fireEvent.pointerEnter(dock() as HTMLElement);
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        expect(dock()?.textContent).toContain("2手目 ☖8四歩(83)");
+        fireEvent.pointerLeave(dock() as HTMLElement);
+        await waitFor(() => expect(dock()?.textContent).toContain("選んでいる手"));
         fireEvent.click(within(dialog).getByRole("button", { name: "出さない" }));
         expect(dock()).toBeNull();
         fireEvent.click(within(dialog).getByRole("button", { name: "出す" }));
