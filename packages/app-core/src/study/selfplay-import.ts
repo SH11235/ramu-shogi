@@ -67,8 +67,11 @@ export function selfplayMoveComment(info: SelfplayJsonlMoveInfo, turn: "b" | "w"
 
 const timeControlLabel = (settings: SelfplayJsonlMeta["settings"]): string | undefined => {
     // rshogi は 0 の持ち時間を省いて書くので、時計の項目がどれかあれば、無い項目は 0 とみなす。
+    // 時計の値がすべて 0（ノード数・深さを固定した対局など）なら、持ち時間は書かない。
     const clockKeys = ["btime", "wtime", "binc", "winc", "byoyomi"];
-    if (!clockKeys.some((key) => typeof settings[key] === "number")) return undefined;
+    if (!clockKeys.some((key) => typeof settings[key] === "number" && settings[key] > 0)) {
+        return undefined;
+    }
     const btime = typeof settings.btime === "number" ? settings.btime : 0;
     const wtime = typeof settings.wtime === "number" ? settings.wtime : btime;
     const binc = typeof settings.binc === "number" ? settings.binc : 0;
@@ -83,6 +86,12 @@ const timeControlLabel = (settings: SelfplayJsonlMeta["settings"]): string | und
 
 const searchSettingsLabel = (settings: SelfplayJsonlMeta["settings"]): string | undefined => {
     const parts: string[] = [];
+    if (typeof settings.nodes === "number" && settings.nodes > 0) {
+        parts.push(`${settings.nodes.toLocaleString("en-US")} ノード`);
+    }
+    if (typeof settings.depth === "number" && settings.depth > 0) {
+        parts.push(`深さ ${settings.depth}`);
+    }
     if (typeof settings.threads === "number") parts.push(`${settings.threads} スレッド`);
     if (typeof settings.hash_mb === "number") parts.push(`ハッシュ ${settings.hash_mb} MB`);
     if (typeof settings.max_moves === "number") parts.push(`最大 ${settings.max_moves} 手`);

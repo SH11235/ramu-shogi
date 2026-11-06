@@ -148,5 +148,10 @@ describe("selfplayGameMeta の持ち時間", () => {
         expect(withSettings({ byoyomi: 1000, wtime: 0, winc: 0 })).toBe("0秒 秒読み1秒");
         expect(withSettings({ binc: 1000, wtime: 0, winc: 1000 })).toBe("0秒+1秒");
         expect(withSettings({ threads: 1 })).toBeUndefined();
+        expect(withSettings({ byoyomi: 0, wtime: 0, winc: 0, nodes: 100000 })).toBeUndefined();
+        expect(
+            selfplayGameMeta(game, { ...meta, settings: { nodes: 100000, threads: 1 } })
+                .searchSettings,
+        ).toBe("100,000 ノード・1 スレッド");
     });
 });
