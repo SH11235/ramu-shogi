@@ -1,5 +1,6 @@
 import {
     type BookData,
+    bookTreeRow,
     createInitialPositionState,
     deriveLastMove,
     type PositionService,
@@ -12,7 +13,7 @@ import { Button } from "../button";
 import { ChoiceGroup } from "../choice-group";
 import { StaticBoardView } from "../static-board-view";
 import { BookMoveList } from "./BookMoveList";
-import { BookTreeGraph, moveLabel } from "./BookTreeGraph";
+import { BookTreeGraph, type BookTreePreviewMode, moveLabel } from "./BookTreeGraph";
 import { useBookTree } from "./useBookTree";
 
 export const MAX_BOOK_FILE_BYTES = 64 * 1024 * 1024;
@@ -37,6 +38,11 @@ const CONTROLS_HEIGHT = 40;
 const PANE_SWITCH_HEIGHT = 36;
 /** 縦に並べるときの、盤・操作の行・切り替え・木の間の 3 つの隙間。 */
 const NARROW_GAPS_HEIGHT = 24;
+/** 全画面で局面を出す所の選択肢（見出しは「局面」）。 */
+const PREVIEW_MODES = [
+    { value: "dock", label: "出す" },
+    { value: "off", label: "出さない" },
+] as const satisfies readonly { value: BookTreePreviewMode; label: string }[];
 /** 盤の上下の持ち駒の段の、マスに比例しない部分（枠と余白、2 段分）。 */
 const HAND_ROWS_FIXED_HEIGHT = 32;
 /** 盤の左右の駒台の、マスに比例しない部分（枠・余白と盤との隙間、2 列分）と盤の枠。 */
@@ -118,6 +124,7 @@ export function BookTreeViewer({
     const [dragging, setDragging] = useState(false);
     const [mobilePane, setMobilePane] = useState<"tree" | "moves">("tree");
     const [fullscreen, setFullscreen] = useState(false);
+    const [previewMode, setPreviewMode] = useState<BookTreePreviewMode>("dock");
     const [dialog, setDialog] = useState<HTMLDivElement | null>(null);
     const fullscreenButton = useRef<HTMLButtonElement>(null);
     const restoreFocus = useRef(false);
@@ -185,6 +192,24 @@ export function BookTreeViewer({
         requested.current.ids.add(source.id);
         void session.builder.expandFrom(source.id);
     }, [session, tree, selected]);
+
+    // 開始局面から一本道が続く定跡（課題局面から先だけを並べたもの）は、最初に分かれる手を選んで、
+    // そこを開いた状態で見せる。読み込んでから何も選んでいないうちに一度だけ行う。
+    const skipped = useRef<number | null>(null);
+    useEffect(() => {
+        if (!book || !tree || skipped.current === book.id) return;
+        if (selected !== 0) {
+            skipped.current = book.id;
+            return;
+        }
+        const row = bookTreeRow(tree, 0);
+        // 警告のある局面は飛ばさない。最後まで一本道の定跡は、開始局面のままにする。
+        const stop = row.findIndex((node) => node.error !== undefined);
+        const last = row[stop === -1 ? row.length - 1 : stop];
+        if (last.status === "pending" && tree.building) return;
+        skipped.current = book.id;
+        if (last.id !== 0 && last.children.length > 1) setSelected(last.id);
+    }, [book, tree, selected]);
 
     async function loadFile(file: File) {
         setError(null);
@@ -374,22 +399,35 @@ export function BookTreeViewer({
             )}
         >
             {fullscreen && (
-                <div className="flex items-center gap-3">
-                    <h2 className="font-display text-base">定跡の木</h2>
-                    <output className="min-w-0 truncate text-sm">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                    <h2 className="shrink-0 whitespace-nowrap font-display text-base">定跡の木</h2>
+                    <output className="min-w-0 flex-1 truncate text-sm lg:flex-none">
                         {node && node.parent !== null
                             ? `${ply}手目 ${moveLabel(tree, node)}`
                             : "開始局面"}
                     </output>
                     <p className="hidden min-w-0 flex-1 truncate text-xs text-muted-foreground lg:block">
-                        手に置くと局面、ダブルクリックでその局面を盤で開きます。Ctrl＋ホイールで拡大縮小、Esc
-                        で閉じます。
+                        Ctrl＋ホイールで拡大縮小、Esc で閉じます。
                     </p>
+                    <fieldset className="order-last flex basis-full items-center gap-1.5 sm:order-none sm:ml-auto sm:basis-auto">
+                        <legend className="sr-only">局面</legend>
+                        <span aria-hidden="true" className="text-xs text-wafuu-sumi-light">
+                            局面
+                        </span>
+                        <ChoiceGroup
+                            size="sm"
+                            options={PREVIEW_MODES}
+                            value={previewMode}
+                            onChange={setPreviewMode}
+                            className="flex-nowrap gap-1"
+                            optionClassName="px-2 py-1 text-xs"
+                        />
+                    </fieldset>
                     <Button
                         autoFocus
                         variant="outline"
                         size="sm"
-                        className="ml-auto"
+                        className="shrink-0"
                         onClick={closeFullscreen}
                     >
                         盤に戻る
@@ -404,6 +442,7 @@ export function BookTreeViewer({
                 onSelect={setSelected}
                 flipBoard={flip}
                 explore={fullscreen}
+                preview={previewMode}
                 onActivate={(id) => {
                     setSelected(id);
                     closeFullscreen();

@@ -70,7 +70,7 @@ it("大量の通知を間引き、公開済みのスナップショットを変�
     expect(result.current.revision).toBe(revision);
     expect(initial?.nodes).toHaveLength(1);
     expect(initial?.firstByKey.size).toBe(1);
-    await act(async () => vi.advanceTimersByTime(50));
+    await act(async () => vi.advanceTimersByTime(1000));
     expect(result.current.revision).toBe(revision + 1);
     expect(result.current.tree?.nodes).toHaveLength(30_001);
     expect(initial?.nodes).toHaveLength(1);

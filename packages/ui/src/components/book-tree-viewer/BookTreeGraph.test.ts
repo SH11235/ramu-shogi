@@ -1,6 +1,6 @@
 import { type BookTree, type BookTreeNode, createInitialPositionState } from "@shogi/app-core";
 import { describe, expect, it } from "vitest";
-import { focusOpenNodes, layoutBookGraph, mainLine, SMALL_TREE_NODES } from "./BookTreeGraph";
+import { layoutBookGraph } from "./BookTreeGraph";
 
 const position = createInitialPositionState();
 /** 親の番号の並びから木を作る（`parents[i]` が i 番の手の親）。 */
@@ -52,19 +52,5 @@ describe("layoutBookGraph", () => {
     it("閉じた手の先は置かない", () => {
         const tree = treeOf([null, 0, 1, 0]);
         expect(Object.keys(rows(tree, (node) => node.id !== 1))).toEqual(["0", "1", "3"]);
-    });
-});
-
-describe("focusOpenNodes", () => {
-    it("大きい木は、選んだ手までの道筋と、その先の本線だけを開く", () => {
-        const parents: (number | null)[] = [null, 0, 1, 2, 0, 4];
-        while (parents.length <= SMALL_TREE_NODES) parents.push(4);
-        const tree = treeOf(parents);
-        expect([...focusOpenNodes(tree, 1)].sort((a, b) => a - b)).toEqual([0, 1, 2]);
-        expect(mainLine(tree, 0)).toEqual([0, 1, 2]);
-    });
-    it("小さい木は全部開く", () => {
-        const tree = treeOf([null, 0, 1, 0, 3]);
-        expect([...focusOpenNodes(tree, 0)].sort((a, b) => a - b)).toEqual([0, 1, 3]);
     });
 });
