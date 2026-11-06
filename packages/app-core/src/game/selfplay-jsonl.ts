@@ -217,14 +217,14 @@ export function parseSelfplayJsonl(text: string): SelfplayJsonlLog {
     const lines = text.split(/\r?\n/);
     let lastIndex = lines.length - 1;
     while (lastIndex >= 0 && lines[lastIndex].trim() === "") lastIndex -= 1;
-    lines.forEach((rawLine, index) => {
+    for (const [index, rawLine] of lines.entries()) {
         const line = rawLine.trim();
-        if (line === "") return;
+        if (line === "") continue;
         let row: unknown;
         try {
             row = JSON.parse(line);
         } catch {
-            if (index === lastIndex) return;
+            if (index === lastIndex) continue;
             throw new Error(`${index + 1} 行目を JSON として読めません`);
         }
         if (!isObject(row))
@@ -237,7 +237,7 @@ export function parseSelfplayJsonl(text: string): SelfplayJsonlLog {
                     );
                 }
                 meta = parseMeta(row);
-                return;
+                continue;
             case "move": {
                 const gameId = num(row.game_id);
                 const ply = num(row.ply);
@@ -265,17 +265,17 @@ export function parseSelfplayJsonl(text: string): SelfplayJsonlLog {
                     info: turn ? parseInfo(row, move, turn) : undefined,
                 });
                 movesById.set(gameId, list);
-                return;
+                continue;
             }
             case "result": {
                 const gameId = num(row.game_id);
                 if (gameId !== undefined) resultsById.set(gameId, row);
-                return;
+                continue;
             }
             default:
-                return;
+                continue;
         }
-    });
+    }
 
     const games: SelfplayJsonlGame[] = [];
     const ids = [...movesById.keys()].sort((a, b) => a - b);

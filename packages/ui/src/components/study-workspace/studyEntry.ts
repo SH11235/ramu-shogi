@@ -35,7 +35,10 @@ interface StudyEntrySync {
     /** ログイン中のセッション。未ログインなら null。 */
     getSession(): unknown;
     createStudy(doc: StudyDocument): Promise<unknown>;
-    /** 何局もまとめて作る取り込みが途中で失敗したとき、作ったノートを消すのに使う。 */
+    /**
+     * 何局もまとめて作る取り込みが途中で失敗したとき、作ったノートを消すのに使う。
+     * 1 件ずつ開く・作る入口では要らないので省略できる。無ければ、作ったノートは消せずに残り、その件数を知らせる。
+     */
     deleteStudy?(studyId: string): Promise<void>;
 }
 

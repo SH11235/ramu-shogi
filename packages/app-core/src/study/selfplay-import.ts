@@ -141,7 +141,8 @@ const optionsDiffLabel = (
     return { diff, common };
 };
 
-const utf8Bytes = (text: string): number => new TextEncoder().encode(text).length;
+const encoder = new TextEncoder();
+const utf8Bytes = (text: string): number => encoder.encode(text).length;
 
 /** 1 局の対局条件と結果を、研究ノートの `meta` にする。 */
 export function selfplayGameMeta(
