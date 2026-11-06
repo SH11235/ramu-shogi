@@ -283,3 +283,31 @@ describe("parseKifuTextForStudy の連続対局の JSONL", () => {
         );
     });
 });
+
+describe("parseKifuTextForStudy の局面図（BOD）だけの KIF", () => {
+    const BOD = [
+        "後手の持駒：なし",
+        "  ９ ８ ７ ６ ５ ４ ３ ２ １",
+        "+---------------------------+",
+        "| ・ ・ ・ ・v玉 ・ ・ ・ ・|一",
+        ...["二", "三", "四", "五", "六", "七", "八"].map(
+            (rank) => `| ・ ・ ・ ・ ・ ・ ・ ・ ・|${rank}`,
+        ),
+        "| ・ ・ ・ ・ 玉 ・ ・ ・ ・|九",
+        "+---------------------------+",
+        "先手の持駒：金　",
+    ];
+
+    it("見出しの無い局面図だけでも、その局面のノートにする", () => {
+        expect(parseKifuTextForStudy(BOD.join("\n"))).toEqual({
+            kind: "moves",
+            startSfen: "4k4/9/9/9/9/9/9/9/4K4 b G 1",
+            moves: [],
+        });
+    });
+
+    it("駒落ちの手合割が付いていても、局面図を開始局面にする", () => {
+        const source = parseKifuTextForStudy(["手合割：角落ち", ...BOD].join("\n"));
+        expect(source).toMatchObject({ kind: "moves", startSfen: "4k4/9/9/9/9/9/9/9/4K4 b G 1" });
+    });
+});

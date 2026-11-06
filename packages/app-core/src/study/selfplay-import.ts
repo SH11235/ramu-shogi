@@ -131,21 +131,6 @@ const optionsDiffLabel = (
 
 const utf8Bytes = (text: string): number => new TextEncoder().encode(text).length;
 
-/** 上限に収まるよう、末尾を落として「…」を付ける。 */
-const truncateUtf8 = (text: string, maxBytes: number): string => {
-    if (utf8Bytes(text) <= maxBytes) return text;
-    const budget = maxBytes - utf8Bytes("…");
-    let used = 0;
-    let kept = "";
-    for (const char of text) {
-        const size = utf8Bytes(char);
-        if (used + size > budget) break;
-        used += size;
-        kept += char;
-    }
-    return `${kept}…`;
-};
-
 /** 1 局の対局条件と結果を、研究ノートの `meta` にする。 */
 export function selfplayGameMeta(
     game: SelfplayJsonlGame,
@@ -181,13 +166,39 @@ export function selfplayGameMeta(
         out.engineOptionsDiff = diff;
         if (common.length > 0) out.engineOptions = common.join(", ");
     }
-    // meta 全体の上限に収まるよう、いちばん長くなりうる共通オプションを切り詰める。
-    if (out.engineOptions) {
-        const rest = utf8Bytes(JSON.stringify({ ...out, engineOptions: "" }));
-        out.engineOptions = truncateUtf8(out.engineOptions, STUDY_LIMITS.metaBytes - rest - 64);
+    return fitMetaBytes(out);
+}
+
+const metaBytes = (meta: StudyMeta): number => utf8Bytes(JSON.stringify(meta));
+
+/**
+ * meta 全体（保存するときの JSON）が上限に収まるよう、長くなりうる USI オプションの項目を
+ * 末尾から切り詰める。JSON にすると `\` や `"` が伸びるので、JSON にした大きさで測る。
+ */
+const fitMetaBytes = (meta: StudyMeta): StudyMeta => {
+    const out = { ...meta };
+    for (const key of ["engineOptions", "engineOptionsDiff"] as const) {
+        const value = out[key];
+        if (value === undefined || metaBytes(out) <= STUDY_LIMITS.metaBytes) continue;
+        const chars = Array.from(value);
+        const withPrefix = (length: number): StudyMeta => ({
+            ...out,
+            [key]: `${chars.slice(0, length).join("")}…`,
+        });
+        // 収まる最長の先頭部分を二分探索で探す。
+        let low = 0;
+        let high = chars.length;
+        while (low < high) {
+            const mid = Math.ceil((low + high) / 2);
+            if (metaBytes(withPrefix(mid)) <= STUDY_LIMITS.metaBytes) low = mid;
+            else high = mid - 1;
+        }
+        const fitted = withPrefix(low);
+        if (metaBytes(fitted) <= STUDY_LIMITS.metaBytes) Object.assign(out, fitted);
+        else delete out[key];
     }
     return out;
-}
+};
 
 interface StudySelfplayImportInput {
     id: string;

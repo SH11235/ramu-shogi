@@ -35,6 +35,8 @@ interface StudyEntrySync {
     /** ログイン中のセッション。未ログインなら null。 */
     getSession(): unknown;
     createStudy(doc: StudyDocument): Promise<unknown>;
+    /** 何局もまとめて作る取り込みが途中で失敗したとき、作ったノートを消すのに使う。 */
+    deleteStudy?(studyId: string): Promise<void>;
 }
 
 /** 入口が使う、API の口（`@shogi/study-client` の `StudyApi` が満たす）。 */
@@ -340,7 +342,8 @@ export async function createStudyFromKifuSource(
 
 /**
  * 連続対局の JSONL の全局を、1 局ずつ研究ノートにする。どれか 1 局でも指せない手・上限超過があれば、
- * どのノートも作らない（何局目かを添えて断る）。返すのは最初の局のノート。
+ * どのノートも作らない（何局目かを添えて断る）。保存が途中で失敗したときは、作ったノートを消す。
+ * 返すのは最初の局のノート。
  */
 async function createStudiesFromSelfplayLog(
     source: Extract<StudyKifuSource, { kind: "selfplay_jsonl" }>,
@@ -365,7 +368,17 @@ async function createStudiesFromSelfplayLog(
             throw new Error(`第${game.gameId}局: ${message}`);
         }
     }
-    for (const doc of docs) await deps.sync.createStudy(doc);
+    // 保存が途中で失敗したら、作ったぶんを消して、取り込み前に戻す（やり直しで同じ局が重複しないように）。
+    const created: string[] = [];
+    try {
+        for (const doc of docs) {
+            await deps.sync.createStudy(doc);
+            created.push(doc.id);
+        }
+    } catch (error) {
+        await Promise.allSettled(created.map((id) => deps.sync.deleteStudy?.(id)));
+        throw error;
+    }
     const first = docs[0];
     if (!first) throw new Error("JSONL に対局がありません");
     return { studyId: first.id, existing: false };

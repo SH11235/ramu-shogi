@@ -168,3 +168,21 @@ describe("parseSelfplayJsonl", () => {
         );
     });
 });
+
+describe("parseSelfplayJsonl の手数の分からない詰み", () => {
+    it("score_mate_sign の符号から詰ます側を決め、手数は null にする", () => {
+        const text = JSON.stringify({
+            type: "move",
+            game_id: 1,
+            ply: 1,
+            sfen_before:
+                "l1sg3nl/1r3kg2/p1npppsp1/2p3p1p/1p5P1/2P2PP1P/PPSPP1N2/2G2S1R1/LN2KG2L w Bb 24",
+            move_usi: "7a6b",
+            eval: { score_mate_sign: -1 },
+        });
+        expect(parseSelfplayJsonl(text).games[0].infos[0].mate).toEqual({
+            winner: "sente",
+            plies: null,
+        });
+    });
+});

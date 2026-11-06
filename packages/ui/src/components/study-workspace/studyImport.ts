@@ -170,6 +170,7 @@ const isKifNonMoveLine = (line: string): boolean => {
 const KIF_BOD_LINE =
     /^(?:(?:先手|後手|下手|上手)の持駒[：:].*|[１２３４５６７８９ ]+|\+-+\+|\|.*\|.*|(?:先手|後手|下手|上手)番|手数[＝=]\d+.*)$/;
 const KIF_BOD_ROW = /^\|.*\|/;
+const KIF_HANDICAP_LINE = /^手合割[：:]/;
 
 /** KIF の「手合割：平手」の行（平手の開始局面を明示している）。 */
 const KIF_HIRATE_LINE = /^手合割[：:][\s　]*平手[\s　]*$/;
@@ -188,7 +189,13 @@ const isKifPositionOnly = (text: string): boolean => {
     const hasHirate = !hasBod && lines.some((line) => KIF_HIRATE_LINE.test(line.trim()));
     return (
         hasStartPosition !== hasHirate &&
-        lines.every((line) => isKifNonMoveLine(line) || KIF_HIRATE_LINE.test(line.trim()))
+        lines.every(
+            (line) =>
+                isKifNonMoveLine(line) ||
+                KIF_HIRATE_LINE.test(line.trim()) ||
+                // 局面図のある KIF の手合割（駒落ちも）は飾りなので、どれでもよい。
+                (hasBod && KIF_HANDICAP_LINE.test(line.trim())),
+        )
     );
 };
 

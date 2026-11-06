@@ -118,3 +118,18 @@ describe("createStudyDocumentFromSelfplayGame", () => {
         expect(second.comment).toBe("");
     });
 });
+
+describe("selfplayGameMeta の上限", () => {
+    it('JSON にすると伸びる文字（ と "）を含むオプションも、保存する JSON の大きさで上限に収める', () => {
+        const options = Array.from({ length: 2000 }, (_, i) => `Path${i}=C:dir\\"x"`);
+        const out = selfplayGameMeta(game, {
+            ...meta,
+            black: { label: "test", options: [...options, "Only=black"] },
+            white: { label: "base", options: [...options, ...options.map((o) => `${o}w`)] },
+        });
+        expect(new TextEncoder().encode(JSON.stringify(out)).length).toBeLessThanOrEqual(
+            STUDY_LIMITS.metaBytes,
+        );
+        expect(out.termination).toBe("2手で後手の勝ち（投了）");
+    });
+});

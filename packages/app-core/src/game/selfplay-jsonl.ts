@@ -13,8 +13,8 @@ export interface SelfplayJsonlMoveInfo {
     engine?: string;
     elapsedMs?: number;
     evalCp?: number;
-    /** 詰みを読んでいたときの、詰ます側と手数。 */
-    mate?: { winner: "sente" | "gote"; plies: number };
+    /** 詰みを読んでいたときの、詰ます側と手数（手数の分からない詰みは null）。 */
+    mate?: { winner: "sente" | "gote"; plies: number | null };
     depth?: number;
     seldepth?: number;
     nodes?: number;
@@ -153,12 +153,15 @@ const parseInfo = (row: JsonObject, move: string, turn: "b" | "w"): SelfplayJson
     // ログの評価値は手番側から見た値。後手の手番では符号を反転して先手から見た値にする。
     const sign = turn === "b" ? 1 : -1;
     const mate = num(evalRow.score_mate);
+    // 手数の分からない詰み（USI の `score mate +` / `score mate -`）は符号だけが残る。
+    const mateSign = num(evalRow.score_mate_sign);
     const cp = num(evalRow.score_cp);
+    const mover = turn === "b" ? "sente" : "gote";
+    const other = turn === "b" ? "gote" : "sente";
     if (mate !== undefined && mate !== 0) {
-        const moverWins = mate > 0;
-        const mover = turn === "b" ? "sente" : "gote";
-        const other = turn === "b" ? "gote" : "sente";
-        info.mate = { winner: moverWins ? mover : other, plies: Math.abs(mate) };
+        info.mate = { winner: mate > 0 ? mover : other, plies: Math.abs(mate) };
+    } else if (mateSign !== undefined && mateSign !== 0) {
+        info.mate = { winner: mateSign > 0 ? mover : other, plies: null };
     } else if (cp !== undefined) {
         info.evalCp = sign * cp;
     }
