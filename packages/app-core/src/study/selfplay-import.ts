@@ -36,6 +36,7 @@ const OUTCOME_LABEL: Record<string, string> = {
     black_win: "先手の勝ち",
     white_win: "後手の勝ち",
     draw: "引き分け",
+    in_progress: "中断",
 };
 
 const RESULT_BY_OUTCOME: Record<string, string> = {

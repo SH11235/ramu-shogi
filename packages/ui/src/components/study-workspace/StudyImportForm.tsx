@@ -18,8 +18,11 @@ import { parseKifuTextForStudy, type StudyKifuSource } from "./studyImport";
 
 /** 研究ノートの取り込みで受け付ける拡張子（棋譜に加えて、連続対局の JSONL）。 */
 const STUDY_FILE_ACCEPT = `${KIFU_FILE_ACCEPT},.jsonl`;
-/** 連続対局の JSONL の大きさの上限。1 局に数百 KB の探索の記録が付くので、棋譜より大きくする。 */
-const MAX_JSONL_FILE_BYTES = 64 * 1024 * 1024;
+/**
+ * 連続対局の JSONL の大きさの上限。1 局に 200 KB 前後の探索の記録が付き、一度に取り込めるのは
+ * 50 局までなので、それに見合う大きさにする。
+ */
+const MAX_JSONL_FILE_BYTES = 16 * 1024 * 1024;
 
 interface StudyImportFormProps {
     /** 取り込んだ棋譜で研究ノートを作る。失敗時は例外を投げると、その文言を表示する。 */

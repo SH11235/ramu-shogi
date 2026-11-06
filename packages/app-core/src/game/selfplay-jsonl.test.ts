@@ -160,7 +160,7 @@ describe("parseSelfplayJsonl", () => {
     });
 
     it("読めない行は何行目かを添えて断る", () => {
-        expect(() => parseSelfplayJsonl(`${row({ type: "meta" })}\n{broken`)).toThrow(
+        expect(() => parseSelfplayJsonl(`${row({ type: "meta" })}\n{broken\n{}`)).toThrow(
             "2 行目を JSON として読めません",
         );
         expect(() => parseSelfplayJsonl(row({ type: "move", game_id: 1 }))).toThrow(
@@ -184,5 +184,59 @@ describe("parseSelfplayJsonl の手数の分からない詰み", () => {
             winner: "sente",
             plies: null,
         });
+    });
+});
+
+describe("parseSelfplayJsonl の崩れた入力", () => {
+    const START = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1";
+    const AFTER = "lnsgkgsnl/1r5b1/ppppppppp/9/9/2P6/PP1PPPPPP/1B5R1/LNSGKGSNL w - 2";
+    const move = (extra: object) =>
+        JSON.stringify({
+            type: "move",
+            game_id: 1,
+            ply: 1,
+            sfen_before: START,
+            move_usi: "7g7f",
+            ...extra,
+        });
+
+    it("書き込み途中で切れた最後の行は読み飛ばす", () => {
+        const text = `${move({})}\n{"type":"move","game_id":1,"pl`;
+        expect(parseSelfplayJsonl(text).games[0].moves).toEqual(["7g7f"]);
+    });
+
+    it("連結したログ（2 つ目の meta・同じ手数）は断る", () => {
+        const meta = JSON.stringify({ type: "meta" });
+        expect(() => parseSelfplayJsonl([meta, move({}), meta].join("\n"))).toThrow(
+            "2 つ目の meta",
+        );
+        expect(() => parseSelfplayJsonl([move({}), move({})].join("\n"))).toThrow("1 手目が 2 回");
+    });
+
+    it("指した手から始まらない読み筋は付けず、後手の評価値 0 は 0 にする", () => {
+        const text = JSON.stringify({
+            type: "move",
+            game_id: 1,
+            ply: 1,
+            sfen_before: AFTER,
+            move_usi: "3c3d",
+            eval: { score_cp: 0, pv: ["8c8d", "2g2f"] },
+        });
+        const [info] = parseSelfplayJsonl(text).games[0].infos;
+        expect(info.pv).toBeUndefined();
+        expect(Object.is(info.evalCp, 0)).toBe(true);
+    });
+
+    it("片方が一手も指さずに終わった局は、もう一方の名前を meta のラベルで補う", () => {
+        const text = [
+            JSON.stringify({
+                type: "meta",
+                engine_cmd: { label_black: "base", label_white: "test" },
+            }),
+            move({ move_usi: "resign", engine: "test" }),
+        ].join("\n");
+        const [game] = parseSelfplayJsonl(text).games;
+        expect(game.senteName).toBe("test");
+        expect(game.goteName).toBe("base");
     });
 });

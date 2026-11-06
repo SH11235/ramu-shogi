@@ -281,6 +281,13 @@ const KANJI_DIGIT: Readonly<Record<string, number>> = {
 /** 持ち駒の枚数（「二」「十」「十八」）。読めなければ null。 */
 function parseKanjiCount(text: string): number | null {
     if (text === "") return 1;
+    // 算用数字（半角・全角）で書く書き手もある。
+    if (/^[0-9０-９]+$/.test(text)) {
+        return Number.parseInt(
+            text.replace(/[０-９]/g, (digit) => String(digit.charCodeAt(0) - 0xff10)),
+            10,
+        );
+    }
     const match = text.match(/^(十)?([一二三四五六七八九])?$/);
     if (!match || (!match[1] && !match[2])) return null;
     return (match[1] ? 10 : 0) + (match[2] ? KANJI_DIGIT[match[2]] : 0);
@@ -332,17 +339,17 @@ function parseBodRow(line: string): string | null {
  * 駒落ちの `上手`（後手）・`下手`（先手）の書き方も読む。`手数＝N` があれば次の手を N+1 手目とする。
  */
 function parseBodPosition(lines: readonly string[]): string | null {
+    // 盤の 9 段が無ければ局面図ではない（見出しに持ち駒の行だけがある KIF などは、ここでは読まない）。
+    if (!lines.some((line) => line.trim().startsWith("|"))) return null;
     const rows: string[] = [];
     let senteHand = "";
     let goteHand = "";
     let turn: "b" | "w" = "b";
     let moveNumber = 1;
-    let found = false;
     for (const raw of lines) {
         const line = raw.trim();
         const hand = line.match(/^(先手|後手|下手|上手)の持駒[：:](.*)$/);
         if (hand) {
-            found = true;
             const parsed = parseBodHand(hand[2]);
             if (parsed === null) throw new Error(`持ち駒の欄を読めません: ${line}`);
             if (hand[1] === "先手" || hand[1] === "下手") senteHand = parsed;
@@ -353,15 +360,21 @@ function parseBodPosition(lines: readonly string[]): string | null {
             const row = parseBodRow(line);
             if (row === null) throw new Error(`局面図の行を読めません: ${line}`);
             rows.push(row);
-            found = true;
             continue;
         }
-        if (/^(後手番|上手番)$/.test(line)) turn = "w";
+        if (/^(後手番|上手番)$/.test(line)) {
+            turn = "w";
+            continue;
+        }
         const plyMatch = line.match(/^手数[＝=](\d+)/);
-        if (plyMatch) moveNumber = Number.parseInt(plyMatch[1], 10) + 1;
-        if (/^手数-+/.test(line)) break;
+        if (plyMatch) {
+            moveNumber = Number.parseInt(plyMatch[1], 10) + 1;
+            continue;
+        }
+        // 盤を読み終えたら、局面図に続く行（枠・空行・手番）以外のところで止める（指し手の区切り行が
+        // 無い KIF で、後ろの行を局面図として読まないように）。
+        if (rows.length >= 9 && !/^(?:\+-+\+|先手番|下手番)?$/.test(line)) break;
     }
-    if (!found) return null;
     if (rows.length !== 9) throw new Error("局面図の段が 9 段そろっていません");
     const hands = senteHand + goteHand;
     return `${rows.join("/")} ${turn} ${hands === "" ? "-" : hands} ${moveNumber}`;

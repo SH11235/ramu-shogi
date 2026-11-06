@@ -206,3 +206,42 @@ describe("parseKif の局面図（BOD）", () => {
         expect(result.error).toContain("局面図");
     });
 });
+
+describe("parseKif の局面図（BOD）の崩れた入力", () => {
+    const board = [
+        "+---------------------------+",
+        "| ・ ・ ・ ・v玉 ・ ・ ・ ・|一",
+        ...["二", "三", "四", "五", "六", "七", "八"].map(
+            (rank) => `| ・ ・ ・ ・ ・ ・ ・ ・ ・|${rank}`,
+        ),
+        "| ・ ・ ・ ・ 玉 ・ ・ ・ ・|九",
+        "+---------------------------+",
+    ];
+
+    it("盤の無い持ち駒の行だけの見出しは、局面図として読まない", () => {
+        const result = parseKif(["先手の持駒：なし", "手合割：平手", "1 ７六歩(77)"].join("\n"));
+        expect(result.success).toBe(true);
+        expect(result.startSfen).toBe("startpos");
+    });
+
+    it("持ち駒の枚数を算用数字で書いたものも読む", () => {
+        const result = parseKif(
+            ["後手の持駒：歩２　", ...board, "先手の持駒：歩10", "1 ５八玉(59)"].join("\n"),
+        );
+        expect(result.startSfen).toBe("4k4/9/9/9/9/9/9/9/4K4 b 10P2p 1");
+    });
+
+    it("指し手の区切り行が無くても、盤のあとの行を局面図として読まない", () => {
+        const result = parseKif(
+            [
+                "後手の持駒：なし",
+                ...board,
+                "先手の持駒：なし",
+                "1 ５八玉(59)",
+                "先手の持駒：金",
+            ].join("\n"),
+        );
+        expect(result.startSfen).toBe("4k4/9/9/9/9/9/9/9/4K4 b - 1");
+        expect(result.moves).toEqual(["5i5h"]);
+    });
+});

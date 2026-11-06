@@ -82,11 +82,18 @@ const str = (value: unknown): string | undefined =>
 const num = (value: unknown): number | undefined =>
     typeof value === "number" && Number.isFinite(value) ? value : undefined;
 
-const firstLine = (text: string): string | undefined =>
-    text
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .find((line) => line !== "");
+/** 最初の空でない行（全文を分割せずに取り出す）。 */
+const firstLine = (text: string): string | undefined => {
+    let start = 0;
+    while (start < text.length) {
+        const end = text.indexOf("\n", start);
+        const line = text.slice(start, end < 0 ? text.length : end).trim();
+        if (line !== "") return line;
+        if (end < 0) return undefined;
+        start = end + 1;
+    }
+    return undefined;
+};
 
 /**
  * テキストが連続対局の JSONL らしいか（最初の行が `type` を持つ JSON のオブジェクト）。
@@ -163,7 +170,8 @@ const parseInfo = (row: JsonObject, move: string, turn: "b" | "w"): SelfplayJson
     } else if (mateSign !== undefined && mateSign !== 0) {
         info.mate = { winner: mateSign > 0 ? mover : other, plies: null };
     } else if (cp !== undefined) {
-        info.evalCp = sign * cp;
+        // 後手の 0 を -0 にしない。
+        info.evalCp = cp === 0 ? 0 : sign * cp;
     }
     for (const [key, field] of [
         ["depth", "depth"],
@@ -178,29 +186,37 @@ const parseInfo = (row: JsonObject, move: string, turn: "b" | "w"): SelfplayJson
     if (Array.isArray(evalRow.pv)) {
         const pv = evalRow.pv.filter((m): m is string => typeof m === "string");
         // ログの読み筋は指した手から始まる。研究ノートの読み筋は指した後の局面から始めるので、先頭を落とす。
-        const after = pv[0] === move ? pv.slice(1) : pv;
+        // 先頭が指した手でない読み筋は指す前の局面からの読みなので、指した後の局面には付けない。
+        const after = pv[0] === move ? pv.slice(1) : [];
         if (after.length > 0) info.pv = after;
     }
     return info;
 };
 
+/** 1 手の行のうち、組み立てに使う項目だけ（行全体は持たない）。 */
 interface RawMove {
     ply: number;
     sfenBefore: string;
+    turn: "b" | "w" | undefined;
     move: string;
+    engine: string | undefined;
     timedOut: boolean;
-    row: JsonObject;
+    info: SelfplayJsonlMoveInfo | undefined;
 }
 
 /**
- * 連続対局の JSONL を読む。JSON として読めない行・必要な項目の欠けた `move` 行があれば、
- * 何行目かを添えて例外を投げる。手が盤上で指せるかは見ない（取り込む側で再生して確かめる）。
+ * 連続対局の JSONL を読む。JSON として読めない行・必要な項目の欠けた `move` 行・同じ局の同じ手数・
+ * 2 つ目の `meta`（ログを連結したもの）があれば、何行目かを添えて例外を投げる。ただし最後の行が
+ * JSON として読めないときは、書き込みの途中（対局中のログ）とみなして読み飛ばす。
+ * 手が盤上で指せるかは見ない（取り込む側で再生して確かめる）。
  */
 export function parseSelfplayJsonl(text: string): SelfplayJsonlLog {
     let meta: SelfplayJsonlMeta | undefined;
     const movesById = new Map<number, RawMove[]>();
     const resultsById = new Map<number, JsonObject>();
     const lines = text.split(/\r?\n/);
+    let lastIndex = lines.length - 1;
+    while (lastIndex >= 0 && lines[lastIndex].trim() === "") lastIndex -= 1;
     lines.forEach((rawLine, index) => {
         const line = rawLine.trim();
         if (line === "") return;
@@ -208,12 +224,18 @@ export function parseSelfplayJsonl(text: string): SelfplayJsonlLog {
         try {
             row = JSON.parse(line);
         } catch {
+            if (index === lastIndex) return;
             throw new Error(`${index + 1} 行目を JSON として読めません`);
         }
         if (!isObject(row))
             throw new Error(`${index + 1} 行目が JSON のオブジェクトではありません`);
         switch (row.type) {
             case "meta":
+                if (meta !== undefined) {
+                    throw new Error(
+                        `${index + 1} 行目に 2 つ目の meta があります（ログを連結したものは読めません）`,
+                    );
+                }
                 meta = parseMeta(row);
                 return;
             case "move": {
@@ -227,7 +249,21 @@ export function parseSelfplayJsonl(text: string): SelfplayJsonlLog {
                     );
                 }
                 const list = movesById.get(gameId) ?? [];
-                list.push({ ply, sfenBefore, move, timedOut: row.timed_out === true, row });
+                if (list.some((raw) => raw.ply === ply)) {
+                    throw new Error(
+                        `${index + 1} 行目: 第${gameId}局の ${ply} 手目が 2 回あります（ログを連結したものは読めません）`,
+                    );
+                }
+                const turn = sideToMove(sfenBefore);
+                list.push({
+                    ply,
+                    sfenBefore,
+                    turn,
+                    move,
+                    engine: str(row.engine),
+                    timedOut: row.timed_out === true,
+                    info: turn ? parseInfo(row, move, turn) : undefined,
+                });
                 movesById.set(gameId, list);
                 return;
             }
@@ -252,15 +288,17 @@ export function parseSelfplayJsonl(text: string): SelfplayJsonlLog {
         let senteName: string | undefined;
         let goteName: string | undefined;
         for (const raw of rawMoves) {
-            const turn = sideToMove(raw.sfenBefore);
-            const engine = str(raw.row.engine);
-            if (turn === "b" && senteName === undefined) senteName = engine;
-            if (turn === "w" && goteName === undefined) goteName = engine;
+            if (raw.turn === "b" && senteName === undefined) senteName = raw.engine;
+            if (raw.turn === "w" && goteName === undefined) goteName = raw.engine;
             // 時間切れのあとに届いた手・終局の応答は、盤上の手にしない（そこで棋譜を終える）。
-            if (raw.timedOut || TERMINAL_MOVES.has(raw.move) || turn === undefined) break;
+            if (raw.timedOut || TERMINAL_MOVES.has(raw.move) || !raw.info) break;
             moves.push(raw.move);
-            infos.push(parseInfo(raw.row, raw.move, turn));
+            infos.push(raw.info);
         }
+        // 片方が一手も指さずに終わった局（初手で投了など）は、もう一方の名前を meta のラベルから補う。
+        const labels = [meta?.black?.label, meta?.white?.label];
+        if (senteName && !goteName) goteName = labels.find((label) => label && label !== senteName);
+        if (goteName && !senteName) senteName = labels.find((label) => label && label !== goteName);
         const resultRow = resultsById.get(gameId);
         const outcome = str(resultRow?.outcome);
         const reason = str(resultRow?.reason);

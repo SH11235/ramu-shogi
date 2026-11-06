@@ -42,7 +42,7 @@ export type StudyKifuSource =
     | { kind: "selfplay_jsonl"; log: SelfplayJsonlLog; sourceName?: string };
 
 /**
- * 連続対局の JSONL から一度に作るノートの数の上限。局を選んで取り込む手段ができるまでの仮の上限で、
+ * 連続対局の JSONL から一度に作るノートの数の上限。局を選ぶ手段が無く全局をノートにするので、
  * ノートの数の上限（`STUDY_LIMITS.studiesPerUser`）より十分小さくしておく。
  */
 const MAX_SELFPLAY_GAMES_PER_IMPORT = 50;
@@ -146,7 +146,7 @@ const KIF_START_POSITION_LINE =
  * （平手や駒落ちの手合割があると、KIF の解析は開始局面の行よりそちらを優先するため）。
  */
 const KIF_HEADER_LINE =
-    /^(?:手合割[：:]\s*その他\s*$|(?:先手|後手|下手|上手|開始日時|終了日時|棋戦|場所|持ち時間|消費時間|戦型|表題)[：:])/;
+    /^(?:手合割[：:]\s*その他\s*$|(?:先手|後手|下手|上手|開始日時|終了日時|棋戦|場所|持ち時間|加算時間|消費時間|戦型|表題)[：:])/;
 
 /** KIF の、指し手ではない行（空行・コメント・決まった見出し・手数の区切り・「まで〜」）か。 */
 const isKifNonMoveLine = (line: string): boolean => {
