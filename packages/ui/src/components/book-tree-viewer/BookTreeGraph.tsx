@@ -39,29 +39,27 @@ const WHEEL_LINE_PX = 16;
 /** 手の上にマウスを置いてから局面を出すまで（通り過ぎただけで出ないように）と、その盤のマス。 */
 /** 盤の欄。手の上を通り過ぎるだけで盤が切り替わらないように少し待ち、手から離れたら少し待って選んでいる手に戻す。 */
 const DOCK_ENTER_MS = 80;
+/** 木に重ねた盤と、木の枠の端との間（`bottom-2 left-2`）。 */
+const DOCK_INSET = 8;
 const DOCK_LEAVE_MS = 300;
 /**
  * 局面の盤のマスの大きさ。広い画面は木の左下に重ねて幅の DOCK_WIDE_WIDTH・高さの DOCK_WIDE_HEIGHT まで、
  * 狭い画面は木の下に高さの DOCK_NARROW_HEIGHT まで使い、盤の画面の盤と同じ上限まで大きくする。
- * 持ち駒は盤の上下に置く（左右に置くと、空のときも駒台の幅を取って木を広く隠すので）。盤の幅はおよそ
- * マス 9.4 個と DOCK_FIXED_WIDTH、高さはマス 10.8 個（盤と上下の持ち駒）と DOCK_FIXED_HEIGHT（見出し・ボタン・余白）。
+ * 木に重ねるときは持ち駒を盤の上下に置き（左右に置くと、空のときも駒台の幅を取って木を広く隠すので）、
+ * 盤の欄はおよそ幅がマス 9.4 個と 40px、高さがマス 10.8 個と 110px（見出し・ボタン・余白）。
+ * 木の下に置くときは横幅が余るので持ち駒を左右に置き、幅がマス 10.6 個と 110px、高さがマス 9 個と 110px。
  */
 const DOCK_MIN_CELL = 16;
 const DOCK_MAX_CELL = 48;
 const DOCK_WIDE_WIDTH = 0.4;
-const DOCK_WIDE_HEIGHT = 0.7;
+const DOCK_WIDE_HEIGHT = 0.65;
 const DOCK_NARROW_HEIGHT = 0.45;
-const DOCK_FIXED_WIDTH = 40;
-const DOCK_FIXED_HEIGHT = 110;
-const DOCK_WIDTH_IN_CELLS = 9.4;
-const DOCK_HEIGHT_IN_CELLS = 10.8;
 
 function dockCellSize(width: number, height: number, narrow: boolean) {
-    const byWidth =
-        ((narrow ? width : width * DOCK_WIDE_WIDTH) - DOCK_FIXED_WIDTH) / DOCK_WIDTH_IN_CELLS;
-    const byHeight =
-        (height * (narrow ? DOCK_NARROW_HEIGHT : DOCK_WIDE_HEIGHT) - DOCK_FIXED_HEIGHT) /
-        DOCK_HEIGHT_IN_CELLS;
+    const byWidth = narrow ? (width - 110) / 10.6 : (width * DOCK_WIDE_WIDTH - 40) / 9.4;
+    const byHeight = narrow
+        ? (height * DOCK_NARROW_HEIGHT - 110) / 9
+        : (height * DOCK_WIDE_HEIGHT - 110) / 10.8;
     return Math.max(
         DOCK_MIN_CELL,
         Math.min(DOCK_MAX_CELL, Math.floor(Math.min(byWidth, byHeight))),
@@ -442,12 +440,14 @@ function PositionSummary({
     id,
     flipBoard,
     cellSize,
+    handPlacement,
 }: {
     tree: BookTree;
     book: BookData;
     id: number;
     flipBoard: boolean;
     cellSize: number;
+    handPlacement: "rows" | "sides";
 }) {
     const node = tree.nodes[id];
     return (
@@ -458,7 +458,7 @@ function PositionSummary({
                 flipBoard={flipBoard}
                 lastMove={deriveLastMove(node.move)}
                 cellSize={cellSize}
-                handPlacement="rows"
+                handPlacement={handPlacement}
                 handFrame="outline"
                 handSize="compact"
                 hideEmptyHandPieces
@@ -541,6 +541,7 @@ function DockedPosition({
                     id={id}
                     flipBoard={flipBoard}
                     cellSize={cellSize}
+                    handPlacement={overlay ? "rows" : "sides"}
                 />
             )}
             {onOpen && !collapsed && (
@@ -668,18 +669,21 @@ export function BookTreeGraph({
     // 選んだ手を見える位置へ送る。キーや一覧で選んだ手が端に寄ったら、左から 3 分の 1 の所まで送り、
     // この先の手を広く見せる（1 手ずつ進めるたびに少しずつ送られて、先が見えないままにならないように）。
     const scrolledTo = useRef<string | null>(null);
-    /** 木に重ねた盤（広い画面で盤を出すとき）と、その高さ。 */
+    /** 木に重ねた盤（広い画面で盤を出すとき）と、その大きさ。 */
     const [dockBox, setDockBox] = useState<HTMLElement | null>(null);
-    const [dockHeight, setDockHeight] = useState(0);
+    const [dockSize, setDockSize] = useState({ width: 0, height: 0 });
     useEffect(() => {
         if (!dockBox) {
-            setDockHeight(0);
+            setDockSize({ width: 0, height: 0 });
             return;
         }
-        const observer = new ResizeObserver(() => setDockHeight(dockBox.offsetHeight));
+        const observer = new ResizeObserver(() =>
+            setDockSize({ width: dockBox.offsetWidth, height: dockBox.offsetHeight }),
+        );
         observer.observe(dockBox);
         return () => observer.disconnect();
     }, [dockBox]);
+    const dockHeight = dockSize.height;
     /** 前に送ったときの選んだ手の上端（木の座標）。 */
     const selectedTop = useRef<number | null>(null);
     /** 送り切れなかった横の位置と、そのときの位置。ホイール・引く・拡大縮小で動かされたら捨てる。 */
@@ -736,23 +740,27 @@ export function BookTreeGraph({
         else if (offLeft) x = left - margin;
         else if (offRight) x = left + colWidth + margin - element.clientWidth;
         const header = HEADER_HEIGHT * zoom;
-        // 左下に重ねた盤の下へは送らない（盤の上に出す）。枠が低くて盤の上に収まらないときは盤を気にしない。
-        const covered = dockHeight;
-        const visible =
-            element.clientHeight - covered >= (BOX_HEIGHT * zoom + margin) * 2 + header
-                ? element.clientHeight - covered
-                : element.clientHeight;
+        const box = BOX_HEIGHT * zoom;
         if (top - margin - header < y) y = top - margin - header;
-        else if (top + BOX_HEIGHT * zoom + margin > y + visible)
-            y = top + BOX_HEIGHT * zoom + margin - visible;
+        else if (top + box + margin > y + element.clientHeight)
+            y = top + box + margin - element.clientHeight;
+        // 左下に重ねた盤の後ろに入るときは、盤の右へ送る。左の端の手で右へ送れなければ、盤の上へ送る。
+        const above = element.clientHeight - dockSize.height - DOCK_INSET;
+        const behindBoard =
+            dockSize.width > 0 && left - x < DOCK_INSET + dockSize.width && top + box > y + above;
+        if (!kept && behindBoard) {
+            const right = left - DOCK_INSET * 2 - dockSize.width;
+            if (right >= 0) x = right;
+            else if (above >= box + header + DOCK_INSET * 2) y = top + box + DOCK_INSET - above;
+        }
         element.scrollTo({ left: Math.max(0, x), top: Math.max(0, y) });
         if (element.scrollLeft < x - 1)
             shortOf.current = { wanted: x, left: element.scrollLeft, top: element.scrollTop };
     });
     // 描く前に送る（組み立て中に選んだ手がずれて見えるフレームを出さない）。
     useLayoutEffect(() => {
-        followSelection(layout, `${selected}:${explore}`);
-    }, [selected, layout, explore]);
+        followSelection(layout, `${selected}:${explore}:${dockSize.width}x${dockSize.height}`);
+    }, [selected, layout, explore, dockSize]);
 
     // 描く範囲。AREA_STEP 刻みにそろえ、刻みをまたいだときだけ描き直す（少し送るたびに描き直さないように）。
     const [view, setView] = useState<GraphView>({ left: 0, top: 0, width: 0, height: 0 });
