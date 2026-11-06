@@ -191,4 +191,34 @@ describe("book tree", () => {
         expect(await parseBookAsync(text)).toEqual(parseBook(text));
         await expect(parseBookAsync(text, () => true)).rejects.toThrow("中止");
     });
+    it("平手から定跡に入れない定跡は、他の局面から来ていない局面を手数の小さい順に開始局面の候補にする", async () => {
+        const mid = ["7g7f", "3c3d", "8h2b+", "3a2b"];
+        const text = `sfen ${key(...mid)} 5
+B*4e
+sfen ${key(...mid, "B*4e")} 6
+8c8d
+sfen ${key("2g2f", "8c8d")} 3
+2f2e`;
+        const builder = createBookTreeBuilder({
+            book: parseBook(text),
+            legalMoves: async (sfen) => (sfen === `${key()} 1` ? ["7g7f", "2g2f"] : []),
+        });
+        await builder.start();
+        expect(builder.tree.roots).toEqual([key("2g2f", "8c8d"), key(...mid)]);
+        expect(builder.tree.nodes[0].key).toBe(key("2g2f", "8c8d"));
+        expect(builder.tree.nodes[0].position.ply).toBe(3);
+
+        const chosen = createBookTreeBuilder({
+            book: parseBook(text),
+            legalMoves: async () => [],
+            rootKey: key(...mid),
+        });
+        await chosen.start();
+        expect(chosen.tree.nodes[0].position.ply).toBe(5);
+        expect(bookTreeRow(chosen.tree, 0).map((node) => node.move)).toEqual([
+            undefined,
+            "B*4e",
+            "8c8d",
+        ]);
+    });
 });

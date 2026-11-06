@@ -21,6 +21,8 @@ export interface BookData {
     positions: Map<string, BookMove[]>;
     warnings: BookWarning[];
     stats: { positions: number; moves: number; sente: number; gote: number; branches: number };
+    /** 局面の行に書かれた手数（1 以上のときだけ。同じ局面が何度出ても最初の値）。 */
+    plies?: Map<string, number>;
 }
 const HAND_ORDER: PieceType[] = ["R", "B", "G", "S", "N", "L", "P"];
 const USI = /^(?:[1-9][a-i][1-9][a-i]\+?|[RBGSNLP]\*[1-9][a-i])$/;
@@ -120,6 +122,7 @@ function* parseBookChunks(text: string): Generator<void, BookData> {
     const warnings: BookWarning[] = [];
     let current: Map<string, BookMove> | undefined;
     const entryLines = new Map<string, number>();
+    const linePlies = new Map<string, number>();
     let index = -1;
     for (const match of text.matchAll(/[^\n]*(?:\n|$)/g)) {
         const raw = match[0];
@@ -134,6 +137,9 @@ function* parseBookChunks(text: string): Generator<void, BookData> {
                 current = entries.get(key) ?? new Map();
                 entries.set(key, current);
                 entryLines.set(key, index + 1);
+                const ply = Number(line.split(/\s+/)[4]);
+                if (Number.isSafeInteger(ply) && ply > 0 && !linePlies.has(key))
+                    linePlies.set(key, ply);
             } else {
                 const fields = line.split(/\s+/);
                 if (
@@ -166,6 +172,7 @@ function* parseBookChunks(text: string): Generator<void, BookData> {
         }
     }
     const positions = new Map<string, BookMove[]>();
+    const plies = new Map<string, number>();
     const stats = { positions: 0, moves: 0, sente: 0, gote: 0, branches: 0 };
     let processed = 0;
     for (const [key, moves] of entries) {
@@ -179,12 +186,14 @@ function* parseBookChunks(text: string): Generator<void, BookData> {
         }
         stats.positions++;
         positions.set(key, [...moves.values()]);
+        const ply = linePlies.get(key);
+        if (ply !== undefined) plies.set(key, ply);
         stats.moves += moves.size;
         stats[key.split(" ")[1] === "b" ? "sente" : "gote"]++;
         if (moves.size >= 2) stats.branches++;
     }
     warnings.sort((a, b) => a.line - b.line);
-    return { positions, warnings, stats };
+    return { positions, warnings, stats, plies };
 }
 
 export function parseBookExplore(text: string): {

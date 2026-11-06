@@ -43,23 +43,25 @@ const DOCK_LEAVE_MS = 300;
 /**
  * 局面の盤のマスの大きさ。広い画面は木の左下に重ねて幅の DOCK_WIDE_WIDTH・高さの DOCK_WIDE_HEIGHT まで、
  * 狭い画面は木の下に高さの DOCK_NARROW_HEIGHT まで使い、盤の画面の盤と同じ上限まで大きくする。
- * 盤の幅はおよそマス 10.6 個（盤と左右の駒台）と DOCK_FIXED_WIDTH、高さはマス 9 個と DOCK_FIXED_HEIGHT
- * （見出し・座標・余白）。
+ * 持ち駒は盤の上下に置く（左右に置くと、空のときも駒台の幅を取って木を広く隠すので）。盤の幅はおよそ
+ * マス 9.4 個と DOCK_FIXED_WIDTH、高さはマス 10.8 個（盤と上下の持ち駒）と DOCK_FIXED_HEIGHT（見出し・ボタン・余白）。
  */
 const DOCK_MIN_CELL = 16;
 const DOCK_MAX_CELL = 48;
 const DOCK_WIDE_WIDTH = 0.4;
-const DOCK_WIDE_HEIGHT = 0.6;
+const DOCK_WIDE_HEIGHT = 0.7;
 const DOCK_NARROW_HEIGHT = 0.45;
-const DOCK_FIXED_WIDTH = 110;
+const DOCK_FIXED_WIDTH = 40;
 const DOCK_FIXED_HEIGHT = 110;
-const DOCK_WIDTH_IN_CELLS = 10.6;
+const DOCK_WIDTH_IN_CELLS = 9.4;
+const DOCK_HEIGHT_IN_CELLS = 10.8;
 
 function dockCellSize(width: number, height: number, narrow: boolean) {
     const byWidth =
         ((narrow ? width : width * DOCK_WIDE_WIDTH) - DOCK_FIXED_WIDTH) / DOCK_WIDTH_IN_CELLS;
     const byHeight =
-        (height * (narrow ? DOCK_NARROW_HEIGHT : DOCK_WIDE_HEIGHT) - DOCK_FIXED_HEIGHT) / 9;
+        (height * (narrow ? DOCK_NARROW_HEIGHT : DOCK_WIDE_HEIGHT) - DOCK_FIXED_HEIGHT) /
+        DOCK_HEIGHT_IN_CELLS;
     return Math.max(
         DOCK_MIN_CELL,
         Math.min(DOCK_MAX_CELL, Math.floor(Math.min(byWidth, byHeight))),
@@ -68,6 +70,13 @@ function dockCellSize(width: number, height: number, narrow: boolean) {
 
 /** 見えている範囲の外にも、この幅（px、拡大率を掛ける前）までは手を描いておく（送ったときに描き遅れが見えないように）。 */
 const CULL_MARGIN = 400;
+/**
+ * 初めからたたんでおく枝の大きさ（その手より先の手の数）。全部開くと、大きな枝の後ろの兄弟の手が何画面も
+ * 下へ押し出されるので、後ろに兄弟のある大きな枝だけは閉じておく（最後の兄弟は誰も押し出さないので開く）。
+ */
+const COLLAPSE_SUBTREE = 40;
+/** 道筋の行に出す、分かれ目の手の数（深い手では前を省く）。 */
+const TRAIL_LIMIT = 12;
 const AREA_STEP = 200;
 
 interface Placed {
@@ -123,6 +132,23 @@ export function layoutBookGraph(
         stack.push(child);
     }
     return { items, byId: new Map(items.map((item) => [item.id, item])), cols, rows };
+}
+
+/** 手ごとの、その先の手の数。子の番号は親より大きいので、後ろから足し上げれば済む。 */
+function descendantCounts(tree: BookTree): Int32Array {
+    const counts = new Int32Array(tree.nodes.length);
+    for (let id = tree.nodes.length - 1; id > 0; id--) {
+        const parent = tree.nodes[id].parent;
+        if (parent !== null) counts[parent] += counts[id] + 1;
+    }
+    return counts;
+}
+
+/** 評価値の色。先手よし（正）は先手の印と同じ朱、後手よし（負）は藍。 */
+export function valueClass(value: number) {
+    if (value > 0) return "text-wafuu-shu";
+    if (value < 0) return "text-wafuu-ai";
+    return "text-wafuu-sumi-light";
 }
 
 function ancestorsOf(tree: BookTree, id: number | undefined): Set<number> {
@@ -210,11 +236,14 @@ function GraphNodes({
     onHover,
     area,
     keep,
+    counts,
 }: {
     tree: BookTree;
     book: BookData;
     layout: BookGraphLayout;
     isOpen: (node: BookTreeNode) => boolean;
+    /** 手ごとの、その先の手の数（たたんだ枝の大きさとして出す）。 */
+    counts: Int32Array;
     compact: boolean;
     onSelect: (id: number) => void;
     onToggle: (id: number, open: boolean) => void;
@@ -343,7 +372,12 @@ function GraphNodes({
                                         </span>
                                     )}
                                     {value !== undefined && (
-                                        <span className="shrink-0 tabular-nums text-wafuu-sumi-light">
+                                        <span
+                                            className={cn(
+                                                "shrink-0 tabular-nums",
+                                                valueClass(value),
+                                            )}
+                                        >
                                             {value}
                                         </span>
                                     )}
@@ -353,7 +387,7 @@ function GraphNodes({
                         {branch && !compact && (
                             <button
                                 type="button"
-                                aria-label={`${label} の先を${open ? "たたむ" : `開く（${node.children.length} 手）`}`}
+                                aria-label={`${label} の先を${open ? "たたむ" : `開く（${counts[id].toLocaleString("ja-JP")} 手）`}`}
                                 aria-expanded={open}
                                 onClick={() => onToggle(id, !open)}
                                 className="absolute flex items-center justify-center rounded-full border border-wafuu-kincha bg-background text-[10px] leading-none text-wafuu-sumi-light hover:border-wafuu-sumi hover:text-wafuu-sumi"
@@ -365,7 +399,7 @@ function GraphNodes({
                                     paddingInline: open ? 0 : 3,
                                 }}
                             >
-                                {open ? "−" : `+${node.children.length}`}
+                                {open ? "−" : `+${counts[id].toLocaleString("ja-JP")}`}
                             </button>
                         )}
                     </div>
@@ -383,6 +417,24 @@ interface GraphView {
     height: number;
 }
 
+/** 手と評価値の見出し。 */
+function SummaryLine({ tree, book, id }: { tree: BookTree; book: BookData; id: number }) {
+    const node = tree.nodes[id];
+    const value = bookValue(tree, book, node);
+    return (
+        <div className="flex items-baseline gap-2 text-xs text-wafuu-sumi">
+            <span className="font-medium">
+                {node.parent === null
+                    ? "開始局面"
+                    : `${(node.position.ply ?? 1) - 1}手目 ${moveLabel(tree, node)}`}
+            </span>
+            {value !== undefined && (
+                <span className={cn("tabular-nums", valueClass(value))}>評価値 {value}</span>
+            )}
+        </div>
+    );
+}
+
 /** 手を指した後の局面と、その手・評価値の見出し。 */
 function PositionSummary({
     tree,
@@ -398,25 +450,15 @@ function PositionSummary({
     cellSize: number;
 }) {
     const node = tree.nodes[id];
-    const value = bookValue(tree, book, node);
     return (
         <>
-            <div className="flex items-baseline gap-2 text-xs text-wafuu-sumi">
-                <span className="font-medium">
-                    {node.parent === null
-                        ? "開始局面"
-                        : `${(node.position.ply ?? 1) - 1}手目 ${moveLabel(tree, node)}`}
-                </span>
-                {value !== undefined && (
-                    <span className="tabular-nums text-wafuu-sumi-light">評価値 {value}</span>
-                )}
-            </div>
+            <SummaryLine tree={tree} book={book} id={id} />
             <StaticBoardView
                 position={node.position}
                 flipBoard={flipBoard}
                 lastMove={deriveLastMove(node.move)}
                 cellSize={cellSize}
-                handPlacement="sides"
+                handPlacement="rows"
                 handFrame="outline"
                 handSize="compact"
                 hideEmptyHandPieces
@@ -441,11 +483,17 @@ function DockedPosition({
     ref,
     onPointerEnter,
     onPointerLeave,
+    collapsed = false,
+    onCollapse,
 }: {
     tree: BookTree;
     book: BookData;
     id: number;
     hovering: boolean;
+    /** 盤をたたんで見出しだけにしている（狭い画面で木を広く見るとき）。 */
+    collapsed?: boolean;
+    /** 盤をたたむ・出す（狭い画面だけ）。 */
+    onCollapse?: (collapsed: boolean) => void;
     flipBoard: boolean;
     cellSize: number;
     overlay: boolean;
@@ -467,17 +515,35 @@ function DockedPosition({
                     : "items-center border-t border-wafuu-border",
             )}
         >
-            <p className="text-[11px] text-wafuu-sumi-light">
-                {hovering ? "マウスを置いた手" : "選んでいる手"}
-            </p>
-            <PositionSummary
-                tree={tree}
-                book={book}
-                id={id}
-                flipBoard={flipBoard}
-                cellSize={cellSize}
-            />
-            {onOpen && (
+            <div className="flex items-center gap-2 self-stretch">
+                <p className="text-[11px] text-wafuu-sumi-light">
+                    {hovering ? "マウスを置いた手" : "選んでいる手"}
+                </p>
+                {onCollapse && (
+                    <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="ml-auto h-6 px-2 text-xs"
+                        aria-expanded={!collapsed}
+                        onClick={() => onCollapse(!collapsed)}
+                    >
+                        {collapsed ? "盤を出す" : "盤をたたむ"}
+                    </Button>
+                )}
+            </div>
+            {collapsed ? (
+                <SummaryLine tree={tree} book={book} id={id} />
+            ) : (
+                <PositionSummary
+                    tree={tree}
+                    book={book}
+                    id={id}
+                    flipBoard={flipBoard}
+                    cellSize={cellSize}
+                />
+            )}
+            {onOpen && !collapsed && (
                 <Button
                     type="button"
                     size="sm"
@@ -545,11 +611,18 @@ export function BookTreeGraph({
         observer.observe(root);
         return () => observer.disconnect();
     }, [root]);
+    const [boardCollapsed, setBoardCollapsed] = useState(false);
     const [overrides, setOverrides] = useState<ReadonlyMap<number, boolean>>(() => new Map());
     const [zoomSetting, setZoomSetting] = useState(1);
     const zoom = explore ? zoomSetting : 1;
     const compact = zoom < COMPACT_ZOOM;
-    const isOpen = (node: BookTreeNode) => overrides.get(node.id) ?? true;
+    const counts = descendantCounts(tree);
+    const openByDefault = (node: BookTreeNode) => {
+        if (node.parent === null || counts[node.id] <= COLLAPSE_SUBTREE) return true;
+        const siblings = tree.nodes[node.parent].children;
+        return siblings[siblings.length - 1] === node.id;
+    };
+    const isOpen = (node: BookTreeNode) => overrides.get(node.id) ?? openByDefault(node);
     const layout = layoutBookGraph(tree, isOpen);
     const path = ancestorsOf(tree, selected);
     const width = PAD * 2 + layout.cols * COL_WIDTH;
@@ -557,10 +630,13 @@ export function BookTreeGraph({
 
     // たたんだ枝の中の手を選んだら（キー操作・一覧から）、その枝を開き直す。
     const reopenPath = useEffectEvent((ancestors: ReadonlySet<number>) => {
-        if (![...ancestors].some((id) => id !== selected && overrides.get(id) === false)) return;
+        const closed = [...ancestors].filter(
+            (id) => id !== selected && tree.nodes[id] && !isOpen(tree.nodes[id]),
+        );
+        if (closed.length === 0) return;
         setOverrides((current) => {
             const next = new Map(current);
-            for (const id of ancestors) if (id !== selected) next.delete(id);
+            for (const id of closed) next.set(id, true);
             return next;
         });
     });
@@ -570,12 +646,7 @@ export function BookTreeGraph({
     function toggle(id: number, open: boolean) {
         // 選んでいる手の祖先をたたむときは、たたんだ手を選び直す（選んだ手が見えなくならないように）。
         if (!open && path.has(id) && id !== selected) onSelect(id);
-        setOverrides((current) => {
-            const next = new Map(current);
-            if (open) next.delete(id);
-            else next.set(id, false);
-            return next;
-        });
+        setOverrides((current) => new Map(current).set(id, open));
     }
 
     // 木の中で押した手は、選び直して木の形が変わっても画面の同じ位置に残す（押した手を見失わないように）。
@@ -870,6 +941,18 @@ export function BookTreeGraph({
         if (child && parent) pathEdges.push(edgePath(parent, child, area));
     }
     const dock = explore && previewMode === "dock";
+    const rootPly = tree.nodes[0].position.ply ?? 1;
+    // 開始局面から選んだ手までの、分かれ目で選んだ手（一本道の手は省く）。
+    const forks = [...path]
+        .map((id) => tree.nodes[id])
+        .filter(
+            (node) =>
+                node.parent === null ||
+                node.id === selected ||
+                tree.nodes[node.parent].children.length > 1,
+        )
+        .sort((a, b) => (a.position.ply ?? 0) - (b.position.ply ?? 0));
+    const trail = forks.length > TRAIL_LIMIT ? forks.slice(-TRAIL_LIMIT) : forks;
     const dockedId = docked !== null && tree.nodes[docked] ? docked : selected;
     const dockCell = dockCellSize(rootSize.width, rootSize.height, narrow);
     const board = (
@@ -885,17 +968,53 @@ export function BookTreeGraph({
             ref={narrow ? undefined : setDockBox}
             onPointerEnter={keepDocked}
             onPointerLeave={releaseDocked}
+            collapsed={narrow && boardCollapsed}
+            onCollapse={narrow ? setBoardCollapsed : undefined}
         />
     );
     return (
         <div
             ref={setRoot}
-            className={cn(
-                "flex min-h-0 min-w-0 overflow-hidden",
-                dock && narrow && "flex-col",
-                className,
-            )}
+            className={cn("flex min-h-0 min-w-0 flex-col overflow-hidden", className)}
         >
+            {forks.length > 1 && (
+                <nav
+                    aria-label="選んだ手までの道筋"
+                    className={cn(
+                        "flex shrink-0 items-center gap-1 overflow-x-auto border-b border-wafuu-border px-2 py-1 text-xs whitespace-nowrap",
+                        // 盤の画面では、右上の「全画面」ボタンの下に入らないようにする。
+                        !explore && "pr-16",
+                    )}
+                >
+                    {trail[0].parent !== null && (
+                        <span aria-hidden="true" className="text-muted-foreground">
+                            …
+                        </span>
+                    )}
+                    {trail.map((node, index) => (
+                        <span key={node.id} className="flex items-center gap-1">
+                            {index > 0 && (
+                                <span aria-hidden="true" className="text-muted-foreground">
+                                    ›
+                                </span>
+                            )}
+                            <button
+                                type="button"
+                                aria-current={node.id === selected ? "step" : undefined}
+                                onClick={() => onSelect(node.id)}
+                                className={cn(
+                                    "rounded px-1 py-0.5 hover:bg-wafuu-washi-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                    node.id === selected && "bg-wafuu-kin font-semibold",
+                                )}
+                            >
+                                {node.parent === null
+                                    ? "開始"
+                                    : `${(node.position.ply ?? 1) - 1} ${moveLabel(tree, node)}`}
+                            </button>
+                        </span>
+                    ))}
+                </nav>
+            )}
             <div className="relative flex min-h-0 min-w-0 flex-1">
                 <section
                     ref={frame}
@@ -931,7 +1050,7 @@ export function BookTreeGraph({
                                                 className="absolute top-0 text-[11px] leading-[22px] tabular-nums text-wafuu-sumi-light"
                                                 style={{ left: boxLeft(col) + 4 }}
                                             >
-                                                {col === 0 ? "開始" : `${col}手目`}
+                                                {col === 0 ? "開始" : `${col + rootPly - 1}手目`}
                                             </span>
                                         ),
                                     )}
@@ -941,6 +1060,7 @@ export function BookTreeGraph({
                                 book={book}
                                 layout={layout}
                                 isOpen={isOpen}
+                                counts={counts}
                                 compact={compact}
                                 onSelect={selectFromGraph}
                                 onToggle={toggle}

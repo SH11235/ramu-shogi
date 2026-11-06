@@ -160,7 +160,8 @@ export function BookTreeViewer({
         document.addEventListener("keydown", trap);
         return () => document.removeEventListener("keydown", trap);
     }, [dialog]);
-    const { session, tree } = useBookTree(book?.data, fetchLegalMoves);
+    const [rootKey, setRootKey] = useState<string | undefined>(undefined);
+    const { session, tree } = useBookTree(book?.data, fetchLegalMoves, rootKey);
     const [body, setBody] = useState<HTMLDivElement | null>(null);
     const size = useElementSize(body);
     const fileRef = useRef<HTMLInputElement>(null);
@@ -228,6 +229,7 @@ export function BookTreeViewer({
             const data = await parseBookAsync(text, () => id !== readId.current);
             if (id !== readId.current) return;
             setBook({ id, name: file.name, data });
+            setRootKey(undefined);
             setSelected(0);
         } catch {
             if (id === readId.current) setError("ファイルを読み込めませんでした");
@@ -466,6 +468,15 @@ export function BookTreeViewer({
     const status = !tree
         ? null
         : `${tree.expanded.toLocaleString("ja-JP")} 局面を展開${tree.building ? "・組み立て中…" : tree.capped ? "・自動で展開する上限に達しました（未展開の手は選ぶと読み込みます）" : ""}`;
+    // 組み立ての進み具合。分母は定跡の局面数（と自動で展開する上限）なので、届かない局面があれば 100% の前で終わる。
+    const progress =
+        tree?.building && tree.goal > 0
+            ? Math.min(99, Math.floor((tree.expanded / tree.goal) * 100))
+            : null;
+    const rootLabel = (key: string, index: number) => {
+        const ply = book?.data.plies?.get(key);
+        return `候補 ${index + 1}${ply === undefined ? "" : `（${ply}手目の局面）`}`;
+    };
 
     return (
         <div
@@ -511,10 +522,55 @@ export function BookTreeViewer({
                         </ul>
                     </details>
                 )}
+                {tree && tree.roots.length > 0 && (
+                    <div className="flex items-center gap-1 text-xs text-wafuu-sumi-light">
+                        <span title="平手から定跡に入れないので、定跡の中の局面から始めます">
+                            開始局面
+                        </span>
+                        {tree.roots.length > 1 ? (
+                            <select
+                                aria-label="開始局面"
+                                value={rootKey ?? tree.roots[0]}
+                                onChange={(event) => {
+                                    setRootKey(event.target.value);
+                                    setSelected(0);
+                                    skipped.current = null;
+                                }}
+                                className="rounded border border-wafuu-border bg-background px-1 py-0.5 text-xs text-wafuu-sumi"
+                            >
+                                {tree.roots.map((key, index) => (
+                                    <option key={key} value={key}>
+                                        {rootLabel(key, index)}
+                                    </option>
+                                ))}
+                            </select>
+                        ) : (
+                            <span className="text-wafuu-sumi">定跡の中の局面</span>
+                        )}
+                    </div>
+                )}
                 {status && (
-                    <output aria-live="polite" className="ml-auto text-xs text-muted-foreground">
-                        {status}
-                    </output>
+                    <div className="ml-auto flex items-center gap-2">
+                        {progress !== null && (
+                            <div
+                                role="progressbar"
+                                aria-label="木の組み立て"
+                                aria-valuemin={0}
+                                aria-valuemax={100}
+                                aria-valuenow={progress}
+                                className="h-1.5 w-20 overflow-hidden rounded-full bg-wafuu-washi-warm"
+                            >
+                                <div
+                                    className="h-full bg-wafuu-kincha transition-[width]"
+                                    style={{ width: `${progress}%` }}
+                                />
+                            </div>
+                        )}
+                        <output aria-live="polite" className="text-xs text-muted-foreground">
+                            {progress !== null && `${progress}%・`}
+                            {status}
+                        </output>
+                    </div>
                 )}
             </div>
             {error && (
