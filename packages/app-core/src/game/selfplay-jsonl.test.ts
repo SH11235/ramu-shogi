@@ -257,3 +257,35 @@ describe("parseSelfplayJsonl の欠けた行", () => {
         expect(() => parseSelfplayJsonl(text)).toThrow("手番が前の手と同じです");
     });
 });
+
+describe("parseSelfplayJsonl の末尾の欠け", () => {
+    const B = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1";
+    const move = JSON.stringify({
+        type: "move",
+        game_id: 1,
+        ply: 1,
+        sfen_before: B,
+        move_usi: "7g7f",
+    });
+    const result = (extra: object) =>
+        JSON.stringify({
+            type: "result",
+            game_id: 1,
+            outcome: "white_win",
+            reason: "resign",
+            ...extra,
+        });
+
+    it("結果の手数まで手の行が無ければ断る", () => {
+        expect(() => parseSelfplayJsonl([move, result({ plies: 3 })].join("\n"))).toThrow(
+            "末尾の手の行が欠けています",
+        );
+    });
+
+    it("打ち切りの局は、記録する前に止めた 1 手ぶんを許す", () => {
+        const text = [move, result({ outcome: "in_progress", reason: "watchdog", plies: 2 })].join(
+            "\n",
+        );
+        expect(parseSelfplayJsonl(text).games[0].moves).toEqual(["7g7f"]);
+    });
+});

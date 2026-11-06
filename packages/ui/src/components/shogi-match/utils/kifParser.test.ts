@@ -318,3 +318,22 @@ describe("parseKif の局面図（BOD）の筋の番号", () => {
         expect(result.startSfen).toBe("4k4/9/9/9/9/9/9/9/4K4 b - 1");
     });
 });
+
+describe("parseKif の区切り行の無い KIF と局面図", () => {
+    it("半角の筋や番号の無い指し手のあとの局面図を開始局面にしない", () => {
+        const board = [
+            "後手の持駒：なし",
+            "| ・ ・ ・ ・v玉 ・ ・ ・ ・|一",
+            ...["二", "三", "四", "五", "六", "七", "八"].map(
+                (rank) => `| ・ ・ ・ ・ ・ ・ ・ ・ ・|${rank}`,
+            ),
+            "| ・ ・ ・ ・ 玉 ・ ・ ・ ・|九",
+            "先手の持駒：なし",
+        ];
+        for (const first of ["1 7六歩(77)", "７六歩(77)"]) {
+            const result = parseKif(["手合割：平手", first, ...board].join("\n"));
+            expect(result.startSfen).toBe("startpos");
+            expect(result.moves).toEqual(["7g7f"]);
+        }
+    });
+});

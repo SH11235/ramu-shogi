@@ -346,9 +346,11 @@ function parseBodPosition(lines: readonly string[]): string | null {
     let moveNumber = 1;
     for (const raw of lines) {
         const line = raw.trim();
-        // 指し手の区切り行か最初の指し手の行で止める（指し手のあとに書かれた局面図を開始局面にしない）。
-        // 半角で書いた筋の番号の行（`9  8  7 …`）は指し手の行ではない。
-        if (/^手数-+/.test(line) || /^\d+\s+[^\d\s]/.test(line) || /^[▲△☗☖]/.test(line)) break;
+        // 指し手の区切り行か、指し手として読める最初の行で止める（指し手のあとに書かれた局面図を
+        // 開始局面にしない）。筋の番号の行（`9  8  7 …`）は指し手として読めないので、ここでは止まらない。
+        if (/^手数-+/.test(line) || /^[▲△☗☖]/.test(line) || parseKifLine(line, null) !== null) {
+            break;
+        }
         const hand = line.match(/^(先手|後手|下手|上手)の持駒[：:](.*)$/);
         if (hand) {
             hands.push({ side: hand[1], text: hand[2], line });

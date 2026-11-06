@@ -300,6 +300,17 @@ export function parseSelfplayJsonl(text: string): SelfplayJsonlLog {
                 throw new Error(`第${gameId}局の ${raw.ply} 手目の手番が前の手と同じです`);
             }
         });
+        // 末尾の行が欠けていないか、結果の手数と照らす。結果の手数は最後に記録した手の手数と同じ
+        // （打ち切りの局だけは、記録する前に止めた手のぶん 1 つ多いことがある）。
+        const resultRowForCheck = resultsById.get(gameId);
+        const resultPlies = num(resultRowForCheck?.plies);
+        const lastPly = rawMoves[rawMoves.length - 1]?.ply ?? 0;
+        const slack = resultRowForCheck?.outcome === "in_progress" ? 1 : 0;
+        if (resultPlies !== undefined && lastPly + slack < resultPlies) {
+            throw new Error(
+                `第${gameId}局の末尾の手の行が欠けています（結果は ${resultPlies} 手、記録は ${lastPly} 手まで）`,
+            );
+        }
         for (const raw of rawMoves) {
             if (raw.turn === "b" && senteName === undefined) senteName = raw.engine;
             if (raw.turn === "w" && goteName === undefined) goteName = raw.engine;
