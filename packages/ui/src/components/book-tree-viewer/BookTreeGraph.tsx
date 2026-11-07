@@ -86,6 +86,21 @@ const COLLAPSE_SUBTREE = 40;
 const TRAIL_LIMIT = 12;
 const AREA_STEP = 200;
 
+/** 手の箱と局面の欄に出す評価値（先手から見た値）。`value` は色を決め、`text` を出す。 */
+export interface BookTreeValue {
+    value: number;
+    text: string;
+}
+export type BookTreeValueOf = (node: BookTreeNode) => BookTreeValue | undefined;
+
+/** 定跡に書かれた評価値を、箱に出す形にする。 */
+function bookValueOf(tree: BookTree, book: BookData): BookTreeValueOf {
+    return (node) => {
+        const value = bookValue(tree, book, node);
+        return value === undefined ? undefined : { value, text: String(value) };
+    };
+}
+
 interface Placed {
     id: number;
     col: number;
@@ -212,7 +227,7 @@ function AreaSvg({ area, children }: { area: GraphView; children: ReactNode }) {
 
 function GraphNodes({
     tree,
-    book,
+    valueFor,
     layout,
     isOpen,
     compact,
@@ -224,7 +239,7 @@ function GraphNodes({
     counts,
 }: {
     tree: BookTree;
-    book: BookData;
+    valueFor: BookTreeValueOf;
     layout: BookGraphLayout;
     isOpen: (node: BookTreeNode) => boolean;
     /** 手ごとの、その先の手の数（たたんだ枝の大きさとして出す）。 */
@@ -303,7 +318,7 @@ function GraphNodes({
             {shown.map(({ id, col, row }) => {
                 const node = tree.nodes[id];
                 const label = moveLabel(tree, node);
-                const value = bookValue(tree, book, node);
+                const value = valueFor(node);
                 const mark = node.parent === null ? "" : label.slice(0, 1);
                 const branch =
                     node.children.length > 1 || (node.children.length > 0 && !isOpen(node));
@@ -321,7 +336,7 @@ function GraphNodes({
                             data-node={id}
                             aria-label={[
                                 label,
-                                value === undefined ? "" : `評価値 ${value}`,
+                                value === undefined ? "" : `評価値 ${value.text}`,
                                 ...notes,
                             ]
                                 .filter(Boolean)
@@ -387,10 +402,10 @@ function GraphNodes({
                                         <span
                                             className={cn(
                                                 "shrink-0 tabular-nums",
-                                                valueClass(value),
+                                                valueClass(value.value),
                                             )}
                                         >
-                                            {value}
+                                            {value.text}
                                         </span>
                                     )}
                                 </>
@@ -431,9 +446,17 @@ interface GraphView {
 }
 
 /** 手と評価値の見出し。 */
-function SummaryLine({ tree, book, id }: { tree: BookTree; book: BookData; id: number }) {
+function SummaryLine({
+    tree,
+    valueFor,
+    id,
+}: {
+    tree: BookTree;
+    valueFor: BookTreeValueOf;
+    id: number;
+}) {
     const node = tree.nodes[id];
-    const value = bookValue(tree, book, node);
+    const value = valueFor(node);
     return (
         <div className="flex items-baseline gap-2 text-xs text-wafuu-sumi">
             <span className="font-medium">
@@ -442,7 +465,9 @@ function SummaryLine({ tree, book, id }: { tree: BookTree; book: BookData; id: n
                     : `${(node.position.ply ?? 1) - 1}手目 ${moveLabel(tree, node)}`}
             </span>
             {value !== undefined && (
-                <span className={cn("tabular-nums", valueClass(value))}>評価値 {value}</span>
+                <span className={cn("tabular-nums", valueClass(value.value))}>
+                    評価値 {value.text}
+                </span>
             )}
         </div>
     );
@@ -451,14 +476,14 @@ function SummaryLine({ tree, book, id }: { tree: BookTree; book: BookData; id: n
 /** 手を指した後の局面と、その手・評価値の見出し。 */
 function PositionSummary({
     tree,
-    book,
+    valueFor,
     id,
     flipBoard,
     cellSize,
     handPlacement,
 }: {
     tree: BookTree;
-    book: BookData;
+    valueFor: BookTreeValueOf;
     id: number;
     flipBoard: boolean;
     cellSize: number;
@@ -467,7 +492,7 @@ function PositionSummary({
     const node = tree.nodes[id];
     return (
         <>
-            <SummaryLine tree={tree} book={book} id={id} />
+            <SummaryLine tree={tree} valueFor={valueFor} id={id} />
             <StaticBoardView
                 position={node.position}
                 flipBoard={flipBoard}
@@ -488,7 +513,7 @@ function PositionSummary({
  */
 function DockedPosition({
     tree,
-    book,
+    valueFor,
     id,
     hovering,
     flipBoard,
@@ -502,7 +527,7 @@ function DockedPosition({
     onCollapse,
 }: {
     tree: BookTree;
-    book: BookData;
+    valueFor: BookTreeValueOf;
     id: number;
     hovering: boolean;
     /** 盤をたたんで見出しだけにしている（狭い画面で木を広く見るとき）。 */
@@ -548,11 +573,11 @@ function DockedPosition({
                 )}
             </div>
             {collapsed ? (
-                <SummaryLine tree={tree} book={book} id={id} />
+                <SummaryLine tree={tree} valueFor={valueFor} id={id} />
             ) : (
                 <PositionSummary
                     tree={tree}
-                    book={book}
+                    valueFor={valueFor}
                     id={id}
                     flipBoard={flipBoard}
                     cellSize={cellSize}
@@ -590,10 +615,13 @@ function wheelPixels(event: WheelEvent, delta: number, page: number) {
  * 選んだ手までの道筋を強調し、選ぶたびにその手が見える位置まで送る。
  * 縦に送る余地が無いときは、ホイールを横に送る向きに使う。空いた所はマウスで引いて動かせる。
  * `explore` では、拡大縮小・木の全体図と、局面の欄を出す（盤の画面を隠して木を眺めるとき）。
+ * `book` を渡すと、評価値は定跡に書かれた値を出し、しおりと「移動」の一覧を出す。
  */
 export function BookTreeGraph({
     tree,
     book,
+    valueFor: givenValueOf,
+    label = "定跡の木",
     selected,
     onSelect,
     flipBoard = false,
@@ -603,7 +631,11 @@ export function BookTreeGraph({
     className,
 }: {
     tree: BookTree;
-    book: BookData;
+    book?: BookData;
+    /** 箱に出す評価値。省くと `book` に書かれた値。 */
+    valueFor?: BookTreeValueOf;
+    /** 木の枠の名前（読み上げ用）。 */
+    label?: string;
     selected: number;
     onSelect: (id: number) => void;
     /** 局面の欄の盤を、後手を手前にして描く。 */
@@ -615,6 +647,8 @@ export function BookTreeGraph({
     onActivate?: (id: number) => void;
     className?: string;
 }): ReactElement {
+    const valueFor: BookTreeValueOf =
+        givenValueOf ?? (book ? bookValueOf(tree, book) : () => undefined);
     const frame = useRef<HTMLElement>(null);
     const [root, setRoot] = useState<HTMLDivElement | null>(null);
     const [rootSize, setRootSize] = useState({ width: 0, height: 0 });
@@ -1063,7 +1097,7 @@ export function BookTreeGraph({
     const board = (
         <DockedPosition
             tree={tree}
-            book={book}
+            valueFor={valueFor}
             id={dockedId}
             hovering={dockedId !== selected}
             flipBoard={flipBoard}
@@ -1122,32 +1156,36 @@ export function BookTreeGraph({
                         </span>
                     ))}
                 </nav>
-                <button
-                    type="button"
-                    aria-pressed={bookmarked}
-                    onClick={toggleBookmark}
-                    className={cn(
-                        "shrink-0 rounded border border-wafuu-border px-1.5 py-0.5 hover:bg-wafuu-washi-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                        bookmarked && "border-wafuu-kincha bg-wafuu-kin/40 font-semibold",
-                    )}
-                >
-                    しおり
-                </button>
-                <button
-                    ref={jumpButton}
-                    type="button"
-                    aria-expanded={jumpOpen}
-                    onClick={() => setJumpOpen((open) => !open)}
-                    className={cn(
-                        "shrink-0 rounded border border-wafuu-border px-1.5 py-0.5 hover:bg-wafuu-washi-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                        jumpOpen && "bg-wafuu-washi-warm",
-                    )}
-                >
-                    移動
-                </button>
+                {book && (
+                    <>
+                        <button
+                            type="button"
+                            aria-pressed={bookmarked}
+                            onClick={toggleBookmark}
+                            className={cn(
+                                "shrink-0 rounded border border-wafuu-border px-1.5 py-0.5 hover:bg-wafuu-washi-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                bookmarked && "border-wafuu-kincha bg-wafuu-kin/40 font-semibold",
+                            )}
+                        >
+                            しおり
+                        </button>
+                        <button
+                            ref={jumpButton}
+                            type="button"
+                            aria-expanded={jumpOpen}
+                            onClick={() => setJumpOpen((open) => !open)}
+                            className={cn(
+                                "shrink-0 rounded border border-wafuu-border px-1.5 py-0.5 hover:bg-wafuu-washi-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                jumpOpen && "bg-wafuu-washi-warm",
+                            )}
+                        >
+                            移動
+                        </button>
+                    </>
+                )}
             </div>
             <div className="relative flex min-h-0 min-w-0 flex-1">
-                {jumpOpen && (
+                {jumpOpen && book && (
                     <BookTreeJump
                         tree={tree}
                         book={book}
@@ -1159,7 +1197,7 @@ export function BookTreeGraph({
                 )}
                 <section
                     ref={frame}
-                    aria-label="定跡の木"
+                    aria-label={label}
                     // 一覧から選んだあとにフォーカスを戻せるように（木が枠に収まってスクロールしないときも）。
                     tabIndex={-1}
                     onScroll={() => {
@@ -1200,7 +1238,7 @@ export function BookTreeGraph({
                             </div>
                             <GraphNodes
                                 tree={tree}
-                                book={book}
+                                valueFor={valueFor}
                                 layout={layout}
                                 isOpen={isOpen}
                                 counts={counts}

@@ -83,6 +83,7 @@ import {
     showsStudySaveStrip,
 } from "./study-workspace/StudySaveStatus";
 import { StudyTitleDialog } from "./study-workspace/StudyTitleDialog";
+import { StudyTreeDialog } from "./study-workspace/StudyTreeDialog";
 import { StudyWorkspaceHeader } from "./study-workspace/StudyWorkspaceHeader";
 import {
     exportStudyLineToCsa,
@@ -290,6 +291,8 @@ export function StudyWorkspaceView({
     // 「その他の操作」を開いている間は、矢印キーで局面を動かさない（コピー・対局に渡す局面が、
     // メニューの中でのキー操作で変わってしまうため）。
     const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+    const [isTreeOpen, setIsTreeOpen] = useState(false);
+    const treeOpener = useRef<HTMLElement | null>(null);
     const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
     const comments = useStudyCommentDrafts({
         initialDrafts: initialCommentDrafts,
@@ -363,7 +366,8 @@ export function StudyWorkspaceView({
             deleteTargetId !== null ||
             isSettingsOpen ||
             isTitleDialogOpen ||
-            isMoreMenuOpen,
+            isMoreMenuOpen ||
+            isTreeOpen,
         containerRef: boardSectionRef,
         enableWheelNavigation: displaySettings.enableWheelNavigation,
     });
@@ -898,6 +902,10 @@ export function StudyWorkspaceView({
             onBackToMainLine={nav.backToMainLine}
             onPromoteToMainLine={editing.promoteLineToMain}
             onRequestDeleteVariation={setDeleteTargetId}
+            onOpenTree={(opener) => {
+                treeOpener.current = opener;
+                setIsTreeOpen(true);
+            }}
             // スマートフォンでは一覧の場所いっぱいに広げ、中で送る（手が少なくても下が空かないように）。
             className={isMobile ? "min-h-0 flex-1" : isWide ? "max-h-full" : "max-h-[26rem]"}
         />
@@ -1193,6 +1201,16 @@ export function StudyWorkspaceView({
                 canStart={!locked && analysis.mode === null && !analysisBlocked}
                 onStartFull={startFull}
                 onOpenNnueLibrary={onOpenNnueLibrary}
+            />
+
+            <StudyTreeDialog
+                open={isTreeOpen}
+                onOpenChange={setIsTreeOpen}
+                tree={tree}
+                currentNodeId={currentNodeId}
+                onSelect={(nodeId) => navigateTo(nodeId)}
+                flipBoard={flipBoard}
+                returnFocus={treeOpener}
             />
 
             <StudyDeleteVariationDialog

@@ -589,6 +589,61 @@ describe("StudyWorkspaceView", () => {
         ).toBeTruthy();
     });
 
+    it("木で見ると本譜と変化が図に並び、木で選んだ手が研究ノートの局面になる", async () => {
+        const { doc, ids } = createTestStudy();
+        const branched = applyStudyOps(doc, [
+            { type: "addMoves", parentId: ids[0], moves: ["5g5f"] },
+        ]);
+        render(<Harness initialDoc={branched} />);
+        // クリックでボタンにフォーカスが移らないブラウザと同じく、フォーカスは移さずに押す。
+        fireEvent.click(within(moveList()).getByRole("button", { name: "木で見る" }));
+        const dialog = screen.getByRole("dialog", { name: "変化の木" });
+        const graph = within(dialog).getByRole("region", { name: "変化の木" });
+        fireEvent.click(within(graph).getByRole("button", { name: /^☗5六歩/ }));
+        expect(within(dialog).getByText("1手目 ☗5六歩(57)", { selector: "output" })).toBeTruthy();
+        // ↑ で同じ局面からの別の手（本譜の ☗7六歩）へ、→ でその先の手へ移る。
+        fireEvent.keyDown(graph, { key: "ArrowUp" });
+        fireEvent.keyDown(graph, { key: "ArrowRight" });
+        expect(within(dialog).getByText("2手目 ☖3四歩(33)", { selector: "output" })).toBeTruthy();
+        fireEvent.click(within(dialog).getByRole("button", { name: "盤に戻る" }));
+        expect(screen.queryByRole("dialog", { name: "変化の木" })).toBeNull();
+        expect(currentMove()).toContain("☖3四歩(33)");
+        // 開くボタンを Radix の Trigger にしていないので、閉じたら自分で戻す。
+        await waitFor(() => expect(document.activeElement?.textContent).toBe("木で見る"));
+    });
+
+    it("木を開いている間に別の画面で手が足されても、選んでいる手のまま新しい手を描く", () => {
+        const { doc, ids } = createTestStudy();
+        const branched = applyStudyOps(doc, [
+            { type: "addMoves", parentId: ids[0], moves: ["5g5f"] },
+        ]);
+        let external: (ops: StudyOp[]) => void = () => {};
+        render(
+            <Harness
+                initialDoc={branched}
+                onExternal={(apply) => {
+                    external = apply;
+                }}
+            />,
+        );
+        fireEvent.click(within(moveList()).getByRole("button", { name: "木で見る" }));
+        const dialog = screen.getByRole("dialog", { name: "変化の木" });
+        const graph = within(dialog).getByRole("region", { name: "変化の木" });
+        fireEvent.click(within(graph).getByRole("button", { name: /^☗5六歩/ }));
+        const before = within(graph).queryAllByRole("button", { name: /^☖8四歩/ }).length;
+        // 本譜の枝（木の番号で前にある枝）に手が増え、☗5六歩の番号がずれる。
+        act(() => external([{ type: "addMoves", parentId: ids[1], moves: ["8c8d"] }]));
+        expect(within(dialog).getByText("1手目 ☗5六歩(57)", { selector: "output" })).toBeTruthy();
+        // 木の形が変わると図を作り直すので、枠を取り直す。
+        const rebuilt = within(dialog).getByRole("region", { name: "変化の木" });
+        expect(within(rebuilt).getAllByRole("button", { name: /^☖8四歩/ })).toHaveLength(
+            before + 1,
+        );
+        expect(within(dialog).getByRole("complementary", { name: "局面" }).textContent).toContain(
+            "☗5六歩(57)",
+        );
+    });
+
     it("見ている変化を本譜と入れ替えると、子の並びを入れ替える操作が流れ、元の本譜は変化として残る", async () => {
         const { doc, ids } = createTestStudy();
         const onOps = vi.fn();
