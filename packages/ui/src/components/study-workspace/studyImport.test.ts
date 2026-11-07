@@ -5,7 +5,11 @@ const CSA_TEXT = ["V2.2", "N+先手", "N-後手", "PI", "+", "+7776FU,T4", "-333
 
 describe("parseKifuTextForStudy", () => {
     it("CSA は全文をそのまま材料にする（対局者名・評価値ごと取り込めるように）", () => {
-        expect(parseKifuTextForStudy(CSA_TEXT)).toEqual({ kind: "csa", csa: CSA_TEXT });
+        expect(parseKifuTextForStudy(CSA_TEXT)).toEqual({
+            kind: "csa",
+            csa: CSA_TEXT,
+            title: "先手 対 後手",
+        });
     });
 
     it("SFEN は開始局面と手順にする", () => {
@@ -50,6 +54,7 @@ describe("parseKifuTextForStudy", () => {
             kind: "moves",
             startSfen: "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
             moves: [],
+            title: "a 対 b",
         });
         // 局面の行は、字下げやカンマ区切りでも読む（CSA の解析と同じ）。
         for (const csa of [
@@ -99,6 +104,7 @@ describe("parseKifuTextForStudy", () => {
             kind: "moves",
             startSfen: "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
             moves: [],
+            title: "a 対 b",
         });
     });
 
@@ -250,6 +256,40 @@ describe("parseKifuTextForStudy", () => {
             kind: "moves",
             moves: ["7g7f", "pass", "2g2f"],
         });
+    });
+});
+
+describe("parseKifuTextForStudy の表題", () => {
+    const kif = (...headers: string[]) =>
+        [...headers, "手合割：平手", "手数----指手---------消費時間--", "1 ７六歩(77)"].join("\n");
+    const titleOf = (text: string, sourceName?: string) => {
+        const source = parseKifuTextForStudy(text, sourceName);
+        return source.kind === "selfplay_jsonl" ? undefined : source.title;
+    };
+
+    it("KIF は「表題」、対局者、「棋戦」の順に使う", () => {
+        expect(titleOf(kif("表題：第1局", "棋戦：竜王戦", "先手：A", "後手：B"))).toBe("第1局");
+        expect(titleOf(kif("棋戦：竜王戦", "先手：A", "後手：B"))).toBe("A 対 B");
+        expect(titleOf(kif("棋戦：竜王戦", "先手：A"))).toBe("竜王戦");
+        // 駒落ちの棋譜は下手・上手で書く（下手が先手の側）。
+        expect(titleOf(kif("下手：C", "上手：D"))).toBe("C 対 D");
+        // 値の空の見出しは使わず、コメントの中の「先手：」は見出しにしない。
+        expect(titleOf(kif("表題：", "先手：A", "後手：B"))).toBe("A 対 B");
+        expect(titleOf(`${kif()}\n*先手：X\n*後手：Y`)).toBeUndefined();
+    });
+
+    it("見出しから決まらなければ、拡張子を除いたファイル名を使う", () => {
+        expect(titleOf(kif(), "aigakari_move57.kif")).toBe("aigakari_move57");
+        expect(titleOf(kif("先手：A", "後手：B"), "game.kif")).toBe("A 対 B");
+        expect(titleOf(CSA_TEXT.replace("N+先手\n", ""), "floodgate.csa")).toBe("floodgate");
+        expect(titleOf("startpos moves 7g7f", "line.sfen")).toBe("line");
+        expect(titleOf("startpos", "position.txt")).toBe("position");
+    });
+
+    it("手がかりが無ければ表題を決めない（取り込む側が日時つきの表題にする）", () => {
+        expect(titleOf(kif())).toBeUndefined();
+        expect(titleOf("startpos moves 7g7f")).toBeUndefined();
+        expect(titleOf(kif(), ".kif")).toBeUndefined();
     });
 });
 

@@ -300,11 +300,13 @@ export function openStudyFromGameRecord(
 }
 
 /**
- * 対局者名の無い棋譜の表題（例: 「取り込んだ棋譜（10/12）」）。あとから画面で変えられる。
- * 指し手の無いノート（局面だけ）は「局面の研究（10/12）」にする。
+ * 表題の手がかりの無い棋譜の表題（例: 「取り込んだ棋譜（10/12 18:05）」）。あとから画面で変えられる。
+ * 同じ日にいくつも取り込んでも見分けられるように時刻まで付ける。指し手の無いノート（局面だけ）は
+ * 「局面の研究（10/12 18:05）」にする。
  */
 function importedTitle(hasMoves: boolean, now: Date = new Date()): string {
-    const date = `${now.getMonth() + 1}/${now.getDate()}`;
+    const minutes = String(now.getMinutes()).padStart(2, "0");
+    const date = `${now.getMonth() + 1}/${now.getDate()} ${now.getHours()}:${minutes}`;
     return hasMoves ? `取り込んだ棋譜（${date}）` : `局面の研究（${date}）`;
 }
 
@@ -330,10 +332,15 @@ export async function createStudyFromKifuSource(
         origin,
         build: (id) =>
             source.kind === "csa"
-                ? createStudyDocumentFromCsa({ id, csa: source.csa, origin })
+                ? createStudyDocumentFromCsa({
+                      id,
+                      csa: source.csa,
+                      origin,
+                      title: source.title ?? importedTitle(true),
+                  })
                 : createStudyDocumentFromMoves({
                       id,
-                      title: importedTitle(source.moves.length > 0),
+                      title: source.title ?? importedTitle(source.moves.length > 0),
                       origin,
                       startSfen: source.startSfen,
                       moves: source.moves,

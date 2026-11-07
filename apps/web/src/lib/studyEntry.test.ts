@@ -250,6 +250,29 @@ describe("貼り付けた棋譜の検証", () => {
         expect(await sync.listLocal()).toEqual([]);
     });
 
+    it("材料に表題があればそれを使い、無ければ日時つきの表題にする（対局者名の無い CSA も）", async () => {
+        const api = createApi();
+        const sync = createSync(api);
+        const deps = { sync, api, replayMovesStrict: replayStoppingAt("none") };
+        const titled = await createStudyFromKifuSource(
+            { kind: "moves", startSfen: HIRATE, moves: ["7g7f"], title: "aigakari_move57" },
+            deps,
+        );
+        expect((await sync.load(titled.studyId))?.doc.title).toBe("aigakari_move57");
+        const titledCsa = await createStudyFromKifuSource(
+            parseKifuTextForStudy("V2.2\nPI\n+\n+7776FU", "floodgate.csa"),
+            deps,
+        );
+        expect((await sync.load(titledCsa.studyId))?.doc.title).toBe("floodgate");
+        const csa = await createStudyFromKifuSource(
+            { kind: "csa", csa: "V2.2\nPI\n+\n+7776FU" },
+            deps,
+        );
+        expect((await sync.load(csa.studyId))?.doc.title).toMatch(
+            /^取り込んだ棋譜（\d+\/\d+ \d+:\d{2}）$/,
+        );
+    });
+
     it("指せる手順はそのまま取り込む", async () => {
         const api = createApi();
         const sync = createSync(api);
@@ -269,7 +292,7 @@ describe("貼り付けた棋譜の検証", () => {
             { sync, api, replayMovesStrict: replay },
         );
         const stored = await sync.load(studyId);
-        expect(stored?.doc.title).toMatch(/^局面の研究（\d+\/\d+）$/);
+        expect(stored?.doc.title).toMatch(/^局面の研究（\d+\/\d+ \d+:\d{2}）$/);
         expect(Object.keys(stored?.doc.tree.nodes ?? {})).toHaveLength(1);
         // 局面を読み込めることも確かめている。
         expect(replay).toHaveBeenCalledWith("4k4/9/9/9/9/9/9/9/4K4 b G 1", []);
@@ -376,7 +399,7 @@ describe("/play に読み込んだ棋譜からの入口", () => {
             { sync, api, replayMovesStrict: replay },
         );
         expect(replay).toHaveBeenCalledTimes(1);
-        expect((await sync.load(studyId))?.doc.title).toMatch(/^局面の研究（\d+\/\d+）$/);
+        expect((await sync.load(studyId))?.doc.title).toMatch(/^局面の研究（\d+\/\d+ \d+:\d{2}）$/);
 
         // 攻め方の玉が無い詰将棋の局面も作れる。同じ側に玉が 2 枚ある局面は断る。
         const tsume = "4k4/9/4P4/9/9/9/9/9/9 b G 1";
@@ -396,7 +419,7 @@ describe("/play に読み込んだ棋譜からの入口", () => {
         ).rejects.toThrow("この局面は研究ノートにできません");
     });
 
-    it("対局者名が無ければ、日付つきの表題にする", async () => {
+    it("対局者名が無ければ、日時つきの表題にする", async () => {
         const api = createApi();
         const sync = createSync(api);
         const { studyId } = await createStudyFromKifuTree(
@@ -404,7 +427,9 @@ describe("/play に読み込んだ棋譜からの入口", () => {
             {},
             { sync, api, replayMovesStrict: async (_sfen, moves) => ({ applied: moves }) },
         );
-        expect((await sync.load(studyId))?.doc.title).toMatch(/^取り込んだ棋譜（\d+\/\d+）$/);
+        expect((await sync.load(studyId))?.doc.title).toMatch(
+            /^取り込んだ棋譜（\d+\/\d+ \d+:\d{2}）$/,
+        );
     });
 
     it("指した対局のノートは、本譜の最後の手の局面から見始める", async () => {

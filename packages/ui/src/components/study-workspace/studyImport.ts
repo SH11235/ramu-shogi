@@ -24,13 +24,14 @@ import { sidesWithoutKing, validateEditedPosition } from "../shogi-match/utils/b
 import { parseKif, parseSfen } from "../shogi-match/utils/kifParser";
 import { detectKifuTextFormat } from "../shogi-match/utils/kifuImport";
 
-/** 研究ノートを作る材料。 */
+/** 研究ノートを作る材料。`title` は棋譜の見出し・ファイル名から決めた表題（無ければ取り込む側が決める）。 */
 export type StudyKifuSource =
     /** CSA 棋譜の全文（対局者名・評価値・読み筋・消費時間ごと取り込む）。 */
-    | { kind: "csa"; csa: string }
+    | { kind: "csa"; csa: string; title?: string }
     /** 開始局面と本譜の手順（KIF・SFEN）。 */
     | {
           kind: "moves";
+          title?: string;
           startSfen: string;
           moves: string[];
           /** `moves` と同じ順の、棋譜に付いていた評価値・消費時間。無ければ省略。 */
@@ -208,11 +209,60 @@ const assertStandardMoves = (moves: readonly string[], prefix = ""): void => {
     }
 };
 
+/** KIF の見出しのうち、表題に使うもの。 */
+const KIF_TITLE_HEADER = /^(表題|棋戦|先手|後手|下手|上手)[：:](.*)$/;
+
+/** KIF の見出しから表題を決める。「表題」、対局者（「先手 対 後手」）、「棋戦」の順に使う。 */
+function kifTitle(text: string): string | undefined {
+    const headers = new Map<string, string>();
+    for (const line of text.split(/\r?\n/)) {
+        const match = KIF_TITLE_HEADER.exec(line.trim());
+        const value = match?.[2].trim();
+        if (match && value && !headers.has(match[1])) headers.set(match[1], value);
+    }
+    // 駒落ちの棋譜は、先手・後手の代わりに下手・上手と書く（下手が先手の側）。
+    const sente = headers.get("先手") ?? headers.get("下手");
+    const gote = headers.get("後手") ?? headers.get("上手");
+    return (
+        headers.get("表題") ??
+        (sente && gote ? `${sente} 対 ${gote}` : undefined) ??
+        headers.get("棋戦")
+    );
+}
+
+/** CSA の対局者名から表題を決める（両方あるときだけ）。 */
+function csaTitle(text: string): string | undefined {
+    try {
+        const record = parseCsaGameRecord(text);
+        const sente = record.senteName?.trim();
+        const gote = record.goteName?.trim();
+        return sente && gote ? `${sente} 対 ${gote}` : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+/** ファイル名から拡張子を除いたもの。 */
+function fileTitle(sourceName: string | undefined): string | undefined {
+    return sourceName?.replace(/\.[^.]*$/, "").trim() || undefined;
+}
+
 /**
  * 棋譜テキストを判別して、研究ノートの材料にする。失敗時は利用者向けの文言で例外を投げる。
- * `sourceName`（ファイル名など）は、連続対局の JSONL のノートに出どころとして添える。
+ * `sourceName`（ファイル名など）は、表題の手がかりにし、連続対局の JSONL のノートには出どころとして添える。
+ * 表題は、棋譜の見出し（KIF の表題・対局者・棋戦、CSA の対局者）、ファイル名の順に決める。
  */
 export function parseKifuTextForStudy(text: string, sourceName?: string): StudyKifuSource {
+    const source = parseKifuSource(text, sourceName);
+    if (source.kind === "selfplay_jsonl") return source;
+    const format = detectKifuTextFormat(text);
+    const title =
+        (format === "kif" ? kifTitle(text) : format === "csa" ? csaTitle(text) : undefined) ??
+        fileTitle(sourceName);
+    return title ? { ...source, title } : source;
+}
+
+function parseKifuSource(text: string, sourceName: string | undefined): StudyKifuSource {
     if (!text.trim()) {
         throw new Error("入力が空です");
     }
