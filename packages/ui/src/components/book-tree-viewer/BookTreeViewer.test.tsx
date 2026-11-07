@@ -3,6 +3,12 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BookTreeViewer, MAX_BOOK_FILE_BYTES } from "./BookTreeViewer";
+import { loadLastBookFile } from "./lastBookFile";
+
+vi.mock("./lastBookFile", () => ({
+    loadLastBookFile: vi.fn(async () => null),
+    saveLastBookFile: vi.fn(async () => {}),
+}));
 
 const initial = createInitialPositionState();
 function key(...moves: string[]) {
@@ -50,6 +56,21 @@ const current = () =>
 const built = () => screen.findByText(/局面を展開$/);
 
 describe("BookTreeViewer", () => {
+    it("StrictMode でも、最後に開いた定跡を開き直す", async () => {
+        const text = `sfen ${key()}
+7g7f`;
+        // StrictMode ではエフェクトが 2 回走り、1 回目の結果は捨てられるので、どの呼び出しにも返す。
+        vi.mocked(loadLastBookFile).mockResolvedValue(
+            new File([text], "last.db", { type: "text/plain" }),
+        );
+        render(
+            <StrictMode>
+                <BookTreeViewer fetchLegalMoves={async () => []} />
+            </StrictMode>,
+        );
+        expect(await screen.findByText("last.db")).toBeTruthy();
+        vi.mocked(loadLastBookFile).mockResolvedValue(null);
+    });
     it("指し手の一覧と木のどちらから選んでも、盤の局面と木の選択がそろう", async () => {
         render(<BookTreeViewer fetchLegalMoves={async () => []} />);
         await upload(

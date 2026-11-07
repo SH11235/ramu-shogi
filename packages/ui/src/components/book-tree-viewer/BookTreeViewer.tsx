@@ -240,8 +240,9 @@ export function BookTreeViewer({
         }
     }
     // 再読み込みしたら、最後に開いた定跡を開き直す（開くより先にファイルを選んでいたら、そちらを優先する）。
+    const picked = useRef(false);
     const restore = useEffectEvent((file: File) => {
-        if (readId.current === 0) void loadFile(file);
+        if (!picked.current) void loadFile(file);
     });
     useEffect(() => {
         let active = true;
@@ -254,7 +255,10 @@ export function BookTreeViewer({
     }, []);
     // 画面のどこへ落としても読み込む（ファイルを選ぶ欄を探さなくてよいように）。
     const [root, setRoot] = useState<HTMLDivElement | null>(null);
-    const dropFile = useEffectEvent((file: File) => void loadFile(file));
+    const dropFile = useEffectEvent((file: File) => {
+        picked.current = true;
+        void loadFile(file);
+    });
     useEffect(() => {
         if (!root) return;
         const over = (event: DragEvent) => {
@@ -511,7 +515,9 @@ export function BookTreeViewer({
                     onChange={(event) => {
                         const file = event.target.files?.[0];
                         event.target.value = "";
-                        if (file) void loadFile(file);
+                        if (!file) return;
+                        picked.current = true;
+                        void loadFile(file);
                     }}
                 />
                 <output className="min-w-0 truncate text-sm font-medium">
