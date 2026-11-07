@@ -147,14 +147,16 @@ export function createBookTreeBuilder({
      * 局面から始まる戦法を合わせた定跡で、後者を選べるように）。
      */
     let otherRoots: string[] | null = null;
+    /**
+     * 上限で止まった木では足さない。相手の手を登録しない定跡では、相手の手のあとの局面がどれも
+     * 「定跡の手で来ていない局面」になり、展開していない枝の先にあるだけの局面を候補と見分けられないため。
+     */
     async function addOtherRoots() {
+        if (tree.capped) return;
         otherRoots = await findBookRoots(book, () => cancelled);
         if (!cancelled) refreshOtherRoots();
     }
-    /**
-     * 木に出てきた候補を外す。上限で止まった木では、展開していない枝の先にある局面も候補に見えるので、
-     * 枝を展開するたびに外し直す。
-     */
+    /** 木に出てきた候補を外す（枝を読み込み直したあとも）。 */
     function refreshOtherRoots() {
         if (otherRoots === null) return;
         const others = otherRoots.filter((root) => root !== key && !tree.firstByKey.has(root));

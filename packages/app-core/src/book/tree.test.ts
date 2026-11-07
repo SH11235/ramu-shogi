@@ -260,7 +260,7 @@ sfen ${key("2g2f", "8c8d")} 3
         expect(chosen.tree.nodes[0].key).toBe(key(...mid));
         expect(chosen.tree.roots).toEqual([]);
     });
-    it("上限で止まった木の候補は、枝を展開して木に出てきたら外す", async () => {
+    it("上限で止まった木には、平手以外の開始局面の候補を足さない", async () => {
         const text = `sfen ${key()}
 7g7f
 sfen ${key("7g7f", "8c8d")}
@@ -271,7 +271,8 @@ sfen ${key("7g7f", "8c8d")}
             limit: 1,
         });
         await builder.start();
-        expect(builder.tree.roots).toEqual([key(), key("7g7f", "8c8d")]);
+        expect(builder.tree.capped).toBe(true);
+        expect(builder.tree.roots).toEqual([]);
         await builder.expandFrom(1);
         expect(builder.tree.roots).toEqual([]);
     });
