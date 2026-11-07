@@ -1,6 +1,6 @@
 import { applyMoveWithState, createInitialPositionState, type PositionState } from "../game/board";
 import { parseStudySfen } from "../study/sfen";
-import { type BookData, positionToBookKey } from "./book";
+import { type BookData, normalizeBookKey, positionToBookKey } from "./book";
 import { applyUsiMoveStrict } from "./usi-move";
 import { yieldTask } from "./yieldTask";
 
@@ -28,8 +28,9 @@ export interface BookTree {
     capped: boolean;
     legalMovesFailed: boolean;
     /**
-     * 平手が定跡に無いときの、開始局面の候補（定跡の中で、他の局面から定跡の手で来ていない局面）。
-     * 平手から始めるときは空。
+     * 開始局面の候補（定跡の中で、他の局面から定跡の手で来ていない局面）。平手から定跡に入れないときは
+     * 組み立ての前に、平手の木に出てこない候補があるときは平手を先頭にして組み立てのあとに入る。
+     * `rootKey` を指定した木と、候補の無い木では空。
      */
     roots: string[];
     /** 自動で展開する局面数の見込み（定跡の局面数と自動で展開する上限の小さい方）。進み具合の分母。 */
@@ -94,7 +95,7 @@ export function createBookTreeBuilder({
     legalMoves: (sfen: string) => Promise<string[]>;
     onChange?: () => void;
     limit?: number;
-    /** 平手が定跡に無いときに始める局面（`roots` の 1 つ）。省くと最初の候補。 */
+    /** 始める局面（`roots` の 1 つ）。省くと平手、平手から定跡に入れなければ最初の候補。 */
     rootKey?: string;
 }) {
     const position = createInitialPositionState();
@@ -109,9 +110,20 @@ export function createBookTreeBuilder({
         roots: [],
         goal: Math.min(book.positions.size, limit),
     };
-    /** 平手からも、平手の次の局面からも定跡に入れなければ、開始局面を定跡の中の局面に差し替える。 */
-    async function chooseRoot() {
-        if (book.positions.has(key)) return;
+    function startFrom(start: string) {
+        tree.nodes[0] = { ...tree.nodes[0], key: start, position: bookPosition(book, start) };
+        tree.firstByKey = new Map([[start, 0]]);
+    }
+    /**
+     * 開始局面を決める。`rootKey` が定跡の中の局面ならそこから始める。それ以外は平手から始め、平手からも
+     * 平手の次の局面からも定跡に入れなければ、定跡の中の開始局面の候補から始める。平手から始めたかを返す。
+     */
+    async function chooseRoot(): Promise<boolean> {
+        if (rootKey !== undefined && rootKey !== key && book.positions.has(rootKey)) {
+            startFrom(rootKey);
+            return false;
+        }
+        if (book.positions.has(key) || rootKey === key) return true;
         // 合法手を取れなければ、平手からは定跡の登録の手でしか進めないので、平手の次の局面は調べない。
         let firstMoves: string[] = [];
         try {
@@ -119,17 +131,40 @@ export function createBookTreeBuilder({
         } catch {
             firstMoves = [];
         }
-        if (cancelled) return;
+        if (cancelled) return true;
         for (const move of firstMoves) {
             const result = applyMoveWithState(position, move);
-            if (result.ok && book.positions.has(positionToBookKey(result.next))) return;
+            if (result.ok && book.positions.has(positionToBookKey(result.next))) return true;
         }
         const roots = await findBookRoots(book, () => cancelled);
-        if (cancelled || roots.length === 0) return;
+        if (cancelled || roots.length === 0) return true;
         tree.roots = roots;
-        const start = rootKey !== undefined && roots.includes(rootKey) ? rootKey : roots[0];
-        tree.nodes[0] = { ...tree.nodes[0], key: start, position: bookPosition(book, start) };
-        tree.firstByKey = new Map([[start, 0]]);
+        startFrom(roots[0]);
+        return false;
+    }
+    /**
+     * 平手から始めた木に出てこなかった、定跡の中の開始局面の候補を足す（平手から始まる戦法と、途中の
+     * 局面から始まる戦法を合わせた定跡で、後者を選べるように）。
+     */
+    let otherRoots: string[] | null = null;
+    /**
+     * 上限で止まった木では足さない。相手の手を登録しない定跡では、相手の手のあとの局面がどれも
+     * 「定跡の手で来ていない局面」になり、展開していない枝の先にあるだけの局面を候補と見分けられないため。
+     */
+    async function addOtherRoots() {
+        if (tree.capped) return;
+        otherRoots = await findBookRoots(book, () => cancelled);
+        if (!cancelled) refreshOtherRoots();
+    }
+    /** 木に出てきた候補を外す（枝を読み込み直したあとも）。 */
+    function refreshOtherRoots() {
+        if (otherRoots === null) return;
+        const others = otherRoots.filter((root) => root !== key && !tree.firstByKey.has(root));
+        const next = others.length > 0 ? [key, ...others] : [];
+        if (next.length === tree.roots.length && next.every((root, i) => root === tree.roots[i]))
+            return;
+        tree.roots = next;
+        onChange();
     }
     let cancelled = false;
     let started = false;
@@ -222,18 +257,46 @@ export function createBookTreeBuilder({
         start() {
             if (!started) {
                 started = true;
-                work = chooseRoot().then(() => run(0, true));
+                work = chooseRoot().then(async (fromHirate) => {
+                    await run(0, true);
+                    if (fromHirate && rootKey === undefined && !cancelled) await addOtherRoots();
+                });
             }
             return work;
         },
         expandFrom(id: number) {
-            work = work.then(() => run(id, false));
+            work = work.then(async () => {
+                await run(id, false);
+                if (!cancelled) refreshOtherRoots();
+            });
             return work;
         },
         cancel() {
             cancelled = true;
         },
     };
+}
+
+/**
+ * 貼られた局面（`sfen …`・盤面だけの SFEN・`position startpos|sfen … moves …`）を、定跡の局面のキーにする。
+ * 読めなければ投げる。
+ */
+export function bookKeyFromPositionText(text: string): string {
+    const tokens = text.trim().split(/\s+/);
+    if (tokens[0] === "position") tokens.shift();
+    const movesAt = tokens.indexOf("moves");
+    const head = movesAt === -1 ? tokens : tokens.slice(0, movesAt);
+    const moves = movesAt === -1 ? [] : tokens.slice(movesAt + 1);
+    let state =
+        head.length === 1 && head[0] === "startpos"
+            ? createInitialPositionState()
+            : parseStudySfen(normalizeBookKey(head.join(" ")));
+    for (const move of moves) {
+        const result = applyUsiMoveStrict(state, move);
+        if (!result.ok) throw new Error(`指せない手です: ${move}`);
+        state = result.next;
+    }
+    return positionToBookKey(state);
 }
 
 export function bookTreePath(tree: BookTree, id: number): BookTreeNode[] {

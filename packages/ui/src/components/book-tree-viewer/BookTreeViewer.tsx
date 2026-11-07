@@ -5,6 +5,7 @@ import {
     deriveLastMove,
     type PositionService,
     parseBookAsync,
+    positionToBookKey,
     yieldTask,
 } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
@@ -13,9 +14,12 @@ import { Button } from "../button";
 import { ChoiceGroup } from "../choice-group";
 import { StaticBoardView } from "../static-board-view";
 import { BookMoveList } from "./BookMoveList";
-import { BookTreeGraph, type BookTreePreviewMode, moveLabel } from "./BookTreeGraph";
+import { BookTreeGraph, type BookTreePreviewMode } from "./BookTreeGraph";
+import { moveLabel } from "./bookLabels";
 import { loadLastBookFile, saveLastBookFile } from "./lastBookFile";
 import { useBookTree } from "./useBookTree";
+
+const HIRATE_KEY = positionToBookKey(createInitialPositionState());
 
 export const MAX_BOOK_FILE_BYTES = 64 * 1024 * 1024;
 /**
@@ -163,6 +167,19 @@ export function BookTreeViewer({
     }, [dialog]);
     const [rootKey, setRootKey] = useState<string | undefined>(undefined);
     const { session, tree } = useBookTree(book?.data, fetchLegalMoves, rootKey);
+    /**
+     * 開始局面の候補。開始局面を選んで作り直した木は候補を持たないので、最初の木の候補を覚えておく。
+     */
+    const [roots, setRoots] = useState<string[]>([]);
+    useEffect(() => {
+        if (rootKey !== undefined || !tree) return;
+        setRoots((current) =>
+            current.length === tree.roots.length &&
+            current.every((root, i) => root === tree.roots[i])
+                ? current
+                : tree.roots,
+        );
+    }, [tree, rootKey]);
     const [body, setBody] = useState<HTMLDivElement | null>(null);
     const size = useElementSize(body);
     const fileRef = useRef<HTMLInputElement>(null);
@@ -231,6 +248,7 @@ export function BookTreeViewer({
             if (id !== readId.current) return;
             setBook({ id, name: file.name, data });
             setRootKey(undefined);
+            setRoots([]);
             setSelected(0);
             void saveLastBookFile(file);
         } catch {
@@ -492,9 +510,12 @@ export function BookTreeViewer({
         tree?.building && tree.goal > 0
             ? Math.min(99, Math.floor((tree.expanded / tree.goal) * 100))
             : null;
+    const withHirate = roots[0] === HIRATE_KEY;
     const rootLabel = (key: string, index: number) => {
+        if (key === HIRATE_KEY) return "平手";
         const ply = book?.data.plies?.get(key);
-        return `候補 ${index + 1}${ply === undefined ? "" : `（${ply}手目の局面）`}`;
+        const number = withHirate ? index : index + 1;
+        return `候補 ${number}${ply === undefined ? "" : `（${ply}手目の局面）`}`;
     };
 
     return (
@@ -543,15 +564,21 @@ export function BookTreeViewer({
                         </ul>
                     </details>
                 )}
-                {tree && tree.roots.length > 0 && (
+                {tree && roots.length > 0 && (
                     <div className="flex items-center gap-1 text-xs text-wafuu-sumi-light">
-                        <span title="平手から定跡に入れないので、定跡の中の局面から始めます">
+                        <span
+                            title={
+                                withHirate
+                                    ? "平手から始まる手順と、定跡の中の局面から始まる手順があります"
+                                    : "平手から定跡に入れないので、定跡の中の局面から始めます"
+                            }
+                        >
                             開始局面
                         </span>
-                        {tree.roots.length > 1 ? (
+                        {roots.length > 1 ? (
                             <select
                                 aria-label="開始局面"
-                                value={rootKey ?? tree.roots[0]}
+                                value={rootKey ?? roots[0]}
                                 onChange={(event) => {
                                     setRootKey(event.target.value);
                                     setSelected(0);
@@ -559,7 +586,7 @@ export function BookTreeViewer({
                                 }}
                                 className="rounded border border-wafuu-border bg-background px-1 py-0.5 text-xs text-wafuu-sumi"
                             >
-                                {tree.roots.map((key, index) => (
+                                {roots.map((key, index) => (
                                     <option key={key} value={key}>
                                         {rootLabel(key, index)}
                                     </option>
