@@ -161,7 +161,8 @@ export function createBookTreeBuilder({
         if (otherRoots === null) return;
         const others = otherRoots.filter((root) => root !== key && !tree.firstByKey.has(root));
         const next = others.length > 0 ? [key, ...others] : [];
-        if (next.join(" ") === tree.roots.join(" ")) return;
+        if (next.length === tree.roots.length && next.every((root, i) => root === tree.roots[i]))
+            return;
         tree.roots = next;
         onChange();
     }
