@@ -216,6 +216,47 @@ sfen ${key("7g7f")}
         fireEvent.click(panel.getByRole("button", { name: "警告 1" }));
         expect(panel.getByText("指せない定跡の手があります")).toBeTruthy();
     });
+    it("保存できなくても、しおりは開いている間は付け外しできる", async () => {
+        vi.stubGlobal("localStorage", {
+            getItem: () => null,
+            setItem: () => {
+                throw new Error("quota");
+            },
+        });
+        render(<BookTreeViewer fetchLegalMoves={async () => []} />);
+        await upload(`sfen ${key()}
+7g7f
+2g2f
+sfen ${key("7g7f")}
+8c8d`);
+        await built();
+        const mark = () => screen.getByRole("button", { name: "しおり" });
+        fireEvent.click(tree().getByRole("button", { name: /^☗7六歩/ }));
+        fireEvent.click(mark());
+        fireEvent.click(tree().getByRole("button", { name: /^☗2六歩/ }));
+        fireEvent.click(mark());
+        expect(mark().getAttribute("aria-pressed")).toBe("true");
+        fireEvent.click(mark());
+        expect(mark().getAttribute("aria-pressed")).toBe("false");
+        fireEvent.click(tree().getByRole("button", { name: /^☗7六歩/ }));
+        expect(mark().getAttribute("aria-pressed")).toBe("true");
+    });
+    it("全画面で開いた移動の一覧は Esc で閉じ、全画面は閉じない", async () => {
+        render(<BookTreeViewer fetchLegalMoves={async () => []} />);
+        await upload(`sfen ${key()}
+7g7f
+2g2f`);
+        await built();
+        fireEvent.click(screen.getByRole("button", { name: "全画面" }));
+        const dialog = await screen.findByRole("dialog", { name: /定跡の木/ });
+        fireEvent.click(within(dialog).getByRole("button", { name: "移動" }));
+        const panel = screen.getByRole("dialog", { name: "局面へ移動" });
+        expect(document.activeElement).toBe(panel);
+        fireEvent.keyDown(panel, { key: "Escape" });
+        expect(screen.queryByRole("dialog", { name: "局面へ移動" })).toBeNull();
+        expect(screen.getByRole("dialog", { name: /定跡の木/ })).toBeTruthy();
+        expect(document.activeElement?.textContent).toBe("移動");
+    });
     it("しおりを付けた局面を残し、移動の一覧から戻れる", async () => {
         const stored = new Map<string, string>();
         vi.stubGlobal("localStorage", {

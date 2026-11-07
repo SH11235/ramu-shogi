@@ -171,7 +171,7 @@ export function BookTreeViewer({
      */
     const [roots, setRoots] = useState<string[]>([]);
     useEffect(() => {
-        if (rootKey !== undefined || !tree || tree.roots.length === 0) return;
+        if (rootKey !== undefined || !tree) return;
         setRoots((current) => (current.join(" ") === tree.roots.join(" ") ? current : tree.roots));
     }, [tree, rootKey]);
     const [body, setBody] = useState<HTMLDivElement | null>(null);

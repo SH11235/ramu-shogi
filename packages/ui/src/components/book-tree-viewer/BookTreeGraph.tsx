@@ -27,10 +27,15 @@ const BOX_HEIGHT = 26;
 const BAND_INSET = 3;
 const HEADER_HEIGHT = 22;
 const PAD = 10;
-/** 選んだ手を枠の端から離しておく幅（送ったとき、次の手が枠の外に隠れないように）。 */
-const SCROLL_MARGIN = 48;
-/** キーや一覧で選んだ手が端に寄ったとき、枠の幅の何分の 1 の所へ送るか。 */
-const FOLLOW_FRACTION = 3;
+/**
+ * キーや一覧で選んだ手を置いておく範囲（枠の幅・高さに対する割合）。外へ出たら範囲の端まで滑らかに送る
+ * （端に寄ってから大きく跳ぶと、どこへ動いたか見失うので）。先へ進む向きの手を見せるため、左寄り・上下の中ほどに取る。
+ */
+const FOLLOW_ZONE = { left: 0.15, right: 0.45, top: 0.25, bottom: 0.7 };
+/** これより遠くへ送るときは、滑らかに送らずに跳ぶ（枠の大きさに対する割合）。 */
+const SMOOTH_LIMIT = 1.5;
+/** 滑らかに送っている途中とみなす時間。続けて押したキーは、送っている先から次の送り先を決める。 */
+const SMOOTH_MS = 400;
 /** 拡大率の幅と、ボタン 1 回で変える倍率。これより小さいと手の名前を省き、箱と線だけで形を見せる。 */
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 1.5;
@@ -651,13 +656,18 @@ export function BookTreeGraph({
     function toggleBookmark() {
         const key = tree.nodes[selected]?.key;
         if (key === undefined) return;
-        // 別のタブで足したしおりを消さないように、保存されているものに足し引きする。
-        const current = loadBookmarks();
-        const next = current.includes(key)
-            ? current.filter((item) => item !== key)
-            : [...current, key];
+        const next = bookmarks.includes(key)
+            ? bookmarks.filter((item) => item !== key)
+            : [...bookmarks, key];
         saveBookmarks(next);
         setBookmarks(next);
+    }
+    const jumpButton = useRef<HTMLButtonElement>(null);
+    /** 一覧を閉じる。局面を選んで閉じたら木へ、それ以外は「移動」へフォーカスを戻す。 */
+    function closeJump(selectedFromList: boolean) {
+        setJumpOpen(false);
+        if (selectedFromList) frame.current?.focus({ preventScroll: true });
+        else jumpButton.current?.focus();
     }
     const [overrides, setOverrides] = useState<ReadonlyMap<number, boolean>>(() => new Map());
     const [zoomSetting, setZoomSetting] = useState(1);
@@ -753,6 +763,8 @@ export function BookTreeGraph({
     const selectedTop = useRef<number | null>(null);
     /** 送り切れなかった横の位置と、そのときの位置。ホイール・引く・拡大縮小で動かされたら捨てる。 */
     const shortOf = useRef<{ wanted: number; left: number; top: number } | null>(null);
+    /** 滑らかに送っている送り先と、送り始めた時刻。 */
+    const gliding = useRef<{ left: number; top: number; at: number } | null>(null);
     const followSelection = useEffectEvent((placed: BookGraphLayout, key: string) => {
         const element = frame.current;
         const target = placed.byId.get(selected);
@@ -766,6 +778,7 @@ export function BookTreeGraph({
                 const onScreen = lastTop * zoom - element.scrollTop;
                 if (onScreen > -BOX_HEIGHT * zoom && onScreen < element.clientHeight) {
                     element.scrollTop += (placedTop - lastTop) * zoom;
+                    if (gliding.current) gliding.current.top += (placedTop - lastTop) * zoom;
                     if (shortOf.current) shortOf.current.top = element.scrollTop;
                 }
             }
@@ -795,20 +808,36 @@ export function BookTreeGraph({
         const kept = anchor.current?.id === selected ? anchor.current : null;
         const colWidth = (kept ? BOX_WIDTH : COL_WIDTH) * zoom;
         anchor.current = null;
-        let x = kept ? left - kept.x : element.scrollLeft;
-        let y = kept ? top - kept.y : element.scrollTop;
-        // 木の中で押した手は、隠れるときだけ動かす（押した手が指の下から逃げないように）。
-        const margin = kept ? 0 : SCROLL_MARGIN;
-        const offLeft = left - margin < x;
-        const offRight = left + colWidth + margin > x + element.clientWidth;
-        if (!kept && (offLeft || offRight)) x = left - element.clientWidth / FOLLOW_FRACTION;
-        else if (offLeft) x = left - margin;
-        else if (offRight) x = left + colWidth + margin - element.clientWidth;
+        const glide = gliding.current;
+        const inGlide = !kept && glide !== null && performance.now() - glide.at < SMOOTH_MS;
+        const fromX = inGlide ? glide.left : element.scrollLeft;
+        const fromY = inGlide ? glide.top : element.scrollTop;
+        let x = kept ? left - kept.x : fromX;
+        let y = kept ? top - kept.y : fromY;
+        const width = element.clientWidth;
+        const height = element.clientHeight;
         const header = HEADER_HEIGHT * zoom;
         const box = BOX_HEIGHT * zoom;
-        if (top - margin - header < y) y = top - margin - header;
-        else if (top + box + margin > y + element.clientHeight)
-            y = top + box + margin - element.clientHeight;
+        if (kept) {
+            // 木の中で押した手は、隠れるときだけ動かす（押した手が指の下から逃げないように）。
+            if (left < x) x = left;
+            else if (left + colWidth > x + width) x = left + colWidth - width;
+            if (top - header < y) y = top - header;
+            else if (top + box > y + height) y = top + box - height;
+        } else {
+            // 範囲が手の箱より狭い枠では、箱と次の手が見える所まで送る。
+            const zoneLeft = width * FOLLOW_ZONE.left;
+            const zoneRight = Math.max(
+                zoneLeft,
+                Math.min(width * FOLLOW_ZONE.right, width - colWidth),
+            );
+            if (left < x + zoneLeft) x = left - zoneLeft;
+            else if (left > x + zoneRight) x = left - zoneRight;
+            const zoneTop = header + (height - header) * FOLLOW_ZONE.top;
+            const zoneBottom = Math.max(zoneTop + box, height * FOLLOW_ZONE.bottom);
+            if (top < y + zoneTop) y = top - zoneTop;
+            else if (top + box > y + zoneBottom) y = top + box - zoneBottom;
+        }
         // 左下に重ねた盤の後ろに入るときは、盤の右へ送る。左の端の手で右へ送れなければ、盤の上へ送る。
         const above = element.clientHeight - dockSize.height - DOCK_INSET;
         // 送り先が負なら 0 で止まるので、止まった位置で重なりを見る。
@@ -821,8 +850,21 @@ export function BookTreeGraph({
             if (right >= 0) x = right;
             else if (above >= box + header + DOCK_INSET * 2) y = top + box + DOCK_INSET - above;
         }
-        element.scrollTo({ left: Math.max(0, x), top: Math.max(0, y) });
-        if (element.scrollLeft < x - 1)
+        const toLeft = Math.max(0, x);
+        const toTop = Math.max(0, y);
+        // 木の右端より先へは送れない（組み立て中に右へ伸びたら、送り直す）。
+        const short = toLeft > element.scrollWidth - width + 1;
+        const smooth =
+            !kept &&
+            !short &&
+            lastTop !== null &&
+            Math.abs(toLeft - fromX) < width * SMOOTH_LIMIT &&
+            Math.abs(toTop - fromY) < height * SMOOTH_LIMIT &&
+            !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+        if (toLeft === Math.round(fromX) && toTop === Math.round(fromY) && !inGlide) return;
+        element.scrollTo({ left: toLeft, top: toTop, behavior: smooth ? "smooth" : "auto" });
+        gliding.current = smooth ? { left: toLeft, top: toTop, at: performance.now() } : null;
+        if (!smooth && element.scrollLeft < x - 1)
             shortOf.current = { wanted: x, left: element.scrollLeft, top: element.scrollTop };
     });
     // 描く前に送る（組み立て中に選んだ手がずれて見えるフレームを出さない）。
@@ -1105,6 +1147,7 @@ export function BookTreeGraph({
                     しおり
                 </button>
                 <button
+                    ref={jumpButton}
                     type="button"
                     aria-expanded={jumpOpen}
                     onClick={() => setJumpOpen((open) => !open)}
@@ -1124,7 +1167,7 @@ export function BookTreeGraph({
                         counts={counts}
                         bookmarks={bookmarks}
                         onSelect={onSelect}
-                        onClose={() => setJumpOpen(false)}
+                        onClose={closeJump}
                     />
                 )}
                 <section

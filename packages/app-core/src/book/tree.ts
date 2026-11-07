@@ -146,12 +146,21 @@ export function createBookTreeBuilder({
      * 平手から始めた木に出てこなかった、定跡の中の開始局面の候補を足す（平手から始まる戦法と、途中の
      * 局面から始まる戦法を合わせた定跡で、後者を選べるように）。
      */
+    let otherRoots: string[] | null = null;
     async function addOtherRoots() {
-        const roots = await findBookRoots(book, () => cancelled);
-        if (cancelled) return;
-        const others = roots.filter((root) => root !== key && !tree.firstByKey.has(root));
-        if (others.length === 0) return;
-        tree.roots = [key, ...others];
+        otherRoots = await findBookRoots(book, () => cancelled);
+        if (!cancelled) refreshOtherRoots();
+    }
+    /**
+     * 木に出てきた候補を外す。上限で止まった木では、展開していない枝の先にある局面も候補に見えるので、
+     * 枝を展開するたびに外し直す。
+     */
+    function refreshOtherRoots() {
+        if (otherRoots === null) return;
+        const others = otherRoots.filter((root) => root !== key && !tree.firstByKey.has(root));
+        const next = others.length > 0 ? [key, ...others] : [];
+        if (next.join(" ") === tree.roots.join(" ")) return;
+        tree.roots = next;
         onChange();
     }
     let cancelled = false;
@@ -253,7 +262,10 @@ export function createBookTreeBuilder({
             return work;
         },
         expandFrom(id: number) {
-            work = work.then(() => run(id, false));
+            work = work.then(async () => {
+                await run(id, false);
+                if (!cancelled) refreshOtherRoots();
+            });
             return work;
         },
         cancel() {

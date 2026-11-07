@@ -5,12 +5,12 @@ import {
     bookKeyFromPositionText,
 } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
-import { type ReactElement, type ReactNode, useState } from "react";
+import { type ReactElement, type ReactNode, useEffect, useRef, useState } from "react";
 import { ChoiceGroup } from "../choice-group";
 import { bookValue, moveLabel, valueClass } from "./BookTreeGraph";
 
-/** 一覧に一度に出す数（大きな定跡で分かれ目や合流が数千になっても、描く量を抑える）。 */
-const LIST_LIMIT = 200;
+/** 一覧に一度に出す数（大きな定跡で分かれ目や合流が数千になっても、描く量を抑える）。続きはボタンで足す。 */
+const LIST_PAGE = 200;
 
 type JumpKind = "forks" | "exits" | "warnings" | "links" | "bookmarks";
 type ExitOrder = "ply" | "sente" | "gote";
@@ -71,8 +71,15 @@ export function BookTreeJump({
     counts: Int32Array;
     bookmarks: readonly string[];
     onSelect: (id: number) => void;
-    onClose: () => void;
+    /** 局面を選んで閉じたときは true。 */
+    onClose: (selected: boolean) => void;
 }): ReactElement {
+    // 開いたら欄へフォーカスを移す（Esc がこの欄を閉じ、全画面を閉じないように）。
+    const panel = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        panel.current?.focus();
+    }, []);
+    const [limit, setLimit] = useState(LIST_PAGE);
     const warnings = warningNodes(tree);
     const [kind, setKind] = useState<JumpKind>("forks");
     const [exitOrder, setExitOrder] = useState<ExitOrder>("ply");
@@ -91,7 +98,11 @@ export function BookTreeJump({
 
     function jump(id: number) {
         onSelect(id);
-        onClose();
+        onClose(true);
+    }
+    function choose(next: JumpKind) {
+        setKind(next);
+        setLimit(LIST_PAGE);
     }
     function search() {
         let key: string;
@@ -162,16 +173,18 @@ export function BookTreeJump({
                 ? "この木の中にしおりの局面はありません"
                 : "しおりはありません（局面を選んで「しおり」を押すと付きます）";
     }
-    const shown = nodes.slice(0, LIST_LIMIT);
+    const shown = nodes.slice(0, limit);
 
     return (
         <div
+            ref={panel}
             role="dialog"
             aria-label="局面へ移動"
+            tabIndex={-1}
             onKeyDown={(event) => {
                 if (event.key === "Escape") {
                     event.stopPropagation();
-                    onClose();
+                    onClose(false);
                 }
             }}
             className="absolute top-1 right-2 z-30 flex max-h-[70%] w-80 max-w-[calc(100%-1rem)] flex-col gap-2 rounded-md border border-wafuu-border bg-background p-2 text-xs text-wafuu-sumi shadow-popover"
@@ -203,7 +216,7 @@ export function BookTreeJump({
                 size="sm"
                 options={kinds}
                 value={shownKind}
-                onChange={setKind}
+                onChange={choose}
                 className="flex-wrap gap-1"
                 optionClassName="px-2 py-1 text-xs"
             />
@@ -236,11 +249,14 @@ export function BookTreeJump({
                 ))}
             </ul>
             {nodes.length === 0 && empty && <p className="text-wafuu-sumi-light">{empty}</p>}
-            {nodes.length > LIST_LIMIT && (
-                <p className="text-wafuu-sumi-light">
-                    ほか {(nodes.length - LIST_LIMIT).toLocaleString("ja-JP")} 件（先頭の{" "}
-                    {LIST_LIMIT} 件を出しています）
-                </p>
+            {nodes.length > limit && (
+                <button
+                    type="button"
+                    onClick={() => setLimit((current) => current + LIST_PAGE)}
+                    className="rounded border border-wafuu-border px-2 py-1 hover:bg-wafuu-washi-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                    続きを出す（ほか {(nodes.length - limit).toLocaleString("ja-JP")} 件）
+                </button>
             )}
         </div>
     );
