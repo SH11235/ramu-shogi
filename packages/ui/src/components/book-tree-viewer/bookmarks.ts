@@ -4,19 +4,22 @@
  */
 const STORAGE_KEY = "book-tree-viewer:bookmarks";
 
-export function loadBookmarks(): string[] {
+/** 保存されたしおり。読めなければ null。 */
+export function loadBookmarks(): string[] | null {
     try {
         const value: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
         return Array.isArray(value) ? value.filter((key) => typeof key === "string") : [];
     } catch {
-        return [];
+        return null;
     }
 }
 
-export function saveBookmarks(keys: readonly string[]): void {
+/** 保存できたかを返す。 */
+export function saveBookmarks(keys: readonly string[]): boolean {
     try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(keys));
+        return true;
     } catch {
-        // 保存できなくても、開いている間はしおりを使える。
+        return false;
     }
 }

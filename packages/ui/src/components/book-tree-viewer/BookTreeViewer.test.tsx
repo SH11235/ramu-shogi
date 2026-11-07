@@ -200,6 +200,7 @@ sfen ${key("7g7f")}
         fireEvent.click(panel().getByRole("button", { name: /7六歩/ }));
         expect(current()).toBe("1手目 ☗7六歩(77)");
         expect(screen.queryByRole("dialog", { name: "局面へ移動" })).toBeNull();
+        expect(document.activeElement).toBe(screen.getByRole("region", { name: "定跡の木" }));
 
         open();
         fireEvent.click(panel().getByRole("button", { name: "出口" }));
