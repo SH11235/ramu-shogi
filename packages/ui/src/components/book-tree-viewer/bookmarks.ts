@@ -4,7 +4,7 @@
  */
 const STORAGE_KEY = "book-tree-viewer:bookmarks";
 
-/** 保存されたしおり。読めなければ null。 */
+/** 保存されたしおり。読めなければ null、保存された値が配列でなければ空。 */
 export function loadBookmarks(): string[] | null {
     try {
         const value: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");

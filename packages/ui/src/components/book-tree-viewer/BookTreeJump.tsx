@@ -7,7 +7,7 @@ import {
 import { cn } from "@shogi/design-system";
 import { type ReactElement, type ReactNode, useEffect, useRef, useState } from "react";
 import { ChoiceGroup } from "../choice-group";
-import { bookValue, moveLabel, valueClass } from "./BookTreeGraph";
+import { bookValue, moveLabel, valueClass } from "./bookLabels";
 
 /** 一覧に一度に出す数（大きな定跡で分かれ目や合流が数千になっても、描く量を抑える）。続きはボタンで足す。 */
 const LIST_PAGE = 200;
@@ -186,6 +186,8 @@ export function BookTreeJump({
                     event.stopPropagation();
                     onClose(false);
                 }
+                // 矢印キーは一覧の中で使う（木の選択を動かす窓のキー操作へ渡さない）。
+                if (event.key.startsWith("Arrow")) event.stopPropagation();
             }}
             className="absolute top-1 right-2 z-30 flex max-h-[70%] w-80 max-w-[calc(100%-1rem)] flex-col gap-2 rounded-md border border-wafuu-border bg-background p-2 text-xs text-wafuu-sumi shadow-popover"
         >

@@ -265,6 +265,9 @@ sfen ${key("7g7f")}
         fireEvent.click(within(dialog).getByRole("button", { name: "移動" }));
         const panel = screen.getByRole("dialog", { name: "局面へ移動" });
         expect(document.activeElement).toBe(panel);
+        const before = current();
+        fireEvent.keyDown(panel, { key: "ArrowRight" });
+        expect(current()).toBe(before);
         fireEvent.keyDown(panel, { key: "Escape" });
         expect(screen.queryByRole("dialog", { name: "局面へ移動" })).toBeNull();
         expect(screen.getByRole("dialog", { name: /定跡の木/ })).toBeTruthy();

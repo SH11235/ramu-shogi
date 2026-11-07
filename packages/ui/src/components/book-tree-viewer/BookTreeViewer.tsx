@@ -14,7 +14,8 @@ import { Button } from "../button";
 import { ChoiceGroup } from "../choice-group";
 import { StaticBoardView } from "../static-board-view";
 import { BookMoveList } from "./BookMoveList";
-import { BookTreeGraph, type BookTreePreviewMode, moveLabel } from "./BookTreeGraph";
+import { BookTreeGraph, type BookTreePreviewMode } from "./BookTreeGraph";
+import { moveLabel } from "./bookLabels";
 import { loadLastBookFile, saveLastBookFile } from "./lastBookFile";
 import { useBookTree } from "./useBookTree";
 

@@ -1,7 +1,7 @@
 import type { BookData, BookTree } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
-import { bookValue, moveLabel, valueClass } from "./BookTreeGraph";
+import { bookValue, moveLabel, valueClass } from "./bookLabels";
 
 /** 定跡に 0 でない深さが 1 つでもあるか（深さを書かない道具の定跡で、0 だけの列を出さないように）。 */
 function hasDepth(book: BookData): boolean {
