@@ -3,6 +3,13 @@ import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
 import { bookValue, moveLabel, valueClass } from "./BookTreeGraph";
 
+/** 定跡に 0 でない深さが 1 つでもあるか（深さを書かない道具の定跡で、0 だけの列を出さないように）。 */
+function hasDepth(book: BookData): boolean {
+    for (const moves of book.positions.values())
+        for (const move of moves) if (move.depth !== 0) return true;
+    return false;
+}
+
 /** 選んだ局面から指せる手（定跡の手と、定跡の局面へつながる手）。押すとその手へ進む。 */
 export function BookMoveList({
     tree,
@@ -32,6 +39,7 @@ export function BookMoveList({
                   };
               })
             : [];
+    const showDepth = hasDepth(book);
     let message: string | null = null;
     if (!tree || !source) message = "定跡の木を組み立てています…";
     else if (source.status === "pending") message = "この先を読み込んでいます…";
@@ -59,7 +67,9 @@ export function BookMoveList({
                         <tr className="border-b border-wafuu-border">
                             <th className="px-2 py-1 text-left font-medium">手</th>
                             <th className="px-2 py-1 text-right font-medium">評価値</th>
-                            <th className="px-2 py-1 text-right font-medium">深さ</th>
+                            {showDepth && (
+                                <th className="px-2 py-1 text-right font-medium">深さ</th>
+                            )}
                             <th className="px-2 py-1 text-right font-medium">採択数</th>
                         </tr>
                     </thead>
@@ -102,9 +112,11 @@ export function BookMoveList({
                                     >
                                         {value ?? ""}
                                     </td>
-                                    <td className="px-2 text-right tabular-nums">
-                                        {entry?.depth ?? ""}
-                                    </td>
+                                    {showDepth && (
+                                        <td className="px-2 text-right tabular-nums">
+                                            {entry?.depth ?? ""}
+                                        </td>
+                                    )}
                                     <td className="px-2 text-right tabular-nums">
                                         {entry?.count ?? ""}
                                     </td>

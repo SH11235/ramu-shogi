@@ -80,6 +80,7 @@ describe("BookTreeViewer", () => {
         const row = moves().getByRole("button", { name: /7六歩/ }).closest("tr");
         expect(row?.textContent).toContain("100");
         expect(row?.textContent).toContain("12");
+        expect(moves().getByRole("columnheader", { name: "深さ" })).toBeTruthy();
         fireEvent.click(moves().getByRole("button", { name: /7六歩/ }));
         expect(current()).toBe("1手目 ☗7六歩(77)");
         fireEvent.click(tree().getByRole("button", { name: /^☖8四歩\(83\)/ }));
@@ -87,6 +88,17 @@ describe("BookTreeViewer", () => {
         expect(moves().getByRole("button", { name: /2六歩/ })).toBeTruthy();
         fireEvent.click(screen.getByRole("button", { name: "開始局面へ" }));
         expect(current()).toBe("開始局面");
+    });
+    it("深さが全部 0 の定跡では、深さの列を出さない", async () => {
+        render(<BookTreeViewer fetchLegalMoves={async () => []} />);
+        await upload(`sfen ${key()}
+7g7f none 100 0 2
+2g2f none 50 0 1`);
+        await built();
+        const headers = moves()
+            .getAllByRole("columnheader")
+            .map((header) => header.textContent);
+        expect(headers).toEqual(["手", "評価値", "採択数"]);
     });
     it("評価値は手番によらず先手から見た値で出す", async () => {
         render(<BookTreeViewer fetchLegalMoves={async () => []} />);
