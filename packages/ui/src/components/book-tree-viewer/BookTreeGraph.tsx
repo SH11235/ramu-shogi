@@ -94,7 +94,7 @@ export interface BookTreeValue {
 export type BookTreeValueOf = (node: BookTreeNode) => BookTreeValue | undefined;
 
 /** 定跡に書かれた評価値を、箱に出す形にする。 */
-export function bookValueOf(tree: BookTree, book: BookData): BookTreeValueOf {
+function bookValueOf(tree: BookTree, book: BookData): BookTreeValueOf {
     return (node) => {
         const value = bookValue(tree, book, node);
         return value === undefined ? undefined : { value, text: String(value) };

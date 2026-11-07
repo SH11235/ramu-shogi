@@ -8,7 +8,7 @@ import type { BookTreeValueOf } from "../book-tree-viewer/BookTreeGraph";
 import { formatEval } from "../shogi-match/utils/kifFormat";
 
 /** 研究ノートの木を、定跡の木と同じ形にしたもの。番号と棋譜のノード ID を行き来できる。 */
-export interface StudyGraph {
+interface StudyGraph {
     tree: BookTree;
     ids: readonly string[];
     indexOf: ReadonlyMap<string, number>;
