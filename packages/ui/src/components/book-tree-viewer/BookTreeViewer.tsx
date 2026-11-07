@@ -14,6 +14,7 @@ import { ChoiceGroup } from "../choice-group";
 import { StaticBoardView } from "../static-board-view";
 import { BookMoveList } from "./BookMoveList";
 import { BookTreeGraph, type BookTreePreviewMode, moveLabel } from "./BookTreeGraph";
+import { loadLastBookFile, saveLastBookFile } from "./lastBookFile";
 import { useBookTree } from "./useBookTree";
 
 export const MAX_BOOK_FILE_BYTES = 64 * 1024 * 1024;
@@ -231,12 +232,26 @@ export function BookTreeViewer({
             setBook({ id, name: file.name, data });
             setRootKey(undefined);
             setSelected(0);
+            void saveLastBookFile(file);
         } catch {
             if (id === readId.current) setError("ファイルを読み込めませんでした");
         } finally {
             if (id === readId.current) setBusy(false);
         }
     }
+    // 再読み込みしたら、最後に開いた定跡を開き直す（開くより先にファイルを選んでいたら、そちらを優先する）。
+    const restore = useEffectEvent((file: File) => {
+        if (readId.current === 0) void loadFile(file);
+    });
+    useEffect(() => {
+        let active = true;
+        void loadLastBookFile().then((file) => {
+            if (active && file) restore(file);
+        });
+        return () => {
+            active = false;
+        };
+    }, []);
     // 画面のどこへ落としても読み込む（ファイルを選ぶ欄を探さなくてよいように）。
     const [root, setRoot] = useState<HTMLDivElement | null>(null);
     const dropFile = useEffectEvent((file: File) => void loadFile(file));

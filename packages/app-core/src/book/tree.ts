@@ -135,7 +135,10 @@ export function createBookTreeBuilder({
     async function expand(source: BookTreeNode) {
         if (source.status !== "pending") return;
         const node = { ...source, children: [...source.children] };
-        const registered = (book.positions.get(node.key) ?? []).map((m) => m.usi);
+        // 定跡の値は手番側から見た値なので、大きい順に並べると手番側の良い順になる（同じ値はファイルの順）。
+        const registered = [...(book.positions.get(node.key) ?? [])]
+            .sort((a, b) => b.value - a.value)
+            .map((m) => m.usi);
         let legal: string[] = [];
         try {
             legal = await legalMoves(`${node.key} 1`);

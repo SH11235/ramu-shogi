@@ -121,6 +121,25 @@ describe("book tree", () => {
         expect(row.map((node) => node.move)).toEqual([undefined, "7g7f", "8c8d"]);
         expect(row.map((node) => node.inBook)).toEqual([undefined, false, true]);
     });
+    it("登録の手は手番側から見て良い順に並べ、同じ値はファイルの順にする", async () => {
+        const text = `sfen ${key("7g7f")}
+8c8d none -50
+3c3d none 20
+4c4d none -50
+1c1d none 80`;
+        const builder = createBookTreeBuilder({
+            book: parseBook(text),
+            legalMoves: async (sfen) => (sfen === `${key()} 1` ? ["7g7f"] : []),
+        });
+        await builder.start();
+        const parent = builder.tree.nodes.find((node) => node.key === key("7g7f"));
+        expect(parent?.children.map((id) => builder.tree.nodes[id].move)).toEqual([
+            "1c1d",
+            "3c3d",
+            "8c8d",
+            "4c4d",
+        ]);
+    });
     it("上限では未展開を残し、その枝だけを追加展開する", async () => {
         const builder = createBookTreeBuilder({ ...fixture(), limit: 1 });
         await builder.start();

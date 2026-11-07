@@ -21,6 +21,8 @@ const COL_WIDTH = 172;
 const BOX_WIDTH = 132;
 const ROW_HEIGHT = 34;
 const BOX_HEIGHT = 26;
+/** 同じ局面から出る手を囲む帯と、手の箱との間。 */
+const BAND_INSET = 3;
 const HEADER_HEIGHT = 22;
 const PAD = 10;
 /** 選んだ手を枠の端から離しておく幅（送ったとき、次の手が枠の外に隠れないように）。 */
@@ -244,7 +246,7 @@ function GraphNodes({
     counts: Int32Array;
     compact: boolean;
     onSelect: (id: number) => void;
-    onToggle: (id: number, open: boolean) => void;
+    onToggle: (id: number, open: boolean, deep: boolean) => void;
     onHover?: (id: number | null) => void;
     /** 描く範囲（見えている範囲と、その周り）。この中の手と線だけを描く（大きな定跡を全部開いても重くならないように）。 */
     area: GraphView;
@@ -259,21 +261,48 @@ function GraphNodes({
     const solid: string[] = [];
     const dashed: string[] = [];
     const shown: Placed[] = [];
+    /** 親ごとの、描いた子の列と行の範囲（同じ局面から出る手を帯で囲む）。 */
+    const groups = new Map<number, { col: number; first: number; last: number; size: number }>();
     for (const item of layout.items) {
         const node = tree.nodes[item.id];
         const x = boxLeft(item.col);
         const y = boxTop(item.row);
         if (item.id === keep || near(x, y, x + COL_WIDTH, y + BOX_HEIGHT)) shown.push(item);
         if (node.parent === null) continue;
+        const group = groups.get(node.parent);
+        if (group) {
+            group.first = Math.min(group.first, item.row);
+            group.last = Math.max(group.last, item.row);
+            group.size += 1;
+        } else groups.set(node.parent, { col: item.col, first: item.row, last: item.row, size: 1 });
         const parent = layout.byId.get(node.parent);
         if (!parent) continue;
         // 親から子へ下りる線は、両端が範囲の外でも途中が見えることがあるので、線の囲む範囲で決める。
         if (!near(boxLeft(parent.col) + BOX_WIDTH, boxTop(parent.row), x, y + BOX_HEIGHT)) continue;
         (node.inBook === false ? dashed : solid).push(edgePath(parent, item, area));
     }
+    // 子の列には他の親の手が入らない（枝ごとにまとめて並べる）ので、帯どうしは重ならない。
+    const bands = [...groups.values()]
+        .filter((group) => group.size > 1)
+        .map((group) => ({
+            x: boxLeft(group.col) - BAND_INSET,
+            y: boxTop(group.first) - BAND_INSET,
+            width: BOX_WIDTH + BAND_INSET * 2,
+            height: boxTop(group.last) - boxTop(group.first) + BOX_HEIGHT + BAND_INSET * 2,
+        }))
+        .filter((band) => near(band.x, band.y, band.x + band.width, band.y + band.height));
     return (
         <>
             <AreaSvg area={area}>
+                {bands.map((band) => (
+                    <rect
+                        key={`${band.x}:${band.y}`}
+                        {...band}
+                        rx={6}
+                        className="fill-wafuu-kincha/10 stroke-wafuu-kincha/30"
+                        strokeWidth={1}
+                    />
+                ))}
                 <path
                     d={solid.join("")}
                     className="fill-none stroke-wafuu-kincha"
@@ -387,7 +416,8 @@ function GraphNodes({
                                 type="button"
                                 aria-label={`${label} の先を${open ? "たたむ" : `開く（${counts[id].toLocaleString("ja-JP")} 手）`}`}
                                 aria-expanded={open}
-                                onClick={() => onToggle(id, !open)}
+                                title="Shift を押しながらで、先の枝もまとめて開く・たたむ"
+                                onClick={(event) => onToggle(id, !open, event.shiftKey)}
                                 className="absolute flex items-center justify-center rounded-full border border-wafuu-kincha bg-background text-[10px] leading-none text-wafuu-sumi-light hover:border-wafuu-sumi hover:text-wafuu-sumi"
                                 style={{
                                     left: boxLeft(col) + BOX_WIDTH + 3,
@@ -397,7 +427,7 @@ function GraphNodes({
                                     paddingInline: open ? 0 : 3,
                                 }}
                             >
-                                {open ? "−" : `+${counts[id].toLocaleString("ja-JP")}`}
+                                {open ? "−" : `${counts[id].toLocaleString("ja-JP")}手`}
                             </button>
                         )}
                     </div>
@@ -650,10 +680,22 @@ export function BookTreeGraph({
     useEffect(() => {
         reopenPath(ancestorsOf(tree, selected));
     }, [tree, selected]);
-    function toggle(id: number, open: boolean) {
+    /** deep のときは、その先の枝もまとめて開く・たたむ。 */
+    function toggle(id: number, open: boolean, deep: boolean) {
         // 選んでいる手の祖先をたたむときは、たたんだ手を選び直す（選んだ手が見えなくならないように）。
         if (!open && path.has(id) && id !== selected) onSelect(id);
-        setOverrides((current) => new Map(current).set(id, open));
+        setOverrides((current) => {
+            const next = new Map(current).set(id, open);
+            if (!deep) return next;
+            const stack = [...tree.nodes[id].children];
+            for (let child = stack.pop(); child !== undefined; child = stack.pop()) {
+                const node = tree.nodes[child];
+                if (node.children.length === 0) continue;
+                next.set(child, open);
+                stack.push(...node.children);
+            }
+            return next;
+        });
     }
 
     // 木の中で押した手は、選び直して木の形が変わっても画面の同じ位置に残す（押した手を見失わないように）。
