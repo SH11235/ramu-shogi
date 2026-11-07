@@ -3,6 +3,12 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BookTreeViewer, MAX_BOOK_FILE_BYTES } from "./BookTreeViewer";
+import { loadLastBookFile } from "./lastBookFile";
+
+vi.mock("./lastBookFile", () => ({
+    loadLastBookFile: vi.fn(async () => null),
+    saveLastBookFile: vi.fn(async () => {}),
+}));
 
 const initial = createInitialPositionState();
 function key(...moves: string[]) {
@@ -50,6 +56,21 @@ const current = () =>
 const built = () => screen.findByText(/局面を展開$/);
 
 describe("BookTreeViewer", () => {
+    it("StrictMode でも、最後に開いた定跡を開き直す", async () => {
+        const text = `sfen ${key()}
+7g7f`;
+        // StrictMode ではエフェクトが 2 回走り、1 回目の結果は捨てられるので、どの呼び出しにも返す。
+        vi.mocked(loadLastBookFile).mockResolvedValue(
+            new File([text], "last.db", { type: "text/plain" }),
+        );
+        render(
+            <StrictMode>
+                <BookTreeViewer fetchLegalMoves={async () => []} />
+            </StrictMode>,
+        );
+        expect(await screen.findByText("last.db")).toBeTruthy();
+        vi.mocked(loadLastBookFile).mockResolvedValue(null);
+    });
     it("指し手の一覧と木のどちらから選んでも、盤の局面と木の選択がそろう", async () => {
         render(<BookTreeViewer fetchLegalMoves={async () => []} />);
         await upload(
@@ -92,6 +113,35 @@ sfen ${key("7g7f", "8c8d")}
 6g6f`);
         await built();
         await waitFor(() => expect(current()).toBe("2手目 ☖8四歩(83)"));
+        const trail = within(screen.getByRole("navigation", { name: "選んだ手までの道筋" }));
+        expect(trail.getAllByRole("button").map((button) => button.textContent)).toEqual([
+            "開始",
+            "2 ☖8四歩(83)",
+        ]);
+        fireEvent.click(trail.getByRole("button", { name: "開始" }));
+        expect(current()).toBe("開始局面");
+    });
+    it("平手から定跡に入れない定跡は、定跡の中の局面から始め、候補を選び直せる", async () => {
+        const mid = ["7g7f", "3c3d", "8h2b+", "3a2b"];
+        render(<BookTreeViewer fetchLegalMoves={async () => []} />);
+        await upload(
+            `sfen ${key(...mid)} 5
+B*4e
+sfen ${key("2g2f", "8c8d")} 3
+2f2e
+2f2e`,
+        );
+        await built();
+        const root = await screen.findByRole("combobox", { name: "開始局面" });
+        expect(
+            within(root)
+                .getAllByRole("option")
+                .map((option) => option.textContent),
+        ).toEqual(["候補 1（3手目の局面）", "候補 2（5手目の局面）"]);
+        expect(tree().getByRole("button", { name: /^☗2五歩\(26\)/ })).toBeTruthy();
+        fireEvent.change(root, { target: { value: key(...mid) } });
+        await built();
+        expect(await tree().findByRole("button", { name: /^☗4五角打/ })).toBeTruthy();
     });
     it("全画面で木を広げ、局面の欄のボタンか Esc で盤の画面に戻る", async () => {
         render(<BookTreeViewer fetchLegalMoves={async () => []} />);

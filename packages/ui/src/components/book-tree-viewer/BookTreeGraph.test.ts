@@ -1,6 +1,8 @@
 import { type BookTree, type BookTreeNode, createInitialPositionState } from "@shogi/app-core";
-import { describe, expect, it } from "vitest";
-import { layoutBookGraph } from "./BookTreeGraph";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { createElement } from "react";
+import { afterEach, describe, expect, it } from "vitest";
+import { BookTreeGraph, layoutBookGraph } from "./BookTreeGraph";
 
 const position = createInitialPositionState();
 /** 親の番号の並びから木を作る（`parents[i]` が i 番の手の親）。 */
@@ -21,6 +23,8 @@ function treeOf(parents: (number | null)[]): BookTree {
         building: false,
         capped: false,
         legalMovesFailed: false,
+        roots: [],
+        goal: 0,
     };
 }
 const rows = (tree: BookTree, open: (node: BookTreeNode) => boolean) =>
@@ -52,5 +56,72 @@ describe("layoutBookGraph", () => {
     it("閉じた手の先は置かない", () => {
         const tree = treeOf([null, 0, 1, 0]);
         expect(Object.keys(rows(tree, (node) => node.id !== 1))).toEqual(["0", "1", "3"]);
+    });
+});
+
+describe("BookTreeGraph", () => {
+    afterEach(cleanup);
+    const book = {
+        positions: new Map(),
+        warnings: [],
+        stats: { positions: 0, moves: 0, sente: 0, gote: 0, branches: 0 },
+    };
+    // 0 → 1 → 2 → … → 42（1 の先に 41 手）、0 → 43
+    const parents = [null, 0, ...Array.from({ length: 41 }, (_, index) => index + 1), 0];
+    const draw = (selected: number) =>
+        render(
+            createElement(BookTreeGraph, {
+                tree: treeOf(parents),
+                book,
+                selected,
+                onSelect: () => {},
+            }),
+        );
+    it("後ろに兄弟のある大きな枝は初めからたたみ、先の手の数を添える", () => {
+        const { container } = draw(0);
+        expect(screen.getByRole("button", { name: /の先を開く（41 手）/ }).textContent).toBe(
+            "41手",
+        );
+        expect(container.querySelector('[data-node="2"]')).toBeNull();
+        expect(container.querySelector('[data-node="43"]')).not.toBeNull();
+    });
+    it("同じ局面から出る手が 2 つ以上あれば帯で囲む", () => {
+        const { container } = draw(0);
+        const bands = [...container.querySelectorAll("rect")];
+        expect(bands).toHaveLength(1);
+        expect(Number(bands[0].getAttribute("height"))).toBeGreaterThan(26);
+    });
+    it("たたんだ枝の中の手を選ぶと、その枝を開く", () => {
+        const { container } = draw(2);
+        expect(container.querySelector('[data-node="2"]')).not.toBeNull();
+        expect(container.querySelector('[data-node="3"]')).not.toBeNull();
+    });
+    it("Shift を押しながら開くと、先のたたんだ枝もまとめて開く", () => {
+        // 0 → 1 → 2 → 3 → … → 43（2 の先に 41 手）、1 → 44、0 → 45
+        const nested = [null, 0, 1, ...Array.from({ length: 41 }, (_, index) => index + 2), 1, 0];
+        const drawNested = () =>
+            render(
+                createElement(BookTreeGraph, {
+                    tree: treeOf(nested),
+                    book,
+                    selected: 0,
+                    onSelect: () => {},
+                }),
+            );
+        const plain = drawNested();
+        fireEvent.click(screen.getByRole("button", { name: /の先を開く（43 手）/ }));
+        expect(plain.container.querySelector('[data-node="2"]')).not.toBeNull();
+        expect(plain.container.querySelector('[data-node="3"]')).toBeNull();
+        cleanup();
+        const deep = drawNested();
+        fireEvent.click(screen.getByRole("button", { name: /の先を開く（43 手）/ }), {
+            shiftKey: true,
+        });
+        expect(deep.container.querySelector('[data-node="3"]')).not.toBeNull();
+    });
+    it("たたんだ枝は開ける", () => {
+        const { container } = draw(0);
+        fireEvent.click(screen.getByRole("button", { name: /の先を開く（41 手）/ }));
+        expect(container.querySelector('[data-node="2"]')).not.toBeNull();
     });
 });

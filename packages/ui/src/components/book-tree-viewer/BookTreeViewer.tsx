@@ -14,6 +14,7 @@ import { ChoiceGroup } from "../choice-group";
 import { StaticBoardView } from "../static-board-view";
 import { BookMoveList } from "./BookMoveList";
 import { BookTreeGraph, type BookTreePreviewMode, moveLabel } from "./BookTreeGraph";
+import { loadLastBookFile, saveLastBookFile } from "./lastBookFile";
 import { useBookTree } from "./useBookTree";
 
 export const MAX_BOOK_FILE_BYTES = 64 * 1024 * 1024;
@@ -160,7 +161,8 @@ export function BookTreeViewer({
         document.addEventListener("keydown", trap);
         return () => document.removeEventListener("keydown", trap);
     }, [dialog]);
-    const { session, tree } = useBookTree(book?.data, fetchLegalMoves);
+    const [rootKey, setRootKey] = useState<string | undefined>(undefined);
+    const { session, tree } = useBookTree(book?.data, fetchLegalMoves, rootKey);
     const [body, setBody] = useState<HTMLDivElement | null>(null);
     const size = useElementSize(body);
     const fileRef = useRef<HTMLInputElement>(null);
@@ -228,16 +230,35 @@ export function BookTreeViewer({
             const data = await parseBookAsync(text, () => id !== readId.current);
             if (id !== readId.current) return;
             setBook({ id, name: file.name, data });
+            setRootKey(undefined);
             setSelected(0);
+            void saveLastBookFile(file);
         } catch {
             if (id === readId.current) setError("ファイルを読み込めませんでした");
         } finally {
             if (id === readId.current) setBusy(false);
         }
     }
+    // 再読み込みしたら、最後に開いた定跡を開き直す（開くより先にファイルを選んでいたら、そちらを優先する）。
+    const picked = useRef(false);
+    const restore = useEffectEvent((file: File) => {
+        if (!picked.current) void loadFile(file);
+    });
+    useEffect(() => {
+        let active = true;
+        void loadLastBookFile().then((file) => {
+            if (active && file) restore(file);
+        });
+        return () => {
+            active = false;
+        };
+    }, []);
     // 画面のどこへ落としても読み込む（ファイルを選ぶ欄を探さなくてよいように）。
     const [root, setRoot] = useState<HTMLDivElement | null>(null);
-    const dropFile = useEffectEvent((file: File) => void loadFile(file));
+    const dropFile = useEffectEvent((file: File) => {
+        picked.current = true;
+        void loadFile(file);
+    });
     useEffect(() => {
         if (!root) return;
         const over = (event: DragEvent) => {
@@ -466,6 +487,15 @@ export function BookTreeViewer({
     const status = !tree
         ? null
         : `${tree.expanded.toLocaleString("ja-JP")} 局面を展開${tree.building ? "・組み立て中…" : tree.capped ? "・自動で展開する上限に達しました（未展開の手は選ぶと読み込みます）" : ""}`;
+    // 組み立ての進み具合。分母は定跡の局面数（と自動で展開する上限）なので、届かない局面があれば 100% の前で終わる。
+    const progress =
+        tree?.building && tree.goal > 0
+            ? Math.min(99, Math.floor((tree.expanded / tree.goal) * 100))
+            : null;
+    const rootLabel = (key: string, index: number) => {
+        const ply = book?.data.plies?.get(key);
+        return `候補 ${index + 1}${ply === undefined ? "" : `（${ply}手目の局面）`}`;
+    };
 
     return (
         <div
@@ -485,7 +515,9 @@ export function BookTreeViewer({
                     onChange={(event) => {
                         const file = event.target.files?.[0];
                         event.target.value = "";
-                        if (file) void loadFile(file);
+                        if (!file) return;
+                        picked.current = true;
+                        void loadFile(file);
                     }}
                 />
                 <output className="min-w-0 truncate text-sm font-medium">
@@ -511,10 +543,55 @@ export function BookTreeViewer({
                         </ul>
                     </details>
                 )}
+                {tree && tree.roots.length > 0 && (
+                    <div className="flex items-center gap-1 text-xs text-wafuu-sumi-light">
+                        <span title="平手から定跡に入れないので、定跡の中の局面から始めます">
+                            開始局面
+                        </span>
+                        {tree.roots.length > 1 ? (
+                            <select
+                                aria-label="開始局面"
+                                value={rootKey ?? tree.roots[0]}
+                                onChange={(event) => {
+                                    setRootKey(event.target.value);
+                                    setSelected(0);
+                                    skipped.current = null;
+                                }}
+                                className="rounded border border-wafuu-border bg-background px-1 py-0.5 text-xs text-wafuu-sumi"
+                            >
+                                {tree.roots.map((key, index) => (
+                                    <option key={key} value={key}>
+                                        {rootLabel(key, index)}
+                                    </option>
+                                ))}
+                            </select>
+                        ) : (
+                            <span className="text-wafuu-sumi">定跡の中の局面</span>
+                        )}
+                    </div>
+                )}
                 {status && (
-                    <output aria-live="polite" className="ml-auto text-xs text-muted-foreground">
-                        {status}
-                    </output>
+                    <div className="ml-auto flex items-center gap-2">
+                        {progress !== null && (
+                            <div
+                                role="progressbar"
+                                aria-label="木の組み立て"
+                                aria-valuemin={0}
+                                aria-valuemax={100}
+                                aria-valuenow={progress}
+                                className="h-1.5 w-20 overflow-hidden rounded-full bg-wafuu-washi-warm"
+                            >
+                                <div
+                                    className="h-full bg-wafuu-kincha transition-[width]"
+                                    style={{ width: `${progress}%` }}
+                                />
+                            </div>
+                        )}
+                        <output aria-live="polite" className="text-xs text-muted-foreground">
+                            {progress !== null && `${progress}%・`}
+                            {status}
+                        </output>
+                    </div>
                 )}
             </div>
             {error && (

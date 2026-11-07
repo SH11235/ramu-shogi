@@ -1,7 +1,7 @@
 import type { BookData, BookTree } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
-import { bookValue, moveLabel } from "./BookTreeGraph";
+import { bookValue, moveLabel, valueClass } from "./BookTreeGraph";
 
 /** 選んだ局面から指せる手（定跡の手と、定跡の局面へつながる手）。押すとその手へ進む。 */
 export function BookMoveList({
@@ -94,7 +94,14 @@ export function BookMoveList({
                                             )}
                                         </button>
                                     </td>
-                                    <td className="px-2 text-right tabular-nums">{value ?? ""}</td>
+                                    <td
+                                        className={cn(
+                                            "px-2 text-right tabular-nums",
+                                            value !== undefined && valueClass(value),
+                                        )}
+                                    >
+                                        {value ?? ""}
+                                    </td>
                                     <td className="px-2 text-right tabular-nums">
                                         {entry?.depth ?? ""}
                                     </td>

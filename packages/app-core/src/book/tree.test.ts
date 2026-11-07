@@ -121,6 +121,25 @@ describe("book tree", () => {
         expect(row.map((node) => node.move)).toEqual([undefined, "7g7f", "8c8d"]);
         expect(row.map((node) => node.inBook)).toEqual([undefined, false, true]);
     });
+    it("登録の手は手番側から見て良い順に並べ、同じ値はファイルの順にする", async () => {
+        const text = `sfen ${key("7g7f")}
+8c8d none -50
+3c3d none 20
+4c4d none -50
+1c1d none 80`;
+        const builder = createBookTreeBuilder({
+            book: parseBook(text),
+            legalMoves: async (sfen) => (sfen === `${key()} 1` ? ["7g7f"] : []),
+        });
+        await builder.start();
+        const parent = builder.tree.nodes.find((node) => node.key === key("7g7f"));
+        expect(parent?.children.map((id) => builder.tree.nodes[id].move)).toEqual([
+            "1c1d",
+            "3c3d",
+            "8c8d",
+            "4c4d",
+        ]);
+    });
     it("上限では未展開を残し、その枝だけを追加展開する", async () => {
         const builder = createBookTreeBuilder({ ...fixture(), limit: 1 });
         await builder.start();
@@ -190,5 +209,66 @@ describe("book tree", () => {
         const text = `sfen ${key()}\n7g7f\n${"# comment\n".repeat(600)}sfen ${key("7g7f")}\n8c8d`;
         expect(await parseBookAsync(text)).toEqual(parseBook(text));
         await expect(parseBookAsync(text, () => true)).rejects.toThrow("中止");
+    });
+    it("平手から定跡に入れない定跡は、他の局面から来ていない局面を手数の小さい順に開始局面の候補にする", async () => {
+        const mid = ["7g7f", "3c3d", "8h2b+", "3a2b"];
+        const text = `sfen ${key(...mid)} 5
+B*4e
+sfen ${key(...mid, "B*4e")} 6
+8c8d
+sfen ${key("2g2f", "8c8d")} 3
+2f2e`;
+        const builder = createBookTreeBuilder({
+            book: parseBook(text),
+            legalMoves: async (sfen) => (sfen === `${key()} 1` ? ["7g7f", "2g2f"] : []),
+        });
+        await builder.start();
+        expect(builder.tree.roots).toEqual([key("2g2f", "8c8d"), key(...mid)]);
+        expect(builder.tree.nodes[0].key).toBe(key("2g2f", "8c8d"));
+        expect(builder.tree.nodes[0].position.ply).toBe(3);
+
+        const chosen = createBookTreeBuilder({
+            book: parseBook(text),
+            legalMoves: async () => [],
+            rootKey: key(...mid),
+        });
+        await chosen.start();
+        expect(chosen.tree.nodes[0].position.ply).toBe(5);
+        expect(bookTreeRow(chosen.tree, 0).map((node) => node.move)).toEqual([
+            undefined,
+            "B*4e",
+            "8c8d",
+        ]);
+    });
+    it("合法手を取れなくても、定跡の中の局面から始める", async () => {
+        const builder = createBookTreeBuilder({
+            book: parseBook(`sfen ${key("7g7f", "3c3d")}\n2g2f`),
+            legalMoves: async () => {
+                throw new Error("unavailable");
+            },
+        });
+        await builder.start();
+        expect(builder.tree.nodes[0].key).toBe(key("7g7f", "3c3d"));
+        expect(builder.tree.nodes.map((node) => node.move)).toEqual([undefined, "2g2f"]);
+    });
+    it("手順が輪になっていて他から来ていない局面が無ければ、最初の局面から始める", async () => {
+        const base = ["7g7f", "3c3d"];
+        const loop = ["5i5h", "5a5b", "5h5i", "5b5a"];
+        const text = loop
+            .map((move, index) => `sfen ${key(...base, ...loop.slice(0, index))}\n${move}`)
+            .join("\n");
+        const builder = createBookTreeBuilder({
+            book: parseBook(text),
+            legalMoves: async () => [],
+        });
+        await builder.start();
+        expect(builder.tree.roots).toEqual([key(...base)]);
+        expect(builder.tree.nodes.map((node) => node.status)).toEqual([
+            "ready",
+            "ready",
+            "ready",
+            "ready",
+            "merge",
+        ]);
     });
 });

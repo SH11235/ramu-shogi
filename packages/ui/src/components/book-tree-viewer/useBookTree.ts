@@ -9,9 +9,12 @@ import { useEffect, useEffectEvent, useState } from "react";
 export function useBookTree(
     book: BookData | undefined,
     fetchLegalMoves: PositionService["getLegalMoves"],
+    /** 平手から定跡に入れない定跡で、始める局面（`tree.roots` の 1 つ）。 */
+    rootKey?: string,
 ) {
     const [session, setSession] = useState<{
         book: BookData;
+        rootKey: string | undefined;
         builder: ReturnType<typeof createBookTreeBuilder>;
     } | null>(null);
     const [revision, setRevision] = useState(0);
@@ -51,6 +54,7 @@ export function useBookTree(
                 ...current,
                 nodes: [...current.nodes],
                 firstByKey: new Map(current.firstByKey),
+                roots: [...current.roots],
             });
             setRevision((value) => value + 1);
         }
@@ -58,8 +62,9 @@ export function useBookTree(
             book,
             legalMoves,
             onChange: publish,
+            rootKey,
         });
-        setSession({ book, builder });
+        setSession({ book, rootKey, builder });
         publish();
         void builder.start();
         return () => {
@@ -68,10 +73,11 @@ export function useBookTree(
             timer = undefined;
             builder.cancel();
         };
-    }, [book]);
+    }, [book, rootKey]);
+    const current = session && session.book === book && session.rootKey === rootKey;
     return {
-        session: session && session.book === book ? session : null,
-        tree: session && session.book === book ? tree : null,
+        session: current ? session : null,
+        tree: current ? tree : null,
         revision,
     };
 }
