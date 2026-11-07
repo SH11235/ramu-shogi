@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { applyMoveWithState, createInitialPositionState } from "../game/board";
 import { parseBook, parseBookAsync, positionToBookKey } from "./book";
-import { bookTreePath, bookTreeRow, createBookTreeBuilder } from "./tree";
+import { bookKeyFromPositionText, bookTreePath, bookTreeRow, createBookTreeBuilder } from "./tree";
 
 const initial = createInitialPositionState();
 function after(...moves: string[]) {
@@ -239,6 +239,43 @@ sfen ${key("2g2f", "8c8d")} 3
             "B*4e",
             "8c8d",
         ]);
+    });
+    it("平手から始まる定跡に、平手の木に出てこない開始局面があれば、平手と並べて候補にする", async () => {
+        const mid = ["7g7f", "3c3d", "8h2b+", "3a2b"];
+        const text = `sfen ${key()} 1\n7g7f\nsfen ${key("7g7f")} 2\n8c8d\nsfen ${key(...mid)} 5\nB*4e`;
+        const builder = createBookTreeBuilder({
+            book: parseBook(text),
+            legalMoves: async () => [],
+        });
+        await builder.start();
+        expect(builder.tree.nodes[0].key).toBe(key());
+        expect(builder.tree.roots).toEqual([key(), key(...mid)]);
+
+        const chosen = createBookTreeBuilder({
+            book: parseBook(text),
+            legalMoves: async () => [],
+            rootKey: key(...mid),
+        });
+        await chosen.start();
+        expect(chosen.tree.nodes[0].key).toBe(key(...mid));
+        expect(chosen.tree.roots).toEqual([]);
+    });
+    it("平手の木に出てくる局面だけなら、開始局面の候補を出さない", async () => {
+        const builder = createBookTreeBuilder(fixture());
+        await builder.start();
+        expect(builder.tree.roots).toEqual([]);
+    });
+    it.each([
+        ["position startpos moves 7g7f 3c3d", key("7g7f", "3c3d")],
+        [`position sfen ${key("7g7f")} 2 moves 3c3d`, key("7g7f", "3c3d")],
+        [`sfen ${key("7g7f")} 2`, key("7g7f")],
+        [key("7g7f"), key("7g7f")],
+        ["startpos", key()],
+    ])("貼られた局面 %s を定跡の局面にする", (text, expected) => {
+        expect(bookKeyFromPositionText(text)).toBe(expected);
+    });
+    it.each(["position startpos moves 7g7e", "abc", ""])("読めない局面 %s は投げる", (text) => {
+        expect(() => bookKeyFromPositionText(text)).toThrow();
     });
     it("合法手を取れなくても、定跡の中の局面から始める", async () => {
         const builder = createBookTreeBuilder({

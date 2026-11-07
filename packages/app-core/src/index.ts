@@ -219,6 +219,7 @@ export {
 } from "./book/book";
 export type { BookTree, BookTreeNode } from "./book/tree";
 export {
+    bookKeyFromPositionText,
     bookTreePath,
     bookTreeRow,
     createBookTreeBuilder,

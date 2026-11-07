@@ -142,6 +142,101 @@ sfen ${key("2g2f", "8c8d")} 3
         fireEvent.change(root, { target: { value: key(...mid) } });
         await built();
         expect(await tree().findByRole("button", { name: /^☗4五角打/ })).toBeTruthy();
+        expect(screen.getByRole("combobox", { name: "開始局面" })).toBeTruthy();
+    });
+    it("平手から始まる手順と途中の局面から始まる手順を合わせた定跡は、平手と候補を選べる", async () => {
+        const mid = ["7g7f", "3c3d", "8h2b+", "3a2b"];
+        render(<BookTreeViewer fetchLegalMoves={async () => []} />);
+        await upload(`sfen ${key()} 1
+7g7f
+sfen ${key("7g7f")} 2
+8c8d
+sfen ${key(...mid)} 5
+B*4e`);
+        await built();
+        const root = await screen.findByRole("combobox", { name: "開始局面" });
+        expect(
+            within(root)
+                .getAllByRole("option")
+                .map((option) => option.textContent),
+        ).toEqual(["平手", "候補 1（5手目の局面）"]);
+        fireEvent.change(root, { target: { value: key(...mid) } });
+        expect(await tree().findByRole("button", { name: /^☗4五角打/ })).toBeTruthy();
+        fireEvent.change(screen.getByRole("combobox", { name: "開始局面" }), {
+            target: { value: key() },
+        });
+        expect(await tree().findByRole("button", { name: /^☗7六歩/ })).toBeTruthy();
+    });
+    it("移動の一覧から分かれ目・出口へ移り、局面を貼って探せる", async () => {
+        render(<BookTreeViewer fetchLegalMoves={async () => []} />);
+        await upload(`sfen ${key()}
+7g7f none 30
+2g2f none 10
+sfen ${key("7g7f")}
+8c8d none 40
+3c3d none -20`);
+        await built();
+        const open = () => fireEvent.click(screen.getByRole("button", { name: "移動" }));
+        const panel = () => within(screen.getByRole("dialog", { name: "局面へ移動" }));
+        const items = () =>
+            within(panel().getByRole("list", { name: "移る局面" }))
+                .getAllByRole("button")
+                .map((item) => item.textContent);
+        open();
+        expect(items()).toEqual(["開始局面2 通り・先に 4 手", "1 ☗7六歩(77)2 通り・先に 2 手"]);
+        expect(panel().queryByRole("button", { name: /警告/ })).toBeNull();
+        fireEvent.click(panel().getByRole("button", { name: /7六歩/ }));
+        expect(current()).toBe("1手目 ☗7六歩(77)");
+        expect(screen.queryByRole("dialog", { name: "局面へ移動" })).toBeNull();
+
+        open();
+        fireEvent.click(panel().getByRole("button", { name: "出口" }));
+        fireEvent.click(panel().getByRole("button", { name: "後手よし順" }));
+        expect(items()).toEqual(["2 ☖8四歩(83)-40", "1 ☗2六歩(27)10", "2 ☖3四歩(33)20"]);
+
+        fireEvent.change(panel().getByLabelText("局面（SFEN）"), {
+            target: { value: "position startpos moves 7g7f 3c3d" },
+        });
+        fireEvent.click(panel().getByRole("button", { name: "探す" }));
+        expect(current()).toBe("2手目 ☖3四歩(33)");
+
+        open();
+        fireEvent.change(panel().getByLabelText("局面（SFEN）"), {
+            target: { value: `sfen ${key("5g5f")} 2` },
+        });
+        fireEvent.click(panel().getByRole("button", { name: "探す" }));
+        expect(panel().getByText("この局面は定跡にありません")).toBeTruthy();
+    });
+    it("警告のある定跡では、移動の一覧に警告の局面を出す", async () => {
+        render(<BookTreeViewer fetchLegalMoves={async () => []} />);
+        await upload(`sfen ${key()}\n7g7e\n7g7f`);
+        await built();
+        fireEvent.click(screen.getByRole("button", { name: "移動" }));
+        const panel = within(screen.getByRole("dialog", { name: "局面へ移動" }));
+        fireEvent.click(panel.getByRole("button", { name: "警告 1" }));
+        expect(panel.getByText("指せない定跡の手があります")).toBeTruthy();
+    });
+    it("しおりを付けた局面を残し、移動の一覧から戻れる", async () => {
+        const stored = new Map<string, string>();
+        vi.stubGlobal("localStorage", {
+            getItem: (name: string) => stored.get(name) ?? null,
+            setItem: (name: string, value: string) => stored.set(name, value),
+        });
+        render(<BookTreeViewer fetchLegalMoves={async () => []} />);
+        await upload(`sfen ${key()}\n7g7f\n2g2f\nsfen ${key("7g7f")}\n8c8d`);
+        await built();
+        fireEvent.click(tree().getByRole("button", { name: /^☗7六歩/ }));
+        fireEvent.click(screen.getByRole("button", { name: "しおり" }));
+        expect(screen.getByRole("button", { name: "しおり" }).getAttribute("aria-pressed")).toBe(
+            "true",
+        );
+        expect(stored.get("book-tree-viewer:bookmarks")).toContain(key("7g7f"));
+        fireEvent.click(screen.getByRole("button", { name: "開始局面へ" }));
+        fireEvent.click(screen.getByRole("button", { name: "移動" }));
+        const panel = within(screen.getByRole("dialog", { name: "局面へ移動" }));
+        fireEvent.click(panel.getByRole("button", { name: "しおり" }));
+        fireEvent.click(panel.getByRole("button", { name: /7六歩/ }));
+        expect(current()).toBe("1手目 ☗7六歩(77)");
     });
     it("全画面で木を広げ、局面の欄のボタンか Esc で盤の画面に戻る", async () => {
         render(<BookTreeViewer fetchLegalMoves={async () => []} />);

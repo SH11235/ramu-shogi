@@ -15,6 +15,8 @@ import { Button } from "../button";
 import { useIsMobile } from "../shogi-match/hooks/useMediaQuery";
 import { formatMoveSimple } from "../shogi-match/utils/kifFormat";
 import { StaticBoardView } from "../static-board-view";
+import { BookTreeJump } from "./BookTreeJump";
+import { loadBookmarks, saveBookmarks } from "./bookmarks";
 
 /** 木の 1 手の箱と、その並びの間隔（px）。手数が列、分かれた手が行になる。 */
 const COL_WIDTH = 172;
@@ -643,6 +645,20 @@ export function BookTreeGraph({
         return () => observer.disconnect();
     }, [root]);
     const [boardCollapsed, setBoardCollapsed] = useState(false);
+    const [jumpOpen, setJumpOpen] = useState(false);
+    const [bookmarks, setBookmarks] = useState(loadBookmarks);
+    const bookmarked = bookmarks.includes(tree.nodes[selected]?.key ?? "");
+    function toggleBookmark() {
+        const key = tree.nodes[selected]?.key;
+        if (key === undefined) return;
+        // 別のタブで足したしおりを消さないように、保存されているものに足し引きする。
+        const current = loadBookmarks();
+        const next = current.includes(key)
+            ? current.filter((item) => item !== key)
+            : [...current, key];
+        saveBookmarks(next);
+        setBookmarks(next);
+    }
     const [overrides, setOverrides] = useState<ReadonlyMap<number, boolean>>(() => new Map());
     const [zoomSetting, setZoomSetting] = useState(1);
     const zoom = explore ? zoomSetting : 1;
@@ -1038,43 +1054,79 @@ export function BookTreeGraph({
             className={cn("flex min-h-0 min-w-0 flex-col overflow-hidden", className)}
         >
             {/* 開始局面でも出す（選び直すたびに木の上端が動かないように）。 */}
-            <nav
-                aria-label="選んだ手までの道筋"
+            <div
                 className={cn(
-                    "flex shrink-0 items-center gap-1 overflow-x-auto border-b border-wafuu-border px-2 py-1 text-xs whitespace-nowrap",
+                    "flex shrink-0 items-center gap-1 border-b border-wafuu-border px-2 py-1 text-xs",
                     // 盤の画面では、右上の「全画面」ボタンの下に入らないようにする。
-                    !explore && "pr-16",
+                    !explore && "pr-20",
                 )}
             >
-                {trail[0].parent !== null && (
-                    <span aria-hidden="true" className="text-muted-foreground">
-                        …
-                    </span>
-                )}
-                {trail.map((node, index) => (
-                    <span key={node.id} className="flex items-center gap-1">
-                        {index > 0 && (
-                            <span aria-hidden="true" className="text-muted-foreground">
-                                ›
-                            </span>
-                        )}
-                        <button
-                            type="button"
-                            aria-current={node.id === selected ? "step" : undefined}
-                            onClick={() => onSelect(node.id)}
-                            className={cn(
-                                "rounded px-1 py-0.5 hover:bg-wafuu-washi-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                                node.id === selected && "bg-wafuu-kin font-semibold",
+                <nav
+                    aria-label="選んだ手までの道筋"
+                    className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto whitespace-nowrap"
+                >
+                    {trail[0].parent !== null && (
+                        <span aria-hidden="true" className="text-muted-foreground">
+                            …
+                        </span>
+                    )}
+                    {trail.map((node, index) => (
+                        <span key={node.id} className="flex items-center gap-1">
+                            {index > 0 && (
+                                <span aria-hidden="true" className="text-muted-foreground">
+                                    ›
+                                </span>
                             )}
-                        >
-                            {node.parent === null
-                                ? "開始"
-                                : `${(node.position.ply ?? 1) - 1} ${moveLabel(tree, node)}`}
-                        </button>
-                    </span>
-                ))}
-            </nav>
+                            <button
+                                type="button"
+                                aria-current={node.id === selected ? "step" : undefined}
+                                onClick={() => onSelect(node.id)}
+                                className={cn(
+                                    "rounded px-1 py-0.5 hover:bg-wafuu-washi-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                    node.id === selected && "bg-wafuu-kin font-semibold",
+                                )}
+                            >
+                                {node.parent === null
+                                    ? "開始"
+                                    : `${(node.position.ply ?? 1) - 1} ${moveLabel(tree, node)}`}
+                            </button>
+                        </span>
+                    ))}
+                </nav>
+                <button
+                    type="button"
+                    aria-pressed={bookmarked}
+                    onClick={toggleBookmark}
+                    className={cn(
+                        "shrink-0 rounded border border-wafuu-border px-1.5 py-0.5 hover:bg-wafuu-washi-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        bookmarked && "border-wafuu-kincha bg-wafuu-kin/40 font-semibold",
+                    )}
+                >
+                    しおり
+                </button>
+                <button
+                    type="button"
+                    aria-expanded={jumpOpen}
+                    onClick={() => setJumpOpen((open) => !open)}
+                    className={cn(
+                        "shrink-0 rounded border border-wafuu-border px-1.5 py-0.5 hover:bg-wafuu-washi-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        jumpOpen && "bg-wafuu-washi-warm",
+                    )}
+                >
+                    移動
+                </button>
+            </div>
             <div className="relative flex min-h-0 min-w-0 flex-1">
+                {jumpOpen && (
+                    <BookTreeJump
+                        tree={tree}
+                        book={book}
+                        counts={counts}
+                        bookmarks={bookmarks}
+                        onSelect={onSelect}
+                        onClose={() => setJumpOpen(false)}
+                    />
+                )}
                 <section
                     ref={frame}
                     aria-label="定跡の木"
