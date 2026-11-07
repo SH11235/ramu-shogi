@@ -48,6 +48,8 @@ interface StudyMoveListProps {
     onPromoteToMainLine: () => void;
     /** 変化（そのノードと配下）の削除を求める。確認は呼び出し側で行う。 */
     onRequestDeleteVariation: (nodeId: string) => void;
+    /** 本譜と変化を木の図で開く（押されたボタンを渡す。閉じたらそこへフォーカスを戻す）。 */
+    onOpenTree?: (opener: HTMLElement) => void;
     className?: string;
 }
 
@@ -91,6 +93,7 @@ export function StudyMoveList({
     onBackToMainLine,
     onPromoteToMainLine,
     onRequestDeleteVariation,
+    onOpenTree,
     className,
 }: StudyMoveListProps): ReactElement {
     const hasSource = Object.values(doc.tree.nodes).some((node) => node.source?.score != null);
@@ -131,7 +134,22 @@ export function StudyMoveList({
             )}
         >
             <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="font-display text-base font-semibold text-wafuu-sumi">棋譜と変化</h2>
+                <div className="flex items-center gap-2">
+                    <h2 className="font-display text-base font-semibold text-wafuu-sumi">
+                        棋譜と変化
+                    </h2>
+                    {onOpenTree && (
+                        <button
+                            type="button"
+                            onClick={(event) => onOpenTree(event.currentTarget)}
+                            title="本譜と変化を木の図で画面いっぱいに見る"
+                            className="flex min-h-8 items-center gap-1 rounded-md border border-border px-2 text-xs text-wafuu-sumi hover:bg-wafuu-washi-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                            <BranchIcon className="h-3.5 w-3.5" />
+                            木で見る
+                        </button>
+                    )}
+                </div>
                 {!onMainLine && (
                     <div className="flex items-center gap-1">
                         <span className="flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground">
