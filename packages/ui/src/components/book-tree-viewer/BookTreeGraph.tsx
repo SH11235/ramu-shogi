@@ -651,6 +651,7 @@ export function BookTreeGraph({
     const openByDefault = (node: BookTreeNode) => {
         if (node.parent === null || counts[node.id] <= COLLAPSE_SUBTREE) return true;
         const siblings = tree.nodes[node.parent].children;
+        // 最後の兄弟は後ろの手を押し下げないので、大きくても開いておく。
         return siblings[siblings.length - 1] === node.id;
     };
     const path = ancestorsOf(tree, selected);
@@ -1036,44 +1037,43 @@ export function BookTreeGraph({
             ref={setRoot}
             className={cn("flex min-h-0 min-w-0 flex-col overflow-hidden", className)}
         >
-            {forks.length > 1 && (
-                <nav
-                    aria-label="選んだ手までの道筋"
-                    className={cn(
-                        "flex shrink-0 items-center gap-1 overflow-x-auto border-b border-wafuu-border px-2 py-1 text-xs whitespace-nowrap",
-                        // 盤の画面では、右上の「全画面」ボタンの下に入らないようにする。
-                        !explore && "pr-16",
-                    )}
-                >
-                    {trail[0].parent !== null && (
-                        <span aria-hidden="true" className="text-muted-foreground">
-                            …
-                        </span>
-                    )}
-                    {trail.map((node, index) => (
-                        <span key={node.id} className="flex items-center gap-1">
-                            {index > 0 && (
-                                <span aria-hidden="true" className="text-muted-foreground">
-                                    ›
-                                </span>
+            {/* 開始局面でも出す（選び直すたびに木の上端が動かないように）。 */}
+            <nav
+                aria-label="選んだ手までの道筋"
+                className={cn(
+                    "flex shrink-0 items-center gap-1 overflow-x-auto border-b border-wafuu-border px-2 py-1 text-xs whitespace-nowrap",
+                    // 盤の画面では、右上の「全画面」ボタンの下に入らないようにする。
+                    !explore && "pr-16",
+                )}
+            >
+                {trail[0].parent !== null && (
+                    <span aria-hidden="true" className="text-muted-foreground">
+                        …
+                    </span>
+                )}
+                {trail.map((node, index) => (
+                    <span key={node.id} className="flex items-center gap-1">
+                        {index > 0 && (
+                            <span aria-hidden="true" className="text-muted-foreground">
+                                ›
+                            </span>
+                        )}
+                        <button
+                            type="button"
+                            aria-current={node.id === selected ? "step" : undefined}
+                            onClick={() => onSelect(node.id)}
+                            className={cn(
+                                "rounded px-1 py-0.5 hover:bg-wafuu-washi-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                node.id === selected && "bg-wafuu-kin font-semibold",
                             )}
-                            <button
-                                type="button"
-                                aria-current={node.id === selected ? "step" : undefined}
-                                onClick={() => onSelect(node.id)}
-                                className={cn(
-                                    "rounded px-1 py-0.5 hover:bg-wafuu-washi-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                                    node.id === selected && "bg-wafuu-kin font-semibold",
-                                )}
-                            >
-                                {node.parent === null
-                                    ? "開始"
-                                    : `${(node.position.ply ?? 1) - 1} ${moveLabel(tree, node)}`}
-                            </button>
-                        </span>
-                    ))}
-                </nav>
-            )}
+                        >
+                            {node.parent === null
+                                ? "開始"
+                                : `${(node.position.ply ?? 1) - 1} ${moveLabel(tree, node)}`}
+                        </button>
+                    </span>
+                ))}
+            </nav>
             <div className="relative flex min-h-0 min-w-0 flex-1">
                 <section
                     ref={frame}

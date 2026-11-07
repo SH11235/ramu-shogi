@@ -137,6 +137,7 @@ function* parseBookChunks(text: string): Generator<void, BookData> {
                 current = entries.get(key) ?? new Map();
                 entries.set(key, current);
                 entryLines.set(key, index + 1);
+                // sfen <盤面> <手番> <持ち駒> <手数>。手数の無い行や 0 の行は手数を持たない。
                 const ply = Number(line.split(/\s+/)[4]);
                 if (Number.isSafeInteger(ply) && ply > 0 && !linePlies.has(key))
                     linePlies.set(key, ply);

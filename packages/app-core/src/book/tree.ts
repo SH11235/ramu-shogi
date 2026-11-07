@@ -5,6 +5,8 @@ import { applyUsiMoveStrict } from "./usi-move";
 import { yieldTask } from "./yieldTask";
 
 const BOOK_TREE_AUTO_LIMIT = 20_000;
+/** 続けて走らせる長さ。1 フレーム（約 16ms）に収めて、画面の描き直しを止めないようにする。 */
+const SLICE_MS = 12;
 export interface BookTreeNode {
     id: number;
     key: string;
@@ -58,7 +60,7 @@ async function findBookRoots(book: BookData, cancelled: () => boolean): Promise<
             const result = applyUsiMoveStrict(position, move.usi);
             if (result.ok) reached.add(positionToBookKey(result.next));
         }
-        if (performance.now() - sliceStart >= 12) {
+        if (performance.now() - sliceStart >= SLICE_MS) {
             await yieldTask();
             if (cancelled()) return [];
             sliceStart = performance.now();
@@ -202,7 +204,7 @@ export function createBookTreeBuilder({
             }
             if (cancelled) return;
             queue.push(...tree.nodes[node.id].children);
-            if (performance.now() - sliceStart >= 12) {
+            if (performance.now() - sliceStart >= SLICE_MS) {
                 onChange();
                 await yieldTask();
                 if (cancelled) return;
