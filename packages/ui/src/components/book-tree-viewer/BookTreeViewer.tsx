@@ -638,7 +638,7 @@ export function BookTreeViewer({
                             やねうら王形式（UTF-8）の定跡ファイルを選ぶか、ここへドロップしてください。
                         </p>
                         <p className="text-xs text-muted-foreground">
-                            ファイルはこの画面の中だけで読み、送信しません。リロードすると消えます。
+                            ファイルはこのブラウザの中だけで読み、送信しません。最後に開いたファイルはこのブラウザに残し、再読み込みしても開き直します（別のファイルを開くと入れ替わります。プライベートウィンドウなど保存できない環境では残りません）。
                         </p>
                         <Button variant="outline" onClick={() => fileRef.current?.click()}>
                             定跡ファイルを選ぶ
