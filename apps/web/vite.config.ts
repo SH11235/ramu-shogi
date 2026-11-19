@@ -68,6 +68,8 @@ const UI_PRIMITIVES = [
     "tooltip",
 ];
 
+const BOARD_AND_WORKSPACE_CHUNKS = new Set(["shogi-board", "shogi-match", "study-workspace"]);
+
 function chunkName(id: string): string | undefined {
     const normalizedId = id.split(path.sep).join("/");
 
@@ -225,14 +227,24 @@ export default defineConfig(({ command, mode }) => {
                 output: {
                     strictExecutionOrder: true,
                     codeSplitting: {
+                        // 起動時に使う共有モジュールから対局画面全体が先読みされるのを防ぐ。
+                        includeDependenciesRecursively: false,
+                        // 合計 24 KiB 未満の自動生成の共有 chunk は利用先に含め、ルート遷移時のリクエスト数を抑える。
+                        experimentalInlineCommonChunks: { maxSize: 24 * 1024 },
                         groups: [
                             {
-                                debugName: "application",
+                                debugName: "board-and-workspaces",
                                 name: chunkName,
-                                test: (id) => chunkName(id) !== undefined,
-                                // 起動時に使う共有モジュールから対局画面全体が先読みされるのを防ぐ。
-                                includeDependenciesRecursively: false,
-                                entriesAware: true,
+                                test: (id) => BOARD_AND_WORKSPACE_CHUNKS.has(chunkName(id) ?? ""),
+                            },
+                            {
+                                debugName: "startup",
+                                // vendor や app-core のうち遅延ルートだけが使うコードを先読みしない。
+                                tags: ["$initial"],
+                                name: (id, context) =>
+                                    context.getModuleInfo(id)?.isEntry
+                                        ? null
+                                        : (chunkName(id) ?? "app-shell"),
                             },
                         ],
                     },
