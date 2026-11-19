@@ -16,6 +16,7 @@ on:
       - "tooling/**"
       - "scripts/validate-desktop-release.*"
       - "scripts/check-unused-design-tokens.*"
+      - "scripts/check-web-bundle-count.*"
       - ".github/workflows/release-desktop.yml"
       - ".github/workflows/js-format-lint.yml"
   pull_request:
@@ -32,6 +33,7 @@ on:
       - "tooling/**"
       - "scripts/validate-desktop-release.*"
       - "scripts/check-unused-design-tokens.*"
+      - "scripts/check-web-bundle-count.*"
       - ".github/workflows/release-desktop.yml"
       - ".github/workflows/js-format-lint.yml"
 
@@ -73,6 +75,7 @@ jobs:
       - run: pnpm lint
       - run: pnpm test:release
       - run: pnpm test:design-tokens
+      - run: pnpm test:bundle-count
       - run: pnpm check:design-tokens
 
   knip:
@@ -171,6 +174,8 @@ jobs:
           VITE_NNUE_MANIFEST_URL: https://ramu-shogi.sh11235.com/nnue/manifest.json
           ENGINE_WASM_THREADED_TARGET_DIR: ${{ runner.temp }}/wasm-threaded-target
         run: pnpm build
+      - name: Check web bundle file counts
+        run: pnpm check:bundle-count
       # engine-wasm は Wasm ビルド成果物 (pkg/) を参照するため、ビルド後に typecheck を実行。
       # pkg/ は typecheck の inputs に入らずキャッシュの一致判定に効かないので、キャッシュを使わない
       - run: pnpm turbo typecheck --filter="@shogi/engine-wasm" --force
