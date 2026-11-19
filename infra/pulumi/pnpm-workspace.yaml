@@ -6,3 +6,16 @@
 # pnpm はこのファイルを見て「ここが workspace ルート」と判断するため、
 # 親ディレクトリ (リポジトリルート) の pnpm-workspace.yaml には到達しない。
 packages: []
+
+allowBuilds:
+  # protobufjs の postinstall は版の互換を表示するだけで、生成物は無い。
+  protobufjs: false
+
+# 依存の build script は明示的に許可するか無視するかを決める。
+strictDepBuilds: true
+
+# 公開から 1 日 (分) 経った版だけを解決する。
+minimumReleaseAge: 1440
+
+# 推移的な依存を git リポジトリや tarball の URL から取らない。
+blockExoticSubdeps: true

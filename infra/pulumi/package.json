@@ -3,12 +3,12 @@
   "private": true,
   "main": "index.ts",
   "dependencies": {
-    "@pulumi/cloudflare": "6.23.1",
-    "@pulumi/pulumi": "3.271.0"
+    "@pulumi/cloudflare": "6.24.0",
+    "@pulumi/pulumi": "3.276.0"
   },
   "devDependencies": {
-    "@types/node": "22.19.18",
+    "@types/node": "26.6.6",
     "typescript": "5.9.3"
   },
-  "packageManager": "pnpm@10.24.0"
+  "packageManager": "pnpm@12.22.0"
 }
