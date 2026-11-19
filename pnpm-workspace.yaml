@@ -5,6 +5,22 @@ packages:
 onlyBuiltDependencies:
   - esbuild
 
+# workerd ships its binary through optional platform packages, so its
+# postinstall fallback is not needed.
+ignoredBuiltDependencies:
+  - workerd
+
+# A dependency that gains a build script must be approved or ignored explicitly.
+strictDepBuilds: true
+
+# Resolve only versions published at least a day ago (minutes); a hijacked
+# release is usually caught and unpublished within that window. Add an entry to
+# minimumReleaseAgeExclude when an urgent security fix needs a fresher version.
+minimumReleaseAge: 1440
+
+# Transitive dependencies may not come from git repositories or tarball URLs.
+blockExoticSubdeps: true
+
 # miniflare pins undici to an exact version that GHSA-xjj6-f33q-929c affects.
 overrides:
   undici@7: ^7.30.1
