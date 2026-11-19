@@ -5,6 +5,7 @@ import type {
     ServerMessage,
     SnapshotPayload,
 } from "@shogi/match-client";
+import { createRoomClient } from "@shogi/match-client";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -521,6 +522,56 @@ describe("OnlineGameView", () => {
     });
 
     describe("終局済みルームの復元", () => {
+        const futureResult: GameResult = { winner: "w", reason: "constructor" };
+
+        it.each([
+            {
+                v: 1,
+                t: "event",
+                payload: {
+                    kind: "game_end",
+                    eventId: 7,
+                    serverTs: 0,
+                    result: futureResult,
+                    kifu: "",
+                },
+            },
+            { v: 1, t: "snapshot", payload: makeFinishedSnapshot({ result: futureResult }) },
+        ] satisfies ServerMessage[])("未知の終局理由を含む $t で終局と勝者を表示する", async (message) => {
+            const socket = Object.assign(new EventTarget(), {
+                readyState: WebSocket.OPEN,
+                send: vi.fn(),
+                close: vi.fn(),
+            });
+            const client = createRoomClient(
+                { wsUrl: "ws://localhost/api/rooms/test-room/ws" },
+                () => socket as unknown as WebSocket,
+            );
+            try {
+                socket.dispatchEvent(new Event("open"));
+                render(
+                    <OnlineGameView
+                        client={client}
+                        snapshot={makeSnapshot()}
+                        seat="b"
+                        roomId="test-room"
+                    />,
+                );
+                expect(screen.queryByRole("dialog")).toBeNull();
+
+                await act(async () => {
+                    socket.dispatchEvent(
+                        new MessageEvent("message", { data: JSON.stringify(message) }),
+                    );
+                });
+
+                expect(screen.getByRole("dialog", { name: "Bob の勝ち" })).toBeTruthy();
+                expect(screen.getByText(futureResult.reason)).toBeTruthy();
+            } finally {
+                client.disconnect();
+            }
+        });
+
         it("snapshot の result と gameRecordId から終局表示と棋譜 ID を復元する", () => {
             const onStartReview = vi.fn();
             render(
