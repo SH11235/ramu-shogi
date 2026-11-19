@@ -1,4 +1,9 @@
-import { NNUE_DB_NAME, NNUE_DB_VERSION, NNUE_PROGRESS_THROTTLE_MS } from "@shogi/app-core";
+import {
+    NNUE_DB_NAME,
+    NNUE_DB_VERSION,
+    NNUE_MAX_SIZE_BYTES,
+    NNUE_PROGRESS_THROTTLE_MS,
+} from "@shogi/app-core";
 import type {
     AnalysisBudget,
     AnalysisFinished,
@@ -43,6 +48,9 @@ type WasmWorkerBindings = {
     initEngine: (opts?: EngineInitOptions) => Promise<void> | void;
     configureLayerStacks: (options?: LayerStacksOptions) => Promise<void> | void;
     loadModel: (bytes: Uint8Array) => Promise<void> | void;
+    allocNnueBuffer: (len: number) => number;
+    loadModelFromPtr: (ptr: number, len: number) => void;
+    freeNnueBuffer: (ptr: number, len: number) => void;
     loadPosition: (
         sfen: string,
         moves?: string[],
@@ -56,11 +64,8 @@ type WasmWorkerBindings = {
     defaultWasmModuleUrl?: URL;
 };
 
-type DirectWriteWasmExports = {
+type WasmExports = {
     memory?: WebAssembly.Memory;
-    alloc_nnue_buffer?: (len: number) => number;
-    load_model_from_ptr?: (ptr: number, len: number) => void;
-    free_nnue_buffer?: (ptr: number, len: number) => void;
 };
 
 type DirectWriteBindings = {
@@ -163,13 +168,8 @@ async function streamBlobToBuffer(
     await streamReaderToBuffer(reader, target, blob.size, onProgress);
 }
 
-async function loadNnueWithDirectWrite(
-    total: number,
-    reader: ReadableStreamDefaultReader<Uint8Array>,
-    directWrite: DirectWriteBindings,
-    onProgress: (loaded: number, total: number) => void,
-): Promise<number> {
-    if (total <= 0) {
+function allocateNnueBuffer(total: number, directWrite: DirectWriteBindings): number {
+    if (total <= 0 || total > NNUE_MAX_SIZE_BYTES) {
         throw new Error(`Invalid NNUE size: ${total}`);
     }
 
@@ -177,11 +177,25 @@ async function loadNnueWithDirectWrite(
     if (!ptr) {
         throw new Error("Failed to allocate NNUE buffer");
     }
+    return ptr;
+}
 
+// 台帳の合計上限を超えるモデルは直接書き込みに回さず、従来どおり bytes を load_model に渡す。
+function fitsDirectWrite(total: number): boolean {
+    return total > 0 && total <= NNUE_MAX_SIZE_BYTES;
+}
+
+async function loadNnueWithDirectWrite(
+    total: number,
+    stream: ReadableStream<Uint8Array>,
+    directWrite: DirectWriteBindings,
+    onProgress: (loaded: number, total: number) => void,
+): Promise<number> {
+    const ptr = allocateNnueBuffer(total, directWrite);
     let consumed = false;
     try {
         const target = new Uint8Array(directWrite.memory.buffer, ptr >>> 0, total);
-        await streamReaderToBuffer(reader, target, total, onProgress);
+        await streamReaderToBuffer(stream.getReader(), target, total, onProgress);
         consumed = true;
         directWrite.loadModelFromPtr(ptr, total);
         return total;
@@ -194,15 +208,7 @@ async function loadNnueWithDirectWrite(
 
 function loadNnueBytesWithDirectWrite(bytes: Uint8Array, directWrite: DirectWriteBindings): number {
     const total = bytes.length;
-    if (total <= 0) {
-        throw new Error(`Invalid NNUE size: ${total}`);
-    }
-
-    const ptr = directWrite.allocNnueBuffer(total);
-    if (!ptr) {
-        throw new Error("Failed to allocate NNUE buffer");
-    }
-
+    const ptr = allocateNnueBuffer(total, directWrite);
     let consumed = false;
     try {
         const target = new Uint8Array(directWrite.memory.buffer, ptr >>> 0, total);
@@ -270,10 +276,10 @@ async function loadNnueFromIndexedDB(
 ): Promise<NnueLoadResult> {
     const blob = await fetchNnueBlobFromIndexedDB(id);
 
-    if (directWrite) {
+    if (directWrite && fitsDirectWrite(blob.size)) {
         const size = await loadNnueWithDirectWrite(
             blob.size,
-            blob.stream().getReader(),
+            blob.stream(),
             directWrite,
             onProgress,
         );
@@ -301,13 +307,8 @@ async function loadNnueFromUrl(
     const contentLength = res.headers.get("content-length");
     const total = contentLength ? Number.parseInt(contentLength, 10) : 0;
 
-    if (directWrite && res.body && total > 0) {
-        const size = await loadNnueWithDirectWrite(
-            total,
-            res.body.getReader(),
-            directWrite,
-            onProgress,
-        );
+    if (directWrite && res.body && fitsDirectWrite(total)) {
+        const size = await loadNnueWithDirectWrite(total, res.body, directWrite, onProgress);
         return { kind: "direct", size };
     }
 
@@ -376,7 +377,7 @@ export function createEngineWorker(bindings: WasmWorkerBindings) {
     let lastInit: InitCommand | null = null;
     let moduleReady: Promise<void> | null = null;
     let threadPoolReady: Promise<void> | null = null;
-    let wasmExports: DirectWriteWasmExports | null = null;
+    let wasmExports: WasmExports | null = null;
 
     let lastInfoPostedAt = Number.NEGATIVE_INFINITY;
     const pendingInfoByPv = new Map<number, EngineEvent>();
@@ -433,17 +434,13 @@ export function createEngineWorker(bindings: WasmWorkerBindings) {
     };
 
     function getDirectWriteBindings(): DirectWriteBindings | null {
-        if (!wasmExports) return null;
-        const memory = wasmExports.memory;
-        const alloc = wasmExports.alloc_nnue_buffer;
-        const loadFromPtr = wasmExports.load_model_from_ptr;
-        const free = wasmExports.free_nnue_buffer;
-        if (!memory || !alloc || !loadFromPtr || !free) return null;
+        const memory = wasmExports?.memory;
+        if (!memory) return null;
         return {
             memory,
-            allocNnueBuffer: alloc,
-            loadModelFromPtr: loadFromPtr,
-            freeNnueBuffer: free,
+            allocNnueBuffer: bindings.allocNnueBuffer,
+            loadModelFromPtr: bindings.loadModelFromPtr,
+            freeNnueBuffer: bindings.freeNnueBuffer,
         };
     }
 
@@ -454,7 +451,7 @@ export function createEngineWorker(bindings: WasmWorkerBindings) {
                 bindings.defaultWasmModuleUrl ??
                 new URL("../pkg/engine_wasm_bg.wasm", import.meta.url);
             moduleReady = bindings.initWasm({ module_or_path: input }).then((exports) => {
-                wasmExports = exports as DirectWriteWasmExports;
+                wasmExports = exports as WasmExports;
                 bindings.setEventHandler((event: EngineEvent) => {
                     if (analysisRun && event.type === "info") {
                         ctx.postMessage({ type: "analysisInfo", ...analysisRun, info: event });
@@ -556,7 +553,7 @@ export function createEngineWorker(bindings: WasmWorkerBindings) {
                 result = await loadNnueFromUrl(source.url, postNnueProgress, directWrite);
                 break;
             case "bytes":
-                if (directWrite) {
+                if (directWrite && fitsDirectWrite(source.bytes.length)) {
                     const size = loadNnueBytesWithDirectWrite(source.bytes, directWrite);
                     result = { kind: "direct", size };
                 } else {
