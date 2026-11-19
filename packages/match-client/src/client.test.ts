@@ -83,6 +83,7 @@ describe("createRoomClient", () => {
     });
 
     afterEach(() => {
+        vi.restoreAllMocks();
         vi.useRealTimers();
         vi.unstubAllGlobals();
     });
@@ -192,6 +193,62 @@ describe("createRoomClient", () => {
         instances[0].emitMessage(testMsg);
         expect(received).toHaveLength(1); // 解除後は届かない
 
+        client.disconnect();
+    });
+
+    it("未知のエラーコードを UNKNOWN にして購読者へ通知する", () => {
+        const { factory, instances } = createMockWsFactory();
+        const client = createRoomClient(
+            { wsUrl: "ws://localhost/api/rooms/room1/ws" },
+            factory as unknown as (url: string) => WebSocket,
+        );
+        const handler = vi.fn();
+        client.subscribe(handler);
+
+        instances[0].emitMessage({
+            v: 1,
+            t: "error",
+            payload: {
+                code: "FUTURE_CODE",
+                message: "参加できません",
+                clientMsgId: 3,
+                extra: true,
+            },
+        });
+
+        expect(handler).toHaveBeenCalledExactlyOnceWith({
+            v: 1,
+            t: "error",
+            payload: { code: "UNKNOWN", message: "参加できません", clientMsgId: 3, extra: true },
+        });
+        client.disconnect();
+    });
+
+    it("不正なメッセージを破棄し、同じクライアントでは一度だけ警告する", () => {
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+        const { factory, instances } = createMockWsFactory();
+        const client = createRoomClient(
+            { wsUrl: "ws://localhost/api/rooms/room1/ws" },
+            factory as unknown as (url: string) => WebSocket,
+        );
+        const socket = instances[0];
+        socket.emitOpen();
+        socket.emitMessage({ v: 1, t: "snapshot", payload: { eventId: 1 } });
+
+        const handler = vi.fn();
+        client.subscribe(handler);
+        socket.emitMessage({
+            v: 1,
+            t: "event",
+            payload: { kind: "settings_updated", eventId: 2, serverTs: 100 },
+        });
+        socket.emit("message", { data: "{" });
+        expect(handler).not.toHaveBeenCalled();
+        expect(warn).toHaveBeenCalledTimes(1);
+
+        const pong = { v: 1, t: "pong", payload: { ts: 100, serverTs: 120 } };
+        socket.emitMessage(pong);
+        expect(handler).toHaveBeenCalledExactlyOnceWith(pong);
         client.disconnect();
     });
 
@@ -476,7 +533,33 @@ describe("createRoomClient", () => {
             );
             instances[0].emitOpen();
 
-            const snapshot = { v: 1, t: "snapshot", payload: { eventId: 5 } };
+            const snapshot: ServerMessage = {
+                v: 1,
+                t: "snapshot",
+                payload: {
+                    eventId: 5,
+                    status: "waiting",
+                    sfen: "startpos",
+                    moves: [],
+                    turn: "b",
+                    clock: {
+                        b: { remainMs: 60000 },
+                        w: { remainMs: 60000 },
+                        running: null,
+                        lastTickTs: 0,
+                    },
+                    passRights: null,
+                    players: { b: null, w: null },
+                    spectators: 0,
+                    settings: {
+                        startSfen: "startpos",
+                        timeControl: { type: "byoyomi", initialMs: 60000 },
+                        passRights: null,
+                        aiSupport: null,
+                        takeback: false,
+                    },
+                },
+            };
             instances[0].emitMessage(snapshot);
             instances[0].emitMessage({ v: 1, t: "pong", payload: { ts: 1, serverTs: 2 } });
             instances[0].emitMessage({

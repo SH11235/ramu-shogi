@@ -1,6 +1,27 @@
-import type { Seat, ServerMessage } from "@shogi/match-protocol";
+import type {
+    EventMessage,
+    GameResult as ProtocolGameResult,
+    RoomEvent as ProtocolRoomEvent,
+    ServerMessage as ProtocolServerMessage,
+    SnapshotPayload as ProtocolSnapshotPayload,
+    Seat,
+    SnapshotMessage,
+} from "@shogi/match-protocol";
 
-export type { ClientMessage, ClientMessageType, Seat, ServerMessage } from "@shogi/match-protocol";
+export type { ClientMessage, ClientMessageType, Seat } from "@shogi/match-protocol";
+
+export type GameResult = Omit<ProtocolGameResult, "reason"> & { reason: string };
+
+type WithReceivedResult<T> = T extends { result: ProtocolGameResult }
+    ? Omit<T, "result"> & { result: GameResult }
+    : T;
+
+export type RoomEvent = WithReceivedResult<ProtocolRoomEvent>;
+export type SnapshotPayload = Omit<ProtocolSnapshotPayload, "result"> & { result?: GameResult };
+export type ServerMessage =
+    | Exclude<ProtocolServerMessage, EventMessage | SnapshotMessage>
+    | (Omit<EventMessage, "payload"> & { payload: RoomEvent })
+    | (Omit<SnapshotMessage, "payload"> & { payload: SnapshotPayload });
 
 // ─── RoomClient インターフェース ──────────────────────────────────────────
 export interface RoomClient {

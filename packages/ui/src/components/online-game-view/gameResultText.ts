@@ -20,5 +20,7 @@ export function formatGameResultTitle(
 }
 
 export function formatGameEndReason(result: GameResult): string {
-    return GAME_END_REASONS[result.reason] ?? result.reason;
+    return Object.hasOwn(GAME_END_REASONS, result.reason)
+        ? GAME_END_REASONS[result.reason]
+        : result.reason;
 }

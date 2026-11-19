@@ -1,4 +1,5 @@
 import { createReconnectManager, getStoredResumeToken, storeResumeToken } from "./reconnect";
+import { parseServerMessage } from "./server-message";
 import type {
     ClientMessage,
     ClientMessageType,
@@ -29,6 +30,7 @@ export function createRoomClient(
     let ws: WebSocket | null = null;
     let msgId = 0;
     let pingIntervalId: ReturnType<typeof setInterval> | null = null;
+    let warnedInvalidMessage = false;
     const handlers = new Set<(msg: ServerMessage) => void>();
     const statusHandlers = new Set<(status: RoomClientStatus) => void>();
     // 購読者がいない間に届いた event / snapshot。待機画面から対局画面へ購読者が
@@ -136,14 +138,22 @@ export function createRoomClient(
             }
         });
 
-        ws.addEventListener("message", (event: MessageEvent) => {
+        ws.addEventListener("message", (event: MessageEvent<unknown>) => {
             let parsed: unknown;
             try {
-                parsed = JSON.parse(event.data as string);
+                parsed = typeof event.data === "string" ? JSON.parse(event.data) : undefined;
             } catch {
+                parsed = undefined;
+            }
+            const message = parseServerMessage(parsed);
+            if (!message) {
+                if (!warnedInvalidMessage) {
+                    warnedInvalidMessage = true;
+                    console.warn("[RoomClient] Dropped an invalid server message");
+                }
                 return;
             }
-            notifyHandlers(parsed as ServerMessage);
+            notifyHandlers(message);
         });
 
         ws.addEventListener("close", () => {

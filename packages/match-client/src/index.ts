@@ -3,14 +3,10 @@ export type {
     AiSupportSettings,
     ClockState,
     ErrorCode,
-    GameResult,
     GameStartEvent,
     PassRightsState,
-    RoomEvent,
     RoomSettings,
     Seat,
-    ServerMessage,
-    SnapshotPayload,
 } from "@shogi/match-protocol";
 export { createRoomClient } from "./client";
 export {
@@ -58,4 +54,12 @@ export type {
     RshogiLiveStaticFallbackReason,
 } from "./rshogi-csa/live";
 export { RshogiLiveRoomFullError, subscribeRshogiLiveGame } from "./rshogi-csa/live";
-export type { RoomClient, RoomClientOptions, RoomClientStatus } from "./types";
+export type {
+    GameResult,
+    RoomClient,
+    RoomClientOptions,
+    RoomClientStatus,
+    RoomEvent,
+    ServerMessage,
+    SnapshotPayload,
+} from "./types";
