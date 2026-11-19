@@ -362,7 +362,7 @@ function countBranchLength(tree: KifuTree, startNodeId: string): number {
 function getParentPath(tree: KifuTree, nodeId: string): string | undefined {
     const pathParts: string[] = [];
     const startNode = tree.nodes.get(nodeId);
-    if (!startNode || !startNode.parentId) return undefined;
+    if (!startNode?.parentId) return undefined;
 
     // 親から開始（自分自身の分岐情報は含めない）
     let currentId: string | null = startNode.parentId;
@@ -374,7 +374,7 @@ function getParentPath(tree: KifuTree, nodeId: string): string | undefined {
         visited.add(currentId);
 
         const node = tree.nodes.get(currentId);
-        if (!node || !node.parentId) break;
+        if (!node?.parentId) break;
 
         const parent = tree.nodes.get(node.parentId);
         if (!parent) break;

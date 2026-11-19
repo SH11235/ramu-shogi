@@ -65,21 +65,21 @@ const expanded = () =>
     screen.getByRole("button", { name: /評価値グラフ/ }).getAttribute("aria-expanded");
 
 describe("PCKifuSection: 評価値グラフを最初に開いておくか", () => {
-    it.each<GameMode>([
-        "playing",
-        "paused",
-    ])("対局中（%s）は既定で閉じている（開閉はできる）", (mode) => {
-        renderSection(mode);
-        expect(expanded()).toBe("false");
-    });
+    it.each<GameMode>(["playing", "paused"])(
+        "対局中（%s）は既定で閉じている（開閉はできる）",
+        (mode) => {
+            renderSection(mode);
+            expect(expanded()).toBe("false");
+        },
+    );
 
-    it.each<GameMode>([
-        "reviewing",
-        "editing",
-    ])("対局していないとき（%s）は既定で開いている（開閉はできる）", (mode) => {
-        renderSection(mode);
-        expect(expanded()).toBe("true");
-    });
+    it.each<GameMode>(["reviewing", "editing"])(
+        "対局していないとき（%s）は既定で開いている（開閉はできる）",
+        (mode) => {
+            renderSection(mode);
+            expect(expanded()).toBe("true");
+        },
+    );
 
     it("検討中に開いていたグラフは、対局を始めると閉じ、対局が終わるとまた開く", () => {
         const view = renderSection("reviewing");

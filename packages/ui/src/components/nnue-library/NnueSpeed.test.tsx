@@ -59,20 +59,42 @@ const support: NnueSpeedSupport = { environment, createBenchmarkClient, maxThrea
 function Harness({
     hash = meta.contentHashSha256,
     reason,
+    benchmarkSupport = support,
+    downloadNote,
     prepare = async () => ({ ...meta, contentHashSha256: hash }),
 }: {
     hash?: string;
     reason?: string;
+    benchmarkSupport?: NnueSpeedSupport;
+    downloadNote?: string;
     prepare?: () => Promise<NnueMeta | undefined>;
 }) {
-    const benchmark = useNnueSpeedBenchmark(support);
+    const benchmark = useNnueSpeedBenchmark(benchmarkSupport);
     return (
         <NnueSpeedTable
             contentHash={hash}
             prepare={prepare}
-            support={support}
+            support={benchmarkSupport}
+            downloadNote={downloadNote}
             benchmark={benchmark}
             disabledReason={reason}
+        />
+    );
+}
+
+function Downloading() {
+    const benchmark = useNnueSpeedBenchmark(support);
+    const [downloaded, setDownloaded] = useState(false);
+    return (
+        <NnueSpeedTable
+            contentHash="downloading"
+            prepare={async () => {
+                setDownloaded(true);
+                return meta;
+            }}
+            downloadNote={downloaded ? undefined : "測るときに 1 KB をダウンロードします。"}
+            support={support}
+            benchmark={benchmark}
         />
     );
 }
@@ -150,23 +172,20 @@ describe("NnueSpeedTable", () => {
 
     it("測れない環境（Desktop）では測る欄を出さず、記録のある行だけを出す", () => {
         const observedOnly: NnueSpeedSupport = { environment, maxThreads: 8 };
-        function ObservedOnly({ hash }: { hash: string }) {
-            const benchmark = useNnueSpeedBenchmark(observedOnly);
-            return (
-                <NnueSpeedTable
-                    contentHash={hash}
+        const renderObserved = (hash: string) =>
+            render(
+                <Harness
+                    hash={hash}
                     prepare={async () => meta}
                     downloadNote="測るときに 1 KB をダウンロードします。"
-                    support={observedOnly}
-                    benchmark={benchmark}
-                />
+                    benchmarkSupport={observedOnly}
+                />,
             );
-        }
-        const { container } = render(<ObservedOnly hash="desktop-empty" />);
+        const { container } = renderObserved("desktop-empty");
         expect(container.innerHTML).toBe("");
         cleanup();
         nnueSpeedStore.addObserved({ ...key, contentHash: "desktop", threads: 6 }, 900_000);
-        render(<ObservedOnly hash="desktop" />);
+        renderObserved("desktop");
         expect(rowTexts()).toEqual(["6 | — | 約 90万・1 回"]);
         expect(screen.queryByRole("button")).toBeNull();
         expect(screen.queryByText(/ダウンロードします/)).toBeNull();
@@ -189,23 +208,12 @@ describe("NnueSpeedTable", () => {
                 };
             },
         };
-        function Fallback() {
-            const benchmark = useNnueSpeedBenchmark(fallbackSupport);
-            return (
-                <NnueSpeedTable
-                    contentHash="fallback"
-                    prepare={async () => ({ ...meta, contentHashSha256: "fallback" })}
-                    support={fallbackSupport}
-                    benchmark={benchmark}
-                />
-            );
-        }
-        render(<Fallback />);
+        render(<Harness hash="fallback" benchmarkSupport={fallbackSupport} />);
         fireEvent.click(screen.getByRole("button", { name: "測る" }));
         await waitFor(() => expect(rowTexts()).toContain("1 | 約 100万 | —"));
         // 画面を開き直しても出す
         cleanup();
-        render(<Fallback />);
+        render(<Harness hash="fallback" benchmarkSupport={fallbackSupport} />);
         expect(rowTexts()).toContain("1 | 約 100万 | —");
     });
 
@@ -220,18 +228,7 @@ describe("NnueSpeedTable", () => {
                 },
             }),
         };
-        function Failing() {
-            const benchmark = useNnueSpeedBenchmark(failing);
-            return (
-                <NnueSpeedTable
-                    contentHash="failing"
-                    prepare={async () => meta}
-                    support={failing}
-                    benchmark={benchmark}
-                />
-            );
-        }
-        render(<Failing />);
+        render(<Harness hash="failing" benchmarkSupport={failing} prepare={async () => meta} />);
         fireEvent.click(screen.getByRole("button", { name: "測る" }));
         const label = await screen.findByText("測れませんでした");
         expect(label.title).toBe("測れませんでした。もう一度お試しください。");
@@ -239,22 +236,6 @@ describe("NnueSpeedTable", () => {
     });
 
     it("測る途中でダウンロードが済んでも、注記の行を残してカードの高さを変えない", async () => {
-        function Downloading() {
-            const benchmark = useNnueSpeedBenchmark(support);
-            const [downloaded, setDownloaded] = useState(false);
-            return (
-                <NnueSpeedTable
-                    contentHash="downloading"
-                    prepare={async () => {
-                        setDownloaded(true);
-                        return meta;
-                    }}
-                    downloadNote={downloaded ? undefined : "測るときに 1 KB をダウンロードします。"}
-                    support={support}
-                    benchmark={benchmark}
-                />
-            );
-        }
         render(<Downloading />);
         fireEvent.click(screen.getByRole("button", { name: "測る" }));
         await screen.findByRole("button", { name: /あと約/ });

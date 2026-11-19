@@ -12,6 +12,7 @@ import {
     createRootRoute,
     createRoute,
     createRouter,
+    type ErrorComponentProps,
     lazyRouteComponent,
     redirect,
     useNavigate,
@@ -314,11 +315,12 @@ function DefaultErrorComponent({ error }: { error: unknown }) {
     );
 }
 
-function RoomErrorComponent({ error }: { error: Error }) {
+function RoomErrorComponent({ error }: ErrorComponentProps) {
+    const message = error instanceof Error ? error.message : String(error);
     const navigate = useNavigate();
     return (
         <div className="mx-auto flex max-w-[480px] flex-col gap-4 px-4 py-10">
-            <p className="text-destructive">{error.message}</p>
+            <p className="text-destructive">{message}</p>
             <button
                 type="button"
                 onClick={() => void navigate({ to: "/online", search: undefined })}

@@ -211,20 +211,23 @@ describe("dropLogic", () => {
             ["sente", "R", "飛は先手・後手あわせて最大2枚までです。"],
             ["sente", "G", "金は先手・後手あわせて最大4枚までです。"],
             ["gote", "P", "歩は先手・後手あわせて最大18枚までです。"],
-        ] as const)("平手の初期局面で駒箱の %s の %s を盤に置くのは拒否する", (owner, pieceType, message) => {
-            const position = createInitialPositionState();
-            const origin: DragOrigin = { type: "stock", owner, pieceType };
-            const payload: DragPayload = { owner, pieceType, isPromoted: false };
-            const target: DropTarget = { type: "board", square: "5e" };
+        ] as const)(
+            "平手の初期局面で駒箱の %s の %s を盤に置くのは拒否する",
+            (owner, pieceType, message) => {
+                const position = createInitialPositionState();
+                const origin: DragOrigin = { type: "stock", owner, pieceType };
+                const payload: DragPayload = { owner, pieceType, isPromoted: false };
+                const target: DropTarget = { type: "board", square: "5e" };
 
-            expect(validateDrop(origin, payload, target, position)).toEqual({
-                ok: false,
-                error: message,
-            });
-            const applied = applyDrop(origin, payload, target, position);
-            expect(applied.ok).toBe(false);
-            expect(applied.next).toBe(position);
-        });
+                expect(validateDrop(origin, payload, target, position)).toEqual({
+                    ok: false,
+                    error: message,
+                });
+                const applied = applyDrop(origin, payload, target, position);
+                expect(applied.ok).toBe(false);
+                expect(applied.next).toBe(position);
+            },
+        );
 
         it("盤上の駒を1枚外したあとは、駒箱から同じ種類を置ける", () => {
             const position = createInitialPositionState();

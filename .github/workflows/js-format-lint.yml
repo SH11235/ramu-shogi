@@ -13,10 +13,10 @@ on:
       - "biome.json"
       - "knip.json"
       - "tsconfig*.json"
+      - "tooling/**"
       - "scripts/validate-desktop-release.*"
       - "scripts/check-unused-design-tokens.*"
       - ".github/workflows/release-desktop.yml"
-      - "tsconfig.base.json"
       - ".github/workflows/js-format-lint.yml"
   pull_request:
     paths:
@@ -29,10 +29,10 @@ on:
       - "biome.json"
       - "knip.json"
       - "tsconfig*.json"
+      - "tooling/**"
       - "scripts/validate-desktop-release.*"
       - "scripts/check-unused-design-tokens.*"
       - ".github/workflows/release-desktop.yml"
-      - "tsconfig.base.json"
       - ".github/workflows/js-format-lint.yml"
 
 env:

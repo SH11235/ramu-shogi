@@ -308,16 +308,19 @@ describe("StudiesPage", () => {
         it.each([
             ["別のアカウントに切り替わっていた", async () => ({ userId: "user-2" })],
             ["ログアウトしていた", async () => null],
-        ])("別のタブで%sら、一覧からも下書きからも消さず、ログイン状態を取り直す", async (_, verifySession) => {
-            await deleteCloudStudy(verifySession);
+        ])(
+            "別のタブで%sら、一覧からも下書きからも消さず、ログイン状態を取り直す",
+            async (_, verifySession) => {
+                await deleteCloudStudy(verifySession);
 
-            expect(
-                (await screen.findByText(/研究ノートを削除できませんでした/)).textContent,
-            ).toContain("ログイン状態が変わっています");
-            expect(screen.getByRole("link", { name: /クラウドのノート/ })).toBeTruthy();
-            expect(hasDraft()).toBe(true);
-            expect(dispatchAuthSessionSyncEvent).toHaveBeenCalledTimes(1);
-        });
+                expect(
+                    (await screen.findByText(/研究ノートを削除できませんでした/)).textContent,
+                ).toContain("ログイン状態が変わっています");
+                expect(screen.getByRole("link", { name: /クラウドのノート/ })).toBeTruthy();
+                expect(hasDraft()).toBe(true);
+                expect(dispatchAuthSessionSyncEvent).toHaveBeenCalledTimes(1);
+            },
+        );
 
         it("削除の確認を開いたあとにアカウントが変わったら、確認を閉じ、前のアカウントのノートも下書きも消さない", async () => {
             const api = cloudApi();

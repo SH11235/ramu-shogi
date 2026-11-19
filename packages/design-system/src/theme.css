@@ -16,8 +16,8 @@
     @media (pointer: coarse) {
         :is(
                 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not(
-                        [type="file"]
-                    ),
+                    [type="file"]
+                ),
                 textarea,
                 select
             ):not(.text-lg):not(.text-xl):not(.text-2xl) {

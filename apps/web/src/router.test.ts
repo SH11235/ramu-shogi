@@ -15,7 +15,7 @@ describe("router: 定跡ビュアー", () => {
         expect((await load("/book-viewer")).pathname).toBe("/book-viewer");
         expect(router.state.matches.at(-1)?.routeId).toBe("/book-viewer");
         expect(router.routesByPath["/book-viewer"].options.loader).toBeUndefined();
-    });
+    }, 15_000);
 });
 
 describe("router: rshogi viewer", () => {

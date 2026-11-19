@@ -324,7 +324,7 @@ describe("KIF の終局", () => {
     const NAMES = { b: "Alice", w: "Bob" };
 
     /** どの開始局面も、平手の配置で後手の番として解釈する局面サービス */
-    function useGoteToMoveService(): void {
+    function installGoteToMoveService(): void {
         setPositionServiceFactory(() => ({
             getInitialBoard: async () => createInitialPositionState(),
             parseSfen: async () => ({ ...createInitialPositionState(), turn: "gote" }),
@@ -388,16 +388,17 @@ describe("KIF の終局", () => {
             reason: "oute_sennichite",
             lines: ["   2 反則負け", "まで1手で連続王手の千日手により後手の反則負け"],
         },
-    ] as const)("$reason で $winner が勝った $moves 手の対局に、終局語と「まで」の行を書く", ({
-        moves,
-        winner,
-        reason,
-        lines,
-    }) => {
-        const state = finishedState(["7g7f", "3c3d"].slice(0, moves), { winner, reason });
+    ] as const)(
+        "$reason で $winner が勝った $moves 手の対局に、終局語と「まで」の行を書く",
+        ({ moves, winner, reason, lines }) => {
+            const state = finishedState(["7g7f", "3c3d"].slice(0, moves), { winner, reason });
 
-        expect(endingLines(exportGameKif(state, "startpos", NAMES), moves)).toEqual([...lines, ""]);
-    });
+            expect(endingLines(exportGameKif(state, "startpos", NAMES), moves)).toEqual([
+                ...lines,
+                "",
+            ]);
+        },
+    );
 
     it("終局のコメントは読み込むときに指し手にならない", () => {
         const state = finishedState(["7g7f"], { winner: "w", reason: "disconnect" });
@@ -427,7 +428,7 @@ describe("KIF の終局", () => {
 
     it("駒落ちは上手（後手）から指すので、上手が 1 手指した後の投了は下手（先手）の負け", async () => {
         const handicap = "lnsgkgsnl/1r7/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1";
-        useGoteToMoveService();
+        installGoteToMoveService();
 
         const kif = await exportGameRecordKif(
             { initialSfen: handicap, moves: ["3c3d"], result: { winner: "w", reason: "resign" } },
@@ -442,7 +443,7 @@ describe("KIF の終局", () => {
         "lnsgkgsnl/1r7/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL\tw\t-\t1",
         " lnsgkgsnl/1r7/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
     ])("開始局面の区切りが空白 1 つでなくても手番を読む: %j", async (initialSfen) => {
-        useGoteToMoveService();
+        installGoteToMoveService();
 
         const kif = await exportGameRecordKif(
             { initialSfen, moves: ["3c3d"], result: { winner: "w", reason: "resign" } },

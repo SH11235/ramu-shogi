@@ -15,27 +15,18 @@ describe("LayerStacks configuration", () => {
             }),
         ).not.toThrow();
     });
-    it.each([
-        undefined,
-        1,
-        3,
-        5,
-        6,
-        7,
-        9,
-        10,
-        12,
-        15,
-        17,
-    ])("rejects unsupported Q16 progress bucket count %s", (progressBuckets) => {
-        expect(() =>
-            validateLayerStacks({
-                bucketMode: "progresskpabsq16",
-                progressBuckets,
-                progressCoeffBase64: "coefficients",
-            }),
-        ).toThrow();
-    });
+    it.each([undefined, 1, 3, 5, 6, 7, 9, 10, 12, 15, 17])(
+        "rejects unsupported Q16 progress bucket count %s",
+        (progressBuckets) => {
+            expect(() =>
+                validateLayerStacks({
+                    bucketMode: "progresskpabsq16",
+                    progressBuckets,
+                    progressCoeffBase64: "coefficients",
+                }),
+            ).toThrow();
+        },
+    );
     it("requires Q16 coefficients even for two buckets", () => {
         expect(() =>
             validateLayerStacks({ bucketMode: "progresskpabsq16", progressBuckets: 2 }),

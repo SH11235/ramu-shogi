@@ -42,12 +42,12 @@
     "dependencies": {
         "@shogi/app-core": "workspace:*",
         "@shogi/engine-client": "workspace:*",
-        "idb": "^8.0.3"
+        "idb": "catalog:"
     },
     "devDependencies": {
-        "@playwright/test": "^1.58.2",
-        "typescript": "~5.9.3",
-        "vite": "^7.3.7",
-        "vitest": "^4.1.12"
+        "@playwright/test": "catalog:",
+        "typescript": "catalog:",
+        "vite": "catalog:",
+        "vitest": "catalog:"
     }
 }

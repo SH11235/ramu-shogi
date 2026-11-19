@@ -1,9 +1,11 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import babel from "@rolldown/plugin-babel";
 import tailwindcss from "@tailwindcss/vite";
-import react from "@vitejs/plugin-react";
+import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import { workspaceAliases } from "../../tooling/workspace-aliases.ts";
 
 const host = process.env.TAURI_DEV_HOST;
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
@@ -42,41 +44,12 @@ export default defineConfig(async () => ({
         "import.meta.env.VITE_APP_VERSION": JSON.stringify(pkg.version),
         "import.meta.env.VITE_RSHOGI_CORE_VERSION": JSON.stringify(rshogiCoreVersion),
     },
-    plugins: [
-        tailwindcss(),
-        react({
-            babel: {
-                plugins: ["babel-plugin-react-compiler"],
-            },
-        }),
-    ],
+    plugins: [tailwindcss(), react(), babel({ presets: [reactCompilerPreset()] })],
+    build: {
+        target: ["chrome107", "edge107", "firefox104", "safari16"],
+    },
     resolve: {
-        alias: [
-            {
-                find: "@shogi/app-core",
-                replacement: path.resolve(rootDir, "../../packages/app-core/src"),
-            },
-            {
-                find: "@shogi/design-system",
-                replacement: path.resolve(rootDir, "../../packages/design-system/src"),
-            },
-            { find: "@shogi/ui", replacement: path.resolve(rootDir, "../../packages/ui/src") },
-            {
-                find: "@shogi/engine-client",
-                replacement: path.resolve(rootDir, "../../packages/engine-client/src"),
-            },
-            {
-                find: "@shogi/engine-tauri",
-                replacement: path.resolve(rootDir, "../../packages/engine-tauri/src"),
-            },
-            {
-                find: "@shogi/match-client",
-                replacement: path.resolve(rootDir, "../../packages/match-client/src"),
-            },
-        ],
-        // React の重複インスタンスを防ぐ保険として dedupe を設定
-        // バージョンが統一されていれば影響はないが、将来の安全性のため明示的に指定
-        // ※ React バージョンを統一する場合: pnpm update react@X.X.X react-dom@X.X.X -r --filter "@shogi/*"
+        alias: workspaceAliases,
         dedupe: ["react", "react-dom"],
     },
 
@@ -89,7 +62,7 @@ export default defineConfig(async () => ({
         port: 1420,
         strictPort: true,
         host: host || false,
-        hmr: host
+        ws: host
             ? {
                   protocol: "ws",
                   host,

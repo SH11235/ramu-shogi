@@ -19,8 +19,8 @@ Web・デスクトップ対応の将棋アプリです。[rshogi](https://github
     info: This is the version for the rustup toolchain manager, not the rustc compiler.
     info: The currently active `rustc` version is `rustc 1.93.0 (254b59607 2026-01-19)`
     ```
-- **Node.js**: v24
-- **pnpm**: パッケージマネージャー
+- **Node.js**: v26 LTS（package.json の volta.node）
+- **pnpm**: 12.x（package.json の packageManager）
 - **wasm-bindgen-cli**: WASMビルド用（WebAssembly対応の場合）
 
 ### 開発環境のセットアップ

@@ -69,23 +69,24 @@ describe("サーバーの合法手判定 fixture とクライアントの棋譜�
         expect(moveCases.length).toBe(36);
     });
 
-    it.each(
-        moveCases.map((fixture) => [fixture.name, fixture] as const),
-    )("%s", (_name, fixture) => {
-        const expected = fixture.expected;
-        if (!expected) throw new Error("expected is missing");
-        // engine-wasm は USI として読めない手を反則ではなく例外として扱う
-        if (expected.reason === "invalid_usi") {
-            expect(() => replay(fixture)).toThrow(/failed to parse move/);
-            return;
-        }
-        expect(replay(fixture)).toEqual({
-            ok: expected.ok,
-            illegalIndex: expected.illegalIndex,
-        });
-        // クライアントは合法手が 0 件になると詰みを宣言し、サーバーは noLegalMoves で裏付ける
-        if (expected.noLegalMoves !== undefined) {
-            expect(hasNoLegalMoves(fixture)).toBe(expected.noLegalMoves);
-        }
-    });
+    it.each(moveCases.map((fixture) => [fixture.name, fixture] as const))(
+        "%s",
+        (_name, fixture) => {
+            const expected = fixture.expected;
+            if (!expected) throw new Error("expected is missing");
+            // engine-wasm は USI として読めない手を反則ではなく例外として扱う
+            if (expected.reason === "invalid_usi") {
+                expect(() => replay(fixture)).toThrow(/failed to parse move/);
+                return;
+            }
+            expect(replay(fixture)).toEqual({
+                ok: expected.ok,
+                illegalIndex: expected.illegalIndex,
+            });
+            // クライアントは合法手が 0 件になると詰みを宣言し、サーバーは noLegalMoves で裏付ける
+            if (expected.noLegalMoves !== undefined) {
+                expect(hasNoLegalMoves(fixture)).toBe(expected.noLegalMoves);
+            }
+        },
+    );
 });

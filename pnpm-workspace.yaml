@@ -1,14 +1,65 @@
 packages:
   - apps/*
   - packages/*
+  - tooling/*
 
-onlyBuiltDependencies:
-  - esbuild
+catalog:
+  "@babel/core": "8.1.2"
+  "@biomejs/biome": "2.6.8"
+  "@cloudflare/workers-types": "5.20261117.1"
+  "@playwright/test": "1.65.1"
+  "@radix-ui/react-alert-dialog": "1.2.1"
+  "@radix-ui/react-dialog": "1.3.1"
+  "@radix-ui/react-popover": "1.3.1"
+  "@radix-ui/react-progress": "1.2.1"
+  "@radix-ui/react-select": "2.4.1"
+  "@radix-ui/react-slot": "1.5.0"
+  "@radix-ui/react-switch": "1.4.1"
+  "@radix-ui/react-tooltip": "1.4.1"
+  "@rolldown/plugin-babel": "0.3.1"
+  "@tailwindcss/vite": "4.3.5"
+  "@tanstack/react-router": "1.170.46"
+  "@tauri-apps/api": "2.9.0"
+  "@tauri-apps/cli": "2.9.4"
+  "@tauri-apps/plugin-dialog": "2.6.0"
+  "@tauri-apps/plugin-store": "2.4.2"
+  "@testing-library/react": "16.3.3"
+  "@types/node": "26.6.6"
+  "@types/react": "19.3.0"
+  "@types/react-dom": "19.3.0"
+  "@vitejs/plugin-react": "6.3.0"
+  babel-plugin-react-compiler: "1.0.0"
+  binaryen: "132.0.0"
+  class-variance-authority: "0.7.1"
+  clsx: "2.1.1"
+  fake-indexeddb: "6.2.8"
+  happy-dom: "21.0.4"
+  husky: "9.1.7"
+  idb: "8.0.4"
+  knip: "6.45.1"
+  lint-staged: "17.6.1"
+  openapi-typescript: "7.13.0"
+  react: "19.3.1"
+  react-dom: "19.3.1"
+  rollup-plugin-visualizer: "7.1.3"
+  smol-toml: "1.9.1"
+  tailwind-merge: "3.7.0"
+  tailwindcss: "4.3.5"
+  tailwindcss-animate: "1.0.7"
+  turbo: "2.11.11"
+  typescript: "7.0.2"
+  vite: "8.3.8"
+  vitest: "5.1.0"
+  wrangler: "4.163.0"
 
-# workerd ships its binary through optional platform packages, so its
-# postinstall fallback is not needed.
-ignoredBuiltDependencies:
-  - workerd
+catalogs:
+  openapi-codegen:
+    typescript: "5.9.3"
+
+allowBuilds:
+  esbuild: true
+  # workerd ships its binary through optional platform packages.
+  workerd: false
 
 # A dependency that gains a build script must be approved or ignored explicitly.
 strictDepBuilds: true

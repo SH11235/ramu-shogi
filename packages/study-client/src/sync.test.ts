@@ -2581,27 +2581,32 @@ describe.each(STORES)("同期エンジン（保存層: $name）", ({ create }) =
         it.each([
             { label: "別のアカウントへの切り替え", other: USER_B, reason: "other_account" },
             { label: "ログアウト", other: null, reason: "signed_out" },
-        ])("作成の直前の確認で $label が分かったら、ログイン状態の取り直しを促す", async ({
-            other,
-            reason,
-        }) => {
-            const harness = createVerifyingHarness();
-            harness.login(USER_A);
-            harness.switchCookie(other);
-            await harness.sync.createStudy(doc);
-            await harness.advance(0);
-            expect(harness.server.calls.filter((call) => call.method === "create")).toEqual([]);
-            expect(harness.sync.getStatus(TEST_STUDY_ID)).toMatchObject({ state: "local", reason });
-            // 画面はこの通知でログイン状態を取り直す（通知が無いと、前の利用者のまま編集できる
-            // 表示を続け、編集は拒否され続ける）。
-            expect(harness.events.filter((event) => event.type === "unauthorized")).toHaveLength(1);
+        ])(
+            "作成の直前の確認で $label が分かったら、ログイン状態の取り直しを促す",
+            async ({ other, reason }) => {
+                const harness = createVerifyingHarness();
+                harness.login(USER_A);
+                harness.switchCookie(other);
+                await harness.sync.createStudy(doc);
+                await harness.advance(0);
+                expect(harness.server.calls.filter((call) => call.method === "create")).toEqual([]);
+                expect(harness.sync.getStatus(TEST_STUDY_ID)).toMatchObject({
+                    state: "local",
+                    reason,
+                });
+                // 画面はこの通知でログイン状態を取り直す（通知が無いと、前の利用者のまま編集できる
+                // 表示を続け、編集は拒否され続ける）。
+                expect(
+                    harness.events.filter((event) => event.type === "unauthorized"),
+                ).toHaveLength(1);
 
-            // 持ち主でログインし直せば、作成する。
-            harness.login(USER_A);
-            await harness.advance(0);
-            expect(harness.server.study(TEST_STUDY_ID)?.revision).toBe(1);
-            expect(harness.sync.getStatus(TEST_STUDY_ID).state).toBe("synced");
-        });
+                // 持ち主でログインし直せば、作成する。
+                harness.login(USER_A);
+                await harness.advance(0);
+                expect(harness.server.study(TEST_STUDY_ID)?.revision).toBe(1);
+                expect(harness.sync.getStatus(TEST_STUDY_ID).state).toBe("synced");
+            },
+        );
 
         it("別のアカウントとして送った削除の 404 では、削除済みにしない", async () => {
             const harness = createVerifyingHarness();

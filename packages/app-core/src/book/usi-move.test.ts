@@ -22,17 +22,10 @@ describe("applyUsiMoveStrict", () => {
         expect(state).toEqual(before);
     });
 
-    it.each([
-        "7g7e",
-        "8h3c",
-        "7g7f+",
-        "3c3d",
-        "5e5d",
-        "pass",
-        "resign",
-        "invalid",
-    ])("初期局面で指せない手を拒否する: %s", (move) =>
-        expect(applyUsiMoveStrict(createInitialPositionState(), move).ok).toBe(false));
+    it.each(["7g7e", "8h3c", "7g7f+", "3c3d", "5e5d", "pass", "resign", "invalid"])(
+        "初期局面で指せない手を拒否する: %s",
+        (move) => expect(applyUsiMoveStrict(createInitialPositionState(), move).ok).toBe(false),
+    );
 
     it.each([
         ["4k4/9/9/9/9/9/4P4/9/4K4 b P", "P*5e"],

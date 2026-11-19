@@ -5,16 +5,29 @@
         "build": {
             "inputs": [
                 "$TURBO_DEFAULT$",
+                "$TURBO_ROOT$/rust-toolchain*",
                 "$TURBO_ROOT$/packages/rust-core/Cargo.toml",
                 "$TURBO_ROOT$/packages/rust-core/Cargo.lock",
                 "$TURBO_ROOT$/packages/rust-core/.cargo/**",
+                "$TURBO_ROOT$/packages/rust-core/rust-toolchain*",
                 "$TURBO_ROOT$/packages/rust-core/crates/**",
                 "$TURBO_ROOT$/packages/rust-core/shared/**",
                 "$TURBO_ROOT$/packages/rust-core/targets/**"
             ],
             "outputs": ["dist/**", "pkg/**", "pkg-threaded/**"],
-            "env": ["RUST_NIGHTLY_TOOLCHAIN", "RUST_STABLE_CACHEKEY", "RUSTFLAGS"],
-            "passThroughEnv": ["CARGO_TARGET_DIR", "ENGINE_WASM_THREADED_TARGET_DIR"]
+            "env": [
+                "RUST_NIGHTLY_TOOLCHAIN",
+                "RUST_STABLE_CACHEKEY",
+                "RUSTUP_TOOLCHAIN",
+                "RUSTFLAGS",
+                "ENGINE_WASM_*",
+                "!ENGINE_WASM_THREADED_TARGET_DIR"
+            ],
+            "passThroughEnv": [
+                "CARGO_NET_OFFLINE",
+                "CARGO_TARGET_DIR",
+                "ENGINE_WASM_THREADED_TARGET_DIR"
+            ]
         }
     }
 }

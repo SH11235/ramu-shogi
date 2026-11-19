@@ -478,7 +478,7 @@ export function LeftSidebar({
                         if (setting.role !== "engine") return null;
                         const engineId = setting.engineId;
                         const engine = engineOptions?.find((e) => e.id === engineId);
-                        if (!engine || engine.kind !== "external") return null;
+                        if (engine?.kind !== "external") return null;
                         const sideLabel = side === "sente" ? "先手" : "後手";
                         return (
                             <button
@@ -496,7 +496,7 @@ export function LeftSidebar({
                     })}
                     {(() => {
                         const aEngine = engineOptions?.find((e) => e.id === analysisEngineId);
-                        if (!aEngine || aEngine.kind !== "external") return null;
+                        if (aEngine?.kind !== "external") return null;
                         return (
                             <button
                                 type="button"

@@ -1021,7 +1021,7 @@ export function createEngineController(
     const startEngineTurn = async (side: Player) => {
         const generation = sideGeneration[side];
         const isCurrent = () => sideGeneration[side] === generation;
-        if (!context.position || !context.position.ready) return;
+        if (!context.position?.ready) return;
         if (!context.matchRunning) return;
 
         const searchState = searchStates[side];
@@ -1131,7 +1131,7 @@ export function createEngineController(
     };
 
     const maybeStartTurn = (side: Player) => {
-        if (!context.position || !context.position.ready) return;
+        if (!context.position?.ready) return;
         if (!context.matchRunning) return;
         if (context.sides[side].role !== "engine") return;
 

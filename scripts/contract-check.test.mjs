@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { closeSync, openSync } from "node:fs";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
@@ -94,31 +95,31 @@ for (const name of ["openapi.json", "schema.ts"]) {
         await put(
             backend,
             "node_modules/tsx/package.json",
-            '{"name":"tsx","type":"module","bin":"./cli.mjs"}',
+            '{"name":"tsx","type":"module","exports":"./loader.mjs"}',
         );
-        await put(
-            backend,
-            "node_modules/tsx/cli.mjs",
-            `import { pathToFileURL } from "node:url";
-const [, , script, ...args] = process.argv;
-process.argv = [process.execPath, script, ...args];
-await import(pathToFileURL(script).href);
-`,
-        );
+        await put(backend, "node_modules/tsx/loader.mjs", "export {};\n");
     }
     return { frontend, backend };
 }
 
 function runCli(root, args) {
-    const result = spawnSync(process.execPath, [cli, ...args], {
-        cwd: root,
-        env: { ...process.env, TEMP: root, TMP: root, TMPDIR: root },
-        encoding: "utf8",
-        timeout: 30_000,
+    return withTemporaryDirectory(async (directory) => {
+        const outputPath = path.join(directory, "cli.log");
+        const outputFd = openSync(outputPath, "wx");
+        try {
+            const result = spawnSync(process.execPath, [cli, ...args], {
+                cwd: root,
+                env: { ...process.env, TEMP: root, TMP: root, TMPDIR: root },
+                stdio: ["ignore", outputFd, outputFd],
+                timeout: 30_000,
+            });
+            assert.equal(result.error, undefined);
+            assert.equal(result.signal, null);
+            return { status: result.status, output: await readFile(outputPath, "utf8") };
+        } finally {
+            closeSync(outputFd);
+        }
     });
-    assert.equal(result.error, undefined);
-    assert.equal(result.signal, null);
-    return { ...result, output: `${result.stdout}\n${result.stderr}` };
 }
 
 async function fingerprint(root, relative = "") {
@@ -255,7 +256,7 @@ test("CLI rejects missing, unknown, duplicate and valueless backend arguments", 
             ["--backend-dir"],
             ["--frontend-dir", root],
         ]) {
-            const result = runCli(root, args);
+            const result = await runCli(root, args);
             assert.equal(result.status, 1, result.output);
             assert.match(result.output, /Usage:/);
             assert.doesNotMatch(result.output, /PASS/);
@@ -274,7 +275,12 @@ test("cross-repository CLI passes matching contracts with spaces in paths and le
             reordered.info = { version: "1.0.0", title: "Contract fixture" };
             await put(backend, "contract-fixture/openapi.json", JSON.stringify(reordered, null, 4));
             const before = await fingerprint(root);
-            const result = runCli(root, ["--backend-dir", backend, "--frontend-dir", frontend]);
+            const result = await runCli(root, [
+                "--backend-dir",
+                backend,
+                "--frontend-dir",
+                frontend,
+            ]);
             assert.equal(result.status, 0, result.output);
             assert.match(result.output, /Cross-repository HTTP \/ WS contracts PASS/);
             assert.deepEqual(await fingerprint(root), before);
@@ -290,7 +296,12 @@ test("cross-repository CLI rejects HTTP validation drift that does not change Ty
             },
         },
         async (root, { frontend, backend }) => {
-            const result = runCli(root, ["--backend-dir", backend, "--frontend-dir", frontend]);
+            const result = await runCli(root, [
+                "--backend-dir",
+                backend,
+                "--frontend-dir",
+                frontend,
+            ]);
             assert.equal(result.status, 1, result.output);
             assert.match(
                 result.output,
@@ -309,7 +320,7 @@ test("cross-repository CLI rejects generated TypeScript drift even when OpenAPI 
             "contract-fixture/schema.ts",
             schema.replace("id: string", "id: number"),
         );
-        const result = runCli(root, ["--backend-dir", backend, "--frontend-dir", frontend]);
+        const result = await runCli(root, ["--backend-dir", backend, "--frontend-dir", frontend]);
         assert.equal(result.status, 1, result.output);
         assert.match(result.output, /HTTP TypeScript drift: frontend and backend/);
         assert.doesNotMatch(result.output, /OpenAPI drift|PASS/);
@@ -320,7 +331,12 @@ test("cross-repository CLI rejects a WS optional-field drift", async () => {
     await runFixture(
         { backendProtocol: protocol.replace("sequence:", "sequence?:") },
         async (root, { frontend, backend }) => {
-            const result = runCli(root, ["--backend-dir", backend, "--frontend-dir", frontend]);
+            const result = await runCli(root, [
+                "--backend-dir",
+                backend,
+                "--frontend-dir",
+                frontend,
+            ]);
             assert.equal(result.status, 1, result.output);
             assert.match(result.output, /WS declaration drift: index.ts/);
             assert.doesNotMatch(result.output, /HTTP .*drift|PASS/);
@@ -332,7 +348,7 @@ test("cross-repository CLI detects added and removed WS source files", async () 
     await runFixture({}, async (root, { frontend, backend }) => {
         await put(frontend, "packages/match-protocol/src/removed.ts", "export type Old = string");
         await put(backend, "packages/match-protocol/src/added.ts", "export type New = string");
-        const result = runCli(root, ["--backend-dir", backend, "--frontend-dir", frontend]);
+        const result = await runCli(root, ["--backend-dir", backend, "--frontend-dir", frontend]);
         assert.equal(result.status, 1, result.output);
         assert.match(result.output, /WS source inventory drift: added.ts/);
         assert.match(result.output, /WS source inventory drift: removed.ts/);
@@ -346,7 +362,12 @@ test("backend generation failure is nonzero and cleans up only its temporary out
         async (root, { frontend, backend }) => {
             await put(root, "keep.txt", "unrelated file");
             const before = await fingerprint(root);
-            const result = runCli(root, ["--backend-dir", backend, "--frontend-dir", frontend]);
+            const result = await runCli(root, [
+                "--backend-dir",
+                backend,
+                "--frontend-dir",
+                frontend,
+            ]);
             assert.equal(result.status, 1, result.output);
             assert.match(result.output, /fixture generation failure/);
             assert.match(result.output, /generation failed \(exit 23\)/);
@@ -361,18 +382,10 @@ test("missing backend dependencies cannot be mistaken for a successful check", a
         await put(
             root,
             "node_modules/tsx/package.json",
-            '{"name":"tsx","type":"module","bin":"./cli.mjs"}',
+            '{"name":"tsx","type":"module","exports":"./loader.mjs"}',
         );
-        await put(
-            root,
-            "node_modules/tsx/cli.mjs",
-            `import { pathToFileURL } from "node:url";
-const [, , script, ...args] = process.argv;
-process.argv = [process.execPath, script, ...args];
-await import(pathToFileURL(script).href);
-`,
-        );
-        const result = runCli(root, ["--backend-dir", backend, "--frontend-dir", frontend]);
+        await put(root, "node_modules/tsx/loader.mjs", "export {};\n");
+        const result = await runCli(root, ["--backend-dir", backend, "--frontend-dir", frontend]);
         assert.equal(result.status, 1, result.output);
         assert.match(result.output, /Backend tsx is unavailable/);
         assert.doesNotMatch(result.output, /PASS/);
@@ -383,7 +396,12 @@ test("a generator that produces no contract fails instead of skipping comparison
     await runFixture(
         { generator: "process.exitCode = 0;" },
         async (root, { frontend, backend }) => {
-            const result = runCli(root, ["--backend-dir", backend, "--frontend-dir", frontend]);
+            const result = await runCli(root, [
+                "--backend-dir",
+                backend,
+                "--frontend-dir",
+                frontend,
+            ]);
             assert.equal(result.status, 1, result.output);
             assert.match(result.output, /Cannot read .*openapi.json/);
             assert.doesNotMatch(result.output, /PASS/);

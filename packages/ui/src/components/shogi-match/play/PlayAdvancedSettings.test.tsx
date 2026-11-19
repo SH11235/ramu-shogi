@@ -19,6 +19,68 @@ const AI: SideSetting = { role: "engine", engineId: "wasm" };
 const UNLIMITED = { mainMs: 0, byoyomiMs: 10_000, incrementMs: 0, enabled: false };
 const AI_3S = { mainMs: 0, byoyomiMs: 3_000, incrementMs: 0, enabled: true };
 
+type SettingsSnapshot = {
+    limits: EngineSearchLimits;
+    setLimits: (next: EngineSearchLimits) => void;
+};
+
+function Harness({
+    snapshot,
+    play,
+    sides,
+    locked,
+}: {
+    snapshot: SettingsSnapshot;
+    play: PlayScreenConfig;
+    sides: { sente: SideSetting; gote: SideSetting };
+    locked: boolean;
+}): ReactElement {
+    const [time, setTime] = useState<ClockSettings>({ sente: UNLIMITED, gote: AI_3S });
+    const [current, setLimits] = useState(snapshot.limits);
+    snapshot.limits = current;
+    snapshot.setLimits = setLimits;
+    return (
+        <ShogiMatchProvider config={{ play }}>
+            <MatchSettingsProvider
+                sides={sides}
+                onSidesChange={() => {}}
+                timeSettings={time}
+                onTimeSettingsChange={setTime}
+                passRightsSettings={DEFAULT_PASS_RIGHTS_SETTINGS}
+                onPassRightsSettingsChange={() => {}}
+                settingsLocked={locked}
+                isDevMode={false}
+                engineThreads={{ sente: 0, gote: 0 }}
+                onEngineThreadsChange={() => {}}
+                engineSearchLimits={current}
+                onEngineSearchLimitsChange={setLimits}
+                senteNnueSelection={{ presetKey: null, nnueId: null }}
+                onSenteNnueSelectionChange={() => {}}
+                goteNnueSelection={{ presetKey: null, nnueId: null }}
+                onGoteNnueSelectionChange={() => {}}
+                nnueList={[]}
+                presets={[]}
+                internalEngineId="wasm"
+                engineOptions={[
+                    {
+                        id: "wasm",
+                        label: "内蔵エンジン",
+                        kind: "internal",
+                        createClient: () => {
+                            throw new Error("テストではエンジンを作らない");
+                        },
+                    },
+                ]}
+                onOpenNnueManager={() => {}}
+                onOpenDisplaySettings={() => {}}
+                onOpenPassRightsSettings={() => {}}
+            >
+                <PlayAdvancedSettings onDisplaySettingsChange={() => {}} />
+            </MatchSettingsProvider>
+        </ShogiMatchProvider>
+    );
+}
+
 /**
  * 設定を持つだけの親。いまの読む量を `snapshot.limits` で読み、`snapshot.setLimits` で
  * 詳細設定の外（設定の欄・別のタブ）からの書き換えを再現する。
@@ -34,56 +96,9 @@ function renderSettings({
     locked?: boolean;
     busy?: boolean;
 }) {
-    const snapshot: { limits: EngineSearchLimits; setLimits: (next: EngineSearchLimits) => void } =
-        { limits, setLimits: () => {} };
+    const snapshot: SettingsSnapshot = { limits, setLimits: () => {} };
     const play = { busy, hintMultiPv: 1, setHintMultiPv: () => {} } as unknown as PlayScreenConfig;
-    function Harness(): ReactElement {
-        const [time, setTime] = useState<ClockSettings>({ sente: UNLIMITED, gote: AI_3S });
-        const [current, setLimits] = useState(snapshot.limits);
-        snapshot.limits = current;
-        snapshot.setLimits = setLimits;
-        return (
-            <ShogiMatchProvider config={{ play }}>
-                <MatchSettingsProvider
-                    sides={sides}
-                    onSidesChange={() => {}}
-                    timeSettings={time}
-                    onTimeSettingsChange={setTime}
-                    passRightsSettings={DEFAULT_PASS_RIGHTS_SETTINGS}
-                    onPassRightsSettingsChange={() => {}}
-                    settingsLocked={locked}
-                    isDevMode={false}
-                    engineThreads={{ sente: 0, gote: 0 }}
-                    onEngineThreadsChange={() => {}}
-                    engineSearchLimits={current}
-                    onEngineSearchLimitsChange={setLimits}
-                    senteNnueSelection={{ presetKey: null, nnueId: null }}
-                    onSenteNnueSelectionChange={() => {}}
-                    goteNnueSelection={{ presetKey: null, nnueId: null }}
-                    onGoteNnueSelectionChange={() => {}}
-                    nnueList={[]}
-                    presets={[]}
-                    internalEngineId="wasm"
-                    engineOptions={[
-                        {
-                            id: "wasm",
-                            label: "内蔵エンジン",
-                            kind: "internal",
-                            createClient: () => {
-                                throw new Error("テストではエンジンを作らない");
-                            },
-                        },
-                    ]}
-                    onOpenNnueManager={() => {}}
-                    onOpenDisplaySettings={() => {}}
-                    onOpenPassRightsSettings={() => {}}
-                >
-                    <PlayAdvancedSettings onDisplaySettingsChange={() => {}} />
-                </MatchSettingsProvider>
-            </ShogiMatchProvider>
-        );
-    }
-    render(<Harness />);
+    render(<Harness snapshot={snapshot} play={play} sides={sides} locked={locked} />);
     return snapshot;
 }
 

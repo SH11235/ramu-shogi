@@ -45,7 +45,7 @@ function createBroadcastStudyChannel(name: string = STUDY_CHANNEL_NAME): StudyCh
     const handlers = new Set<(message: StudyChannelMessage) => void>();
     channel.onmessage = (event: MessageEvent<unknown>) => {
         const data = event.data as Partial<StudyChannelMessage> | null;
-        if (!data || data.type !== "changed" || typeof data.studyId !== "string") return;
+        if (data?.type !== "changed" || typeof data.studyId !== "string") return;
         for (const handler of [...handlers]) handler({ type: "changed", studyId: data.studyId });
     };
     return {

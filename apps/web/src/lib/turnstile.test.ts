@@ -34,19 +34,19 @@ describe("requestTurnstileToken", () => {
         expect(options).toMatchObject({ sitekey: "sitekey", appearance: "interaction-only" });
     });
 
-    it.each([
-        "error-callback",
-        "timeout-callback",
-    ] as const)("%s ではトークンなしで返し、送信の判断をサーバーに任せる", async (name) => {
-        let options: RenderOptions | undefined;
-        const { api } = createFakeApi((o) => {
-            options = o;
-        });
-        const promise = requestTurnstileToken(api, document.createElement("div"), "sitekey");
-        if (name === "error-callback") options?.[name]?.("110200");
-        else options?.[name]?.();
-        await expect(promise).resolves.toBeUndefined();
-    });
+    it.each(["error-callback", "timeout-callback"] as const)(
+        "%s ではトークンなしで返し、送信の判断をサーバーに任せる",
+        async (name) => {
+            let options: RenderOptions | undefined;
+            const { api } = createFakeApi((o) => {
+                options = o;
+            });
+            const promise = requestTurnstileToken(api, document.createElement("div"), "sitekey");
+            if (name === "error-callback") options?.[name]?.("110200");
+            else options?.[name]?.();
+            await expect(promise).resolves.toBeUndefined();
+        },
+    );
 
     it("後から来た callback で結果を上書きしない", async () => {
         let options: RenderOptions | undefined;

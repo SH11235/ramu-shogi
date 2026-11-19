@@ -27,20 +27,20 @@ describe("useLocalStorage change source", () => {
         window.removeEventListener(LOCAL_STORAGE_SYNC_EVENT, collectNotification);
     });
 
-    it.each([
-        false,
-        true,
-    ])("初期保存と同じ値の再描画は通知しない（StrictMode: %s）", (reactStrictMode) => {
-        const { result, rerender } = renderHook(() => useLocalStorage(KEY, defaults), {
-            reactStrictMode,
-        });
-        const setter = result.current[1];
-        act(() => result.current[1]((previous) => previous));
-        rerender();
-        expect(notifications).toEqual([]);
-        expect(JSON.parse(localStorage.getItem(KEY) ?? "null")).toEqual(defaults);
-        expect(result.current[1]).toBe(setter);
-    });
+    it.each([false, true])(
+        "初期保存と同じ値の再描画は通知しない（StrictMode: %s）",
+        (reactStrictMode) => {
+            const { result, rerender } = renderHook(() => useLocalStorage(KEY, defaults), {
+                reactStrictMode,
+            });
+            const setter = result.current[1];
+            act(() => result.current[1]((previous) => previous));
+            rerender();
+            expect(notifications).toEqual([]);
+            expect(JSON.parse(localStorage.getItem(KEY) ?? "null")).toEqual(defaults);
+            expect(result.current[1]).toBe(setter);
+        },
+    );
 
     it("自動更新を他のhookへ伝えても利用者編集の通知に変えない", () => {
         const first = renderHook(() => useLocalStorage(KEY, defaults));
@@ -51,33 +51,34 @@ describe("useLocalStorage change source", () => {
         expect(notifications.every((event) => event.source === "automatic")).toBe(true);
     });
 
-    it.each([
-        "user-first",
-        "automatic-first",
-    ])("同じbatchの自動更新と利用者編集を両方保存する（%s）", (order) => {
-        const { result } = renderHook(() => useLocalStorage(KEY, defaults), {
-            reactStrictMode: true,
-        });
-        const setter = result.current[1];
-        const edit = () => setter((previous) => ({ ...previous, sound: false }));
-        const normalize = () => setter((previous) => ({ ...previous, volume: 0.5 }), "automatic");
-        act(() => {
-            if (order === "user-first") {
-                edit();
-                normalize();
-            } else {
-                normalize();
-                edit();
-            }
-        });
-        expect(result.current[0]).toEqual({ sound: false, volume: 0.5 });
-        expect(JSON.parse(localStorage.getItem(KEY) ?? "null")).toEqual({
-            sound: false,
-            volume: 0.5,
-        });
-        expect(notifications).toEqual([{ key: KEY, source: "user" }]);
-        expect(result.current[1]).toBe(setter);
-    });
+    it.each(["user-first", "automatic-first"])(
+        "同じbatchの自動更新と利用者編集を両方保存する（%s）",
+        (order) => {
+            const { result } = renderHook(() => useLocalStorage(KEY, defaults), {
+                reactStrictMode: true,
+            });
+            const setter = result.current[1];
+            const edit = () => setter((previous) => ({ ...previous, sound: false }));
+            const normalize = () =>
+                setter((previous) => ({ ...previous, volume: 0.5 }), "automatic");
+            act(() => {
+                if (order === "user-first") {
+                    edit();
+                    normalize();
+                } else {
+                    normalize();
+                    edit();
+                }
+            });
+            expect(result.current[0]).toEqual({ sound: false, volume: 0.5 });
+            expect(JSON.parse(localStorage.getItem(KEY) ?? "null")).toEqual({
+                sound: false,
+                volume: 0.5,
+            });
+            expect(notifications).toEqual([{ key: KEY, source: "user" }]);
+            expect(result.current[1]).toBe(setter);
+        },
+    );
 
     it("保存済みの利用者編集を後続の自動更新に引き継がない", () => {
         const { result } = renderHook(() => useLocalStorage(KEY, defaults));

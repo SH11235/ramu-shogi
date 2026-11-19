@@ -151,7 +151,6 @@ export function StudyView({
         }
     };
 
-    // biome-ignore lint/correctness/useExhaustiveDependencies: presentFromStore は毎回作り直されるが、中身は ref と引数だけに依存する
     useEffect(() => {
         let cancelled = false;
         const isCancelled = (): boolean => cancelled;

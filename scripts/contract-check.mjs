@@ -4,8 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
-import openapiTS, { astToString } from "openapi-typescript";
-import ts from "typescript";
+import { astToString, openapiTS, ts } from "@shogi/typescript-api";
 
 const generatedPath = "packages/api-contract/src/generated";
 const protocolPath = "packages/match-protocol/src";
@@ -260,23 +259,22 @@ export async function withTemporaryDirectory(callback) {
 async function generateBackendContracts(backendDirectory, outputDirectory) {
     const generator = path.join(backendDirectory, "scripts/generate-api-contract.ts");
     await readText(generator);
-    let tsxPackage;
     try {
-        tsxPackage = await realpath(path.join(backendDirectory, "node_modules/tsx/package.json"));
+        await realpath(path.join(backendDirectory, "node_modules/tsx/package.json"));
     } catch {
         fail("Backend tsx is unavailable. Install the backend's frozen dependencies first.");
     }
-    const metadata = await readJson(tsxPackage);
-    const bin = typeof metadata.bin === "string" ? metadata.bin : metadata.bin?.tsx;
-    if (!bin) fail("The backend tsx package has no CLI entry point.");
-    const tsxCli = path.resolve(path.dirname(tsxPackage), bin);
     try {
-        execFileSync(process.execPath, [tsxCli, generator, "--output-dir", outputDirectory], {
-            cwd: backendDirectory,
-            env: { ...process.env, TSX_DISABLE_CACHE: "1" },
-            stdio: "inherit",
-            timeout: 120_000,
-        });
+        execFileSync(
+            process.execPath,
+            ["--import", "tsx", generator, "--output-dir", outputDirectory],
+            {
+                cwd: backendDirectory,
+                env: { ...process.env, TSX_DISABLE_CACHE: "1" },
+                stdio: "inherit",
+                timeout: 120_000,
+            },
+        );
     } catch (error) {
         fail(
             `Backend contract generation failed (exit ${error.status ?? error.code ?? "unknown"}).`,
