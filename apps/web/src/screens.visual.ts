@@ -56,6 +56,7 @@ const gotoAndWait =
     };
 
 const openStudyAtEnd = async (page: Page): Promise<void> => {
+    await page.clock.setFixedTime(new Date("2026-01-01T01:00:00Z"));
     await page.goto("/studies");
     await page.getByRole("textbox", { name: "棋譜のテキスト" }).fill(KIFU_WITH_HANDS);
     await page.getByRole("button", { name: "研究ノートにする" }).click();
@@ -296,7 +297,16 @@ const SCENES: Scene[] = [
             json: { games: [GAME_SUMMARY], nextCursor: null },
         }),
     },
-    { name: "auth", open: gotoAndWait("/auth", (p) => p.getByRole("heading").first().waitFor()) },
+    {
+        name: "auth",
+        open: async (page) => {
+            await page.route("**/api/auth/session", (route) =>
+                route.fulfill({ json: { authenticated: false, user: null } }),
+            );
+            await page.goto("/auth");
+            await page.getByRole("button", { name: /Google/ }).waitFor();
+        },
+    },
     {
         name: "online",
         open: gotoAndWait("/online", (p) => p.getByRole("heading").first().waitFor()),

@@ -358,72 +358,76 @@ describe("RshogiCsaLiveViewer: static fallback", () => {
         expect(await screen.findByText("先手 (alice) 勝ち (詰み)")).toBeTruthy();
     });
 
-    it.each([
-        false,
-        true,
-    ])("後手番開始の詰みを表示する (terminal snapshot: %s)", async (terminalSnapshot) => {
-        // 先後と盤を反転し、後手番開始で先手玉を詰ます手順にする。
-        const moves = checkmateMoves.map(
-            (move) =>
-                `${move[0] === "+" ? "-" : "+"}${move
-                    .slice(1, 5)
-                    .replace(/[1-9]/g, (digit) => String(10 - Number(digit)))}${move.slice(5)}`,
-        );
-        expect(parseCsaGameRecord(["PI", "-", ...moves, "%TORYO"].join("\n")).checkmatedSide).toBe(
-            "sente",
-        );
-        const fetchOverride = createStaticGameNotFoundFetch();
-        const view = render(
-            <RshogiCsaLiveViewer
-                gameId="game-1"
-                engineOptions={[]}
-                manifestUrl="/nnue/manifest.json"
-                apiBaseUrl="https://example.com/api/v1"
-                fetchOverride={fetchOverride}
-            />,
-        );
-        const ws = MockWebSocket.instances[0];
-        act(() => {
-            ws.fireOpen();
-            ws.fireLines(
-                buildLiveSnapshot(
-                    terminalSnapshot ? moves : moves.slice(0, -1),
-                    terminalSnapshot ? "#RESIGN" : undefined,
-                ).map((line) => (line === "To_Move:+" ? "To_Move:-" : line)),
+    it.each([false, true])(
+        "後手番開始の詰みを表示する (terminal snapshot: %s)",
+        async (terminalSnapshot) => {
+            // 先後と盤を反転し、後手番開始で先手玉を詰ます手順にする。
+            const moves = checkmateMoves.map(
+                (move) =>
+                    `${move[0] === "+" ? "-" : "+"}${move
+                        .slice(1, 5)
+                        .replace(/[1-9]/g, (digit) => String(10 - Number(digit)))}${move.slice(5)}`,
             );
-        });
-        if (terminalSnapshot) {
-            await waitFor(() => expect(fetchOverride).toHaveBeenCalled());
-        } else {
-            expect(screen.queryByText(/勝ち/)).toBeNull();
-            // 盤は平手・先手番からではなく、snapshot の開始局面（後手番）から再生する。
-            expect(screen.getByTestId("shogi-match").getAttribute("data-sfen")).toMatch(/ w - 1$/);
-            act(() => ws.fireLines([moves[moves.length - 1]]));
-            expect(screen.queryByText(/勝ち/)).toBeNull();
-            act(() => ws.fireLines(["#RESIGN"]));
-        }
-        expect(await screen.findByText("後手 (bob) 勝ち (詰み)")).toBeTruthy();
+            expect(
+                parseCsaGameRecord(["PI", "-", ...moves, "%TORYO"].join("\n")).checkmatedSide,
+            ).toBe("sente");
+            const fetchOverride = createStaticGameNotFoundFetch();
+            const view = render(
+                <RshogiCsaLiveViewer
+                    gameId="game-1"
+                    engineOptions={[]}
+                    manifestUrl="/nnue/manifest.json"
+                    apiBaseUrl="https://example.com/api/v1"
+                    fetchOverride={fetchOverride}
+                />,
+            );
+            const ws = MockWebSocket.instances[0];
+            act(() => {
+                ws.fireOpen();
+                ws.fireLines(
+                    buildLiveSnapshot(
+                        terminalSnapshot ? moves : moves.slice(0, -1),
+                        terminalSnapshot ? "#RESIGN" : undefined,
+                    ).map((line) => (line === "To_Move:+" ? "To_Move:-" : line)),
+                );
+            });
+            if (terminalSnapshot) {
+                await waitFor(() => expect(fetchOverride).toHaveBeenCalled());
+            } else {
+                expect(screen.queryByText(/勝ち/)).toBeNull();
+                // 盤は平手・先手番からではなく、snapshot の開始局面（後手番）から再生する。
+                expect(screen.getByTestId("shogi-match").getAttribute("data-sfen")).toMatch(
+                    / w - 1$/,
+                );
+                act(() => ws.fireLines([moves[moves.length - 1]]));
+                expect(screen.queryByText(/勝ち/)).toBeNull();
+                act(() => ws.fireLines(["#RESIGN"]));
+            }
+            expect(await screen.findByText("後手 (bob) 勝ち (詰み)")).toBeTruthy();
 
-        // 別の対局への切り替えで、以前の終局結果を残さない。
-        view.rerender(
-            <RshogiCsaLiveViewer
-                gameId="game-2"
-                engineOptions={[]}
-                manifestUrl="/nnue/manifest.json"
-                apiBaseUrl="https://example.com/api/v1"
-                fetchOverride={fetchOverride}
-            />,
-        );
-        expect(screen.queryByText(/勝ち/)).toBeNull();
-        act(() => {
-            const nextWs = MockWebSocket.instances[1];
-            nextWs.fireOpen();
-            nextWs.fireLines(
-                buildLiveSnapshot([], "#RESIGN").map((line) => line.replace("game-1", "game-2")),
+            // 別の対局への切り替えで、以前の終局結果を残さない。
+            view.rerender(
+                <RshogiCsaLiveViewer
+                    gameId="game-2"
+                    engineOptions={[]}
+                    manifestUrl="/nnue/manifest.json"
+                    apiBaseUrl="https://example.com/api/v1"
+                    fetchOverride={fetchOverride}
+                />,
             );
-        });
-        expect(await screen.findByText("後手 (bob) 勝ち (投了)")).toBeTruthy();
-    });
+            expect(screen.queryByText(/勝ち/)).toBeNull();
+            act(() => {
+                const nextWs = MockWebSocket.instances[1];
+                nextWs.fireOpen();
+                nextWs.fireLines(
+                    buildLiveSnapshot([], "#RESIGN").map((line) =>
+                        line.replace("game-1", "game-2"),
+                    ),
+                );
+            });
+            expect(await screen.findByText("後手 (bob) 勝ち (投了)")).toBeTruthy();
+        },
+    );
 
     it("deriveLiveCheckmatedSide は snapshot なし・再生エラー・非詰みで undefined を返す", () => {
         const moves = parseCsaGameRecord(["PI", "+", ...checkmateMoves].join("\n")).moves;

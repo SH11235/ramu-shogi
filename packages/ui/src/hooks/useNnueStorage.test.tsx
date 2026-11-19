@@ -52,12 +52,11 @@ const createDesktopMockStorage = (): NnueStorage => ({
     }),
 });
 
-// NnueProvider でラップする wrapper
-const createWrapper = (storage: NnueStorage) => {
-    return function Wrapper({ children }: { children: ReactNode }) {
-        return <NnueProvider storage={storage}>{children}</NnueProvider>;
-    };
-};
+const createWrapper =
+    (storage: NnueStorage) =>
+    ({ children }: { children: ReactNode }) => (
+        <NnueProvider storage={storage}>{children}</NnueProvider>
+    );
 
 describe("useNnueStorage", () => {
     describe("Web storage (supportsFileImport=true, supportsLoad=true)", () => {

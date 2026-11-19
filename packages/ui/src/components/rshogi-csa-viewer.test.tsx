@@ -537,14 +537,17 @@ describe("RshogiCsaViewer: 対局者を盤の上に出す", () => {
     it.each([
         ["先手", "sente", [true, false]],
         ["後手", "gote", [false, true]],
-    ] as const)("%sが勝った棋譜では、その側だけに「勝ち」の印を付ける", async (_label, winner, expected) => {
-        vi.mocked(fetchRshogiGame).mockResolvedValue(
-            withResult({ kind: "resignation", winner, endReason: "RESIGN" }),
-        );
-        renderViewer();
+    ] as const)(
+        "%sが勝った棋譜では、その側だけに「勝ち」の印を付ける",
+        async (_label, winner, expected) => {
+            vi.mocked(fetchRshogiGame).mockResolvedValue(
+                withResult({ kind: "resignation", winner, endReason: "RESIGN" }),
+            );
+            renderViewer();
 
-        expect(await winnerMarks()).toEqual(expected);
-    });
+            expect(await winnerMarks()).toEqual(expected);
+        },
+    );
 
     it.each([
         ["引き分け（千日手）", { kind: "draw" }],

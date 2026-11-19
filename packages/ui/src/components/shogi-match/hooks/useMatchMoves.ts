@@ -245,11 +245,11 @@ export function useMatchMoves({
                     : () => getPositionService().getLegalMoves(startSfen, moves, passRightsOption);
                 const movesKey = buildLegalCacheKey(startSfen, moves, passRightsOption);
                 let legal = await legalCache.getOrResolve(movesKey, resolver);
-                if (!legal || !legal.has("pass")) {
+                if (!legal?.has("pass")) {
                     // パス権ありでも合法手に含まれない場合はキャッシュをクリアして再取得（パス権オプション漏れ対策）
                     clearLegalCache();
                     legal = await legalCache.getOrResolve(movesKey, resolver);
-                    if (!legal || !legal.has("pass")) {
+                    if (!legal?.has("pass")) {
                         setMessage({ text: "王手されているためパスできません", type: "error" });
                         return;
                     }

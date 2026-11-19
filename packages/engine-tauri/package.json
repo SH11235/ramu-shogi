@@ -33,8 +33,8 @@
         "@tauri-apps/api": "^2"
     },
     "devDependencies": {
-        "@tauri-apps/api": "^2",
-        "typescript": "~5.9.3",
-        "vitest": "^4.1.12"
+        "@tauri-apps/api": "catalog:",
+        "typescript": "catalog:",
+        "vitest": "catalog:"
     }
 }

@@ -71,7 +71,7 @@ const fromRemote = (summary: StudySummary): StudyListItem => ({
 });
 
 /** ブラウザ内とクラウドの一覧を 1 つにまとめる（同じノートはブラウザ内の内容を優先）。 */
-export function mergeStudyLists(
+function mergeStudyLists(
     local: readonly StudyListItem[],
     remote: readonly StudyListItem[],
 ): StudyListItem[] {

@@ -315,19 +315,25 @@ describe("オンライン対局の状態（実物の Wasm 局面サービス）"
         ["handicap:bishop", "角落ち"],
         ["handicap:rook", "飛車落ち"],
         ["handicap:rook-bishop", "飛車角落ち"],
-    ])("保存された %s の棋譜を、手合割と開始局面と終局の入った読み込める KIF にする", async (preset, name) => {
-        const initialSfen = resolveStartSfen(preset);
-        const moves = ["3c3d", "7g7f", "8c8d"];
+    ])(
+        "保存された %s の棋譜を、手合割と開始局面と終局の入った読み込める KIF にする",
+        async (preset, name) => {
+            const initialSfen = resolveStartSfen(preset);
+            const moves = ["3c3d", "7g7f", "8c8d"];
 
-        const kif = await exportGameRecordKif({ initialSfen, moves, result: RESULT }, PLAYER_NAMES);
+            const kif = await exportGameRecordKif(
+                { initialSfen, moves, result: RESULT },
+                PLAYER_NAMES,
+            );
 
-        expect(kif).toContain(`手合割：${name}`);
-        // 上手（後手）から指すので、3 手の後は下手（先手）の番で、投了したのは下手
-        expect(kif).toContain("   4 投了\nまで3手で後手の勝ち");
-        const parsed = parseKif(kif ?? "");
-        expect(parsed.moves).toEqual(moves);
-        expect(parsed.startSfen).toBe(parseSfen(initialSfen).sfen);
-    });
+            expect(kif).toContain(`手合割：${name}`);
+            // 上手（後手）から指すので、3 手の後は下手（先手）の番で、投了したのは下手
+            expect(kif).toContain("   4 投了\nまで3手で後手の勝ち");
+            const parsed = parseKif(kif ?? "");
+            expect(parsed.moves).toEqual(moves);
+            expect(parsed.startSfen).toBe(parseSfen(initialSfen).sfen);
+        },
+    );
 
     it("指し手の無い保存された棋譜にも手合割と開始局面を書く", async () => {
         const initialSfen = resolveStartSfen("handicap:bishop");

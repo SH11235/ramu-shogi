@@ -69,12 +69,11 @@ const createMockStorage = (overrides: Partial<NnueStorage> = {}): NnueStorage =>
     ...overrides,
 });
 
-// NnueProvider でラップする wrapper
-const createWrapper = (storage: NnueStorage) => {
-    return function Wrapper({ children }: { children: ReactNode }) {
-        return <NnueProvider storage={storage}>{children}</NnueProvider>;
-    };
-};
+const createWrapper =
+    (storage: NnueStorage) =>
+    ({ children }: { children: ReactNode }) => (
+        <NnueProvider storage={storage}>{children}</NnueProvider>
+    );
 
 describe("usePresetManager", () => {
     beforeEach(() => {

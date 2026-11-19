@@ -117,40 +117,40 @@ describe("useOnlineAnalysis lifecycle", () => {
         expect(engine.cancel).not.toHaveBeenCalled();
     });
 
-    it.each([
-        "cancel",
-        "unmount",
-    ] as const)("初期化待ちの%s後に探索を始めない", async (operation) => {
-        const engine = mockEngine();
-        const entered = deferred();
-        const gate = deferred();
-        engine.init.mockImplementationOnce(async () => {
-            entered.resolve();
-            await gate.promise;
-        });
-        createClient.mockReturnValue(engine);
-        const { result, unmount } = renderHook(() => useOnlineAnalysis(12, 1000));
-        let starting = Promise.resolve();
-        await act(async () => {
-            starting = result.current.startAnalysis("startpos", []);
-            await entered.promise;
-        });
-        let cancelling: Promise<void> | undefined;
-        if (operation === "unmount") unmount();
-        else
-            act(() => {
-                cancelling = result.current.cancelAnalysis();
+    it.each(["cancel", "unmount"] as const)(
+        "初期化待ちの%s後に探索を始めない",
+        async (operation) => {
+            const engine = mockEngine();
+            const entered = deferred();
+            const gate = deferred();
+            engine.init.mockImplementationOnce(async () => {
+                entered.resolve();
+                await gate.promise;
             });
-        await act(async () => {
-            gate.resolve();
-            await starting;
-            await cancelling;
-        });
-        expect(engine.search).not.toHaveBeenCalled();
-        expect(engine.setOption).not.toHaveBeenCalled();
-        expect(engine.dispose).toHaveBeenCalledTimes(1);
-        expect(engine.listeners.size).toBe(0);
-    });
+            createClient.mockReturnValue(engine);
+            const { result, unmount } = renderHook(() => useOnlineAnalysis(12, 1000));
+            let starting = Promise.resolve();
+            await act(async () => {
+                starting = result.current.startAnalysis("startpos", []);
+                await entered.promise;
+            });
+            let cancelling: Promise<void> | undefined;
+            if (operation === "unmount") unmount();
+            else
+                act(() => {
+                    cancelling = result.current.cancelAnalysis();
+                });
+            await act(async () => {
+                gate.resolve();
+                await starting;
+                await cancelling;
+            });
+            expect(engine.search).not.toHaveBeenCalled();
+            expect(engine.setOption).not.toHaveBeenCalled();
+            expect(engine.dispose).toHaveBeenCalledTimes(1);
+            expect(engine.listeners.size).toBe(0);
+        },
+    );
 
     it("探索handleの完了待ちをcancelするとclientを破棄して遅いイベントを無視する", async () => {
         const engine = mockEngine();

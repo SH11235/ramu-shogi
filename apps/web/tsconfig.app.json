@@ -1,26 +1,10 @@
 {
-    "extends": "../../tsconfig.base.json",
+    "extends": "../../tsconfig.workspace.json",
     "compilerOptions": {
         "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
         "types": ["vite/client", "react", "react-dom"],
         "moduleDetection": "force",
-        "noEmit": true,
-        "paths": {
-            "@shogi/app-core": ["packages/app-core/src/index.ts"],
-            "@shogi/app-controller": ["packages/app-controller/src/index.ts"],
-            "@shogi/engine-client": ["packages/engine-client/src"],
-            "@shogi/engine-client/*": ["packages/engine-client/src/*"],
-            "@shogi/design-system": ["packages/design-system/src"],
-            "@shogi/design-system/*": ["packages/design-system/src/*"],
-            "@shogi/api-contract": ["packages/api-contract/src/index.ts"],
-            "@shogi/ui": ["packages/ui/src"],
-            "@shogi/ui/*": ["packages/ui/src/*"],
-            "@shogi/engine-wasm": ["packages/engine-wasm/src"],
-            "@shogi/engine-wasm/*": ["packages/engine-wasm/src/*"],
-            "@shogi/match-client": ["packages/match-client/src/index.ts"],
-            "@shogi/match-protocol": ["packages/match-protocol/src/index.ts"],
-            "@shogi/study-client": ["packages/study-client/src/index.ts"]
-        }
+        "noEmit": true
     },
     "include": ["src"],
     "exclude": ["src/**/*.e2e.ts", "src/**/*.visual.ts"]

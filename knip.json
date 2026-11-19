@@ -1,5 +1,5 @@
 {
-    "$schema": "https://unpkg.com/knip@5/schema.json",
+    "$schema": "https://unpkg.com/knip@6/schema.json",
     "includeEntryExports": true,
     "workspaces": {
         "packages/engine-wasm": {
@@ -7,21 +7,24 @@
                 "src/index.ts",
                 "src/engine.worker.single.ts",
                 "src/engine.worker.threaded.ts"
-            ]
+            ],
+            "ignoreBinaries": ["wasm-bindgen"]
+        },
+        "packages/match-protocol": {
+            "includeEntryExports": false
         }
     },
-    "ignoreDependencies": ["wrangler", "babel-plugin-react-compiler", "@tauri-apps/plugin-store"],
+    "ignoreDependencies": ["wrangler", "@tauri-apps/plugin-store"],
     "ignoreIssues": {
         "packages/api-contract/src/generated/**": ["types"],
         "packages/api-contract/src/index.ts": ["types"]
     },
     "ignore": [
-        "apps/desktop/src-tauri/target/**",
-        "apps/web/worker/index.ts",
-        "packages/rust-core/target/**",
-        "packages/rust-core/pkg/**",
-        "packages/rust-core/crates/shogi-rules-wasm/pkg/**",
         "packages/rust-core/crates/shogi-rules-wasm/scripts/copy-to-backend.mjs",
         "infra/pulumi/**"
-    ]
+    ],
+    "ignoreExportsUsedInFile": {
+        "interface": true,
+        "type": true
+    }
 }

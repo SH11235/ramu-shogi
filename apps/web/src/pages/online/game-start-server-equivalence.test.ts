@@ -53,18 +53,20 @@ describe("backend の RoomDO が送った game_start と対局開始直後の sn
         expect(names.filter((name) => !NOT_BUILT_LOCALLY.includes(name))).toHaveLength(12);
     });
 
-    it.each(
-        BACKEND_CASES.filter(({ name }) => !NOT_BUILT_LOCALLY.includes(name)),
-    )("$name: 組み立てた snapshot がサーバーの snapshot と一致する", ({ gameStart, snapshot }) => {
-        expect(snapshot.status).toBe("playing");
-        expectSameAsServer(gameStart, snapshot);
-    });
+    it.each(BACKEND_CASES.filter(({ name }) => !NOT_BUILT_LOCALLY.includes(name)))(
+        "$name: 組み立てた snapshot がサーバーの snapshot と一致する",
+        ({ gameStart, snapshot }) => {
+            expect(snapshot.status).toBe("playing");
+            expectSameAsServer(gameStart, snapshot);
+        },
+    );
 
-    it.each(
-        BACKEND_CASES.filter(({ name }) => NOT_BUILT_LOCALLY.includes(name)),
-    )("$name: 組み立てない", ({ gameStart }) => {
-        expect(snapshotAtGameStart(gameStart)).toBeNull();
-    });
+    it.each(BACKEND_CASES.filter(({ name }) => NOT_BUILT_LOCALLY.includes(name)))(
+        "$name: 組み立てない",
+        ({ gameStart }) => {
+            expect(snapshotAtGameStart(gameStart)).toBeNull();
+        },
+    );
 });
 
 // 駒落ちプリセットはクライアントとサーバーがそれぞれ局面に展開する。クライアントの表と、backend が

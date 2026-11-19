@@ -42,16 +42,72 @@ interface Initial {
     gote?: NnueSelection;
 }
 
+type SettingsSnapshot = {
+    sides: Sides;
+    time: ClockSettings;
+    sente: NnueSelection;
+    gote: NnueSelection;
+    threads: EngineThreadSettings;
+    limits: EngineSearchLimits;
+};
+
+function SettingsWrapper({
+    children,
+    snapshot,
+}: {
+    children: ReactNode;
+    snapshot: SettingsSnapshot;
+}) {
+    const [sides, setSides] = useState(snapshot.sides);
+    const [time, setTime] = useState(snapshot.time);
+    const [sente, setSente] = useState(snapshot.sente);
+    const [gote, setGote] = useState(snapshot.gote);
+    const [threads, setThreads] = useState(snapshot.threads);
+    const [limits, setLimits] = useState(snapshot.limits);
+    Object.assign(snapshot, { sides, time, sente, gote, threads, limits });
+    return (
+        <MatchSettingsProvider
+            sides={sides}
+            onSidesChange={setSides}
+            timeSettings={time}
+            onTimeSettingsChange={setTime}
+            passRightsSettings={DEFAULT_PASS_RIGHTS_SETTINGS}
+            onPassRightsSettingsChange={() => {}}
+            settingsLocked={false}
+            isDevMode={false}
+            engineThreads={threads}
+            onEngineThreadsChange={setThreads}
+            engineSearchLimits={limits}
+            onEngineSearchLimitsChange={setLimits}
+            senteNnueSelection={sente}
+            onSenteNnueSelectionChange={setSente}
+            goteNnueSelection={gote}
+            onGoteNnueSelectionChange={setGote}
+            nnueList={[]}
+            presets={PRESETS}
+            internalEngineId="wasm"
+            engineOptions={[
+                {
+                    id: "wasm",
+                    label: "内蔵エンジン",
+                    kind: "internal",
+                    createClient: () => {
+                        throw new Error("テストではエンジンを作らない");
+                    },
+                },
+            ]}
+            onOpenNnueManager={() => {}}
+            onOpenDisplaySettings={() => {}}
+            onOpenPassRightsSettings={() => {}}
+        >
+            {children}
+        </MatchSettingsProvider>
+    );
+}
+
 /** 設定を持つだけの親（対局画面の `ShogiMatch` の代わり）。いまの値を `snapshot` で読む。 */
 function setupHarness(initial: Initial) {
-    const snapshot: {
-        sides: Sides;
-        time: ClockSettings;
-        sente: NnueSelection;
-        gote: NnueSelection;
-        threads: EngineThreadSettings;
-        limits: EngineSearchLimits;
-    } = {
+    const snapshot: SettingsSnapshot = {
         sides: initial.sides,
         time: initial.time,
         sente: initial.sente ?? RAMU,
@@ -59,54 +115,11 @@ function setupHarness(initial: Initial) {
         threads: { sente: 0, gote: 0 },
         limits: { sente: { kind: "clock" }, gote: { kind: "clock" } },
     };
-    function Wrapper({ children }: { children: ReactNode }) {
-        const [sides, setSides] = useState(snapshot.sides);
-        const [time, setTime] = useState(snapshot.time);
-        const [sente, setSente] = useState(snapshot.sente);
-        const [gote, setGote] = useState(snapshot.gote);
-        const [threads, setThreads] = useState(snapshot.threads);
-        const [limits, setLimits] = useState(snapshot.limits);
-        Object.assign(snapshot, { sides, time, sente, gote, threads, limits });
-        return (
-            <MatchSettingsProvider
-                sides={sides}
-                onSidesChange={setSides}
-                timeSettings={time}
-                onTimeSettingsChange={setTime}
-                passRightsSettings={DEFAULT_PASS_RIGHTS_SETTINGS}
-                onPassRightsSettingsChange={() => {}}
-                settingsLocked={false}
-                isDevMode={false}
-                engineThreads={threads}
-                onEngineThreadsChange={setThreads}
-                engineSearchLimits={limits}
-                onEngineSearchLimitsChange={setLimits}
-                senteNnueSelection={sente}
-                onSenteNnueSelectionChange={setSente}
-                goteNnueSelection={gote}
-                onGoteNnueSelectionChange={setGote}
-                nnueList={[]}
-                presets={PRESETS}
-                internalEngineId="wasm"
-                engineOptions={[
-                    {
-                        id: "wasm",
-                        label: "内蔵エンジン",
-                        kind: "internal",
-                        createClient: () => {
-                            throw new Error("テストではエンジンを作らない");
-                        },
-                    },
-                ]}
-                onOpenNnueManager={() => {}}
-                onOpenDisplaySettings={() => {}}
-                onOpenPassRightsSettings={() => {}}
-            >
-                {children}
-            </MatchSettingsProvider>
-        );
-    }
-    const hook = renderHook(() => usePlaySetup(), { wrapper: Wrapper });
+    const hook = renderHook(() => usePlaySetup(), {
+        wrapper: ({ children }) => (
+            <SettingsWrapper snapshot={snapshot}>{children}</SettingsWrapper>
+        ),
+    });
     return { hook, snapshot };
 }
 

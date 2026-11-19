@@ -160,19 +160,20 @@ describe("useUserSettingsSync", () => {
         expectPut(2, { theme: "dark" }, 5);
     });
 
-    it.each(
-        mappings,
-    )("%s の初回作成には expectedVersion: null を使う", async (documentKey, storageKey) => {
-        const value = { enabled: true };
-        localStorage.setItem(storageKey, JSON.stringify(value));
-        renderHook(() => useUserSettingsSync());
-        await reply(0, { documents: [] });
-        expect(request(1).url).toBe(`/api/user/settings/${documentKey}`);
-        expectPut(1, value, null);
-        expect(localStorage.getItem(LAST_USER_KEY)).toBeNull();
-        await reply(1, { document: remote(value, 1, documentKey) });
-        expect(localStorage.getItem(LAST_USER_KEY)).toBe("user-1");
-    });
+    it.each(mappings)(
+        "%s の初回作成には expectedVersion: null を使う",
+        async (documentKey, storageKey) => {
+            const value = { enabled: true };
+            localStorage.setItem(storageKey, JSON.stringify(value));
+            renderHook(() => useUserSettingsSync());
+            await reply(0, { documents: [] });
+            expect(request(1).url).toBe(`/api/user/settings/${documentKey}`);
+            expectPut(1, value, null);
+            expect(localStorage.getItem(LAST_USER_KEY)).toBeNull();
+            await reply(1, { document: remote(value, 1, documentKey) });
+            expect(localStorage.getItem(LAST_USER_KEY)).toBe("user-1");
+        },
+    );
 
     it("同じ利用者のローカル設定を作成でき、別利用者の引き継ぎ値は自動送信しない", async () => {
         localStorage.setItem(LAST_USER_KEY, "user-1");
@@ -201,34 +202,34 @@ describe("useUserSettingsSync", () => {
         expectPut(1, { theme: "dark" }, 7);
     });
 
-    it.each([
-        false,
-        true,
-    ])("初回 PUT 失敗後も別利用者と再読込へ設定を引き継がない（StrictMode: %s）", async (reactStrictMode) => {
-        const value = { theme: "dark" };
-        localStorage.setItem(DISPLAY_KEY, JSON.stringify(value));
-        const first = renderHook(() => useUserSettingsSync(), { reactStrictMode });
-        await reply(requests.length - 1, { documents: [] });
-        await reply(requests.length - 1, { error: "UNAVAILABLE" }, 503);
-        first.unmount();
-        auth = { ...auth, session: { authenticated: false, user: null } };
-        const anonymous = renderHook(() => useUserSettingsSync(), { reactStrictMode });
-        expect(readLocal()).toEqual(value);
-        anonymous.unmount();
-        auth = { ...auth, session: { authenticated: true, user: { id: "user-2" } } };
-        for (let reload = 0; reload < 2; reload++) {
-            const next = renderHook(() => useUserSettingsSync(), { reactStrictMode });
-            const getIndex = requests.length - 1;
-            await reply(getIndex, { documents: [] });
-            expect(requests).toHaveLength(getIndex + 1);
+    it.each([false, true])(
+        "初回 PUT 失敗後も別利用者と再読込へ設定を引き継がない（StrictMode: %s）",
+        async (reactStrictMode) => {
+            const value = { theme: "dark" };
+            localStorage.setItem(DISPLAY_KEY, JSON.stringify(value));
+            const first = renderHook(() => useUserSettingsSync(), { reactStrictMode });
+            await reply(requests.length - 1, { documents: [] });
+            await reply(requests.length - 1, { error: "UNAVAILABLE" }, 503);
+            first.unmount();
+            auth = { ...auth, session: { authenticated: false, user: null } };
+            const anonymous = renderHook(() => useUserSettingsSync(), { reactStrictMode });
             expect(readLocal()).toEqual(value);
-            next.unmount();
-        }
-        auth = { ...auth, session: { authenticated: true, user: { id: "user-1" } } };
-        renderHook(() => useUserSettingsSync(), { reactStrictMode });
-        await reply(requests.length - 1, { documents: [] });
-        expectPut(requests.length - 1, value, null);
-    });
+            anonymous.unmount();
+            auth = { ...auth, session: { authenticated: true, user: { id: "user-2" } } };
+            for (let reload = 0; reload < 2; reload++) {
+                const next = renderHook(() => useUserSettingsSync(), { reactStrictMode });
+                const getIndex = requests.length - 1;
+                await reply(getIndex, { documents: [] });
+                expect(requests).toHaveLength(getIndex + 1);
+                expect(readLocal()).toEqual(value);
+                next.unmount();
+            }
+            auth = { ...auth, session: { authenticated: true, user: { id: "user-1" } } };
+            renderHook(() => useUserSettingsSync(), { reactStrictMode });
+            await reply(requests.length - 1, { documents: [] });
+            expectPut(requests.length - 1, value, null);
+        },
+    );
 
     it("初期 GET 失敗と4文書の部分保存でも所属を個別に保持する", async () => {
         for (const [, storageKey] of mappings) {
@@ -303,32 +304,33 @@ describe("useUserSettingsSync", () => {
         expectPut(3, { theme: "system" }, null);
     });
 
-    it.each([
-        false,
-        true,
-    ])("所属の部分保存から復旧しても別利用者へ未記録の文書を渡さない（StrictMode: %s）", async (reactStrictMode) => {
-        for (const [, key] of mappings) localStorage.setItem(key, JSON.stringify({ owner: "A" }));
-        const storage = localStorage;
-        vi.stubGlobal("localStorage", {
-            getItem: storage.getItem.bind(storage),
-            setItem: (key: string, value: string) => {
-                if (key === `shogi-user-settings-owner:${DISPLAY_KEY}`)
-                    throw new Error("Quota exceeded");
-                storage.setItem(key, value);
-            },
-        });
-        const first = renderHook(() => useUserSettingsSync(), { reactStrictMode });
-        expect(first.result.current.syncError).toContain("設定を同期できませんでした");
-        expect(requests).toHaveLength(0);
-        first.unmount();
-        vi.stubGlobal("localStorage", storage);
-        auth = { ...auth, session: { authenticated: true, user: { id: "user-2" } } };
-        renderHook(() => useUserSettingsSync(), { reactStrictMode });
-        const getIndex = requests.length - 1;
-        await reply(getIndex, { documents: [] });
-        expect(requests).toHaveLength(getIndex + 1);
-        for (const [, key] of mappings) expect(readLocal(key)).toEqual({ owner: "A" });
-    });
+    it.each([false, true])(
+        "所属の部分保存から復旧しても別利用者へ未記録の文書を渡さない（StrictMode: %s）",
+        async (reactStrictMode) => {
+            for (const [, key] of mappings)
+                localStorage.setItem(key, JSON.stringify({ owner: "A" }));
+            const storage = localStorage;
+            vi.stubGlobal("localStorage", {
+                getItem: storage.getItem.bind(storage),
+                setItem: (key: string, value: string) => {
+                    if (key === `shogi-user-settings-owner:${DISPLAY_KEY}`)
+                        throw new Error("Quota exceeded");
+                    storage.setItem(key, value);
+                },
+            });
+            const first = renderHook(() => useUserSettingsSync(), { reactStrictMode });
+            expect(first.result.current.syncError).toContain("設定を同期できませんでした");
+            expect(requests).toHaveLength(0);
+            first.unmount();
+            vi.stubGlobal("localStorage", storage);
+            auth = { ...auth, session: { authenticated: true, user: { id: "user-2" } } };
+            renderHook(() => useUserSettingsSync(), { reactStrictMode });
+            const getIndex = requests.length - 1;
+            await reply(getIndex, { documents: [] });
+            expect(requests).toHaveLength(getIndex + 1);
+            for (const [, key] of mappings) expect(readLocal(key)).toEqual({ owner: "A" });
+        },
+    );
 
     it("壊れた所属情報の値は送信せず、サーバー値の取得で復旧する", async () => {
         localStorage.setItem(DISPLAY_KEY, JSON.stringify({ theme: "dark" }));
@@ -378,252 +380,253 @@ describe("useUserSettingsSync", () => {
         expect(requests).toHaveLength(1);
     });
 
-    it.each([
-        false,
-        true,
-    ])("画面の初期値保存でサーバー設定を上書きしない（StrictMode: %s）", async (reactStrictMode) => {
-        renderHook(() => useUserSettingsSync(), { reactStrictMode });
-        const { result } = renderHook(() => useLocalStorage(DISPLAY_KEY, { sound: true }), {
-            reactStrictMode,
-        });
-        const activeRequest = requests.length - 1;
-        await reply(activeRequest, { documents: [remote({ sound: false }, 4)] });
-        expect(result.current[0]).toEqual({ sound: false });
-        expect(readLocal()).toEqual({ sound: false });
-        expect(requests).toHaveLength(activeRequest + 1);
-    });
+    it.each([false, true])(
+        "画面の初期値保存でサーバー設定を上書きしない（StrictMode: %s）",
+        async (reactStrictMode) => {
+            renderHook(() => useUserSettingsSync(), { reactStrictMode });
+            const { result } = renderHook(() => useLocalStorage(DISPLAY_KEY, { sound: true }), {
+                reactStrictMode,
+            });
+            const activeRequest = requests.length - 1;
+            await reply(activeRequest, { documents: [remote({ sound: false }, 4)] });
+            expect(result.current[0]).toEqual({ sound: false });
+            expect(readLocal()).toEqual({ sound: false });
+            expect(requests).toHaveLength(activeRequest + 1);
+        },
+    );
 
-    it.each([
-        false,
-        true,
-    ])("画面での明示的な初期 GET 中の編集を保存する（StrictMode: %s）", async (reactStrictMode) => {
-        renderHook(() => useUserSettingsSync(), { reactStrictMode });
-        const { result } = renderHook(() => useLocalStorage(DISPLAY_KEY, { sound: true }), {
-            reactStrictMode,
-        });
-        act(() => result.current[1]({ sound: false }));
-        const activeRequest = requests.length - 1;
-        await reply(activeRequest, { documents: [remote({ sound: true }, 4)] });
-        expectPut(activeRequest + 1, { sound: false }, 4);
-        expect(result.current[0]).toEqual({ sound: false });
-    });
+    it.each([false, true])(
+        "画面での明示的な初期 GET 中の編集を保存する（StrictMode: %s）",
+        async (reactStrictMode) => {
+            renderHook(() => useUserSettingsSync(), { reactStrictMode });
+            const { result } = renderHook(() => useLocalStorage(DISPLAY_KEY, { sound: true }), {
+                reactStrictMode,
+            });
+            act(() => result.current[1]({ sound: false }));
+            const activeRequest = requests.length - 1;
+            await reply(activeRequest, { documents: [remote({ sound: true }, 4)] });
+            expectPut(activeRequest + 1, { sound: false }, 4);
+            expect(result.current[0]).toEqual({ sound: false });
+        },
+    );
 
-    it.each([
-        false,
-        true,
-    ])("旧形式の正規化より初期 GET の時間設定を優先する（StrictMode: %s）", async (reactStrictMode) => {
-        localStorage.setItem(
-            TIME_KEY,
-            JSON.stringify({
-                sente: { mainMs: 300, byoyomiMs: 30, enabled: true },
-                gote: { mainMs: 300, byoyomiMs: 30, enabled: true },
-            }),
-        );
-        renderHook(() => useUserSettingsSync(), { reactStrictMode });
-        const { result } = renderHook(
-            () =>
-                useNormalizedSettings(
-                    TIME_KEY,
-                    defaultTimeSettings,
-                    normalizeTimeSettings,
-                    isSameTimeSettings,
-                ),
-            { reactStrictMode },
-        );
-        const remoteTime = {
-            sente: { mainMs: 600_000, byoyomiMs: 60_000, incrementMs: 0, enabled: true },
-            gote: { mainMs: 600_000, byoyomiMs: 60_000, incrementMs: 0, enabled: true },
-        };
-        expect(readLocal(TIME_KEY)).toEqual(defaultTimeSettings);
-        const activeRequest = requests.length - 1;
-        await reply(activeRequest, {
-            documents: [remote(remoteTime, 7, "match.time-settings")],
-        });
-        expect(readLocal(TIME_KEY)).toEqual(remoteTime);
-        expect(result.current[0]).toEqual(remoteTime);
-        expect(requests).toHaveLength(activeRequest + 1);
-    });
+    it.each([false, true])(
+        "旧形式の正規化より初期 GET の時間設定を優先する（StrictMode: %s）",
+        async (reactStrictMode) => {
+            localStorage.setItem(
+                TIME_KEY,
+                JSON.stringify({
+                    sente: { mainMs: 300, byoyomiMs: 30, enabled: true },
+                    gote: { mainMs: 300, byoyomiMs: 30, enabled: true },
+                }),
+            );
+            renderHook(() => useUserSettingsSync(), { reactStrictMode });
+            const { result } = renderHook(
+                () =>
+                    useNormalizedSettings(
+                        TIME_KEY,
+                        defaultTimeSettings,
+                        normalizeTimeSettings,
+                        isSameTimeSettings,
+                    ),
+                { reactStrictMode },
+            );
+            const remoteTime = {
+                sente: { mainMs: 600_000, byoyomiMs: 60_000, incrementMs: 0, enabled: true },
+                gote: { mainMs: 600_000, byoyomiMs: 60_000, incrementMs: 0, enabled: true },
+            };
+            expect(readLocal(TIME_KEY)).toEqual(defaultTimeSettings);
+            const activeRequest = requests.length - 1;
+            await reply(activeRequest, {
+                documents: [remote(remoteTime, 7, "match.time-settings")],
+            });
+            expect(readLocal(TIME_KEY)).toEqual(remoteTime);
+            expect(result.current[0]).toEqual(remoteTime);
+            expect(requests).toHaveLength(activeRequest + 1);
+        },
+    );
 
-    it.each([
-        false,
-        true,
-    ])("旧形式の正規化後も初期 GET 中の利用者編集を保存する（StrictMode: %s）", async (reactStrictMode) => {
-        localStorage.setItem(
-            TIME_KEY,
-            JSON.stringify({
-                sente: { mainMs: 300, byoyomiMs: 30, enabled: true },
-                gote: { mainMs: 300, byoyomiMs: 30, enabled: true },
-            }),
-        );
-        renderHook(() => useUserSettingsSync(), { reactStrictMode });
-        const { result } = renderHook(
-            () =>
-                useNormalizedSettings(
-                    TIME_KEY,
-                    defaultTimeSettings,
-                    normalizeTimeSettings,
-                    isSameTimeSettings,
-                ),
-            { reactStrictMode },
-        );
-        const editedTime = {
-            ...defaultTimeSettings,
-            sente: { mainMs: 900_000, byoyomiMs: 30_000, incrementMs: 0, enabled: true },
-        };
-        act(() => result.current[1](editedTime));
-        const activeRequest = requests.length - 1;
-        await reply(activeRequest, {
-            documents: [remote(defaultTimeSettings, 7, "match.time-settings")],
-        });
-        expectPut(activeRequest + 1, editedTime, 7);
-        expect(readLocal(TIME_KEY)).toEqual(editedTime);
-        expect(result.current[0]).toEqual(editedTime);
-    });
+    it.each([false, true])(
+        "旧形式の正規化後も初期 GET 中の利用者編集を保存する（StrictMode: %s）",
+        async (reactStrictMode) => {
+            localStorage.setItem(
+                TIME_KEY,
+                JSON.stringify({
+                    sente: { mainMs: 300, byoyomiMs: 30, enabled: true },
+                    gote: { mainMs: 300, byoyomiMs: 30, enabled: true },
+                }),
+            );
+            renderHook(() => useUserSettingsSync(), { reactStrictMode });
+            const { result } = renderHook(
+                () =>
+                    useNormalizedSettings(
+                        TIME_KEY,
+                        defaultTimeSettings,
+                        normalizeTimeSettings,
+                        isSameTimeSettings,
+                    ),
+                { reactStrictMode },
+            );
+            const editedTime = {
+                ...defaultTimeSettings,
+                sente: { mainMs: 900_000, byoyomiMs: 30_000, incrementMs: 0, enabled: true },
+            };
+            act(() => result.current[1](editedTime));
+            const activeRequest = requests.length - 1;
+            await reply(activeRequest, {
+                documents: [remote(defaultTimeSettings, 7, "match.time-settings")],
+            });
+            expectPut(activeRequest + 1, editedTime, 7);
+            expect(readLocal(TIME_KEY)).toEqual(editedTime);
+            expect(result.current[0]).toEqual(editedTime);
+        },
+    );
 
-    it.each([
-        false,
-        true,
-    ])("正規化effectと同時の利用者編集を古い値で戻さない（StrictMode: %s）", async (reactStrictMode) => {
-        localStorage.setItem(
-            TIME_KEY,
-            JSON.stringify({
-                sente: { mainMs: 300, byoyomiMs: 30, enabled: true },
-                gote: { mainMs: 300, byoyomiMs: 30, enabled: true },
-            }),
-        );
-        const editedTime = {
-            ...defaultTimeSettings,
-            sente: { mainMs: 900_000, byoyomiMs: 30_000, incrementMs: 0, enabled: true },
-        };
-        renderHook(() => useUserSettingsSync(), { reactStrictMode });
-        const { result } = renderHook(
-            () => {
-                const [settings, setSettings] = useNormalizedSettings(
-                    TIME_KEY,
-                    defaultTimeSettings,
-                    normalizeTimeSettings,
-                    isSameTimeSettings,
-                );
-                useLayoutEffect(() => setSettings(editedTime), [setSettings]);
-                return settings;
-            },
-            { reactStrictMode },
-        );
-        const activeRequest = requests.length - 1;
-        await reply(activeRequest, {
-            documents: [remote(defaultTimeSettings, 7, "match.time-settings")],
-        });
-        expectPut(activeRequest + 1, editedTime, 7);
-        expect(readLocal(TIME_KEY)).toEqual(editedTime);
-        expect(result.current).toEqual(editedTime);
-    });
+    it.each([false, true])(
+        "正規化effectと同時の利用者編集を古い値で戻さない（StrictMode: %s）",
+        async (reactStrictMode) => {
+            localStorage.setItem(
+                TIME_KEY,
+                JSON.stringify({
+                    sente: { mainMs: 300, byoyomiMs: 30, enabled: true },
+                    gote: { mainMs: 300, byoyomiMs: 30, enabled: true },
+                }),
+            );
+            const editedTime = {
+                ...defaultTimeSettings,
+                sente: { mainMs: 900_000, byoyomiMs: 30_000, incrementMs: 0, enabled: true },
+            };
+            renderHook(() => useUserSettingsSync(), { reactStrictMode });
+            const { result } = renderHook(
+                () => {
+                    const [settings, setSettings] = useNormalizedSettings(
+                        TIME_KEY,
+                        defaultTimeSettings,
+                        normalizeTimeSettings,
+                        isSameTimeSettings,
+                    );
+                    useLayoutEffect(() => setSettings(editedTime), [setSettings]);
+                    return settings;
+                },
+                { reactStrictMode },
+            );
+            const activeRequest = requests.length - 1;
+            await reply(activeRequest, {
+                documents: [remote(defaultTimeSettings, 7, "match.time-settings")],
+            });
+            expectPut(activeRequest + 1, editedTime, 7);
+            expect(readLocal(TIME_KEY)).toEqual(editedTime);
+            expect(result.current).toEqual(editedTime);
+        },
+    );
 
-    it.each([
-        false,
-        true,
-    ])("初期 GET 中に自動補正前の値へ戻す利用者編集を保存する（StrictMode: %s）", async (reactStrictMode) => {
-        const savedTime = {
-            sente: { mainMs: 600_000, byoyomiMs: 60_000, incrementMs: 0, enabled: true },
-            gote: { mainMs: 600_000, byoyomiMs: 60_000, incrementMs: 0, enabled: true },
-        };
-        localStorage.setItem(TIME_KEY, JSON.stringify(savedTime));
-        const sync = renderHook(() => useUserSettingsSync(), { reactStrictMode });
-        const { result } = renderHook(
-            () =>
-                useNormalizedSettings(
-                    TIME_KEY,
-                    defaultTimeSettings,
-                    normalizeTimeSettings,
-                    isSameTimeSettings,
-                ),
-            { reactStrictMode },
-        );
-        const activeRequest = requests.length - 1;
-        const alignedTime = {
-            ...defaultTimeSettings,
-            sente: { ...defaultTimeSettings.sente, enabled: false },
-        };
-        act(() => result.current[1](alignedTime, "automatic"));
-        expect(readLocal(TIME_KEY)).toEqual(alignedTime);
-        expect(requests).toHaveLength(activeRequest + 1);
-        act(() => result.current[1](savedTime));
-        expect(readLocal(TIME_KEY)).toEqual(savedTime);
-        await reply(activeRequest, {
-            documents: [remote(defaultTimeSettings, 7, "match.time-settings")],
-        });
-        expect(readLocal(TIME_KEY)).toEqual(savedTime);
-        expect(result.current[0]).toEqual(savedTime);
-        expectPut(activeRequest + 1, savedTime, 7);
-        await reply(activeRequest + 1, {
-            document: remote(savedTime, 8, "match.time-settings"),
-        });
-        expect(sync.result.current.syncError).toBeNull();
-        expect(requests).toHaveLength(activeRequest + 2);
-    });
+    it.each([false, true])(
+        "初期 GET 中に自動補正前の値へ戻す利用者編集を保存する（StrictMode: %s）",
+        async (reactStrictMode) => {
+            const savedTime = {
+                sente: { mainMs: 600_000, byoyomiMs: 60_000, incrementMs: 0, enabled: true },
+                gote: { mainMs: 600_000, byoyomiMs: 60_000, incrementMs: 0, enabled: true },
+            };
+            localStorage.setItem(TIME_KEY, JSON.stringify(savedTime));
+            const sync = renderHook(() => useUserSettingsSync(), { reactStrictMode });
+            const { result } = renderHook(
+                () =>
+                    useNormalizedSettings(
+                        TIME_KEY,
+                        defaultTimeSettings,
+                        normalizeTimeSettings,
+                        isSameTimeSettings,
+                    ),
+                { reactStrictMode },
+            );
+            const activeRequest = requests.length - 1;
+            const alignedTime = {
+                ...defaultTimeSettings,
+                sente: { ...defaultTimeSettings.sente, enabled: false },
+            };
+            act(() => result.current[1](alignedTime, "automatic"));
+            expect(readLocal(TIME_KEY)).toEqual(alignedTime);
+            expect(requests).toHaveLength(activeRequest + 1);
+            act(() => result.current[1](savedTime));
+            expect(readLocal(TIME_KEY)).toEqual(savedTime);
+            await reply(activeRequest, {
+                documents: [remote(defaultTimeSettings, 7, "match.time-settings")],
+            });
+            expect(readLocal(TIME_KEY)).toEqual(savedTime);
+            expect(result.current[0]).toEqual(savedTime);
+            expectPut(activeRequest + 1, savedTime, 7);
+            await reply(activeRequest + 1, {
+                document: remote(savedTime, 8, "match.time-settings"),
+            });
+            expect(sync.result.current.syncError).toBeNull();
+            expect(requests).toHaveLength(activeRequest + 2);
+        },
+    );
 
     it.each([
         { reactStrictMode: false, order: "user-first" },
         { reactStrictMode: true, order: "user-first" },
         { reactStrictMode: false, order: "automatic-first" },
         { reactStrictMode: true, order: "automatic-first" },
-    ])("初期 GET 中の同じbatchの編集と自動補正を保存する（$order、StrictMode: $reactStrictMode）", async ({
-        reactStrictMode,
-        order,
-    }) => {
-        const defaults = { sound: true, volume: 1 };
-        const edited = { sound: false, volume: 0.5 };
-        renderHook(() => useUserSettingsSync(), { reactStrictMode });
-        const { result } = renderHook(() => useLocalStorage(DISPLAY_KEY, defaults), {
-            reactStrictMode,
-        });
-        const setter = result.current[1];
-        const edit = () => setter((previous) => ({ ...previous, sound: false }));
-        const normalize = () => setter((previous) => ({ ...previous, volume: 0.5 }), "automatic");
-        act(() => {
-            if (order === "user-first") {
-                edit();
-                normalize();
-            } else {
-                normalize();
-                edit();
-            }
-        });
-        const activeRequest = requests.length - 1;
-        await reply(activeRequest, { documents: [remote(defaults, 7)] });
-        expect(readLocal()).toEqual(edited);
-        expect(result.current[0]).toEqual(edited);
-        expectPut(activeRequest + 1, edited, 7);
-        await reply(activeRequest + 1, { document: remote(edited, 8) });
-        expect(requests).toHaveLength(activeRequest + 2);
-    });
+    ])(
+        "初期 GET 中の同じbatchの編集と自動補正を保存する（$order、StrictMode: $reactStrictMode）",
+        async ({ reactStrictMode, order }) => {
+            const defaults = { sound: true, volume: 1 };
+            const edited = { sound: false, volume: 0.5 };
+            renderHook(() => useUserSettingsSync(), { reactStrictMode });
+            const { result } = renderHook(() => useLocalStorage(DISPLAY_KEY, defaults), {
+                reactStrictMode,
+            });
+            const setter = result.current[1];
+            const edit = () => setter((previous) => ({ ...previous, sound: false }));
+            const normalize = () =>
+                setter((previous) => ({ ...previous, volume: 0.5 }), "automatic");
+            act(() => {
+                if (order === "user-first") {
+                    edit();
+                    normalize();
+                } else {
+                    normalize();
+                    edit();
+                }
+            });
+            const activeRequest = requests.length - 1;
+            await reply(activeRequest, { documents: [remote(defaults, 7)] });
+            expect(readLocal()).toEqual(edited);
+            expect(result.current[0]).toEqual(edited);
+            expectPut(activeRequest + 1, edited, 7);
+            await reply(activeRequest + 1, { document: remote(edited, 8) });
+            expect(requests).toHaveLength(activeRequest + 2);
+        },
+    );
 
-    it.each([
-        false,
-        true,
-    ])("PUT 中の自動補正を未保存の編集として再送しない（StrictMode: %s）", async (reactStrictMode) => {
-        const defaults = { sound: true, volume: 1 };
-        const edited = { sound: false, volume: 1 };
-        const normalized = { sound: false, volume: 0.5 };
-        renderHook(() => useUserSettingsSync(), { reactStrictMode });
-        const first = renderHook(() => useLocalStorage(DISPLAY_KEY, defaults), {
-            reactStrictMode,
-        });
-        const second = renderHook(() => useLocalStorage(DISPLAY_KEY, defaults), {
-            reactStrictMode,
-        });
-        const activeRequest = requests.length - 1;
-        await reply(activeRequest, { documents: [remote(defaults, 7)] });
-        act(() => first.result.current[1](edited));
-        expectPut(activeRequest + 1, edited, 7);
-        act(() => first.result.current[1](normalized, "automatic"));
-        expect(second.result.current[0]).toEqual(normalized);
-        await reply(activeRequest + 1, { document: remote(edited, 8) });
-        expect(requests).toHaveLength(activeRequest + 2);
-        expect(readLocal()).toEqual(normalized);
-        const nextEdit = { sound: true, volume: 0.5 };
-        act(() => first.result.current[1](nextEdit));
-        expectPut(activeRequest + 2, nextEdit, 8);
-    });
+    it.each([false, true])(
+        "PUT 中の自動補正を未保存の編集として再送しない（StrictMode: %s）",
+        async (reactStrictMode) => {
+            const defaults = { sound: true, volume: 1 };
+            const edited = { sound: false, volume: 1 };
+            const normalized = { sound: false, volume: 0.5 };
+            renderHook(() => useUserSettingsSync(), { reactStrictMode });
+            const first = renderHook(() => useLocalStorage(DISPLAY_KEY, defaults), {
+                reactStrictMode,
+            });
+            const second = renderHook(() => useLocalStorage(DISPLAY_KEY, defaults), {
+                reactStrictMode,
+            });
+            const activeRequest = requests.length - 1;
+            await reply(activeRequest, { documents: [remote(defaults, 7)] });
+            act(() => first.result.current[1](edited));
+            expectPut(activeRequest + 1, edited, 7);
+            act(() => first.result.current[1](normalized, "automatic"));
+            expect(second.result.current[0]).toEqual(normalized);
+            await reply(activeRequest + 1, { document: remote(edited, 8) });
+            expect(requests).toHaveLength(activeRequest + 2);
+            expect(readLocal()).toEqual(normalized);
+            const nextEdit = { sound: true, volume: 0.5 };
+            act(() => first.result.current[1](nextEdit));
+            expectPut(activeRequest + 2, nextEdit, 8);
+        },
+    );
 
     it("取得後の自動補正は画面へ反映し、次の利用者編集で同期する", async () => {
         renderHook(() => useUserSettingsSync());
@@ -647,29 +650,29 @@ describe("useUserSettingsSync", () => {
         expectPut(1, editedTime, 7);
     });
 
-    it.each([
-        "failed-refetch",
-        "stale-response",
-    ])("拒否された PUT と同じ他端末の更新を自分の保存とみなさない（%s）", async (scenario) => {
-        const { result, rerender } = renderHook(() => useUserSettingsSync());
-        await reply(0, { documents: [remote({ sound: true }, 4)] });
-        changeLocal({ sound: false });
-        changeLocal({ sound: true });
-        if (scenario === "failed-refetch") {
-            await reply(1, { error: "SETTINGS_VERSION_CONFLICT" }, 409);
-            await reply(2, { error: "INTERNAL_ERROR" }, 500);
-        }
-        auth = { ...auth, session: { authenticated: true, user: { id: "user-1" } } };
-        rerender();
-        if (scenario === "stale-response") {
-            await reply(1, { error: "SETTINGS_VERSION_CONFLICT" }, 409);
-        }
-        const activeRequest = requests.length - 1;
-        await reply(activeRequest, { documents: [remote({ sound: false }, 5)] });
-        expect(requests).toHaveLength(activeRequest + 1);
-        expect(readLocal()).toEqual({ sound: true });
-        expect(result.current.syncError).toContain("更新が競合");
-    });
+    it.each(["failed-refetch", "stale-response"])(
+        "拒否された PUT と同じ他端末の更新を自分の保存とみなさない（%s）",
+        async (scenario) => {
+            const { result, rerender } = renderHook(() => useUserSettingsSync());
+            await reply(0, { documents: [remote({ sound: true }, 4)] });
+            changeLocal({ sound: false });
+            changeLocal({ sound: true });
+            if (scenario === "failed-refetch") {
+                await reply(1, { error: "SETTINGS_VERSION_CONFLICT" }, 409);
+                await reply(2, { error: "INTERNAL_ERROR" }, 500);
+            }
+            auth = { ...auth, session: { authenticated: true, user: { id: "user-1" } } };
+            rerender();
+            if (scenario === "stale-response") {
+                await reply(1, { error: "SETTINGS_VERSION_CONFLICT" }, 409);
+            }
+            const activeRequest = requests.length - 1;
+            await reply(activeRequest, { documents: [remote({ sound: false }, 5)] });
+            expect(requests).toHaveLength(activeRequest + 1);
+            expect(readLocal()).toEqual({ sound: true });
+            expect(result.current.syncError).toContain("更新が競合");
+        },
+    );
 
     it("別利用者へ切り替えた後の古い GET は設定も保存先も変えない", async () => {
         const { rerender } = renderHook(() => useUserSettingsSync());
@@ -840,34 +843,34 @@ describe("useUserSettingsSync", () => {
         expectPut(3, { theme: "light" }, 8);
     });
 
-    it.each([
-        false,
-        true,
-    ])("別タブで表示した値からの編集は取得した新しい版で再送する（StrictMode: %s）", async (reactStrictMode) => {
-        const sync = renderHook(() => useUserSettingsSync(), { reactStrictMode });
-        const ui = renderHook(() => useLocalStorage(DISPLAY_KEY, { theme: "system" }));
-        const initial = requests.length - 1;
-        await reply(initial, { documents: [remote({ theme: "system" }, 7)] });
-        act(() => {
-            localStorage.setItem(DISPLAY_KEY, JSON.stringify({ theme: "light" }));
-            window.dispatchEvent(
-                new StorageEvent("storage", {
-                    key: DISPLAY_KEY,
-                    newValue: JSON.stringify({ theme: "light" }),
-                    storageArea: localStorage,
-                }),
-            );
-        });
-        expect(ui.result.current[0]).toEqual({ theme: "light" });
-        act(() => ui.result.current[1]({ theme: "dark" }));
-        expectPut(initial + 1, { theme: "dark" }, 7);
-        await reply(initial + 1, { error: "SETTINGS_VERSION_CONFLICT" }, 409);
-        await reply(initial + 2, { document: remote({ theme: "light" }, 8) });
-        expectPut(initial + 3, { theme: "dark" }, 8);
-        await reply(initial + 3, { document: remote({ theme: "dark" }, 9) });
-        expect(sync.result.current.syncError).toBeNull();
-        expect(readLocal()).toEqual({ theme: "dark" });
-    });
+    it.each([false, true])(
+        "別タブで表示した値からの編集は取得した新しい版で再送する（StrictMode: %s）",
+        async (reactStrictMode) => {
+            const sync = renderHook(() => useUserSettingsSync(), { reactStrictMode });
+            const ui = renderHook(() => useLocalStorage(DISPLAY_KEY, { theme: "system" }));
+            const initial = requests.length - 1;
+            await reply(initial, { documents: [remote({ theme: "system" }, 7)] });
+            act(() => {
+                localStorage.setItem(DISPLAY_KEY, JSON.stringify({ theme: "light" }));
+                window.dispatchEvent(
+                    new StorageEvent("storage", {
+                        key: DISPLAY_KEY,
+                        newValue: JSON.stringify({ theme: "light" }),
+                        storageArea: localStorage,
+                    }),
+                );
+            });
+            expect(ui.result.current[0]).toEqual({ theme: "light" });
+            act(() => ui.result.current[1]({ theme: "dark" }));
+            expectPut(initial + 1, { theme: "dark" }, 7);
+            await reply(initial + 1, { error: "SETTINGS_VERSION_CONFLICT" }, 409);
+            await reply(initial + 2, { document: remote({ theme: "light" }, 8) });
+            expectPut(initial + 3, { theme: "dark" }, 8);
+            await reply(initial + 3, { document: remote({ theme: "dark" }, 9) });
+            expect(sync.result.current.syncError).toBeNull();
+            expect(readLocal()).toEqual({ theme: "dark" });
+        },
+    );
 
     it("設定画面を開く前の別タブ更新も編集開始値として使う", async () => {
         const sync = renderHook(() => useUserSettingsSync());
@@ -939,32 +942,32 @@ describe("useUserSettingsSync", () => {
         expectPut(4, { theme: "light" }, 9);
     });
 
-    it.each([
-        "dark",
-        "system",
-    ])("PUT応答前に別タブの%sから再選択した送信中と同じ値も保存する", async (theme) => {
-        renderHook(() => useUserSettingsSync());
-        const ui = renderHook(() => useLocalStorage(DISPLAY_KEY, { theme: "system" }));
-        await reply(0, { documents: [remote({ theme: "system" }, 7)] });
-        act(() => ui.result.current[1]({ theme: "light" }));
-        act(() => {
-            localStorage.setItem(DISPLAY_KEY, JSON.stringify({ theme }));
-            window.dispatchEvent(
-                new StorageEvent("storage", {
-                    key: DISPLAY_KEY,
-                    newValue: JSON.stringify({ theme }),
-                    storageArea: localStorage,
-                }),
-            );
-        });
-        expect(ui.result.current[0]).toEqual({ theme });
-        act(() => ui.result.current[1]({ theme: "light" }));
-        await reply(1, { document: remote({ theme: "light" }, 8) });
-        expectPut(2, { theme: "light" }, 8);
-        await reply(2, { error: "SETTINGS_VERSION_CONFLICT" }, 409);
-        await reply(3, { document: remote({ theme }, 9) });
-        expectPut(4, { theme: "light" }, 9);
-    });
+    it.each(["dark", "system"])(
+        "PUT応答前に別タブの%sから再選択した送信中と同じ値も保存する",
+        async (theme) => {
+            renderHook(() => useUserSettingsSync());
+            const ui = renderHook(() => useLocalStorage(DISPLAY_KEY, { theme: "system" }));
+            await reply(0, { documents: [remote({ theme: "system" }, 7)] });
+            act(() => ui.result.current[1]({ theme: "light" }));
+            act(() => {
+                localStorage.setItem(DISPLAY_KEY, JSON.stringify({ theme }));
+                window.dispatchEvent(
+                    new StorageEvent("storage", {
+                        key: DISPLAY_KEY,
+                        newValue: JSON.stringify({ theme }),
+                        storageArea: localStorage,
+                    }),
+                );
+            });
+            expect(ui.result.current[0]).toEqual({ theme });
+            act(() => ui.result.current[1]({ theme: "light" }));
+            await reply(1, { document: remote({ theme: "light" }, 8) });
+            expectPut(2, { theme: "light" }, 8);
+            await reply(2, { error: "SETTINGS_VERSION_CONFLICT" }, 409);
+            await reply(3, { document: remote({ theme }, 9) });
+            expectPut(4, { theme: "light" }, 9);
+        },
+    );
 
     it("古い競合GETと同じ値への再選択を保存済みにしない", async () => {
         const sync = renderHook(() => useUserSettingsSync());
@@ -983,30 +986,30 @@ describe("useUserSettingsSync", () => {
         expect(readLocal()).toEqual({ theme: "light" });
     });
 
-    it.each([
-        "light",
-        "custom",
-    ])("再初期化GETで古い送信を確認しても%sへの新しい編集基準を保つ", async (theme) => {
-        const sync = renderHook(() => useUserSettingsSync());
-        await reply(0, { documents: [remote({ theme: "system" }, 7)] });
-        changeLocal({ theme: "light" });
-        auth = { ...auth, session: { authenticated: true, user: { id: "user-1" } } };
-        sync.rerender();
-        act(() => {
-            localStorage.setItem(DISPLAY_KEY, JSON.stringify({ theme: "dark" }));
-            window.dispatchEvent(
-                new StorageEvent("storage", { key: DISPLAY_KEY, storageArea: localStorage }),
-            );
-        });
-        changeLocal({ theme });
-        await reply(2, { documents: [remote({ theme: "light" }, 8)] });
-        expectPut(3, { theme }, 8);
-        await reply(3, { error: "SETTINGS_VERSION_CONFLICT" }, 409);
-        await reply(4, { document: remote({ theme: "dark" }, 9) });
-        expectPut(5, { theme }, 9);
-        await reply(5, { document: remote({ theme }, 10) });
-        expect(sync.result.current.syncError).toBeNull();
-    });
+    it.each(["light", "custom"])(
+        "再初期化GETで古い送信を確認しても%sへの新しい編集基準を保つ",
+        async (theme) => {
+            const sync = renderHook(() => useUserSettingsSync());
+            await reply(0, { documents: [remote({ theme: "system" }, 7)] });
+            changeLocal({ theme: "light" });
+            auth = { ...auth, session: { authenticated: true, user: { id: "user-1" } } };
+            sync.rerender();
+            act(() => {
+                localStorage.setItem(DISPLAY_KEY, JSON.stringify({ theme: "dark" }));
+                window.dispatchEvent(
+                    new StorageEvent("storage", { key: DISPLAY_KEY, storageArea: localStorage }),
+                );
+            });
+            changeLocal({ theme });
+            await reply(2, { documents: [remote({ theme: "light" }, 8)] });
+            expectPut(3, { theme }, 8);
+            await reply(3, { error: "SETTINGS_VERSION_CONFLICT" }, 409);
+            await reply(4, { document: remote({ theme: "dark" }, 9) });
+            expectPut(5, { theme }, 9);
+            await reply(5, { document: remote({ theme }, 10) });
+            expect(sync.result.current.syncError).toBeNull();
+        },
+    );
 
     it("再取得中の追加編集も元の編集開始値と照合し、最新の編集だけを再送する", async () => {
         renderHook(() => useUserSettingsSync());
@@ -1096,28 +1099,28 @@ describe("useUserSettingsSync", () => {
         expectPut(4, { theme: "dark" }, 9);
     });
 
-    it.each([
-        "system",
-        "light",
-    ])("GETで自分の保存を確認した後は成功値を基準に照合する（再取得値: %s）", async (theme) => {
-        const sync = renderHook(() => useUserSettingsSync());
-        await reply(0, { documents: [remote({ theme: "system" }, 7)] });
-        changeLocal({ theme: "light" });
-        changeLocal({ theme: "dark" });
-        auth = { ...auth, session: { authenticated: true, user: { id: "user-1" } } };
-        sync.rerender();
-        await reply(2, { documents: [remote({ theme: "light" }, 8)] });
-        expectPut(3, { theme: "dark" }, 8);
-        await reply(3, { error: "SETTINGS_VERSION_CONFLICT" }, 409);
-        await reply(4, { document: remote({ theme }, 9) });
-        if (theme === "light") {
-            expectPut(5, { theme: "dark" }, 9);
-        } else {
-            expect(requests).toHaveLength(5);
-            expect(sync.result.current.syncError).toContain("更新が競合");
-        }
-        expect(readLocal()).toEqual({ theme: "dark" });
-    });
+    it.each(["system", "light"])(
+        "GETで自分の保存を確認した後は成功値を基準に照合する（再取得値: %s）",
+        async (theme) => {
+            const sync = renderHook(() => useUserSettingsSync());
+            await reply(0, { documents: [remote({ theme: "system" }, 7)] });
+            changeLocal({ theme: "light" });
+            changeLocal({ theme: "dark" });
+            auth = { ...auth, session: { authenticated: true, user: { id: "user-1" } } };
+            sync.rerender();
+            await reply(2, { documents: [remote({ theme: "light" }, 8)] });
+            expectPut(3, { theme: "dark" }, 8);
+            await reply(3, { error: "SETTINGS_VERSION_CONFLICT" }, 409);
+            await reply(4, { document: remote({ theme }, 9) });
+            if (theme === "light") {
+                expectPut(5, { theme: "dark" }, 9);
+            } else {
+                expect(requests).toHaveLength(5);
+                expect(sync.result.current.syncError).toContain("更新が競合");
+            }
+            expect(readLocal()).toEqual({ theme: "dark" });
+        },
+    );
 
     it("中断した PUT が未確定なら、GET と一致する取り消し編集も条件付きで保存する", async () => {
         const { result, rerender } = renderHook(() => useUserSettingsSync());
@@ -1247,21 +1250,24 @@ describe("useUserSettingsSync", () => {
     it.each([
         [401, "UNAUTHORIZED"],
         [409, "SETTINGS_USER_MISMATCH"],
-    ] as const)("%s %s で停止し、認証再確認が同じ利用者でも一度だけ自動で再試行する", async (status, error) => {
-        const { result, rerender } = renderHook(() => useUserSettingsSync());
-        await reply(0, { error }, status);
-        expect(mockRefreshAuth).toHaveBeenCalledOnce();
-        expect(request(0).options.signal?.aborted).toBe(true);
-        expect(result.current.syncError).toContain("ログイン状態");
-        changeLocal({ theme: "dark" });
-        expect(requests).toHaveLength(1);
-        auth = { ...auth, session: { authenticated: true, user: { id: "user-1" } } };
-        rerender();
-        await reply(1, { error }, status);
-        expect(mockRefreshAuth).toHaveBeenCalledOnce();
-        expect(result.current.syncError).toContain("ログイン状態");
-        expect(requests).toHaveLength(2);
-    });
+    ] as const)(
+        "%s %s で停止し、認証再確認が同じ利用者でも一度だけ自動で再試行する",
+        async (status, error) => {
+            const { result, rerender } = renderHook(() => useUserSettingsSync());
+            await reply(0, { error }, status);
+            expect(mockRefreshAuth).toHaveBeenCalledOnce();
+            expect(request(0).options.signal?.aborted).toBe(true);
+            expect(result.current.syncError).toContain("ログイン状態");
+            changeLocal({ theme: "dark" });
+            expect(requests).toHaveLength(1);
+            auth = { ...auth, session: { authenticated: true, user: { id: "user-1" } } };
+            rerender();
+            await reply(1, { error }, status);
+            expect(mockRefreshAuth).toHaveBeenCalledOnce();
+            expect(result.current.syncError).toContain("ログイン状態");
+            expect(requests).toHaveLength(2);
+        },
+    );
 
     it("PUT の利用者不一致では待機中の編集を送信せず、同一利用者の再確認で再開する", async () => {
         const { result, rerender } = renderHook(() => useUserSettingsSync());

@@ -537,40 +537,43 @@ describe("OnlineGameView", () => {
                 },
             },
             { v: 1, t: "snapshot", payload: makeFinishedSnapshot({ result: futureResult }) },
-        ] satisfies ServerMessage[])("未知の終局理由を含む $t で終局と勝者を表示する", async (message) => {
-            const socket = Object.assign(new EventTarget(), {
-                readyState: WebSocket.OPEN,
-                send: vi.fn(),
-                close: vi.fn(),
-            });
-            const client = createRoomClient(
-                { wsUrl: "ws://localhost/api/rooms/test-room/ws" },
-                () => socket as unknown as WebSocket,
-            );
-            try {
-                socket.dispatchEvent(new Event("open"));
-                render(
-                    <OnlineGameView
-                        client={client}
-                        snapshot={makeSnapshot()}
-                        seat="b"
-                        roomId="test-room"
-                    />,
-                );
-                expect(screen.queryByRole("dialog")).toBeNull();
-
-                await act(async () => {
-                    socket.dispatchEvent(
-                        new MessageEvent("message", { data: JSON.stringify(message) }),
-                    );
+        ] satisfies ServerMessage[])(
+            "未知の終局理由を含む $t で終局と勝者を表示する",
+            async (message) => {
+                const socket = Object.assign(new EventTarget(), {
+                    readyState: WebSocket.OPEN,
+                    send: vi.fn(),
+                    close: vi.fn(),
                 });
+                const client = createRoomClient(
+                    { wsUrl: "ws://localhost/api/rooms/test-room/ws" },
+                    () => socket as unknown as WebSocket,
+                );
+                try {
+                    socket.dispatchEvent(new Event("open"));
+                    render(
+                        <OnlineGameView
+                            client={client}
+                            snapshot={makeSnapshot()}
+                            seat="b"
+                            roomId="test-room"
+                        />,
+                    );
+                    expect(screen.queryByRole("dialog")).toBeNull();
 
-                expect(screen.getByRole("dialog", { name: "Bob の勝ち" })).toBeTruthy();
-                expect(screen.getByText(futureResult.reason)).toBeTruthy();
-            } finally {
-                client.disconnect();
-            }
-        });
+                    await act(async () => {
+                        socket.dispatchEvent(
+                            new MessageEvent("message", { data: JSON.stringify(message) }),
+                        );
+                    });
+
+                    expect(screen.getByRole("dialog", { name: "Bob の勝ち" })).toBeTruthy();
+                    expect(screen.getByText(futureResult.reason)).toBeTruthy();
+                } finally {
+                    client.disconnect();
+                }
+            },
+        );
 
         it("snapshot の result と gameRecordId から終局表示と棋譜 ID を復元する", () => {
             const onStartReview = vi.fn();
@@ -1684,32 +1687,31 @@ describe("OnlineGameView", () => {
             }
         });
 
-        it.each([
-            "INVALID_TOKEN",
-            "ROOM_NOT_FOUND",
-            "ROOM_EXPIRED",
-        ] as const)("取り寄せた snapshot の代わりに %s が返ったら、保存済みの席とトークンを捨て、送り直さない", async (code) => {
-            vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-            try {
-                localStorage.setItem("ramu_resume_token_test-room", "token");
-                localStorage.setItem("ramu_seat_test-room", "b");
-                const requestFullSnapshot = vi.fn(() => true);
-                const { emit } = await renderUnrestored(requestFullSnapshot);
+        it.each(["INVALID_TOKEN", "ROOM_NOT_FOUND", "ROOM_EXPIRED"] as const)(
+            "取り寄せた snapshot の代わりに %s が返ったら、保存済みの席とトークンを捨て、送り直さない",
+            async (code) => {
+                vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+                try {
+                    localStorage.setItem("ramu_resume_token_test-room", "token");
+                    localStorage.setItem("ramu_seat_test-room", "b");
+                    const requestFullSnapshot = vi.fn(() => true);
+                    const { emit } = await renderUnrestored(requestFullSnapshot);
 
-                await emit({ v: 1, t: "error", payload: { code, message: "" } });
-                act(() => {
-                    vi.advanceTimersByTime(60_000);
-                });
+                    await emit({ v: 1, t: "error", payload: { code, message: "" } });
+                    act(() => {
+                        vi.advanceTimersByTime(60_000);
+                    });
 
-                expect(localStorage.getItem("ramu_resume_token_test-room")).toBeNull();
-                expect(localStorage.getItem("ramu_seat_test-room")).toBeNull();
-                expect(requestFullSnapshot).toHaveBeenCalledTimes(1);
-                expect(screen.getByText(/セッションが切れました/)).toBeTruthy();
-            } finally {
-                vi.useRealTimers();
-                localStorage.clear();
-            }
-        });
+                    expect(localStorage.getItem("ramu_resume_token_test-room")).toBeNull();
+                    expect(localStorage.getItem("ramu_seat_test-room")).toBeNull();
+                    expect(requestFullSnapshot).toHaveBeenCalledTimes(1);
+                    expect(screen.getByText(/セッションが切れました/)).toBeTruthy();
+                } finally {
+                    vi.useRealTimers();
+                    localStorage.clear();
+                }
+            },
+        );
 
         it("取り寄せた snapshot の代わりに一時的なエラーが返っても、保存済みの席とトークンは残す", async () => {
             localStorage.setItem("ramu_resume_token_test-room", "token");

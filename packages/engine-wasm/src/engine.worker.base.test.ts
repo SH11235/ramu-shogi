@@ -72,25 +72,25 @@ describe("worker NNUE direct write", () => {
         expect(response.body?.locked).toBe(false);
     });
 
-    it.each([
-        "bytes",
-        "url",
-    ] as const)("reports a %s model error without freeing twice", async (type) => {
-        const worker = setup();
-        worker.loadModelFromPtr.mockImplementation(() => {
-            throw new Error("Invalid model");
-        });
-        mockStream(bytes.length);
+    it.each(["bytes", "url"] as const)(
+        "reports a %s model error without freeing twice",
+        async (type) => {
+            const worker = setup();
+            worker.loadModelFromPtr.mockImplementation(() => {
+                throw new Error("Invalid model");
+            });
+            mockStream(bytes.length);
 
-        await expect(
-            worker.load(type === "bytes" ? { type, bytes } : urlSource),
-        ).resolves.toMatchObject({ error: "Error: Invalid model" });
-        expect(worker.loadModelFromPtr).toHaveBeenCalledWith(8, bytes.length);
-        expect(worker.freeNnueBuffer).not.toHaveBeenCalled();
-        expect(worker.postMessage).not.toHaveBeenCalledWith(
-            expect.objectContaining({ type: "nnueLoaded" }),
-        );
-    });
+            await expect(
+                worker.load(type === "bytes" ? { type, bytes } : urlSource),
+            ).resolves.toMatchObject({ error: "Error: Invalid model" });
+            expect(worker.loadModelFromPtr).toHaveBeenCalledWith(8, bytes.length);
+            expect(worker.freeNnueBuffer).not.toHaveBeenCalled();
+            expect(worker.postMessage).not.toHaveBeenCalledWith(
+                expect.objectContaining({ type: "nnueLoaded" }),
+            );
+        },
+    );
 
     it("frees a buffer when the stream ends before the model can be loaded", async () => {
         const total = bytes.length + 1;

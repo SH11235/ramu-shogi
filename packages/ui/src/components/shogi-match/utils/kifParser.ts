@@ -625,7 +625,7 @@ function parseKifLine(line: string, prevTo: string | null): ParsedMoveLine | nul
  * @returns パース結果
  */
 export function parseKif(kifText: string): KifParseResult {
-    if (!kifText || !kifText.trim()) {
+    if (!kifText?.trim()) {
         return {
             success: false,
             moves: [],

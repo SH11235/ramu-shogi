@@ -1,8 +1,5 @@
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { defineConfig } from "vitest/config";
-
-const rootDir = path.dirname(fileURLToPath(import.meta.url));
+import { configDefaults, defineConfig } from "vitest/config";
+import { wasmTestAliases, workspaceAliases } from "../../tooling/workspace-aliases.ts";
 
 export default defineConfig({
     test: {
@@ -14,68 +11,7 @@ export default defineConfig({
             VITE_DEFAULT_NNUE_PRESET: "standard",
             VITE_RSHOGI_API_BASE: "https://example.test/rshogi",
         },
-        exclude: ["**/node_modules/**", "**/e2e/**", "**/*.e2e.*"],
+        exclude: [...configDefaults.exclude, "**/e2e/**", "**/*.e2e.*"],
     },
-    resolve: {
-        alias: [
-            {
-                find: /^@shogi\/app-core$/,
-                replacement: path.resolve(rootDir, "../../packages/app-core/src"),
-            },
-            {
-                find: /^@shogi\/api-contract$/,
-                replacement: path.resolve(rootDir, "../../packages/api-contract/src"),
-            },
-            {
-                find: /^@shogi\/app-controller$/,
-                replacement: path.resolve(rootDir, "../../packages/app-controller/src"),
-            },
-            {
-                find: /^@shogi\/design-system$/,
-                replacement: path.resolve(rootDir, "../../packages/design-system/src"),
-            },
-            {
-                find: /^@shogi\/ui$/,
-                replacement: path.resolve(rootDir, "../../packages/ui/src"),
-            },
-            {
-                find: /^@shogi\/ui\/(.+)$/,
-                replacement: path.resolve(rootDir, "../../packages/ui/src/$1"),
-            },
-            {
-                find: /^@shogi\/engine-client$/,
-                replacement: path.resolve(rootDir, "../../packages/engine-client/src"),
-            },
-            {
-                find: /^@shogi\/engine-wasm$/,
-                replacement: path.resolve(rootDir, "../../packages/engine-wasm/src"),
-            },
-            {
-                find: "../pkg/engine_wasm.js",
-                replacement: path.resolve(
-                    rootDir,
-                    "../../packages/engine-wasm/src/__mocks__/engine-wasm-pkg.ts",
-                ),
-            },
-            {
-                find: "../pkg-threaded/engine_wasm.js",
-                replacement: path.resolve(
-                    rootDir,
-                    "../../packages/engine-wasm/src/__mocks__/engine-wasm-pkg.ts",
-                ),
-            },
-            {
-                find: /^@shogi\/match-client$/,
-                replacement: path.resolve(rootDir, "../../packages/match-client/src"),
-            },
-            {
-                find: /^@shogi\/study-client$/,
-                replacement: path.resolve(rootDir, "../../packages/study-client/src"),
-            },
-            {
-                find: /^@shogi\/match-protocol$/,
-                replacement: path.resolve(rootDir, "../../packages/match-protocol/src"),
-            },
-        ],
-    },
+    resolve: { alias: [...wasmTestAliases, ...workspaceAliases] },
 });

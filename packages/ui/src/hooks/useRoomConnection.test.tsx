@@ -968,21 +968,20 @@ describe("useRoomConnection", () => {
             expect(mockRemoveStoredResumeToken).not.toHaveBeenCalled();
         });
 
-        it.each([
-            "INVALID_TOKEN",
-            "ROOM_NOT_FOUND",
-            "ROOM_EXPIRED",
-        ] as const)("待機中に %s が返ったら、保存済みの席とトークンを捨てて参加フォームへ戻す", (code) => {
-            const { connection, result } = resumeAndWait("b");
+        it.each(["INVALID_TOKEN", "ROOM_NOT_FOUND", "ROOM_EXPIRED"] as const)(
+            "待機中に %s が返ったら、保存済みの席とトークンを捨てて参加フォームへ戻す",
+            (code) => {
+                const { connection, result } = resumeAndWait("b");
 
-            act(() => {
-                connection.emit({ v: 1, t: "error", payload: { code, message: "" } });
-            });
+                act(() => {
+                    connection.emit({ v: 1, t: "error", payload: { code, message: "" } });
+                });
 
-            expect(mockRemoveStoredResumeToken).toHaveBeenCalledWith("room-1");
-            expect(mockRemoveStoredSeat).toHaveBeenCalledWith("room-1");
-            expect(result.current).toMatchObject({ joined: false, connectionLost: false });
-        });
+                expect(mockRemoveStoredResumeToken).toHaveBeenCalledWith("room-1");
+                expect(mockRemoveStoredSeat).toHaveBeenCalledWith("room-1");
+                expect(result.current).toMatchObject({ joined: false, connectionLost: false });
+            },
+        );
 
         it("resume がエラーで拒否されたら、参加フォームへ戻す", () => {
             const connection = createMockClient();

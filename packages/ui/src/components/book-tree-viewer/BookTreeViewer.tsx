@@ -334,14 +334,14 @@ export function BookTreeViewer({
             target.closest("input, textarea, select, [contenteditable='true']")
         )
             return;
-        const actions: Record<string, () => void> = {
-            ArrowLeft: goParent,
-            ArrowRight: goChild,
-            ArrowUp: () => goSibling(-1),
-            ArrowDown: () => goSibling(1),
-        };
-        const action = actions[event.key];
-        if (!action || !tree) return;
+        if (!tree) return;
+        const action = new Map([
+            ["ArrowLeft", goParent],
+            ["ArrowRight", goChild],
+            ["ArrowUp", () => goSibling(-1)],
+            ["ArrowDown", () => goSibling(1)],
+        ]).get(event.key);
+        if (!action) return;
         event.preventDefault();
         action();
     });

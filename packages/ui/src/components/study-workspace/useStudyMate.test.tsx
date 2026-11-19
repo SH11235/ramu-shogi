@@ -225,23 +225,23 @@ describe("useStudyMate", () => {
         expect(hook.result.current.runningNodeId).toBe(node(1).id);
     });
 
-    it.each([
-        "init",
-        "solve",
-    ] as const)("中止するとエンジンを捨て、後から返った結果・途中経過を残さない (%s の途中)", async (at) => {
-        const { node, engine, hook } = setup(() => MATE);
-        engine.hold(at);
-        act(() => hook.result.current.start(node(1)));
-        await waitFor(() => expect(engine.created).toHaveLength(1));
-        if (at === "solve") await waitFor(() => expect(engine.solves).toHaveLength(1));
-        act(() => hook.result.current.stop());
-        expect(engine.created[0].dispose).toHaveBeenCalled();
-        expect(hook.result.current.runningNodeId).toBeNull();
-        await act(async () => engine.release());
-        expect(hook.result.current.results.has(node(1).id)).toBe(false);
-        // 中止した後は、エンジンを使い続けない
-        expect(engine.solves).toHaveLength(at === "solve" ? 1 : 0);
-    });
+    it.each(["init", "solve"] as const)(
+        "中止するとエンジンを捨て、後から返った結果・途中経過を残さない (%s の途中)",
+        async (at) => {
+            const { node, engine, hook } = setup(() => MATE);
+            engine.hold(at);
+            act(() => hook.result.current.start(node(1)));
+            await waitFor(() => expect(engine.created).toHaveLength(1));
+            if (at === "solve") await waitFor(() => expect(engine.solves).toHaveLength(1));
+            act(() => hook.result.current.stop());
+            expect(engine.created[0].dispose).toHaveBeenCalled();
+            expect(hook.result.current.runningNodeId).toBeNull();
+            await act(async () => engine.release());
+            expect(hook.result.current.results.has(node(1).id)).toBe(false);
+            // 中止した後は、エンジンを使い続けない
+            expect(engine.solves).toHaveLength(at === "solve" ? 1 : 0);
+        },
+    );
 
     it("結果のある局面を調べ直して中止すると、前の結果に戻す", async () => {
         const { node, engine, hook } = setup(() => MATE);

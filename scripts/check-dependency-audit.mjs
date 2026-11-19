@@ -77,7 +77,7 @@ export function evaluateAudit(report, status, scope, exceptions, now = new Date(
                 entry.advisory === id &&
                 entry.module === advisory.module_name &&
                 entry.severity === advisory.severity &&
-                advisory.patched_versions === "<0.0.0" &&
+                (advisory.patched_versions === "<0.0.0" || advisory.patched_versions === null) &&
                 Date.parse(`${entry.reviewBy}T00:00:00Z`) > now.getTime() &&
                 advisory.findings.every(
                     (finding) =>

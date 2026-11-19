@@ -372,30 +372,33 @@ describe("RoomPage", () => {
                 () => Promise.resolve({ ok: false, status: 404 }),
             ],
             ["通信に失敗した", () => Promise.reject(new TypeError("network"))],
-        ] as const)("棋譜のページを開けない対局者は、手元の棋譜を駒落ちの開始局面ごと検討画面で開く: %s", async (_label, respond) => {
-            // 画面にはログイン中と出ていても、サーバーが棋譜を見せるとは限らない
-            currentSession = { authenticated: true, user: { displayName: "Alice" } };
-            stubGameRecordFetch(respond);
-            render(<RoomPage />);
-            await deliverOnOpen("test-room", [
-                finishedSnapshot({
-                    settings: {
-                        ...(ROOM_INFO.settings as SnapshotPayload["settings"]),
-                        startSfen: "handicap:bishop",
-                    },
-                }),
-            ]);
+        ] as const)(
+            "棋譜のページを開けない対局者は、手元の棋譜を駒落ちの開始局面ごと検討画面で開く: %s",
+            async (_label, respond) => {
+                // 画面にはログイン中と出ていても、サーバーが棋譜を見せるとは限らない
+                currentSession = { authenticated: true, user: { displayName: "Alice" } };
+                stubGameRecordFetch(respond);
+                render(<RoomPage />);
+                await deliverOnOpen("test-room", [
+                    finishedSnapshot({
+                        settings: {
+                            ...(ROOM_INFO.settings as SnapshotPayload["settings"]),
+                            startSfen: "handicap:bishop",
+                        },
+                    }),
+                ]);
 
-            await clickStartReview();
+                await clickStartReview();
 
-            expect(mockNavigate).toHaveBeenCalledTimes(1);
-            expect(mockNavigate).toHaveBeenCalledWith({ to: "/play" });
-            expect(readPlayHandoff()).toEqual({
-                sfen: "lnsgkgsnl/1r7/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
-                moves: MOVES,
-            });
-            expect(localStorage.getItem("ramu_resume_token_test-room")).toBeNull();
-        });
+                expect(mockNavigate).toHaveBeenCalledTimes(1);
+                expect(mockNavigate).toHaveBeenCalledWith({ to: "/play" });
+                expect(readPlayHandoff()).toEqual({
+                    sfen: "lnsgkgsnl/1r7/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
+                    moves: MOVES,
+                });
+                expect(localStorage.getItem("ramu_resume_token_test-room")).toBeNull();
+            },
+        );
 
         it("観戦者は、棋譜のページを確かめずに手元の棋譜を検討画面で開く", async () => {
             const fetchMock = stubGameRecordFetch(() => Promise.resolve({ ok: true, status: 200 }));
@@ -455,31 +458,34 @@ describe("RoomPage", () => {
                     rerender(<RoomPage />);
                 },
             ],
-        ] as const)("確かめている間に%sら、応答が来ても遷移せず、引き継ぎも席の記憶の削除もしない", async (_label, leave) => {
-            let respond: (response: Pick<Response, "ok" | "status">) => void = () => {};
-            const fetchMock = stubGameRecordFetch(
-                () =>
-                    new Promise((resolve) => {
-                        respond = resolve;
-                    }),
-            );
-            const view = render(<RoomPage />);
-            await deliverOnOpen("test-room", [finishedSnapshot()]);
+        ] as const)(
+            "確かめている間に%sら、応答が来ても遷移せず、引き継ぎも席の記憶の削除もしない",
+            async (_label, leave) => {
+                let respond: (response: Pick<Response, "ok" | "status">) => void = () => {};
+                const fetchMock = stubGameRecordFetch(
+                    () =>
+                        new Promise((resolve) => {
+                            respond = resolve;
+                        }),
+                );
+                const view = render(<RoomPage />);
+                await deliverOnOpen("test-room", [finishedSnapshot()]);
 
-            await clickStartReview();
-            const { signal } = fetchMock.mock.calls[0][1] as RequestInit;
-            await act(async () => {
-                leave(view);
-            });
-            expect(signal?.aborted).toBe(true);
-            await act(async () => {
-                respond({ ok: true, status: 200 });
-            });
+                await clickStartReview();
+                const { signal } = fetchMock.mock.calls[0][1] as RequestInit;
+                await act(async () => {
+                    leave(view);
+                });
+                expect(signal?.aborted).toBe(true);
+                await act(async () => {
+                    respond({ ok: true, status: 200 });
+                });
 
-            expect(mockNavigate).not.toHaveBeenCalled();
-            expect(readPlayHandoff()).toBeUndefined();
-            expect(localStorage.getItem("ramu_resume_token_test-room")).toBe("token-test-room");
-        });
+                expect(mockNavigate).not.toHaveBeenCalled();
+                expect(readPlayHandoff()).toBeUndefined();
+                expect(localStorage.getItem("ramu_resume_token_test-room")).toBe("token-test-room");
+            },
+        );
 
         it("確かめている間に「トップへ戻る」を押したら、応答が来てもトップへの遷移だけにする", async () => {
             let respond: (response: Pick<Response, "ok" | "status">) => void = () => {};
@@ -1159,12 +1165,15 @@ describe("RoomPage", () => {
                     }),
                 ],
                 ["snapshot", snapshotMessage({ eventId: 6 })],
-            ])("指し手の局面を変換している間に%sが届いたら、その指し手は送らない", async (_, message) => {
-                expect(await movesSentAfter(message)).toEqual([]);
-                expect(screen.getByRole("alert").textContent).toBe(
-                    "局面が更新されました。もう一度操作してください。",
-                );
-            });
+            ])(
+                "指し手の局面を変換している間に%sが届いたら、その指し手は送らない",
+                async (_, message) => {
+                    expect(await movesSentAfter(message)).toEqual([]);
+                    expect(screen.getByRole("alert").textContent).toBe(
+                        "局面が更新されました。もう一度操作してください。",
+                    );
+                },
+            );
 
             it("指し手の局面を変換している間に待ったの取り消しが届いても、その指し手は送る", async () => {
                 expect(

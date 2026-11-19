@@ -3,7 +3,8 @@
     "tasks": {
         "build": {
             "dependsOn": ["^build"],
-            "outputs": ["dist/**", ".next/**", "build/**", "pkg/**"]
+            "outputs": ["dist/**", "pkg/**", "pkg-threaded/**"],
+            "env": ["VITE_*", "ANALYZE"]
         },
         "dev": {
             "cache": false,
@@ -70,6 +71,9 @@
         "turbo.json",
         "biome.json",
         ".gitignore",
-        "tsconfig.base.json"
+        "tsconfig.base.json",
+        "pnpm-workspace.yaml",
+        "tsconfig.workspace.json",
+        "tooling/**"
     ]
 }

@@ -28,33 +28,35 @@ const extensions = ["", ".ts", ".tsx"];
 describe("shogi-board chunk", () => {
     // 一覧の外（shogi-match/ のほかのファイル）を import すると、shogi-match が shogi-board を import して
     // いるので 2 つの chunk が互いを読み込み、トップページも shogi-match を読み込むようになる。
-    it.each(
-        SHOGI_BOARD_MODULES,
-    )("%s は一覧のファイルと許した package だけを import する", (file) => {
-        const source = readFileSync(path.join(componentsDir, file), "utf8");
-        const outside = runtimeSpecifiers(source).filter((specifier) => {
-            if (!specifier.startsWith("."))
-                return !SHOGI_BOARD_ALLOWED_PACKAGES.includes(specifier);
-            const base = path.join(path.dirname(file), specifier);
-            return !extensions.some((ext) => {
-                const resolved = path.posix.normalize((base + ext).split(path.sep).join("/"));
-                return (
-                    SHOGI_BOARD_MODULES.includes(resolved) ||
-                    SHOGI_BOARD_ALLOWED_SHARED_MODULES.includes(resolved)
-                );
+    it.each(SHOGI_BOARD_MODULES)(
+        "%s は一覧のファイルと許した package だけを import する",
+        (file) => {
+            const source = readFileSync(path.join(componentsDir, file), "utf8");
+            const outside = runtimeSpecifiers(source).filter((specifier) => {
+                if (!specifier.startsWith("."))
+                    return !SHOGI_BOARD_ALLOWED_PACKAGES.includes(specifier);
+                const base = path.join(path.dirname(file), specifier);
+                return !extensions.some((ext) => {
+                    const resolved = path.posix.normalize((base + ext).split(path.sep).join("/"));
+                    return (
+                        SHOGI_BOARD_MODULES.includes(resolved) ||
+                        SHOGI_BOARD_ALLOWED_SHARED_MODULES.includes(resolved)
+                    );
+                });
             });
-        });
-        expect(outside).toEqual([]);
-    });
+            expect(outside).toEqual([]);
+        },
+    );
 
     // 一覧の外から読んでよいファイルが、さらに何かを読むと、その先が shogi-match chunk に入りうる。
-    it.each(
-        SHOGI_BOARD_ALLOWED_SHARED_MODULES,
-    )("%s は許した package だけを import する", (file) => {
-        const source = readFileSync(path.join(componentsDir, file), "utf8");
-        const outside = runtimeSpecifiers(source).filter(
-            (specifier) => !SHOGI_BOARD_ALLOWED_PACKAGES.includes(specifier),
-        );
-        expect(outside).toEqual([]);
-    });
+    it.each(SHOGI_BOARD_ALLOWED_SHARED_MODULES)(
+        "%s は許した package だけを import する",
+        (file) => {
+            const source = readFileSync(path.join(componentsDir, file), "utf8");
+            const outside = runtimeSpecifiers(source).filter(
+                (specifier) => !SHOGI_BOARD_ALLOWED_PACKAGES.includes(specifier),
+            );
+            expect(outside).toEqual([]);
+        },
+    );
 });

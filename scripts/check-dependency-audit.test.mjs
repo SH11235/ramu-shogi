@@ -38,11 +38,22 @@ test("a completed clean audit passes", () => {
     assert.equal(evaluateAudit(reportFor(), 0, "frontend-prod", exceptions, now).blocked, false);
 });
 
-test("the known tool finding remains visible under its narrow exception", () => {
-    const result = evaluate(finding());
-    assert.equal(result.blocked, false);
-    assert.equal(result.issues.length, 1);
-    assert.ok(result.issues[0].exception?.reason);
+for (const [pnpmVersion, patchedVersions] of [
+    [10, "<0.0.0"],
+    [12, null],
+]) {
+    test(`the unpatched pnpm ${pnpmVersion} finding remains visible under its narrow exception`, () => {
+        const result = evaluate(finding({ patched_versions: patchedVersions }));
+        assert.equal(result.blocked, false);
+        assert.equal(result.issues.length, 1);
+        assert.ok(result.issues[0].exception?.reason);
+    });
+}
+
+test("a missing patched_versions field does not qualify for the exception", () => {
+    const advisory = finding();
+    delete advisory.patched_versions;
+    assert.equal(evaluate(advisory).blocked, true);
 });
 
 test("the exception cannot exempt a production or Pulumi dependency", () => {

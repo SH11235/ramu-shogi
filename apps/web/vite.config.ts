@@ -1,11 +1,13 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import babel from "@rolldown/plugin-babel";
 import tailwindcss from "@tailwindcss/vite";
-import react from "@vitejs/plugin-react";
+import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import { visualizer } from "rollup-plugin-visualizer";
 import { defineConfig, loadEnv } from "vite";
-import { SHOGI_BOARD_MODULES } from "./shogi-board-chunk";
+import { workspaceAliases } from "../../tooling/workspace-aliases.ts";
+import { SHOGI_BOARD_MODULES } from "./shogi-board-chunk.ts";
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -66,7 +68,7 @@ const UI_PRIMITIVES = [
     "tooltip",
 ];
 
-function manualChunks(id: string): string | undefined {
+function chunkName(id: string): string | undefined {
     const normalizedId = id.split(path.sep).join("/");
 
     if (normalizedId.includes("/node_modules/")) {
@@ -208,9 +210,7 @@ export default defineConfig(({ command, mode }) => {
             format: "es",
         },
         optimizeDeps: {
-            // @shogi/engine-wasm を Vite の pre-bundle (esbuild 変換) から除外。
-            // wasm-bindgen が生成する JS は特殊な形式のため、
-            // esbuild で変換すると WASM の初期化が壊れる。
+            // wasm-bindgen の生成コードは依存の事前バンドルを経由せずに読み込む。
             exclude: ["@shogi/engine-wasm"],
         },
         preview: {
@@ -220,19 +220,29 @@ export default defineConfig(({ command, mode }) => {
             },
         },
         build: {
-            rollupOptions: {
+            target: ["chrome107", "edge107", "firefox104", "safari16"],
+            rolldownOptions: {
                 output: {
-                    manualChunks,
+                    strictExecutionOrder: true,
+                    codeSplitting: {
+                        groups: [
+                            {
+                                debugName: "application",
+                                name: chunkName,
+                                test: (id) => chunkName(id) !== undefined,
+                                // 起動時に使う共有モジュールから対局画面全体が先読みされるのを防ぐ。
+                                includeDependenciesRecursively: false,
+                                entriesAware: true,
+                            },
+                        ],
+                    },
                 },
             },
         },
         plugins: [
             tailwindcss(),
-            react({
-                babel: {
-                    plugins: ["babel-plugin-react-compiler"],
-                },
-            }),
+            react(),
+            babel({ presets: [reactCompilerPreset()] }),
             ...(isAnalyze
                 ? [
                       visualizer({
@@ -245,43 +255,7 @@ export default defineConfig(({ command, mode }) => {
                 : []),
         ],
         resolve: {
-            alias: [
-                {
-                    find: /^@shogi\/app-core$/,
-                    replacement: path.resolve(rootDir, "../../packages/app-core/src"),
-                },
-                {
-                    find: /^@shogi\/design-system$/,
-                    replacement: path.resolve(rootDir, "../../packages/design-system/src"),
-                },
-                {
-                    find: /^@shogi\/ui$/,
-                    replacement: path.resolve(rootDir, "../../packages/ui/src"),
-                },
-                {
-                    find: /^@shogi\/ui\/(.+)$/,
-                    replacement: path.resolve(rootDir, "../../packages/ui/src/$1"),
-                },
-                {
-                    find: /^@shogi\/engine-client$/,
-                    replacement: path.resolve(rootDir, "../../packages/engine-client/src"),
-                },
-                {
-                    find: /^@shogi\/engine-wasm$/,
-                    replacement: path.resolve(rootDir, "../../packages/engine-wasm/src"),
-                },
-                {
-                    find: /^@shogi\/match-client$/,
-                    replacement: path.resolve(rootDir, "../../packages/match-client/src"),
-                },
-                {
-                    find: /^@shogi\/study-client$/,
-                    replacement: path.resolve(rootDir, "../../packages/study-client/src"),
-                },
-            ],
-            // React の重複インスタンスを防ぐ保険として dedupe を設定
-            // バージョンが統一されていれば影響はないが、将来の安全性のため明示的に指定
-            // ※ React バージョンを統一する場合: pnpm update react@X.X.X react-dom@X.X.X -r --filter "@shogi/*"
+            alias: workspaceAliases,
             dedupe: ["react", "react-dom"],
         },
     };

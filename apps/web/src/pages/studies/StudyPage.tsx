@@ -287,7 +287,6 @@ export default function StudyPage(): ReactElement {
         }
     };
 
-    // biome-ignore lint/correctness/useExhaustiveDependencies: reloadCount は「もう一度読み込む」で開き直すための合図。presentFromStore は毎回作り直されるが、中身は ref と引数だけに依存する
     useEffect(() => {
         let cancelled = false;
         const isCancelled = (): boolean => cancelled;

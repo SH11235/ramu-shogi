@@ -117,15 +117,14 @@ describe("createUsageClient", () => {
             expect(sent.every(({ body }) => accepted(body) !== null)).toBe(true);
         });
 
-        it.each([
-            "http://localhost:5173/",
-            "http://192.168.1.10/",
-            "http://[::1]/",
-        ])("手元や LAN 内の参照元は付けない: %s", (referrer) => {
-            const { client, sent } = setup({ referrer });
-            client.trackPageView("/", "/");
-            expect(sent[0]?.body.props).toEqual({ route: "/" });
-        });
+        it.each(["http://localhost:5173/", "http://192.168.1.10/", "http://[::1]/"])(
+            "手元や LAN 内の参照元は付けない: %s",
+            (referrer) => {
+                const { client, sent } = setup({ referrer });
+                client.trackPageView("/", "/");
+                expect(sent[0]?.body.props).toEqual({ route: "/" });
+            },
+        );
 
         it("自分のサイトからの参照元は付けない", () => {
             const { client, sent } = setup({ referrer: "https://ramu-shogi.sh11235.com/play" });

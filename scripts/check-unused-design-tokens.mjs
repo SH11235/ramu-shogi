@@ -6,7 +6,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import ts from "typescript";
+import { ts } from "@shogi/typescript-api";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const THEME_CSS = "packages/design-system/src/theme.css";

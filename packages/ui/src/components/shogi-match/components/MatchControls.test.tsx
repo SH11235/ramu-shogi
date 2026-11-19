@@ -39,17 +39,16 @@ describe("MatchControls", () => {
         expect(buttonNames()).toEqual(["対局再開", "棋譜読込", "局面編集", "投了"]);
     });
 
-    it.each<GameMode>([
-        "reviewing",
-        "editing",
-        "paused",
-    ])("棋譜を見るだけの画面では、対局を始める・棋譜を読み込む・局面を編集するボタンを出さない（%s）", (gameMode) => {
-        renderControls(gameMode, true);
-        expect(buttonNames()).toEqual([]);
-        for (const label of ["対局開始", "対局再開", "棋譜読込", "局面編集", "平手に戻す"]) {
-            expect(screen.queryByText(label)).toBeNull();
-        }
-    });
+    it.each<GameMode>(["reviewing", "editing", "paused"])(
+        "棋譜を見るだけの画面では、対局を始める・棋譜を読み込む・局面を編集するボタンを出さない（%s）",
+        (gameMode) => {
+            renderControls(gameMode, true);
+            expect(buttonNames()).toEqual([]);
+            for (const label of ["対局開始", "対局再開", "棋譜読込", "局面編集", "平手に戻す"]) {
+                expect(screen.queryByText(label)).toBeNull();
+            }
+        },
+    );
 
     it("棋譜を見るだけの画面は、メッセージだけを出す（盤を操作できないので、検討の案内は出さない）", () => {
         render(

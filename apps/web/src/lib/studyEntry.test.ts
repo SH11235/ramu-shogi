@@ -6,7 +6,6 @@ import {
     type KifuTree,
     parseStudySfen,
     STUDY_HIRATE_SFEN,
-    type StudyDocument,
 } from "@shogi/app-core";
 import {
     createMemoryStudyStore,
@@ -61,7 +60,7 @@ describe("openOrCreateStudy", () => {
         expect(stored?.doc.title).toBe("RAMU 対 Panda");
         expect(stored?.doc.meta).toMatchObject({ blackName: "RAMU", whiteName: "Panda" });
         // 対局時の評価値は、解析結果ではなく棋譜の来歴（source）として入る。
-        const nodes = Object.values((stored?.doc as StudyDocument).tree.nodes);
+        const nodes = Object.values(stored?.doc.tree.nodes ?? {});
         expect(nodes.some((node) => node.source?.score?.kind === "cp")).toBe(true);
         expect(stored?.doc.layers).toEqual([]);
 
