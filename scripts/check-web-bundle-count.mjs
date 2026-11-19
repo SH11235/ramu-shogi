@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const MAX_INDEX_ASSETS = 20;
 const MAX_JS_FILES = 70;
@@ -40,7 +41,8 @@ export function checkBundleCount(distDir) {
     }
 }
 
-if (import.meta.main) {
+// import.meta.main を持たない Node では検査が黙って通るため、パスで判定する。
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
     try {
         checkBundleCount(process.argv[2] ?? "apps/web/dist");
     } catch (error) {
