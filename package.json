@@ -16,6 +16,8 @@
         "test:contracts": "node --test scripts/contract-check.test.mjs",
         "check:design-tokens": "node scripts/check-unused-design-tokens.mjs",
         "test:design-tokens": "node --test scripts/check-unused-design-tokens.test.mjs",
+        "check:bundle-count": "node scripts/check-web-bundle-count.mjs",
+        "test:bundle-count": "node --test scripts/check-web-bundle-count.test.mjs",
         "build": "turbo build",
         "dev": "turbo dev",
         "test": "turbo test -- --run",
