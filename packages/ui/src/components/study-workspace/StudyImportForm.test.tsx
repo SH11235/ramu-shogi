@@ -16,6 +16,27 @@ describe("StudyStartFromHirateButton", () => {
         });
     });
 
+    it("作っている間は、ボタンを押せない", async () => {
+        let finish: () => void = () => {};
+        const onImport = vi.fn(
+            () =>
+                new Promise<void>((resolve) => {
+                    finish = resolve;
+                }),
+        );
+        render(<StudyStartFromHirateButton onImport={onImport} />);
+        fireEvent.click(screen.getByRole("button", { name: "平手の盤から始める" }));
+        const busy = await screen.findByRole<HTMLButtonElement>("button", { name: "作成中…" });
+        expect(busy.disabled).toBe(true);
+        fireEvent.click(busy);
+        expect(onImport).toHaveBeenCalledTimes(1);
+        finish();
+        const ready = await screen.findByRole<HTMLButtonElement>("button", {
+            name: "平手の盤から始める",
+        });
+        expect(ready.disabled).toBe(false);
+    });
+
     it("作れなかったときは理由を出す", async () => {
         const onImport = vi.fn().mockRejectedValue(new Error("上限を超えています"));
         render(<StudyStartFromHirateButton onImport={onImport} />);

@@ -101,6 +101,7 @@ import {
     type StudyStructureTree,
     studyFirstMoveLabel,
     studyMoveLabel,
+    studyNodeReadFor,
     studyOriginLabel,
     studyPathTo,
     studyPlayersLabel,
@@ -608,15 +609,11 @@ export function StudyWorkspaceView({
                 return;
             }
             // 深く解析と同じだけ（またはそれより長く）読み切った結果がある局面は、読み直さない。
-            // レイヤーの上限ではなく実際に読んだ時間で見る（深さ・局面数の上限で早く止まった結果は数えない）。
-            const alreadyRead = doc.layers.some((layer) => {
-                if (!Object.hasOwn(layer.results, nodeId)) return false;
-                const result = layer.results[nodeId];
-                return (
-                    result.completion === "completed" &&
-                    (result.timeMs ?? 0) >= STUDY_DEEP_TIME_MS - DEEP_TIME_TOLERANCE_MS
-                );
-            });
+            const alreadyRead = studyNodeReadFor(
+                doc,
+                nodeId,
+                STUDY_DEEP_TIME_MS - DEEP_TIME_TOLERANCE_MS,
+            );
             if (alreadyRead) {
                 autoStartedNodeRef.current = nodeId;
                 return;
