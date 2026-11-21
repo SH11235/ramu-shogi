@@ -25,7 +25,6 @@ import {
     studyMainLineIds,
     studyMetaEntries,
     studyMoveLabel,
-    studyNodeReadFor,
     studyPlayersLabel,
 } from "./studyView";
 
@@ -246,31 +245,5 @@ describe("studyMetaEntries", () => {
             { key: "timeControl", label: "持ち時間", value: "180秒" },
             { key: "custom", label: "custom", value: "x" },
         ]);
-    });
-});
-
-describe("studyNodeReadFor", () => {
-    it("指定の時間以上かけて読み切った結果だけを、読み終えたものとして数える", () => {
-        const { doc: base, ids } = createTestStudy();
-        const doc = applyStudyOps(base, [
-            { type: "ensureLayer", spec: DEEP_SPEC, display: { label: "深く" } },
-            putScoreOp(ids[1], cp(10), { layerId: DEEP_LAYER_ID, timeMs: 30_000 }),
-            putScoreOp(ids[2], cp(10), { layerId: DEEP_LAYER_ID, timeMs: 29_000 }),
-            putScoreOp(ids[3], cp(10), { layerId: DEEP_LAYER_ID, timeMs: 400 }),
-            putScoreOp(ids[4], cp(10), {
-                layerId: DEEP_LAYER_ID,
-                timeMs: 30_000,
-                completion: "aborted",
-            }),
-        ]);
-        expect(studyNodeReadFor(doc, ids[1], 29_000)).toBe(true);
-        // 境目ちょうどは読み終えた扱い。
-        expect(studyNodeReadFor(doc, ids[2], 29_000)).toBe(true);
-        // 深さの上限などで早く止まった結果は数えない。
-        expect(studyNodeReadFor(doc, ids[3], 29_000)).toBe(false);
-        // 途中で止めた結果は数えない。
-        expect(studyNodeReadFor(doc, ids[4], 29_000)).toBe(false);
-        // 結果の無い局面。
-        expect(studyNodeReadFor(doc, ids[0], 29_000)).toBe(false);
     });
 });

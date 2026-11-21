@@ -19,10 +19,13 @@ import type {
 } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { Button } from "../button";
 import { cardVariants } from "../card";
+import { ChevronIcon } from "../chevron-icon";
+import { RamRunningIcon } from "../ram-running-icon";
 import { convertPvToDisplay } from "../shogi-match/utils/kifFormat";
+import { Switch } from "../switch";
 import { StudyIconButton } from "./StudyIconButton";
 import { AddBranchIcon, ClockPlusIcon, PlayIcon } from "./StudyIcons";
 import {
@@ -39,7 +42,10 @@ import {
     studyFirstMoveLabel,
     studyScoreSide,
 } from "./studyView";
-import type { StudyLiveSearch } from "./useStudyAnalysis";
+import { STUDY_DEEP_TIME_MS, type StudyLiveSearch } from "./useStudyAnalysis";
+
+const DEEP_SEGMENT_SECONDS = STUDY_DEEP_TIME_MS / 1000;
+
 import type { StudyMateState, StudyShortestState } from "./useStudyMate";
 
 /** 読み筋を盤で見る・変化として足すときに渡す内容。 */
@@ -124,10 +130,16 @@ interface StudyCandidatesPanelProps {
     live: StudyLiveSearch | undefined;
     onStartDeep: () => void;
     /**
-     * 「自動で読む」の切り替え。入れている間は、局面を移るたびにその局面を深く解析する。
+     * 「自動で読む」。`reading` はスイッチの行に出す状態（読んでいる局面など）で、無ければ null。
      * 渡さなければ出さない（編集できないとき）。
      */
-    autoAnalyze?: { enabled: boolean; onChange: (enabled: boolean) => void };
+    autoAnalyze?: {
+        enabled: boolean;
+        onChange: (enabled: boolean) => void;
+        reading: string | null;
+    };
+    /** 読んでいる途中は、前回の読みを 1 行にたたむ（画面の狭いスマートフォン）。 */
+    collapsePreviousWhileReading?: boolean;
     /**
      * いまの局面でパスを指し（変化として足し）、その局面を深く解析する。手番でない側が何を狙って
      * いるかを見るため。渡さなければ出さない（編集できないとき）。
@@ -231,7 +243,7 @@ function ElsewhereActivityLine({ activity }: { activity: StudyElsewhereActivity 
     if (activity.kind === "finished") {
         const { position } = activity;
         return (
-            <div className="flex h-7 items-center gap-1 rounded-md bg-muted/40 pl-2 pr-0.5 text-xs text-muted-foreground">
+            <div className="flex h-8 items-center gap-1 rounded-md bg-muted/40 pl-2 pr-0.5 text-xs text-muted-foreground">
                 <output
                     aria-live="polite"
                     className="flex min-w-0 flex-1 whitespace-nowrap"
@@ -296,7 +308,8 @@ function ElsewhereActivityLine({ activity }: { activity: StudyElsewhereActivity 
             </>
         );
     return (
-        <div className="flex h-7 items-center gap-1 rounded-md bg-muted/40 pl-2 pr-0.5 text-xs text-muted-foreground">
+        <div className="flex h-8 items-center gap-1 rounded-md bg-muted/40 pl-1 pr-0.5 text-xs text-muted-foreground">
+            <RamRunningIcon />
             <output
                 aria-live="polite"
                 className="flex min-w-0 flex-1 whitespace-nowrap tabular-nums"
@@ -442,6 +455,7 @@ export function StudyCandidatesPanel({
     live,
     onStartDeep,
     autoAnalyze,
+    collapsePreviousWhileReading = false,
     onStartDeepAfterPass,
     revision = null,
     canContinueDeep = false,
@@ -453,7 +467,12 @@ export function StudyCandidatesPanel({
     elsewhere,
     className,
 }: StudyCandidatesPanelProps): ReactElement {
+    const autoAnalyzeId = useId();
+    const autoAnalyzeStatusId = useId();
+    const previousListId = useId();
+    const autoOn = autoAnalyze?.enabled ?? false;
     const isDeepHere = live !== undefined;
+    const [isPreviousOpen, setIsPreviousOpen] = useState(false);
     // 別の局面の深い解析・詰み探索は、押せばそれを止めて切り替える。全体の解析の途中だけは始めない。
     const startDisabled = isPreparing || analysisMode === "full";
     const sourceText = formatStudyScore(source?.score);
@@ -471,13 +490,52 @@ export function StudyCandidatesPanel({
                 className,
             )}
         >
+            {/* 入れたままにする設定なので、押すと始まる操作ボタンの列とは段を分ける。 */}
+            {autoAnalyze && (
+                <div className="flex items-center gap-3 rounded-lg border border-wafuu-border bg-wafuu-washi px-3 py-2">
+                    <div className="flex min-w-0 flex-1 flex-col">
+                        <label
+                            htmlFor={autoAnalyzeId}
+                            className="text-sm font-medium text-wafuu-sumi"
+                        >
+                            自動で読む
+                        </label>
+                        {/* 高さを固定して、入り切りで欄が上下しないようにする。読んでいる中身はスイッチの
+                            名前に含めず説明にする（深さが変わるたびに名前が変わらないように）。 */}
+                        <span
+                            id={autoAnalyzeStatusId}
+                            className="flex min-h-7 items-center gap-1.5 text-xs"
+                        >
+                            {autoAnalyze.reading !== null ? (
+                                <>
+                                    <RamRunningIcon running={isDeepHere} />
+                                    <span className="min-w-0 truncate font-medium text-wafuu-sumi">
+                                        {autoAnalyze.reading}
+                                    </span>
+                                </>
+                            ) : (
+                                <span className="text-muted-foreground">
+                                    入れている間、見ている局面を読み続けます。切ると止まります
+                                </span>
+                            )}
+                        </span>
+                    </div>
+                    <Switch
+                        id={autoAnalyzeId}
+                        aria-describedby={autoAnalyzeStatusId}
+                        checked={autoAnalyze.enabled}
+                        onCheckedChange={autoAnalyze.onChange}
+                    />
+                </div>
+            )}
             <div className="flex flex-col gap-2">
                 {/* 欄の名前は見出しとして画面に出さない（PC は欄の並び、スマートフォンはタブで分かる）。 */}
                 <h2 className="sr-only">候補手</h2>
                 <div className="flex flex-wrap items-center gap-1.5">
                     {/* 深く解析・止める・続けて読むは同じ枠で入れ替え、枠の幅をいちばん長い文言に合わせる
                         （切り替わるたびに隣のボタンが動かないように）。深さ・残りの時間は途中の候補の枠に出す。 */}
-                    <div className="grid">
+                    {/* 自動で読む間は同じことをしているので出さない。 */}
+                    <div className="grid" hidden={autoOn}>
                         <span
                             aria-hidden="true"
                             className={cn(
@@ -526,19 +584,6 @@ export function StudyCandidatesPanel({
                             )}
                         </div>
                     </div>
-                    {autoAnalyze && (
-                        <Button
-                            type="button"
-                            variant={autoAnalyze.enabled ? "default" : "outline"}
-                            size="sm"
-                            className={COMPACT_BUTTON_CLASS}
-                            aria-pressed={autoAnalyze.enabled}
-                            title="入れている間は、盤で指した・移った局面を自動で深く解析し、評価値を残します"
-                            onClick={() => autoAnalyze.onChange(!autoAnalyze.enabled)}
-                        >
-                            自動で読む
-                        </Button>
-                    )}
                     {onStartDeepAfterPass && (
                         <Button
                             type="button"
@@ -561,6 +606,12 @@ export function StudyCandidatesPanel({
                         />
                     )}
                 </div>
+                {/* 押せなくはせず、押すと自動で読むが切れることを押す前に知らせる。 */}
+                {autoOn && (
+                    <p className="px-1 text-xs text-muted-foreground">
+                        押すと、自動で読むを切ってから始めます
+                    </p>
+                )}
                 {elsewhere && <ElsewhereActivityLine activity={elsewhere} />}
             </div>
 
@@ -579,13 +630,35 @@ export function StudyCandidatesPanel({
             {/* 読んでいる途中の候補。満足したら「止める」で、その時点の結果を残せる。 */}
             {live && (
                 <div className="flex flex-col gap-1 rounded-lg bg-wafuu-washi px-2 py-2">
-                    <output aria-live="polite" className="px-1 text-xs text-muted-foreground">
-                        <span className="tabular-nums">
-                            深く解析中
-                            <DeepProgressNote live={live} />
-                        </span>
-                        {live.preview && <>・途中の候補（{searchStats(live.preview)}）</>}
-                    </output>
+                    {/* 自動で読む間はラムをスイッチの行に出す（同じ読みに 2 つ動かさない）。 */}
+                    <div className="flex min-h-7 items-center gap-1.5 px-1">
+                        {!autoOn && <RamRunningIcon />}
+                        {/* 深さ・秒数は 1 秒ごとに変わるので、読み上げの領域にはしない（読み続ける間ずっと
+                            読み上げられてしまう）。読んでいることは、ボタン・スイッチの状態で伝わる。 */}
+                        <p className="text-xs text-muted-foreground">
+                            <span className="font-medium text-wafuu-sumi">今の読み</span>
+                            {/* 自動で読む間は局面を移るまで読み続けるので、残りの時間は無い。 */}
+                            {!autoOn && (
+                                <span className="tabular-nums">
+                                    <DeepProgressNote live={live} />
+                                </span>
+                            )}
+                            {live.preview && (
+                                <span className="tabular-nums">
+                                    （{searchStats(live.preview)}）
+                                </span>
+                            )}
+                        </p>
+                    </div>
+                    {/* 保存は「区切りまで読み切った」「深い」の順で勝つ方を残すので、読み直しても黙って
+                        前の結果が残ったように見えないよう、いつ置き換わるかを添える。 */}
+                    {mainResult && (
+                        <p className="px-1 text-xs text-muted-foreground">
+                            {live.preview && live.preview.depth > mainResult.result.depth
+                                ? `保存済みの読みより深くなりました。区切り（${DEEP_SEGMENT_SECONDS} 秒ごと）まで読むと、この読みで置き換えます`
+                                : `保存済みの読み（深さ ${mainResult.result.depth}）より深くなり、区切り（${DEEP_SEGMENT_SECONDS} 秒ごと）まで読むと、この読みで置き換えます`}
+                        </p>
+                    )}
                     {live.preview && (
                         <ol className="flex flex-col">
                             {live.preview.candidates.map((candidate) => (
@@ -654,7 +727,33 @@ export function StudyCandidatesPanel({
                 全体の解析の結果は、最善手だけを 1 行で添える。 */}
             <div className="flex flex-col gap-1">
                 {/* 悪手・疑問手の局面では「この手の代わりに」と分けるため、ここにも見出しと注記を置く。 */}
-                {alternative ? (
+                {live && mainResult ? (
+                    // 狭い画面では、今の読みを見やすくするため 1 行にたたむ。
+                    collapsePreviousWhileReading ? (
+                        <button
+                            type="button"
+                            aria-expanded={isPreviousOpen}
+                            aria-controls={previousListId}
+                            onClick={() => setIsPreviousOpen(!isPreviousOpen)}
+                            className="flex min-h-11 min-w-0 items-center gap-1 rounded-md px-1 text-left text-xs text-muted-foreground hover:text-wafuu-sumi focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                            <span className="shrink-0 font-medium text-wafuu-sumi">
+                                保存済みの読み
+                            </span>
+                            <span className="min-w-0 truncate">{mainNote}</span>
+                            <ChevronIcon expanded={isPreviousOpen} className="ml-auto" />
+                        </button>
+                    ) : (
+                        <p className="flex min-w-0 gap-1 px-1 text-xs text-muted-foreground">
+                            <span className="shrink-0 font-medium text-wafuu-sumi">
+                                保存済みの読み
+                            </span>
+                            <span className="min-w-0 truncate" title={mainNote ?? undefined}>
+                                {mainNote}
+                            </span>
+                        </p>
+                    )
+                ) : alternative ? (
                     <div className="flex flex-col px-1">
                         <h3 className="text-sm font-medium text-wafuu-sumi">この局面の候補手</h3>
                         {mainResult && (
@@ -673,7 +772,13 @@ export function StudyCandidatesPanel({
                     )
                 )}
                 {mainResult ? (
-                    <ol className="flex flex-col">
+                    <ol
+                        id={previousListId}
+                        className="flex flex-col"
+                        hidden={
+                            live !== undefined && collapsePreviousWhileReading && !isPreviousOpen
+                        }
+                    >
                         {mainResult.result.candidates.map((candidate) => (
                             <CandidateRow
                                 key={candidate.rank}

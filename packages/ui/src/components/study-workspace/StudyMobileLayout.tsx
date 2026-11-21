@@ -1,6 +1,7 @@
 import { cn } from "@shogi/design-system";
 import type { CSSProperties, KeyboardEvent, ReactElement, ReactNode, RefObject } from "react";
 import { useLayoutEffect, useRef, useState } from "react";
+import { RamRunningIcon } from "../ram-running-icon";
 import { BranchIcon } from "./StudyIcons";
 import { StudyNavBar } from "./StudyNavBar";
 import { fitMobileBoard, mobileCommentMaxHeight } from "./studyMobileBoardFit";
@@ -81,6 +82,7 @@ export function StudyMobileLayout({
     measure,
     locked,
     moreMenu,
+    isReading,
     saveStrip,
     board,
     boardSectionRef,
@@ -99,6 +101,11 @@ export function StudyMobileLayout({
     measure: StudyMobileMeasure;
     locked: boolean;
     moreMenu: ReactNode;
+    /**
+     * 読んでいる（CPU を使っている）か。読んでいる様子と止める操作は候補手の欄にあるので、ほかの表示を
+     * 開いている間は「候補手」のタブに走るラムを出して知らせる。
+     */
+    isReading: boolean;
     /** 表示の切り替えの下に出す、保存の状態の帯（出さないときは null）。 */
     saveStrip: ReactNode;
     board: ReactNode;
@@ -162,13 +169,20 @@ export function StudyMobileLayout({
                             onClick={() => onTabChange(item.id)}
                             onKeyDown={handleTabKeyDown}
                             className={cn(
-                                "h-9 rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                "relative h-9 rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                                 tab === item.id
                                     ? "bg-card text-wafuu-shu shadow-sm"
                                     : "text-wafuu-sumi-light hover:text-wafuu-sumi",
                             )}
                         >
                             {item.label}
+                            {/* 文字を動かさず、被らないよう、通知の印と同じく右上の角に置く。 */}
+                            {item.id === "candidates" && isReading && tab !== "candidates" && (
+                                <>
+                                    <RamRunningIcon className="absolute -top-3 -right-1" />
+                                    <span className="sr-only">（読んでいます）</span>
+                                </>
+                            )}
                         </button>
                     ))}
                 </div>

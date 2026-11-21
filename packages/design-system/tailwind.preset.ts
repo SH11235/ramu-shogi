@@ -128,6 +128,13 @@ const preset: Omit<Config, "content"> = {
                 // 点で知らせる印の光
                 indicator: "0 0 6px hsl(var(--wafuu-kin) / 0.6)",
             },
+            // 走るラムのドット絵（4 コマを横に並べた絵を、1 コマずつ送る）
+            keyframes: {
+                "ram-run": { to: { transform: "translateX(-100%)" } },
+            },
+            animation: {
+                "ram-run": "ram-run 0.48s steps(4) infinite",
+            },
             dropShadow: {
                 // 盤と駒台の駒
                 piece: "0 2px 4px rgba(0, 0, 0, 0.15)",

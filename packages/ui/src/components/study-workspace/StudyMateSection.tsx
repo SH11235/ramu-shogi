@@ -1,5 +1,5 @@
 /**
- * 候補手の欄に出す詰み探索。操作（調べるボタン・中止）は「この局面を深く解析」と並べ、途中経過と
+ * 候補手の欄に出す詰み探索。操作（調べるボタン・止める）は「この局面を深く解析」と並べ、途中経過と
  * 結果は、調べた局面の詰み探索の枠に出す。結果は「☗玉の詰み」「☖玉に詰めろ」のように、どちらの玉の
  * 話かで言う（詰み・詰めろという言葉に慣れていなくても、どちらが危ないかが分かるように）。
  */
@@ -9,6 +9,7 @@ import { cn } from "@shogi/design-system";
 import type { MateResult } from "@shogi/engine-client";
 import type { ReactElement } from "react";
 import { Button } from "../button";
+import { RamRunningIcon } from "../ram-running-icon";
 import { sidesWithoutKing } from "../shogi-match/utils/boardUtils";
 import { convertPvToDisplay } from "../shogi-match/utils/kifFormat";
 import type { StudyPvRequest } from "./StudyCandidatesPanel";
@@ -92,11 +93,11 @@ function StopButton({ onStop }: { onStop: () => void }): ReactElement {
             type="button"
             variant="outline"
             size="sm"
-            aria-label="詰み探索を中止"
+            aria-label="詰み探索を止める"
             className={cn(COMPACT_BUTTON_CLASS, "w-full")}
             onClick={onStop}
         >
-            中止
+            止める
         </Button>
     );
 }
@@ -171,7 +172,7 @@ function MateLine({
 }
 
 /**
- * 「詰みを読む」のボタン。この局面を調べている間は同じ場所が「中止」に替わる。枠の幅は「詰みを読む」
+ * 「詰みを読む」のボタン。この局面を調べている間は同じ場所が「止める」に替わる。枠の幅は「詰みを読む」
  * に合わせ、途中経過は詰み探索の枠に出す（ボタンの行の幅を変えない）。別の局面を調べている途中に
  * 押すと、そちらを止めてこの局面を調べる（呼び出し側が切り替える）。
  */
@@ -262,10 +263,12 @@ export function StudyMateResult({
             aria-label="詰み探索"
             className="@container flex flex-col rounded-lg border border-border px-1 py-1"
         >
-            <div className="flex flex-wrap items-baseline gap-x-1.5 px-1 py-0.5 text-xs text-muted-foreground">
+            {/* ラムが出入りしても下が動かないよう、高さを取っておく。 */}
+            <div className="flex min-h-7 flex-wrap items-center gap-x-1.5 px-1 text-xs text-muted-foreground">
                 <h3 className="shrink-0 font-medium text-wafuu-sumi">詰み探索</h3>
                 {state.status === "running" ? (
-                    <output aria-live="polite" className="tabular-nums">
+                    <output aria-live="polite" className="flex items-center gap-1.5 tabular-nums">
+                        <RamRunningIcon />
                         {studyMateProgressText(state)}
                     </output>
                 ) : (
@@ -511,8 +514,9 @@ function StudyShortestMate({
                     {state?.status === "running" ? (
                         <output
                             aria-live="polite"
-                            className="text-xs text-muted-foreground tabular-nums"
+                            className="flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums"
                         >
+                            <RamRunningIcon />
                             {studyShortestProgressText(state)}
                         </output>
                     ) : state?.status === "done" && state.message ? (
@@ -534,11 +538,11 @@ function StudyShortestMate({
                         type="button"
                         variant="outline"
                         size="sm"
-                        aria-label="最短手順を求めるのを中止"
+                        aria-label="最短手順を求めるのを止める"
                         className={COMPACT_BUTTON_CLASS}
                         onClick={onStop}
                     >
-                        中止
+                        止める
                     </Button>
                 ) : (
                     !finished && (

@@ -407,18 +407,6 @@ export function studyBestCandidate(result: StudyAnalysisResult): StudyCandidate 
     );
 }
 
-/**
- * その局面を `minTimeMs` 以上かけて読み切った結果が、どれかのレイヤーにあるか。レイヤーの上限ではなく
- * 実際に読んだ時間で見る（深さ・局面数の上限で早く止まった結果は数えない）。
- */
-export function studyNodeReadFor(doc: StudyDocument, nodeId: string, minTimeMs: number): boolean {
-    return doc.layers.some((layer) => {
-        if (!Object.hasOwn(layer.results, nodeId)) return false;
-        const result = layer.results[nodeId];
-        return result.completion === "completed" && (result.timeMs ?? 0) >= minTimeMs;
-    });
-}
-
 /** レイヤーに結果のあるノードの数（文書に残っているノードだけ数える）。 */
 export function countStudyLayerResults(doc: StudyDocument, layer: StudyLayer): number {
     let count = 0;
