@@ -1,6 +1,6 @@
 import type { KifuTree } from "@shogi/app-core";
 import type { KeyboardEvent, ReactElement, RefObject } from "react";
-import { BookTreeGraph } from "../book-tree-viewer/BookTreeGraph";
+import { type BookTreeBoardRenderer, BookTreeGraph } from "../book-tree-viewer/BookTreeGraph";
 import { moveLabel } from "../book-tree-viewer/bookLabels";
 import { Button } from "../button";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "../dialog";
@@ -8,7 +8,8 @@ import { studyGraphFromKifuTree } from "./studyTreeGraph";
 
 /**
  * 研究ノートの本譜と変化を、定跡の木と同じ図で画面いっぱいに描く。木で選んだ手は、そのまま研究ノートの
- * いまの局面になる（閉じると、盤はその局面のまま）。
+ * いまの局面になる（閉じると、盤はその局面のまま）。`renderBoard` を渡すと、局面の欄の盤で手を指して
+ * 変化を足せる。
  */
 export function StudyTreeDialog({
     open,
@@ -18,6 +19,7 @@ export function StudyTreeDialog({
     onSelect,
     flipBoard,
     returnFocus,
+    renderBoard,
 }: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
@@ -30,6 +32,8 @@ export function StudyTreeDialog({
      * Radix は戻さない。クリックでボタンにフォーカスが移らないブラウザもあるので、押された要素を渡す。
      */
     returnFocus: RefObject<HTMLElement | null>;
+    /** 局面の欄に置く、駒を動かせる盤（いまの局面）。省くと見るだけの盤。 */
+    renderBoard?: BookTreeBoardRenderer;
 }): ReactElement {
     // 閉じている間は木を写さない（研究ノートを編集するたびに写し直さないように）。
     const graph = open ? studyGraphFromKifuTree(tree) : null;
@@ -96,6 +100,7 @@ export function StudyTreeDialog({
                         onSelect={select}
                         flipBoard={flipBoard}
                         explore
+                        renderBoard={renderBoard}
                         onActivate={(index) => {
                             select(index);
                             onOpenChange(false);

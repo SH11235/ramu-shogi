@@ -19,7 +19,10 @@ import {
     AlertDialogTitle,
 } from "@shogi/ui/components/alert-dialog";
 import { cardVariants } from "@shogi/ui/components/card";
-import { StudyImportForm } from "@shogi/ui/components/study-workspace/StudyImportForm";
+import {
+    StudyImportForm,
+    StudyStartFromHirateButton,
+} from "@shogi/ui/components/study-workspace/StudyImportForm";
 import type { StudyKifuSource } from "@shogi/ui/components/study-workspace/studyImport";
 import {
     studyOriginLabel,
@@ -396,21 +399,36 @@ export default function StudiesPage({ api, verifySession }: StudiesPageProps): R
                 )}
 
                 {!isLoading && items.length === 0 && (
-                    <ImportSection onImport={handleImport} isAuthenticated={isAuthenticated} />
+                    <>
+                        <Section title="盤で検討する">
+                            <p className="text-sm text-muted-foreground">
+                                平手の開始局面から、盤で手を指して変化を研究できます。指した局面は
+                                AI の読みと一緒に保存されます。
+                            </p>
+                            <StudyStartFromHirateButton
+                                onImport={handleImport}
+                                className="sm:self-start"
+                            />
+                        </Section>
+                        <ImportSection onImport={handleImport} isAuthenticated={isAuthenticated} />
+                    </>
                 )}
 
                 {!isLoading && items.length > 0 && (
                     <>
                         <div className="flex items-center justify-between gap-3">
                             <p className="text-xs text-muted-foreground">{items.length} 件</p>
-                            <button
-                                type="button"
-                                aria-expanded={isImportOpen}
-                                onClick={() => setIsImportOpen(!isImportOpen)}
-                                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                            >
-                                棋譜を取り込む
-                            </button>
+                            <div className="flex flex-wrap items-start justify-end gap-2">
+                                <StudyStartFromHirateButton onImport={handleImport} />
+                                <button
+                                    type="button"
+                                    aria-expanded={isImportOpen}
+                                    onClick={() => setIsImportOpen(!isImportOpen)}
+                                    className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                >
+                                    棋譜を取り込む
+                                </button>
+                            </div>
                         </div>
                         {isImportOpen && (
                             <ImportSection

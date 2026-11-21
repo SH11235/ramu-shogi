@@ -40,7 +40,13 @@ function testNodeIds(doc: StudyDocument, moves: readonly string[] = TEST_MOVES):
 export function putScoreOp(
     nodeId: string,
     score: StudyScore,
-    options: { layerId?: string; depth?: number; pv?: string[] } = {},
+    options: {
+        layerId?: string;
+        depth?: number;
+        pv?: string[];
+        timeMs?: number | null;
+        completion?: "completed" | "aborted";
+    } = {},
 ): StudyOp {
     const depth = options.depth ?? 15;
     return {
@@ -49,10 +55,10 @@ export function putScoreOp(
         nodeId,
         result: {
             runId: "run",
-            completion: "completed",
+            completion: options.completion ?? "completed",
             depth,
             nodes: null,
-            timeMs: null,
+            timeMs: options.timeMs ?? null,
             execution: { threads: null, hashMb: null, parallelWorkers: null },
             candidates: [{ rank: 1, score, depth, seldepth: null, pv: options.pv ?? [] }],
         },

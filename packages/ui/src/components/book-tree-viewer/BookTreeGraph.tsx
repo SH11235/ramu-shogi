@@ -481,6 +481,7 @@ function PositionSummary({
     flipBoard,
     cellSize,
     handPlacement,
+    renderBoard,
 }: {
     tree: BookTree;
     valueFor: BookTreeValueOf;
@@ -488,8 +489,17 @@ function PositionSummary({
     flipBoard: boolean;
     cellSize: number;
     handPlacement: "rows" | "sides";
+    renderBoard?: BookTreeBoardRenderer;
 }) {
     const node = tree.nodes[id];
+    if (renderBoard) {
+        return (
+            <>
+                <SummaryLine tree={tree} valueFor={valueFor} id={id} />
+                {renderBoard({ cellSize, handPlacement })}
+            </>
+        );
+    }
     return (
         <>
             <SummaryLine tree={tree} valueFor={valueFor} id={id} />
@@ -525,11 +535,14 @@ function DockedPosition({
     onPointerLeave,
     collapsed = false,
     onCollapse,
+    renderBoard,
 }: {
     tree: BookTree;
     valueFor: BookTreeValueOf;
     id: number;
     hovering: boolean;
+    /** 選んでいる手の局面に置く盤（マウスを置いた手の局面は、見るだけの盤のまま）。 */
+    renderBoard?: BookTreeBoardRenderer;
     /** 盤をたたんで見出しだけにしている（狭い画面で木を広く見るとき）。 */
     collapsed?: boolean;
     /** 盤をたたむ・出す（狭い画面だけ）。 */
@@ -557,7 +570,11 @@ function DockedPosition({
         >
             <div className="flex items-center gap-2 self-stretch">
                 <p className="text-[11px] text-wafuu-sumi-light">
-                    {hovering ? "マウスを置いた手" : "選んでいる手"}
+                    {hovering
+                        ? "マウスを置いた手"
+                        : renderBoard
+                          ? "選んでいる手（盤で指すと手を足せます）"
+                          : "選んでいる手"}
                 </p>
                 {onCollapse && (
                     <Button
@@ -582,6 +599,7 @@ function DockedPosition({
                     flipBoard={flipBoard}
                     cellSize={cellSize}
                     handPlacement={overlay ? "rows" : "sides"}
+                    renderBoard={hovering ? undefined : renderBoard}
                 />
             )}
             {onOpen && !collapsed && (
@@ -598,6 +616,12 @@ function DockedPosition({
         </aside>
     );
 }
+
+/** 局面の欄に、見るだけの盤の代わりに置く盤（駒を動かせる盤など）を描く。 */
+export type BookTreeBoardRenderer = (options: {
+    cellSize: number;
+    handPlacement: "rows" | "sides";
+}) => ReactNode;
 
 /** 全画面で局面の盤を出すか。 */
 export type BookTreePreviewMode = "dock" | "off";
@@ -628,6 +652,7 @@ export function BookTreeGraph({
     explore = false,
     preview: previewMode = "dock",
     onActivate,
+    renderBoard,
     className,
 }: {
     tree: BookTree;
@@ -645,6 +670,8 @@ export function BookTreeGraph({
     preview?: BookTreePreviewMode;
     /** 局面の欄の「この局面を盤で開く」を押したとき（`explore` のときだけ）。 */
     onActivate?: (id: number) => void;
+    /** `explore` の局面の欄で、選んでいる手の局面に置く盤。省くと見るだけの盤。 */
+    renderBoard?: BookTreeBoardRenderer;
     className?: string;
 }): ReactElement {
     const valueFor: BookTreeValueOf =
@@ -896,6 +923,14 @@ export function BookTreeGraph({
     const dockTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     useEffect(() => () => clearTimeout(dockTimer.current), []);
     const hovered = useRef<number | null>(null);
+    // 選び直したら（欄の盤で手を指したときも）、マウスを置いていた手より選んだ手を出す。
+    // 欄の上にマウスがあると戻すタイマーが止まるので、ここで戻さないと、指した後の盤が見るだけの盤になる。
+    const [dockedFor, setDockedFor] = useState(selected);
+    if (dockedFor !== selected) {
+        setDockedFor(selected);
+        hovered.current = null;
+        setDocked(null);
+    }
     const hoverable = explore && previewMode === "dock";
     useEffect(() => {
         if (hoverable) return;
@@ -1109,6 +1144,7 @@ export function BookTreeGraph({
             onPointerLeave={releaseDocked}
             collapsed={narrow && boardCollapsed}
             onCollapse={narrow ? setBoardCollapsed : undefined}
+            renderBoard={renderBoard}
         />
     );
     return (
