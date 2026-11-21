@@ -124,6 +124,11 @@ interface StudyCandidatesPanelProps {
     live: StudyLiveSearch | undefined;
     onStartDeep: () => void;
     /**
+     * 「自動で読む」の切り替え。入れている間は、局面を移るたびにその局面を深く解析する。
+     * 渡さなければ出さない（編集できないとき）。
+     */
+    autoAnalyze?: { enabled: boolean; onChange: (enabled: boolean) => void };
+    /**
      * いまの局面でパスを指し（変化として足し）、その局面を深く解析する。手番でない側が何を狙って
      * いるかを見るため。渡さなければ出さない（編集できないとき）。
      */
@@ -436,6 +441,7 @@ export function StudyCandidatesPanel({
     isPreparing,
     live,
     onStartDeep,
+    autoAnalyze,
     onStartDeepAfterPass,
     revision = null,
     canContinueDeep = false,
@@ -468,7 +474,7 @@ export function StudyCandidatesPanel({
             <div className="flex flex-col gap-2">
                 {/* 欄の名前は見出しとして画面に出さない（PC は欄の並び、スマートフォンはタブで分かる）。 */}
                 <h2 className="sr-only">候補手</h2>
-                <div className="flex items-center gap-1.5">
+                <div className="flex flex-wrap items-center gap-1.5">
                     {/* 深く解析・止める・続けて読むは同じ枠で入れ替え、枠の幅をいちばん長い文言に合わせる
                         （切り替わるたびに隣のボタンが動かないように）。深さ・残りの時間は途中の候補の枠に出す。 */}
                     <div className="grid">
@@ -520,6 +526,19 @@ export function StudyCandidatesPanel({
                             )}
                         </div>
                     </div>
+                    {autoAnalyze && (
+                        <Button
+                            type="button"
+                            variant={autoAnalyze.enabled ? "default" : "outline"}
+                            size="sm"
+                            className={COMPACT_BUTTON_CLASS}
+                            aria-pressed={autoAnalyze.enabled}
+                            title="入れている間は、盤で指した・移った局面を自動で深く解析し、評価値を残します"
+                            onClick={() => autoAnalyze.onChange(!autoAnalyze.enabled)}
+                        >
+                            自動で読む
+                        </Button>
+                    )}
                     {onStartDeepAfterPass && (
                         <Button
                             type="button"

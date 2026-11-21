@@ -19,7 +19,10 @@ import {
 } from "@shogi/ui/components/alert-dialog";
 import { Button } from "@shogi/ui/components/button";
 import { cardVariants } from "@shogi/ui/components/card";
-import { StudyImportForm } from "@shogi/ui/components/study-workspace/StudyImportForm";
+import {
+    StudyImportForm,
+    StudyStartFromHirateButton,
+} from "@shogi/ui/components/study-workspace/StudyImportForm";
 import { createStudyFromKifuSource } from "@shogi/ui/components/study-workspace/studyEntry";
 import type { StudyKifuSource } from "@shogi/ui/components/study-workspace/studyImport";
 import {
@@ -103,6 +106,15 @@ export function StudiesView({
                     ノートは、この端末の中に保存されます。
                 </span>
             </div>
+
+            <section className={cn(cardVariants(), "flex flex-col gap-3 p-4")}>
+                <h2 className="text-base font-semibold text-foreground">盤で検討する</h2>
+                <p className="text-sm text-muted-foreground">
+                    平手の開始局面から、盤で手を指して変化を研究できます。指した局面は AI
+                    の読みと一緒に保存されます。
+                </p>
+                <StudyStartFromHirateButton onImport={handleImport} className="sm:self-start" />
+            </section>
 
             <section className={cn(cardVariants(), "flex flex-col gap-3 p-4")}>
                 <h2 className="text-base font-semibold text-foreground">

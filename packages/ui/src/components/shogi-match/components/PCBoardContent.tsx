@@ -63,7 +63,7 @@ interface PCBoardContentProps {
     passRights?: { sente: number; gote: number };
     turn?: Player;
     /** 持ち駒の欄の大きさ（省略時は、編集中は "edit"、それ以外は "normal"） */
-    handSize?: "medium" | "normal";
+    handSize?: "compact" | "medium" | "normal";
     /**
      * 持ち駒の置き場所。"rows" は盤の上下に横長で、"sides" は盤の左右に縦長で置く
      * （上側の持ち駒は盤の左上、下側の持ち駒は盤の右下。実物の駒台と同じ向き）。

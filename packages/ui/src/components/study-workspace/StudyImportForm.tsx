@@ -5,6 +5,7 @@
  * 呼び出し側が決める。
  */
 
+import { STUDY_HIRATE_SFEN } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { ChangeEvent, ReactElement } from "react";
 import { useRef, useState } from "react";
@@ -128,5 +129,43 @@ export function StudyImportForm({
             </div>
             <p className="text-xs text-muted-foreground">{storageNote}</p>
         </form>
+    );
+}
+
+/**
+ * 棋譜なしで、平手の開始局面から研究ノートを作るボタン。盤で手を指して変化を足していく使い方の入口。
+ */
+export function StudyStartFromHirateButton({
+    onImport,
+    className,
+}: {
+    onImport: (source: StudyKifuSource) => Promise<void>;
+    className?: string;
+}): ReactElement {
+    const [error, setError] = useState<string | null>(null);
+    const [isBusy, setIsBusy] = useState(false);
+    const start = async (): Promise<void> => {
+        if (isBusy) return;
+        setIsBusy(true);
+        setError(null);
+        try {
+            await onImport({ kind: "moves", startSfen: STUDY_HIRATE_SFEN, moves: [] });
+        } catch (failure) {
+            setError(failure instanceof Error ? failure.message : "研究ノートを作れませんでした");
+        } finally {
+            setIsBusy(false);
+        }
+    };
+    return (
+        <div className={cn("flex flex-col gap-1", className)}>
+            <Button type="button" variant="outline" disabled={isBusy} onClick={() => void start()}>
+                {isBusy ? "作成中…" : "平手の盤から始める"}
+            </Button>
+            {error && (
+                <p role="alert" className="text-sm text-destructive">
+                    {error}
+                </p>
+            )}
+        </div>
     );
 }

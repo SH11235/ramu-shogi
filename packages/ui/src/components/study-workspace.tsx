@@ -107,6 +107,7 @@ import {
     studyStructureKey,
 } from "./study-workspace/studyView";
 import {
+    STUDY_DEEP_TIME_MS,
     type StudyAnalysisController,
     type StudyApplyOpsResult,
     type StudyEngineIdentity,
@@ -123,6 +124,11 @@ import {
 } from "./study-workspace/useStudyMoveEditing";
 import { useStudyNodeNavigation } from "./study-workspace/useStudyNodeNavigation";
 import { TooltipProvider } from "./tooltip";
+
+/** 「自動で読む」を入れているか（端末ごとに覚える）。 */
+const STUDY_AUTO_ANALYZE_STORAGE_KEY = "shogi:studyAutoAnalyze";
+/** 時間で止めた探索の記録は、上限をわずかに下回ることがある。その差を、読み切ったものとして扱う幅。 */
+const DEEP_TIME_TOLERANCE_MS = 1_000;
 
 export type { StudyCommentDraft };
 
@@ -516,11 +522,27 @@ export function StudyWorkspaceView({
         },
         [],
     );
+    // 自動で読む: 盤で手を指す・局面を移るたびに、見ている局面を深く解析する（結果は解析レイヤーに残る）。
+    const [autoAnalyze, setAutoAnalyze] = useLocalStorage<boolean>(
+        STUDY_AUTO_ANALYZE_STORAGE_KEY,
+        false,
+    );
+    /** 自動で読み始めた（または手で読み始めた）局面。同じ局面で読み直さないために覚える。 */
+    const autoStartedNodeRef = useRef<string | null>(null);
+    // 外すと、開き直したとき（StrictMode の付け直しも）に同じ局面をもう一度読み始められる。
+    // `useStudyAnalysis` は外れるときに準備中の解析を取りやめるので、覚えたままだと読まずに終わる。
+    useEffect(
+        () => () => {
+            autoStartedNodeRef.current = null;
+        },
+        [],
+    );
     const startDeep = (): void => {
         if (locked || deepBlocked) return;
         actionSerialRef.current += 1;
         stopMate();
         setDeepNodeId(currentNodeId);
+        autoStartedNodeRef.current = currentNodeId;
         void analysis.startDeep(currentNodeId);
     };
     // パスの局面は、足した手が文書に入って画面のツリーに現れてから解析を始める（解析は画面のツリーから
@@ -561,8 +583,70 @@ export function StudyWorkspaceView({
         actionSerialRef.current += 1;
         stopMate();
         setDeepNodeId(pendingPassDeepNodeId);
+        autoStartedNodeRef.current = pendingPassDeepNodeId;
         void analysis.startDeep(pendingPassDeepNodeId);
     });
+    const onAutoAnalyzeTarget = useEffectEvent(
+        (
+            nodeId: string,
+            enabled: boolean,
+            isLocked: boolean,
+            isPreparing: boolean,
+            mode: StudyAnalysisController["mode"],
+            pendingPassNodeId: string | null,
+        ): void => {
+            // 編集できない間は、準備中の解析も取りやめになる。戻ったら同じ局面から読み直す。
+            if (!enabled || isLocked) {
+                autoStartedNodeRef.current = null;
+                return;
+            }
+            // パスを足して解析するのを待っている間は、そちらに任せる。
+            if (isPreparing || mode === "full" || pendingPassNodeId !== null) return;
+            if (autoStartedNodeRef.current === nodeId) return;
+            if (analysis.live?.nodeId === nodeId) {
+                autoStartedNodeRef.current = nodeId;
+                return;
+            }
+            // 深く解析と同じだけ（またはそれより長く）読み切った結果がある局面は、読み直さない。
+            // レイヤーの上限ではなく実際に読んだ時間で見る（深さ・局面数の上限で早く止まった結果は数えない）。
+            const alreadyRead = doc.layers.some((layer) => {
+                if (!Object.hasOwn(layer.results, nodeId)) return false;
+                const result = layer.results[nodeId];
+                return (
+                    result.completion === "completed" &&
+                    (result.timeMs ?? 0) >= STUDY_DEEP_TIME_MS - DEEP_TIME_TOLERANCE_MS
+                );
+            });
+            if (alreadyRead) {
+                autoStartedNodeRef.current = nodeId;
+                return;
+            }
+            startDeep();
+        },
+    );
+    // 準備中・全体の解析中で始められなかった局面は、それが終わったときに始める。
+    // 付けた直後に始めると、StrictMode の付け直しで `useStudyAnalysis` の準備が宙に浮くので、
+    // 1 拍おいてから始め、その前に外れたら取りやめる。
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            onAutoAnalyzeTarget(
+                currentNodeId,
+                autoAnalyze,
+                locked,
+                analysis.isPreparing,
+                analysis.mode,
+                pendingPassDeepNodeId,
+            );
+        }, 0);
+        return () => clearTimeout(timer);
+    }, [
+        currentNodeId,
+        autoAnalyze,
+        locked,
+        analysis.isPreparing,
+        analysis.mode,
+        pendingPassDeepNodeId,
+    ]);
     const continueDeep = (): void => {
         if (locked) return;
         actionSerialRef.current += 1;
@@ -922,6 +1006,7 @@ export function StudyWorkspaceView({
             isPreparing={analysis.isPreparing}
             live={analysis.live?.nodeId === currentNodeId ? analysis.live : undefined}
             onStartDeep={startDeep}
+            autoAnalyze={locked ? undefined : { enabled: autoAnalyze, onChange: setAutoAnalyze }}
             onStartDeepAfterPass={locked ? undefined : () => void startDeepAfterPass()}
             revision={insights.revision}
             canContinueDeep={analysis.continuableDeepNodeId === currentNodeId}
@@ -1211,6 +1296,22 @@ export function StudyWorkspaceView({
                 onSelect={(nodeId) => navigateTo(nodeId)}
                 flipBoard={flipBoard}
                 returnFocus={treeOpener}
+                renderBoard={
+                    locked
+                        ? undefined
+                        : ({ cellSize, handPlacement }) => (
+                              <div
+                                  style={{ "--shogi-cell-size": `${cellSize}px` } as CSSProperties}
+                              >
+                                  <PCBoardContent
+                                      {...boardProps}
+                                      handSize={handPlacement === "sides" ? "medium" : "compact"}
+                                      handPlacement={handPlacement}
+                                      handFrame="outline"
+                                  />
+                              </div>
+                          )
+                }
             />
 
             <StudyDeleteVariationDialog
