@@ -1,8 +1,11 @@
+import { STUDY_HIRATE_SFEN } from "@shogi/app-core";
 import { Link } from "@tanstack/react-router";
 import type { ReactElement, ReactNode } from "react";
 import { HeaderNav } from "../components/HeaderNav";
 import { HeroBoard } from "../components/HeroBoard";
 import { PageHeader } from "../components/PageHeader";
+import { useOpenStudy } from "../hooks/useOpenStudy";
+import { createStudyFromKifuSource } from "../lib/studyEntry";
 
 // トップ（迎える面 / T0）。低密度・暖。盤をヒーローに置き、余白と明朝見出しで
 // 「何のページで、次に何をするか」を一目で伝える入口。対局盤そのものは /play。
@@ -30,6 +33,13 @@ function EntryCard({ to, heading, children }: EntryCardProps): ReactElement {
 }
 
 export default function LandingPage(): ReactElement {
+    const { openStudy, isBusy, error } = useOpenStudy();
+    // 研究ノートの一覧を経ずに、平手の盤の研究ノートを作ってそのまま開く。
+    const startStudyFromHirate = (): void => {
+        void openStudy(() =>
+            createStudyFromKifuSource({ kind: "moves", startSfen: STUDY_HIRATE_SFEN, moves: [] }),
+        );
+    };
     return (
         <>
             <PageHeader items={[{ label: "ラム将棋" }]} right={<HeaderNav />} />
@@ -65,7 +75,20 @@ export default function LandingPage(): ReactElement {
                             >
                                 棋譜を調べる
                             </Link>
+                            <button
+                                type="button"
+                                onClick={startStudyFromHirate}
+                                disabled={isBusy}
+                                className="inline-flex items-center gap-2 rounded-lg border border-wafuu-border bg-background px-5 py-3 text-sm font-semibold text-wafuu-sumi transition-colors enabled:hover:border-wafuu-ai/50 enabled:hover:text-wafuu-ai disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                            >
+                                {isBusy ? "用意しています…" : "盤で検討する"}
+                            </button>
                         </div>
+                        {error && (
+                            <p role="alert" className="text-sm text-destructive">
+                                {error}
+                            </p>
+                        )}
                     </div>
                     <div className="relative mx-auto w-full max-w-[380px]">
                         <div
@@ -83,8 +106,8 @@ export default function LandingPage(): ReactElement {
                     <EntryCard to="/play" heading="AI と対局">
                         内蔵の NNUE エンジンと指す。強さと持ち時間を選べる。ログイン不要。
                     </EntryCard>
-                    <EntryCard to="/studies" heading="棋譜を調べる">
-                        棋譜を貼り付けて AI で解析。変化やコメントを研究ノートに残せる。
+                    <EntryCard to="/studies" heading="研究ノート">
+                        棋譜を AI で解析。平手の盤から指しての検討も。読みと変化を残せる。
                     </EntryCard>
                     <EntryCard to="/online" heading="オンライン対局">
                         部屋を作り、招待リンクで人と指す。名前を入れるだけで参加できる。
