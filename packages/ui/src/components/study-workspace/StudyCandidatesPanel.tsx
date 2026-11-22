@@ -18,7 +18,7 @@ import type {
     StudySource,
 } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
-import type { ReactElement, ReactNode } from "react";
+import type { ReactElement } from "react";
 import { useEffect, useId, useState } from "react";
 import { Button } from "../button";
 import { cardVariants } from "../card";
@@ -48,25 +48,6 @@ const DEEP_SEGMENT_SECONDS = STUDY_DEEP_TIME_MS / 1000;
 
 /** 自動で読むで、続きから読めずに読み終えたときの知らせ。 */
 export const STUDY_AUTO_ANALYZE_FINISHED = "この局面は読み終えました。局面を移ると読みます";
-
-function AutoAnalyzeStatusLine({
-    visible,
-    children,
-}: {
-    visible: boolean;
-    children: ReactNode;
-}): ReactElement {
-    return (
-        <span
-            className={cn(
-                "col-start-1 row-start-1 flex min-h-7 min-w-0 items-center gap-1.5",
-                !visible && "invisible",
-            )}
-        >
-            {children}
-        </span>
-    );
-}
 
 import type { StudyMateState, StudyShortestState } from "./useStudyMate";
 
@@ -516,36 +497,31 @@ export function StudyCandidatesPanel({
             {/* 入れたままにする設定なので、押すと始まる操作ボタンの列とは段を分ける。 */}
             {autoAnalyze && (
                 <div className="flex items-center gap-3 rounded-lg border border-wafuu-border bg-wafuu-washi px-3 py-2">
-                    <div className="flex min-w-0 flex-1 flex-col">
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
                         <label
                             htmlFor={autoAnalyzeId}
-                            className="text-sm font-medium text-wafuu-sumi"
+                            className="shrink-0 text-sm font-medium text-wafuu-sumi"
                         >
                             自動で読む
                         </label>
-                        {/* 説明・読み終えた知らせ・読んでいる表示を同じ升目に重ね、見せないものは透明に
-                            して高さだけ残す。どの幅でも一番長い文に高さが揃い、入り切りや読み終えで欄が
-                            上下せず、文も切れない。読んでいる中身はスイッチの名前に含めず説明にする
-                            （深さが変わるたびに名前が変わらないように）。 */}
-                        <span id={autoAnalyzeStatusId} className="grid min-w-0 text-xs leading-4">
-                            <AutoAnalyzeStatusLine visible={autoAnalyze.reading === null}>
-                                <span className="text-muted-foreground">
-                                    入れている間、見ている局面を読み続けます
+                        {/* 名前・ラム・スイッチを 1 行に収める。読んでいる局面と深さは下の「今の読み」に
+                            出ているので、ここでは画面読み上げ向けにだけ添える。ラムは切っている間も
+                            透明にして幅を取り、入り切りで横にずれないようにする。 */}
+                        <span
+                            id={autoAnalyzeStatusId}
+                            className="flex min-w-0 items-center gap-1.5 text-xs"
+                        >
+                            <RamRunningIcon
+                                running={isDeepHere && !autoFinished}
+                                className={cn(autoAnalyze.reading === null && "invisible")}
+                            />
+                            {autoFinished && (
+                                <span aria-hidden="true" className="truncate text-muted-foreground">
+                                    読み終えました
                                 </span>
-                            </AutoAnalyzeStatusLine>
-                            <AutoAnalyzeStatusLine visible={autoFinished}>
-                                <RamRunningIcon running={false} />
-                                <span className="min-w-0 font-medium text-wafuu-sumi">
-                                    {STUDY_AUTO_ANALYZE_FINISHED}
-                                </span>
-                            </AutoAnalyzeStatusLine>
-                            {autoAnalyze.reading !== null && !autoFinished && (
-                                <AutoAnalyzeStatusLine visible>
-                                    <RamRunningIcon running={isDeepHere} />
-                                    <span className="min-w-0 font-medium text-wafuu-sumi">
-                                        {autoAnalyze.reading}
-                                    </span>
-                                </AutoAnalyzeStatusLine>
+                            )}
+                            {autoAnalyze.reading !== null && (
+                                <span className="sr-only">{autoAnalyze.reading}</span>
                             )}
                         </span>
                     </div>
