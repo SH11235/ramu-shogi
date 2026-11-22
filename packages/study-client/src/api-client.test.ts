@@ -79,6 +79,59 @@ describe("createStudyApiClient", () => {
         expect(requests[3].init?.body).toBeUndefined();
     });
 
+    it("公開設定を Cookie つきの PUT で保存する", async () => {
+        const { fetchMock, requests } = createFetch(() => new Response(null, { status: 204 }));
+        const api = createStudyApiClient({ fetch: fetchMock });
+
+        expect(await api.setVisibility(TEST_STUDY_ID, { visibility: "unlisted" })).toEqual({
+            ok: true,
+            status: 204,
+            data: null,
+        });
+        expect(requests).toEqual([
+            {
+                url: `/api/studies/${TEST_STUDY_ID}/visibility`,
+                init: {
+                    method: "PUT",
+                    credentials: "same-origin",
+                    headers: { "Content-Type": "application/json" },
+                    body: '{"visibility":"unlisted"}',
+                },
+            },
+        ]);
+    });
+
+    it("共有ノートは Cookie を送らずに読み、見つからなければ 404 を返す", async () => {
+        const detail = {
+            ...createTestDocument(),
+            visibility: "unlisted",
+            revision: 1,
+            createdAt: "",
+            updatedAt: "",
+        };
+        const { fetchMock, requests } = createFetch(() => json(200, { study: detail }));
+        const api = createStudyApiClient({ fetch: fetchMock });
+
+        expect(await api.getPublic(TEST_STUDY_ID)).toEqual({
+            ok: true,
+            status: 200,
+            data: { study: detail },
+        });
+        expect(requests).toEqual([
+            {
+                url: `/api/public/studies/${TEST_STUDY_ID}`,
+                init: { method: "GET", credentials: "omit" },
+            },
+        ]);
+        const missing = createFetch(() => json(404, { error: "STUDY_NOT_FOUND" }));
+        expect(
+            await createStudyApiClient({ fetch: missing.fetchMock }).getPublic(TEST_STUDY_ID),
+        ).toMatchObject({
+            ok: false,
+            status: 404,
+        });
+    });
+
     it("成功の応答はステータスつきで返す（201 と 200 existing を区別できる）", async () => {
         const created = createFetch(() => json(201, { studyId: TEST_STUDY_ID, revision: 1 }));
         expect(await createStudyApiClient({ fetch: created.fetchMock }).get(TEST_STUDY_ID)).toEqual(

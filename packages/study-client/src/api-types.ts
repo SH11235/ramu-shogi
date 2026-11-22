@@ -14,6 +14,8 @@ import type {
     ListStudiesResponse as ContractListStudiesResponse,
     StudySummary as ContractStudySummary,
     GetStudyLimitsResponse,
+    SetStudyVisibilityRequest,
+    StudyVisibility,
 } from "@shogi/api-contract";
 import type {
     StudyAnalysisResult,
@@ -50,6 +52,7 @@ export type CreateStudyResponse = ContractCreateStudyResponse;
 
 /** `GET /api/studies/{id}` の `study`。 */
 export interface StudyDetail extends StudyDocument {
+    visibility: StudyVisibility;
     revision: number;
     createdAt: string;
     updatedAt: string;
@@ -109,7 +112,9 @@ export type StudyApiResult<T> =
     | { ok: true; status: number; data: T }
     | { ok: false; status: number; error: StudyApiErrorBody };
 
-/** 研究ノート API のクライアント（設計書 6 章の 6 本）。 */
+export type GetPublicStudyResponse = GetStudyResponse;
+
+/** 研究ノート API のクライアント。 */
 export interface StudyApi {
     list(params?: ListStudiesParams): Promise<StudyApiResult<ListStudiesResponse>>;
     create(body: CreateStudyRequest): Promise<StudyApiResult<CreateStudyResponse>>;
@@ -118,3 +123,19 @@ export interface StudyApi {
     delete(studyId: string): Promise<StudyApiResult<null>>;
     limits(): Promise<StudyApiResult<StudyLimitsResponse>>;
 }
+
+export interface StudyApiClient extends StudyApi {
+    getPublic(studyId: string): Promise<StudyApiResult<GetPublicStudyResponse>>;
+    setVisibility(studyId: string, body: SetStudyVisibilityRequest): Promise<StudyApiResult<null>>;
+}
+
+export const toStudyDocument = (detail: StudyDetail): StudyDocument => ({
+    id: detail.id,
+    title: detail.title,
+    origin: detail.origin,
+    startSfen: detail.startSfen,
+    rules: detail.rules,
+    meta: detail.meta,
+    tree: detail.tree,
+    layers: detail.layers,
+});

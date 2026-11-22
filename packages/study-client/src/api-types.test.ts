@@ -3,12 +3,18 @@ import type {
     StudyLimitName as ContractLimitName,
     StudyLimits as ContractLimits,
     ApplyStudyOpsRequest as ContractOpsRequest,
+    GetPublicStudyResponse as ContractPublicResponse,
     StudyDetail as ContractStudyDetail,
     StudyOp as ContractStudyOp,
 } from "@shogi/api-contract";
 import { STUDY_LIMITS, type StudyLimitName, type StudyOp } from "@shogi/app-core";
 import { describe, expect, it } from "vitest";
-import type { CreateStudyRequest, StudyDetail, StudyOpsRequest } from "./api-types";
+import type {
+    CreateStudyRequest,
+    GetPublicStudyResponse,
+    StudyDetail,
+    StudyOpsRequest,
+} from "./api-types";
 
 /** A が B に代入できれば true。 */
 type Extends<A, B> = [A] extends [B] ? true : false;
@@ -39,6 +45,14 @@ describe("手書きの型と、backend の OpenAPI から生成した型の整�
             Extends<StudyDetail["layers"], ContractStudyDetail["layers"]>,
         ] = [true, true, true];
         expect(checks).toEqual([true, true, true]);
+    });
+
+    it("公開 API は同じ文書の形を返す", () => {
+        const checks: [
+            Same<ContractPublicResponse["study"], ContractStudyDetail>,
+            Same<GetPublicStudyResponse["study"], StudyDetail>,
+        ] = [true, true];
+        expect(checks).toEqual([true, true]);
     });
 
     it("上限の名前と初期値の表が、生成型の上限と同じキーを持つ", () => {

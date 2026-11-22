@@ -80,6 +80,7 @@ describe("openOrCreateStudy", () => {
                         title: "RAMU 対 Panda",
                         origin: { kind: "rshogi_csa" as const, ref: "wdoor-20261009000001" },
                         meta: {},
+                        visibility: "private",
                         revision: 3,
                         nodeCount: 3,
                         layerCount: 1,

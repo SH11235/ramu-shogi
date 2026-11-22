@@ -45,9 +45,9 @@ interface StudyMoveListProps {
     /** 本譜の表示に戻す。 */
     onBackToMainLine: () => void;
     /** いま見ている手順を本譜にする（元の本譜は変化として残る）。 */
-    onPromoteToMainLine: () => void;
+    onPromoteToMainLine?: () => void;
     /** 変化（そのノードと配下）の削除を求める。確認は呼び出し側で行う。 */
-    onRequestDeleteVariation: (nodeId: string) => void;
+    onRequestDeleteVariation?: (nodeId: string) => void;
     /** 本譜と変化を木の図で開く（押されたボタンを渡す。閉じたらそこへフォーカスを戻す）。 */
     onOpenTree?: (opener: HTMLElement) => void;
     className?: string;
@@ -163,14 +163,16 @@ export function StudyMoveList({
                         >
                             本譜に戻る
                         </button>
-                        <button
-                            type="button"
-                            onClick={onPromoteToMainLine}
-                            className="min-h-10 rounded-md px-2 text-xs font-medium text-wafuu-ai underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        >
-                            本譜と入れ替える
-                        </button>
-                        {deletableHeadId && (
+                        {onPromoteToMainLine && (
+                            <button
+                                type="button"
+                                onClick={onPromoteToMainLine}
+                                className="min-h-10 rounded-md px-2 text-xs font-medium text-wafuu-ai underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                                本譜と入れ替える
+                            </button>
+                        )}
+                        {deletableHeadId && onRequestDeleteVariation && (
                             <StudyIconButton
                                 label="いま見ている変化を削除"
                                 onClick={() => onRequestDeleteVariation(deletableHeadId)}
@@ -340,7 +342,7 @@ export function StudyMoveList({
                                                     </span>
                                                     <span className="shrink-0">{length} 手</span>
                                                 </button>
-                                                {!isMain && (
+                                                {!isMain && onRequestDeleteVariation && (
                                                     <StudyIconButton
                                                         label={`変化 ${siblingLabel} を削除`}
                                                         onClick={() =>

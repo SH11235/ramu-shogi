@@ -131,7 +131,7 @@ interface StudyCandidatesPanelProps {
     isPreparing: boolean;
     /** この局面を深く解析している途中経過。別の局面を解析中・解析していなければ undefined。 */
     live: StudyLiveSearch | undefined;
-    onStartDeep: () => void;
+    onStartDeep?: () => void;
     /**
      * 「自動で読む」。`reading` はスイッチの行に出す状態（読んでいる局面など）で、無ければ null。
      * 渡さなければ出さない（編集できないとき）。
@@ -158,7 +158,7 @@ interface StudyCandidatesPanelProps {
     onContinueDeep?: () => void;
     onCancel: () => void;
     onPreviewPv: (request: StudyPvRequest) => void;
-    onAddPvAsVariation: (request: StudyPvRequest) => void;
+    onAddPvAsVariation?: (request: StudyPvRequest) => void;
     /** 詰み探索。使えないエンジンでは渡さない。 */
     mate?: {
         /** この局面の結果（調べていなければ undefined）。 */
@@ -357,7 +357,7 @@ function CandidateRow({
     /** ボタンの読み上げで、どの局面の候補かを区別するための言葉。 */
     groupLabel: string;
     onPreviewPv: (request: StudyPvRequest) => void;
-    onAddPvAsVariation: (request: StudyPvRequest) => void;
+    onAddPvAsVariation?: (request: StudyPvRequest) => void;
 }): ReactElement {
     const display = convertPvToDisplay(candidate.pv, node.positionAfter);
     const [, ...rest] = display;
@@ -402,12 +402,14 @@ function CandidateRow({
                     >
                         <PlayIcon />
                     </StudyIconButton>
-                    <StudyIconButton
-                        label={`${groupLabel}候補 ${candidate.rank} の読み筋を変化として追加`}
-                        onClick={() => onAddPvAsVariation(request)}
-                    >
-                        <AddBranchIcon />
-                    </StudyIconButton>
+                    {onAddPvAsVariation && (
+                        <StudyIconButton
+                            label={`${groupLabel}候補 ${candidate.rank} の読み筋を変化として追加`}
+                            onClick={() => onAddPvAsVariation(request)}
+                        >
+                            <AddBranchIcon />
+                        </StudyIconButton>
+                    )}
                 </div>
             )}
         </li>
@@ -540,55 +542,57 @@ export function StudyCandidatesPanel({
                     {/* 深く解析・止める・続けて読むは同じ枠で入れ替え、枠の幅をいちばん長い文言に合わせる
                         （切り替わるたびに隣のボタンが動かないように）。深さ・残りの時間は途中の候補の枠に出す。 */}
                     {/* 自動で読む間は同じことをしているので出さない。 */}
-                    <div className="grid" hidden={autoOn}>
-                        <span
-                            aria-hidden="true"
-                            className={cn(
-                                COMPACT_BUTTON_CLASS,
-                                "invisible col-start-1 row-start-1 flex items-center border border-transparent font-medium",
-                            )}
-                        >
-                            <ClockPlusIcon />
-                            続けて読む
-                        </span>
-                        <div className="col-start-1 row-start-1 flex">
-                            {isDeepHere ? (
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    className={cn(COMPACT_BUTTON_CLASS, "w-full")}
-                                    onClick={onCancel}
-                                >
-                                    止める
-                                </Button>
-                            ) : canContinueDeep && onContinueDeep ? (
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    className={cn(COMPACT_BUTTON_CLASS, "w-full")}
-                                    onClick={onContinueDeep}
-                                    disabled={isPreparing || analysisMode !== null}
-                                >
-                                    <ClockPlusIcon />
-                                    続けて読む
-                                </Button>
-                            ) : (
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    className={cn(COMPACT_BUTTON_CLASS, "w-full")}
-                                    aria-label="この局面を深く解析"
-                                    onClick={onStartDeep}
-                                    disabled={startDisabled}
-                                >
-                                    深く解析
-                                </Button>
-                            )}
+                    {onStartDeep && (
+                        <div className="grid" hidden={autoOn}>
+                            <span
+                                aria-hidden="true"
+                                className={cn(
+                                    COMPACT_BUTTON_CLASS,
+                                    "invisible col-start-1 row-start-1 flex items-center border border-transparent font-medium",
+                                )}
+                            >
+                                <ClockPlusIcon />
+                                続けて読む
+                            </span>
+                            <div className="col-start-1 row-start-1 flex">
+                                {isDeepHere ? (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className={cn(COMPACT_BUTTON_CLASS, "w-full")}
+                                        onClick={onCancel}
+                                    >
+                                        止める
+                                    </Button>
+                                ) : canContinueDeep && onContinueDeep ? (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className={cn(COMPACT_BUTTON_CLASS, "w-full")}
+                                        onClick={onContinueDeep}
+                                        disabled={isPreparing || analysisMode !== null}
+                                    >
+                                        <ClockPlusIcon />
+                                        続けて読む
+                                    </Button>
+                                ) : (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className={cn(COMPACT_BUTTON_CLASS, "w-full")}
+                                        aria-label="この局面を深く解析"
+                                        onClick={onStartDeep}
+                                        disabled={startDisabled}
+                                    >
+                                        深く解析
+                                    </Button>
+                                )}
+                            </div>
                         </div>
-                    </div>
+                    )}
                     {onStartDeepAfterPass && (
                         <Button
                             type="button"
@@ -621,7 +625,7 @@ export function StudyCandidatesPanel({
             </div>
 
             {/* 詰み探索の結果は押したボタンの真下に出す（候補手が多い局面でも、列を送らずに見えるように）。 */}
-            {mate && (
+            {mate && onAddPvAsVariation && (
                 <StudyMateResult
                     node={node}
                     moveLabel={mate.moveLabel}

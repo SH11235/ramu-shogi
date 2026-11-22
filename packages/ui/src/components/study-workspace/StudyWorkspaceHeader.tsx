@@ -52,6 +52,8 @@ function TitleInput({
 export function StudyWorkspaceHeader({
     title,
     locked,
+    readOnly,
+    layerPicker,
     onCommitTitle,
     moreMenu,
     settingsLabel,
@@ -60,6 +62,8 @@ export function StudyWorkspaceHeader({
 }: {
     title: string;
     locked: boolean;
+    readOnly: boolean;
+    layerPicker?: ReactNode;
     onCommitTitle: (title: string) => void;
     moreMenu: ReactNode;
     settingsLabel: string;
@@ -69,21 +73,36 @@ export function StudyWorkspaceHeader({
     return (
         <header className="flex flex-col gap-1">
             <div className="flex items-center gap-2">
-                <TitleInput key={title} title={title} disabled={locked} onCommit={onCommitTitle} />
+                {readOnly ? (
+                    <h1 className="min-w-0 flex-1 truncate font-display text-lg font-bold text-wafuu-sumi md:text-xl">
+                        {title}
+                    </h1>
+                ) : (
+                    <TitleInput
+                        key={title}
+                        title={title}
+                        disabled={locked}
+                        onCommit={onCommitTitle}
+                    />
+                )}
                 {moreMenu}
                 {/* 解析に使う AI と 1 局面の時間は結果を大きく左右するので、アイコンだけにせず
                     いまの値を見せ、押せば変えられるようにする。 */}
-                <button
-                    type="button"
-                    onClick={onOpenSettings}
-                    aria-haspopup="dialog"
-                    disabled={locked}
-                    className="flex h-10 max-w-[45%] shrink-0 items-center gap-2 rounded-md border border-wafuu-border bg-background px-3 text-sm text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
-                >
-                    <SettingsIcon />
-                    <span className="text-xs text-muted-foreground">解析の設定</span>
-                    <span className="truncate font-medium">{settingsLabel}</span>
-                </button>
+                {readOnly ? (
+                    layerPicker
+                ) : (
+                    <button
+                        type="button"
+                        onClick={onOpenSettings}
+                        aria-haspopup="dialog"
+                        disabled={locked}
+                        className="flex h-10 max-w-[45%] shrink-0 items-center gap-2 rounded-md border border-wafuu-border bg-background px-3 text-sm text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
+                    >
+                        <SettingsIcon />
+                        <span className="text-xs text-muted-foreground">解析の設定</span>
+                        <span className="truncate font-medium">{settingsLabel}</span>
+                    </button>
+                )}
             </div>
             {/* 出典・保存先は表題の下の行に置く（表題の行は、表題と解析の設定で使う）。 */}
             {metaRow}

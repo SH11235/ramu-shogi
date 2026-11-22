@@ -23,6 +23,7 @@ import {
 const STUDY_ID = "11111111-1111-4111-8111-111111111111";
 const DRAFTS_KEY = "ramu-study-comment-drafts";
 const OTHER_ID = "22222222-2222-4222-8222-222222222222";
+const getPublic = vi.fn();
 const navigate = vi.fn(async () => {});
 let currentSync: StudySync;
 let currentStudyId = STUDY_ID;
@@ -55,6 +56,7 @@ vi.mock("../../platform/wasm-engine-client", () => ({ createWebWasmEngineClient:
 // `lib/studySync`（セッションの伝達・引き継ぎ）は本物を使い、その下の同期エンジンだけを差し替える。
 vi.mock("@shogi/study-client", async (importOriginal) => ({
     ...(await importOriginal<typeof import("@shogi/study-client")>()),
+    createStudyApiClient: () => ({ getPublic }),
     createBrowserStudySync: () => ({ sync: currentSync, store: null, dispose: () => {} }),
 }));
 // 画面そのものは `@shogi/ui` 側でテストしている。ここではページが渡すものを確かめる。
@@ -95,6 +97,7 @@ const prepareOwnedStudy = async (title: string): Promise<void> => {
 describe("StudyPage", () => {
     beforeEach(() => {
         navigate.mockClear();
+        getPublic.mockReset().mockResolvedValue({ ok: false, status: 404, error: {} });
         refreshSession.mockClear();
         dispatchAuthSessionSyncEvent.mockClear();
         headerLogin = undefined;
@@ -113,7 +116,45 @@ describe("StudyPage", () => {
         expect((await screen.findByTestId("workspace")).textContent).toBe(
             "開くノート/local/anonymous",
         );
+        expect(getPublic).not.toHaveBeenCalled();
         expect(workspaceProps?.engine).toMatchObject({ kind: "wasm", name: "rshogi" });
+    });
+
+    it.each([
+        AUTH_SIGNED_OUT,
+        authSignedIn("other-user"),
+        { session: null, isLoadingSession: false, sessionError: "通信エラー" },
+    ])("公開ノートを閲覧専用で開き、保存に流さない", async (session) => {
+        auth = session;
+        const doc = createTestDoc(STUDY_ID, "公開したノート");
+        getPublic.mockResolvedValue({
+            ok: true,
+            status: 200,
+            data: {
+                study: {
+                    ...doc,
+                    visibility: "unlisted",
+                    revision: 1,
+                    createdAt: "",
+                    updatedAt: "",
+                },
+            },
+        });
+        const applyOps = vi.spyOn(currentSync, "applyOps");
+        const flush = vi.spyOn(currentSync, "flush");
+        const view = render(<StudyPage />);
+
+        expect((await screen.findByTestId("workspace")).textContent).toContain(doc.title);
+        expect(getPublic).toHaveBeenCalledWith(STUDY_ID);
+        expect(workspaceProps?.doc).toEqual(doc);
+        expect(workspaceProps?.readOnly).toBe(true);
+        expect(workspaceProps?.onViewChange).toBeUndefined();
+        expect(workspaceProps?.shareDialog).toBeUndefined();
+        expect(await workspaceProps?.onApplyOps([{ type: "setTitle", value: "変更" }])).toBe(false);
+        expect(applyOps).not.toHaveBeenCalled();
+        expect(await currentSync.load(STUDY_ID)).toBeNull();
+        view.unmount();
+        expect(flush).not.toHaveBeenCalled();
     });
 
     describe("ログイン状態が分かる前", () => {
@@ -642,7 +683,13 @@ describe("StudyPage", () => {
          */
         const prepareSyncedStudy = async (options: { held?: boolean } = {}) => {
             const doc = createTestDoc(STUDY_ID, "アカウントのノート");
-            const detail = { ...doc, revision: 1, createdAt: "", updatedAt: "" };
+            const detail = {
+                ...doc,
+                visibility: "private" as const,
+                revision: 1,
+                createdAt: "",
+                updatedAt: "",
+            };
             const remote = { comment: "他の端末のコメント C", revision: 2 };
             let release: () => void = () => {};
             const gate =
