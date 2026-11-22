@@ -2,8 +2,7 @@ import { cn } from "@shogi/design-system";
 import type { CSSProperties, KeyboardEvent, ReactElement, ReactNode, RefObject } from "react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { RamRunningIcon } from "../ram-running-icon";
-import { BranchIcon } from "./StudyIcons";
-import { StudyNavBar } from "./StudyNavBar";
+import { MobileNavigation } from "../shogi-match/components/MobileNavigation";
 import { fitMobileBoard, mobileCommentMaxHeight } from "./studyMobileBoardFit";
 
 /**
@@ -117,6 +116,8 @@ export function StudyMobileLayout({
         onBack: () => void;
         onForward: () => void;
         onToEnd: () => void;
+        onBackTen: () => void;
+        onForwardTen: () => void;
     };
     commentButton: ReactNode;
     commentBox: ReactNode;
@@ -186,6 +187,8 @@ export function StudyMobileLayout({
                         </button>
                     ))}
                 </div>
+                {/* 手送りの行には手送りだけを置くので、コメントはどの表示でも出るこの行に置く。 */}
+                {commentButton}
                 {moreMenu}
             </div>
             {saveStrip}
@@ -230,28 +233,32 @@ export function StudyMobileLayout({
                         </div>
                     </div>
                 </div>
-                {/* 局面の移動と、この局面へのコメント。どの表示でも盤のすぐ下の同じ位置に置く。
-                    コメント欄は開いたときだけ、この行の下に重ねる（開閉で画面が上下しない）。 */}
-                <div className="relative flex shrink-0 items-center justify-center gap-1">
-                    {/* 「本譜へ」はどの表示でもこの位置に出す。本譜にいる間も場所は空けておき、変化に
-                        出入りしても移動のボタンが左右に動かないようにする。 */}
-                    <button
-                        type="button"
-                        aria-label="本譜に戻る"
-                        aria-hidden={onBackToMainLine === null}
-                        tabIndex={onBackToMainLine === null ? -1 : undefined}
-                        onClick={onBackToMainLine ?? undefined}
-                        className={cn(
-                            "flex h-10 shrink-0 items-center justify-center rounded-md border border-wafuu-border bg-card px-1.5 text-xs font-medium text-wafuu-ai transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                            onBackToMainLine === null && "invisible",
-                        )}
-                    >
-                        {/* 幅の狭い画面では文字を入れる場所が無いので、枝分かれの印だけにする。 */}
-                        <BranchIcon className="h-4 w-4 min-[375px]:hidden" />
-                        <span className="hidden min-[375px]:inline">本譜へ</span>
-                    </button>
-                    <StudyNavBar compact {...nav} />
-                    {commentButton}
+                {/* 局面の移動。どの表示でも盤のすぐ下の同じ位置に置く。コメント欄は開いたときだけ、
+                    この行の下に重ねる（開閉で画面が上下しない）。 */}
+                <div className="relative flex shrink-0 justify-center">
+                    <MobileNavigation
+                        currentPly={nav.index}
+                        totalPly={nav.total}
+                        onToStart={nav.onToStart}
+                        onBack={nav.onBack}
+                        onForward={nav.onForward}
+                        onToEnd={nav.onToEnd}
+                        onBackTen={nav.onBackTen}
+                        onForwardTen={nav.onForwardTen}
+                        center={
+                            // 変化を見ている間だけ、手数の場所を「本譜へ」にする（行の幅も並びも変えない）。
+                            onBackToMainLine !== null ? (
+                                <button
+                                    type="button"
+                                    aria-label="本譜に戻る"
+                                    onClick={onBackToMainLine}
+                                    className="flex h-10 w-[3.25rem] items-center justify-center rounded-md border border-wafuu-border bg-card text-xs min-[375px]:w-[3.75rem] font-medium text-wafuu-ai transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                >
+                                    本譜へ
+                                </button>
+                            ) : undefined
+                        }
+                    />
                     <div
                         id="study-comment"
                         hidden={!showsComment}

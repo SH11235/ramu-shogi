@@ -16,6 +16,7 @@ import { BottomSheet } from "../components/BottomSheet";
 import { ClockDisplay } from "../components/ClockDisplay";
 import { CurrentPositionAiHintPanel } from "../components/CurrentPositionAiHintPanel";
 import { PausedModeControls, PlayingModeControls } from "../components/GameModeControls";
+import { KIFU_NAV_STEP_TEN } from "../components/KifuNavigationToolbar";
 import { MobileAnalysisSheet } from "../components/MobileAnalysisSheet";
 import { MobileBoardSection } from "../components/MobileBoardSection";
 import type { KifuMove } from "../components/MobileKifuBar";
@@ -171,7 +172,10 @@ export function MobileLayout({
     } = navigation;
 
     const { currentPly, totalPly, isOnMainLine } = navigationState;
-    const { goBack, goForward, goToStart, goToEnd } = navigationHandlers;
+    const { goBack, goForward, goToStart, goToEnd, goBackBy, goForwardBy } = navigationHandlers;
+    const goBackTen = () => goBackBy(KIFU_NAV_STEP_TEN);
+    const goForwardTen = () =>
+        goForwardBy(KIFU_NAV_STEP_TEN, navigation.selectedBranchNodeId ?? undefined);
 
     // 待った可否の計算
     const canUndo =
@@ -212,10 +216,11 @@ export function MobileLayout({
     const isEditModeActive = isEditMode && !isMatchRunning;
     // 持っていない駒を出すのは、局面編集で駒台から駒を足すときだけ。
     const hideEmptyHandPieces = !isEditModeActive;
+    // 検討の並び（手送りの行を出す）か。手送りの行には手送りだけを置き、設定・AI はほかの行に置く。
+    const showsReviewNavigation = isReviewMode && (totalPly > 0 || viewerMode);
     // FAB表示条件: 検討モードで棋譜がある場合と編集モードではインライン表示するため非表示
     // （棋譜を見るだけの画面は 0 手の棋譜でも検討モードの並びで出すので、同じく非表示）
-    const shouldShowFloatingSettings =
-        !(isReviewMode && (totalPly > 0 || viewerMode)) && !isEditModeActive;
+    const shouldShowFloatingSettings = !showsReviewNavigation && !isEditModeActive;
 
     // ヘッダー中央の「手数・反転・サウンド」。
     const headerControls = (
@@ -233,6 +238,13 @@ export function MobileLayout({
                 🔄
             </button>
             <SoundToggle />
+            {/* 時計を並べる画面では、この行に余裕が無いので評価値の行に置く。 */}
+            {showsReviewNavigation && viewerMode && (
+                <MobileSettingsActions
+                    variant="header"
+                    onSettingsClick={() => setIsSettingsOpen(true)}
+                />
+            )}
         </>
     );
 
@@ -430,6 +442,13 @@ export function MobileLayout({
                                     </button>
                                 )}
                                 {mobileReviewActions}
+                                {!viewerMode && (
+                                    <MobileSettingsActions
+                                        variant="header"
+                                        onSettingsClick={() => setIsSettingsOpen(true)}
+                                        onNnueManagerClick={onOpenNnueManager}
+                                    />
+                                )}
                             </div>
                         </div>
 
@@ -441,8 +460,9 @@ export function MobileLayout({
                             onForward={goForward}
                             onToStart={goToStart}
                             onToEnd={goToEnd}
-                            onSettingsClick={() => setIsSettingsOpen(true)}
-                            onNnueManagerClick={viewerMode ? undefined : onOpenNnueManager}
+                            onBackTen={goBackTen}
+                            onForwardTen={goForwardTen}
+                            canGoForward={navigationState.canGoForward}
                         />
                     </div>
                 ) : viewerMode ? null : (
@@ -579,6 +599,8 @@ export function MobileLayout({
                 onForward={goForward}
                 onToStart={goToStart}
                 onToEnd={goToEnd}
+                onBackTen={goBackTen}
+                onForwardTen={goForwardTen}
                 onAddBranch={viewerMode ? undefined : handleAddPvAsBranch}
                 onPreview={handlePreviewPv}
                 isOnMainLine={isOnMainLine}

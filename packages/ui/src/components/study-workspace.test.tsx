@@ -2854,29 +2854,28 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         expect(screen.queryByText("このブラウザだけに保存")).toBeNull();
     });
 
-    it("「本譜へ」は局面の移動の行に置き、本譜にいる間も場所を空けておく。どの表示からでも戻れる", async () => {
+    it("変化に入っている間だけ、手送りの行の手数の場所が「本譜へ」になり、どの表示からでも戻れる", async () => {
         render(
             <Harness
                 initialDoc={createTestStudy().doc}
                 fetchLegalMoves={async () => ["2g2f", "7g7f"]}
             />,
         );
-        const navRow = () =>
-            screen.getByRole("navigation", { name: "局面の移動" }).parentElement as HTMLElement;
-        const slot = () =>
-            navRow().querySelector('button[aria-label="本譜に戻る"]') as HTMLButtonElement;
-        expect(slot().className).toContain("invisible");
+        const nav = () => screen.getByRole("navigation", { name: "局面の移動" });
+        const backToMain = () =>
+            within(nav()).queryByRole("button", { name: "本譜に戻る" }) as HTMLButtonElement | null;
+        expect(backToMain()).toBeNull();
 
         fireEvent.click(screen.getByRole("button", { name: /^2g 先手の歩/ }));
         await act(async () => {
             fireEvent.click(screen.getByRole("button", { name: /^2f 空マス/ }));
         });
         fireEvent.click(screen.getByRole("tab", { name: "候補手" }));
-        expect(slot().className).not.toContain("invisible");
+        expect(backToMain()).not.toBeNull();
         expect(screen.getAllByRole("button", { name: "本譜に戻る" })).toHaveLength(1);
 
-        fireEvent.click(slot());
-        expect(slot().className).toContain("invisible");
+        fireEvent.click(backToMain() as HTMLButtonElement);
+        expect(backToMain()).toBeNull();
     });
 
     it("表題は「その他の操作」から変える", async () => {

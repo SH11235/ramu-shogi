@@ -1,7 +1,8 @@
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
 
-type MobileSettingsActionsVariant = "navigation" | "fab";
+/** "header": 盤の上の行（手数・反転・サウンド）に並べる、同じ大きさの小さなボタン。 */
+type MobileSettingsActionsVariant = "navigation" | "fab" | "header";
 
 interface MobileSettingsActionsProps {
     variant: MobileSettingsActionsVariant;
@@ -21,11 +22,14 @@ export function MobileSettingsActions({
     }
 
     const isNavigation = variant === "navigation";
+    const isHeader = variant === "header";
+    const headerButtonClassName =
+        "flex h-8 w-8 items-center justify-center rounded text-sm hover:bg-muted";
     const navButtonBase = "w-10 h-10 flex items-center justify-center rounded-lg text-lg";
     const fabButtonClassName =
         "w-9 h-9 rounded-full bg-background/60 backdrop-blur-sm border border-border/30 shadow-sm flex items-center justify-center text-muted-foreground/70 hover:text-muted-foreground hover:bg-background/80 active:scale-95 transition-all";
 
-    const settingsTitle = isNavigation ? "設定" : undefined;
+    const settingsTitle = isNavigation || isHeader ? "設定" : undefined;
     const settingsAriaLabel = isNavigation ? "設定を開く" : "対局設定を開く";
 
     return (
@@ -35,14 +39,16 @@ export function MobileSettingsActions({
                     type="button"
                     onClick={onNnueManagerClick}
                     className={
-                        isNavigation
-                            ? cn(
-                                  navButtonBase,
-                                  "border border-border bg-background",
-                                  "transition-colors",
-                                  "hover:bg-muted active:bg-muted/80",
-                              )
-                            : fabButtonClassName
+                        isHeader
+                            ? headerButtonClassName
+                            : isNavigation
+                              ? cn(
+                                    navButtonBase,
+                                    "border border-border bg-background",
+                                    "transition-colors",
+                                    "hover:bg-muted active:bg-muted/80",
+                                )
+                              : fabButtonClassName
                     }
                     title="AI（評価関数）"
                     aria-label="AI（評価関数）を開く"
@@ -58,14 +64,16 @@ export function MobileSettingsActions({
                     type="button"
                     onClick={onSettingsClick}
                     className={
-                        isNavigation
-                            ? cn(
-                                  navButtonBase,
-                                  "border border-border bg-background",
-                                  "transition-colors",
-                                  "hover:bg-muted active:bg-muted/80",
-                              )
-                            : fabButtonClassName
+                        isHeader
+                            ? headerButtonClassName
+                            : isNavigation
+                              ? cn(
+                                    navButtonBase,
+                                    "border border-border bg-background",
+                                    "transition-colors",
+                                    "hover:bg-muted active:bg-muted/80",
+                                )
+                              : fabButtonClassName
                     }
                     title={settingsTitle}
                     aria-label={settingsAriaLabel}
@@ -74,8 +82,8 @@ export function MobileSettingsActions({
                         <>⚙️</>
                     ) : (
                         <svg
-                            width="20"
-                            height="20"
+                            width={isHeader ? 18 : 20}
+                            height={isHeader ? 18 : 20}
                             viewBox="0 0 24 24"
                             fill="none"
                             stroke="currentColor"

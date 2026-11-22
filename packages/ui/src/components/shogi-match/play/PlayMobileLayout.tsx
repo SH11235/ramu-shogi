@@ -13,8 +13,9 @@
 import type { ReactElement, ReactNode } from "react";
 import { useState } from "react";
 import { BottomSheet } from "../components/BottomSheet";
-import { KifuNavigationToolbar } from "../components/KifuNavigationToolbar";
+import { KIFU_NAV_STEP_TEN } from "../components/KifuNavigationToolbar";
 import { MobileBoardSection } from "../components/MobileBoardSection";
+import { MobileNavigation } from "../components/MobileNavigation";
 import { useMatchState } from "../contexts/MatchStateContext";
 import { useNavigation } from "../contexts/NavigationContext";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
@@ -204,24 +205,23 @@ export function PlayMobileLayout({ candidateNote, devTools }: PlayMobileLayoutPr
             )}
             {phase === "finished" && (
                 <>
-                    {/* 振り返りの送りと次の一歩は、対局中の手番の行・操作の行と同じ高さ・同じ位置に置く
-                        （終局で盤の大きさも位置も変えない）。棋譜の帯は行の幅いっぱいに置き（1 手ずつはここで送る）、両端に最初・最後へのボタンを置く。 */}
+                    {/* 振り返りの送りと次の一歩は、対局中の手番の行・操作の行と同じ位置に置く。棋譜の帯は
+                        行の幅いっぱいに置き、その下にほかの画面と同じ手送りの行を置く。 */}
                     <div className="sticky bottom-0 z-10 mt-auto flex flex-col gap-1 bg-background pb-1">
-                        <KifuNavigationToolbar
+                        <PlayKifuStrip
+                            showReading={hasEngine && displaySettings.showEngineReading}
+                            className="h-8"
+                        />
+                        <MobileNavigation
                             currentPly={navigationState.currentPly}
                             totalPly={navigationState.totalPly}
                             onBack={navigationHandlers.goBack}
                             onForward={() => navigationHandlers.goForward()}
                             onToStart={navigationHandlers.goToStart}
                             onToEnd={navigationHandlers.goToEnd}
+                            onBackTen={() => navigationHandlers.goBackBy(KIFU_NAV_STEP_TEN)}
+                            onForwardTen={() => navigationHandlers.goForwardBy(KIFU_NAV_STEP_TEN)}
                             canGoForward={navigationState.canGoForward}
-                            size="bar"
-                            center={
-                                <PlayKifuStrip
-                                    showReading={hasEngine && displaySettings.showEngineReading}
-                                    className="h-8"
-                                />
-                            }
                         />
                         <PlayResultCard singleRow hideSummary />
                     </div>
