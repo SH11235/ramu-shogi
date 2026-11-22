@@ -4,6 +4,7 @@ import type { ReactElement, ReactNode } from "react";
 import { HeaderNav } from "../components/HeaderNav";
 import { HeroBoard } from "../components/HeroBoard";
 import { PageHeader } from "../components/PageHeader";
+import { useAuthSession } from "../hooks/useAuthSession";
 import { useOpenStudy } from "../hooks/useOpenStudy";
 import { createStudyFromKifuSource } from "../lib/studyEntry";
 
@@ -34,7 +35,9 @@ function EntryCard({ to, heading, children }: EntryCardProps): ReactElement {
 
 export default function LandingPage(): ReactElement {
     const { openStudy, isBusy, error } = useOpenStudy();
-    // 研究ノートの一覧を経ずに、平手の盤の研究ノートを作ってそのまま開く。
+    // ログイン状態が分かる前に作ると、ログイン中でも匿名のノートとして作られ、クラウドへ
+    // 引き継がれないことがある。分かるまで押せなくする。
+    const { isLoadingSession } = useAuthSession();
     const startStudyFromHirate = (): void => {
         void openStudy(() =>
             createStudyFromKifuSource({ kind: "moves", startSfen: STUDY_HIRATE_SFEN, moves: [] }),
@@ -78,7 +81,7 @@ export default function LandingPage(): ReactElement {
                             <button
                                 type="button"
                                 onClick={startStudyFromHirate}
-                                disabled={isBusy}
+                                disabled={isBusy || isLoadingSession}
                                 className="inline-flex items-center gap-2 rounded-lg border border-wafuu-border bg-background px-5 py-3 text-sm font-semibold text-wafuu-sumi transition-colors enabled:hover:border-wafuu-ai/50 enabled:hover:text-wafuu-ai disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                             >
                                 {isBusy ? "用意しています…" : "盤で検討する"}
