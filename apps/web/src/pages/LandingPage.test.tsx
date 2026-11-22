@@ -150,6 +150,11 @@ describe("LandingPage", () => {
                 vi.advanceTimersByTime(5000);
             });
             await waitFor(() => expect(createStudyFromKifuSource).toHaveBeenCalledTimes(1));
+            // 誰がログインしているか分からないので、持ち主を匿名にしてから作る。
+            expect(ensureStudySession).toHaveBeenCalledWith(null);
+            expect(ensureStudySession.mock.invocationCallOrder[0]).toBeLessThan(
+                createStudyFromKifuSource.mock.invocationCallOrder[0],
+            );
         } finally {
             vi.useRealTimers();
         }
