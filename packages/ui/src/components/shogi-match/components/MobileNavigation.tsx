@@ -1,5 +1,6 @@
 import { cn } from "@shogi/design-system";
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
+import { FirstIcon, LastIcon, NextIcon, PrevIcon } from "../../study-workspace/StudyIcons";
 import { MobileSettingsActions } from "./MobileSettingsActions";
 
 interface MobileNavigationProps {
@@ -23,6 +24,36 @@ interface MobileNavigationProps {
     onNnueManagerClick?: () => void;
 }
 
+// 研究ノートの手送り（StudyIconButton）と同じ、アイコンだけの 40px のボタン。
+function MobileNavButton({
+    title,
+    onClick,
+    disabled,
+    children,
+}: {
+    title: string;
+    onClick: () => void;
+    disabled: boolean;
+    children: ReactNode;
+}): ReactElement {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            disabled={disabled}
+            title={title}
+            aria-label={title}
+            className={cn(
+                "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-background text-wafuu-sumi transition-colors",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                disabled ? "cursor-not-allowed opacity-40" : "hover:bg-muted/60 active:bg-muted",
+            )}
+        >
+            {children}
+        </button>
+    );
+}
+
 /**
  * スマホ検討モード用のナビゲーションボタン
  */
@@ -42,82 +73,27 @@ export function MobileNavigation({
 
     return (
         <div className="flex items-center justify-center gap-2 py-2">
-            {/* 最初へ */}
-            <button
-                type="button"
-                onClick={onToStart}
-                disabled={disabled || !canGoBack}
-                className={cn(
-                    "w-10 h-10 flex items-center justify-center rounded-lg text-lg",
-                    "border border-border bg-background",
-                    "transition-colors",
-                    disabled || !canGoBack
-                        ? "opacity-40 cursor-not-allowed"
-                        : "hover:bg-muted active:bg-muted/80",
-                )}
-                title="最初へ"
-            >
-                ⏮
-            </button>
+            <MobileNavButton title="最初へ" onClick={onToStart} disabled={disabled || !canGoBack}>
+                <FirstIcon className="h-5 w-5" />
+            </MobileNavButton>
+            <MobileNavButton title="1手戻る" onClick={onBack} disabled={disabled || !canGoBack}>
+                <PrevIcon className="h-5 w-5" />
+            </MobileNavButton>
 
-            {/* 1手戻る */}
-            <button
-                type="button"
-                onClick={onBack}
-                disabled={disabled || !canGoBack}
-                className={cn(
-                    "w-14 h-10 flex items-center justify-center rounded-lg text-base font-medium",
-                    "border border-border bg-background",
-                    "transition-colors",
-                    disabled || !canGoBack
-                        ? "opacity-40 cursor-not-allowed"
-                        : "hover:bg-muted active:bg-muted/80",
-                )}
-                title="1手戻る"
-            >
-                ◀ 前
-            </button>
-
-            {/* 手数表示 */}
-            <div className="min-w-[60px] text-center text-sm font-medium">
+            <div className="min-w-[60px] text-center font-mono text-sm tabular-nums text-wafuu-sumi">
                 {currentPly} / {totalPly}
             </div>
 
-            {/* 1手進む */}
-            <button
-                type="button"
+            <MobileNavButton
+                title="1手進む"
                 onClick={onForward}
                 disabled={disabled || !canGoForward}
-                className={cn(
-                    "w-14 h-10 flex items-center justify-center rounded-lg text-base font-medium",
-                    "border border-border bg-background",
-                    "transition-colors",
-                    disabled || !canGoForward
-                        ? "opacity-40 cursor-not-allowed"
-                        : "hover:bg-muted active:bg-muted/80",
-                )}
-                title="1手進む"
             >
-                次 ▶
-            </button>
-
-            {/* 最後へ */}
-            <button
-                type="button"
-                onClick={onToEnd}
-                disabled={disabled || !canGoForward}
-                className={cn(
-                    "w-10 h-10 flex items-center justify-center rounded-lg text-lg",
-                    "border border-border bg-background",
-                    "transition-colors",
-                    disabled || !canGoForward
-                        ? "opacity-40 cursor-not-allowed"
-                        : "hover:bg-muted active:bg-muted/80",
-                )}
-                title="最後へ"
-            >
-                ⏭
-            </button>
+                <NextIcon className="h-5 w-5" />
+            </MobileNavButton>
+            <MobileNavButton title="最後へ" onClick={onToEnd} disabled={disabled || !canGoForward}>
+                <LastIcon className="h-5 w-5" />
+            </MobileNavButton>
 
             <MobileSettingsActions
                 variant="navigation"

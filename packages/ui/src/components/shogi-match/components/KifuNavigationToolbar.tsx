@@ -1,5 +1,13 @@
 import { cn } from "@shogi/design-system";
 import { ChevronIcon } from "../../chevron-icon";
+import {
+    BackTenIcon,
+    FirstIcon,
+    ForwardTenIcon,
+    LastIcon,
+    NextIcon,
+    PrevIcon,
+} from "../../study-workspace/StudyIcons";
 /**
  * 棋譜ナビゲーションツールバー
  *
@@ -13,21 +21,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "../../popover";
 import { handleMenuKeyDown } from "../utils/menuKeyNavigation";
 
 export const KIFU_NAV_STEP_TEN = 10;
-
-/**
- * 10 手の移動の印。1 手の移動の塗りつぶした三角（◀ ▶）を 2 つ重ねた形にして、並びの見た目を揃える。
- */
-function DoubleTriangleIcon({ direction }: { direction: "back" | "forward" }): ReactElement {
-    return (
-        <svg
-            viewBox="0 0 16 12"
-            aria-hidden="true"
-            className={cn("h-3 w-4 fill-current", direction === "back" && "-scale-x-100")}
-        >
-            <path d="M0 0l8 6-8 6zM8 0l8 6-8 6z" />
-        </svg>
-    );
-}
 
 interface BranchInfo {
     hasBranches: boolean;
@@ -98,17 +91,13 @@ function NavButton({
             disabled={disabled}
             title={title}
             aria-label={title}
-            className={`
-                ${bar ? "h-8 w-10 shrink-0 text-sm" : large ? "h-10 min-w-12 flex-1 text-base" : "w-8 h-8"} flex items-center justify-center
-                rounded border border-border bg-background
-                text-foreground text-sm font-medium
-                transition-colors duration-150
-                ${
-                    disabled
-                        ? "opacity-40 cursor-not-allowed"
-                        : "hover:bg-accent cursor-pointer active:scale-95"
-                }
-            `}
+            // 研究ノートの手送り（StudyIconButton）と同じ見た目にそろえる。
+            className={cn(
+                bar ? "h-8 w-10 shrink-0" : large ? "h-10 min-w-12 flex-1" : "h-8 w-8",
+                "inline-flex items-center justify-center rounded-md border border-border bg-background text-wafuu-sumi transition-colors",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                disabled ? "cursor-not-allowed opacity-40" : "hover:bg-muted/60 active:bg-muted",
+            )}
         >
             {children}
         </button>
@@ -165,7 +154,7 @@ export function KifuNavigationToolbar({
                 large={large}
                 bar={bar}
             >
-                ⏮
+                <FirstIcon className={large ? "h-5 w-5" : undefined} />
             </NavButton>
             {!bar && onBackTen && (
                 <NavButton
@@ -175,7 +164,7 @@ export function KifuNavigationToolbar({
                     large={large}
                     bar={bar}
                 >
-                    <DoubleTriangleIcon direction="back" />
+                    <BackTenIcon className={large ? "h-5 w-5" : undefined} />
                 </NavButton>
             )}
             {/* 1手戻る */}
@@ -187,7 +176,7 @@ export function KifuNavigationToolbar({
                     large={large}
                     bar={bar}
                 >
-                    ◀
+                    <PrevIcon className={large ? "h-5 w-5" : undefined} />
                 </NavButton>
             )}
 
@@ -214,7 +203,7 @@ export function KifuNavigationToolbar({
                     large={large}
                     bar={bar}
                 >
-                    ▶
+                    <NextIcon className={large ? "h-5 w-5" : undefined} />
                 </NavButton>
             )}
 
@@ -226,7 +215,7 @@ export function KifuNavigationToolbar({
                     large={large}
                     bar={bar}
                 >
-                    <DoubleTriangleIcon direction="forward" />
+                    <ForwardTenIcon className={large ? "h-5 w-5" : undefined} />
                 </NavButton>
             )}
             {/* 最後へ */}
@@ -237,7 +226,7 @@ export function KifuNavigationToolbar({
                 large={large}
                 bar={bar}
             >
-                ⏭
+                <LastIcon className={large ? "h-5 w-5" : undefined} />
             </NavButton>
 
             {/* 分岐切替（分岐がある場合のみ表示） */}
