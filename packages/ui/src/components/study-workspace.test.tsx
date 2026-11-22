@@ -374,9 +374,7 @@ describe("StudyWorkspaceView", () => {
         const finished = { ...reading, mode: null, live: null, continuableDeepNodeId: null };
         rerender(<Harness initialDoc={doc} analysis={finished} />);
         expect(
-            await screen.findByText(
-                "この局面の読みは終わりました。局面を移ると、その局面を読みます",
-            ),
+            await screen.findByText("この局面は読み終えました。局面を移ると読みます"),
         ).toBeTruthy();
         expect(reading.startDeep).not.toHaveBeenCalled();
         expect(reading.continueDeep).not.toHaveBeenCalled();

@@ -500,22 +500,23 @@ export function StudyCandidatesPanel({
                         >
                             自動で読む
                         </label>
-                        {/* 高さを固定して、入り切りで欄が上下しないようにする。読んでいる中身はスイッチの
-                            名前に含めず説明にする（深さが変わるたびに名前が変わらないように）。 */}
+                        {/* 2 行分の高さを常に取り、入り切りで欄が上下しないようにする（狭い欄では折り返す）。
+                            読んでいる中身はスイッチの名前に含めず説明にする（深さが変わるたびに名前が
+                            変わらないように）。 */}
                         <span
                             id={autoAnalyzeStatusId}
-                            className="flex min-h-7 items-center gap-1.5 text-xs"
+                            className="flex h-8 min-w-0 items-center gap-1.5 text-xs leading-4"
                         >
                             {autoAnalyze.reading !== null ? (
                                 <>
                                     <RamRunningIcon running={isDeepHere} />
-                                    <span className="min-w-0 truncate font-medium text-wafuu-sumi">
+                                    <span className="min-w-0 line-clamp-2 font-medium text-wafuu-sumi">
                                         {autoAnalyze.reading}
                                     </span>
                                 </>
                             ) : (
-                                <span className="text-muted-foreground">
-                                    入れている間、見ている局面を読み続けます。切ると止まります
+                                <span className="min-w-0 line-clamp-2 text-muted-foreground">
+                                    入れている間、見ている局面を読み続けます
                                 </span>
                             )}
                         </span>

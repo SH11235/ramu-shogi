@@ -756,7 +756,7 @@ export function StudyWorkspaceView({
     /** 自動で読むの、スイッチの行に出す状態（読んでいる局面の表記）。出すものが無ければ null。 */
     const autoReading = ((): string | null => {
         if (autoAnalyze && analysis.mode === null && autoFinishedNodeId === currentNodeId) {
-            return "この局面の読みは終わりました。局面を移ると、その局面を読みます";
+            return "この局面は読み終えました。局面を移ると読みます";
         }
         if (!autoReadingNow) return null;
         const nodeId = analysis.live?.nodeId ?? currentNodeId;
