@@ -1554,33 +1554,33 @@ export function createStudySync(options: StudySyncOptions): StudySync {
         },
 
         createStudy(doc) {
-            const created = decideCreatedOwner().then(({ owner, basis }) =>
-                enqueueWrite(doc.id, async () => {
-                    const study = await mutate(doc.id, (snapshot) => {
-                        if (snapshot.study) {
-                            throw new StudySyncError(
-                                "already_exists",
-                                `研究ノートは既にあります: ${doc.id}`,
-                            );
-                        }
-                        // 持ち主を決めてから書くまでの間にログイン状態が変わっていたら、匿名にして
-                        // 引き継ぎに任せる（変わったあとのアカウントから見えなくしないため）。
-                        const settled = (session?.userId ?? null) === basis ? owner : null;
-                        const fresh = newStoredStudy(doc, settled, null);
-                        return { study: fresh, result: fresh };
-                    });
-                    emit({ type: "document", studyId: doc.id, origin: "local" });
-                    schedule(doc.id, 0);
-                    return study;
-                }),
-            );
+            // 持ち主を確かめる間も、同じノートへの後続の書き込みや `flush` を先に進めない
+            // （呼んだ順に適用するため）。
+            const created = enqueueWrite(doc.id, async () => {
+                const { owner, basis } = await decideCreatedOwner();
+                const study = await mutate(doc.id, (snapshot) => {
+                    if (snapshot.study) {
+                        throw new StudySyncError(
+                            "already_exists",
+                            `研究ノートは既にあります: ${doc.id}`,
+                        );
+                    }
+                    // 持ち主を決めてから書くまでの間にログイン状態が変わっていたら、匿名にして
+                    // 引き継ぎに任せる（変わったあとのアカウントから見えなくしないため）。
+                    const settled = (session?.userId ?? null) === basis ? owner : null;
+                    const fresh = newStoredStudy(doc, settled, null);
+                    return { study: fresh, result: fresh };
+                });
+                emit({ type: "document", studyId: doc.id, origin: "local" });
+                schedule(doc.id, 0);
+                return study;
+            });
             pendingCreates.add(created);
             const forget = (): void => {
                 pendingCreates.delete(created);
             };
             created.then(forget, forget);
-            // 持ち主を確かめている間も、書き込み待ち（`whenLocalWritesSettled`・`flush`）に含める。
-            return trackWrite(created);
+            return created;
         },
 
         async open(studyId) {

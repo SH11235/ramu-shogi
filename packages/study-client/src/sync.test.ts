@@ -1111,13 +1111,36 @@ describe.each(STORES)("同期エンジン（保存層: $name）", ({ create }) =
             });
         });
 
-        it("匿名で作っている途中に引き継ぎが走っても、そのノートを引き継ぐ", async () => {
+        it("匿名で作っている途中にログインして引き継ぎが走っても、そのノートはアカウントのものになる", async () => {
             const harness = createHarness();
             // 書き終える前にログイン状態が分かり、引き継ぎが走る。
             const creating = harness.sync.createStudy(doc);
             harness.login(USER_A);
-            expect(await harness.sync.adoptAnonymousStudies()).toEqual([TEST_STUDY_ID]);
-            expect((await creating).owner).toBeNull();
+            await harness.sync.adoptAnonymousStudies();
+            await creating;
+            expect((await harness.store.read(TEST_STUDY_ID)).study?.owner).toBe(USER_A);
+        });
+
+        it("匿名のノートを書いている最中に引き継ぎが走っても、書き終えるのを待って引き継ぐ", async () => {
+            const inner = createStore();
+            let onTransact: (() => void) | null = null;
+            const store: StudyStore = {
+                ...inner,
+                transact: (studyId, mutate) => {
+                    const hook = onTransact;
+                    onTransact = null;
+                    hook?.();
+                    return inner.transact(studyId, mutate);
+                },
+            };
+            const harness = createHarness({ store });
+            let adopting: Promise<string[]> = Promise.resolve([]);
+            onTransact = () => {
+                harness.login(USER_A);
+                adopting = harness.sync.adoptAnonymousStudies();
+            };
+            expect((await harness.sync.createStudy(doc)).owner).toBeNull();
+            expect(await adopting).toEqual([TEST_STUDY_ID]);
             expect((await harness.store.read(TEST_STUDY_ID)).study?.owner).toBe(USER_A);
         });
 
@@ -2726,6 +2749,29 @@ describe.each(STORES)("同期エンジン（保存層: $name）", ({ create }) =
             release({ userId: USER_A });
             await waiting;
             expect((await harness.store.read(TEST_STUDY_ID)).study?.owner).toBe(USER_A);
+        });
+
+        it("持ち主を確かめている間に呼んだ同じノートの編集と flush は、作成のあとに行う", async () => {
+            let release: (value: { userId: string }) => void = () => undefined;
+            const gate = new Promise<{ userId: string }>((resolve) => {
+                release = resolve;
+            });
+            const harness = createHarness({ verifySession: () => gate });
+            harness.login(USER_A);
+            harness.switchCookie(USER_A);
+            const creating = harness.sync.createStudy(doc);
+            const editing = harness.sync.applyOps(TEST_STUDY_ID, [comment("作った直後の編集")]);
+            let flushed = false;
+            const flushing = harness.sync.flush(TEST_STUDY_ID).then(() => {
+                flushed = true;
+            });
+            await settle(5);
+            expect(flushed).toBe(false);
+            release({ userId: USER_A });
+            await creating;
+            await editing;
+            await flushing;
+            expect(harness.server.study(TEST_STUDY_ID)).not.toBeNull();
         });
 
         it("引き継ぐ前の確認で別のアカウントだと分かったら、引き継がずに取り直しを促す", async () => {
