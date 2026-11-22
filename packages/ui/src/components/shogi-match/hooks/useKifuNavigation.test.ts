@@ -12,6 +12,48 @@ const setup = () =>
     );
 
 describe("useKifuNavigation", () => {
+    const addLine = (
+        result: { current: ReturnType<typeof useKifuNavigation> },
+        moves: string[],
+    ): void => {
+        for (const move of moves) {
+            act(() => {
+                result.current.addMove(move, createInitialPositionState());
+            });
+        }
+    };
+    const plies = (n: number, move: string): string[] => Array.from({ length: n }, () => move);
+
+    it("goForwardBy・goBackBy は指定の手数だけ動き、端で止まる", () => {
+        const { result } = setup();
+        addLine(result, plies(12, "7g7f"));
+        act(() => result.current.goToStart());
+
+        act(() => result.current.goForwardBy(10));
+        expect(result.current.state.currentPly).toBe(10);
+        act(() => result.current.goForwardBy(10));
+        expect(result.current.state.currentPly).toBe(12);
+
+        act(() => result.current.goBackBy(10));
+        expect(result.current.state.currentPly).toBe(2);
+        act(() => result.current.goBackBy(10));
+        expect(result.current.state.currentPly).toBe(0);
+    });
+
+    it("goForwardBy は 1 手進むと同じく、指定した分岐をたどる", () => {
+        const { result } = setup();
+        addLine(result, plies(12, "7g7f"));
+        act(() => result.current.goToStart());
+        addLine(result, plies(12, "2g2f"));
+        const branchLeafId = result.current.tree.currentNodeId;
+        act(() => result.current.goToStart());
+
+        act(() => result.current.goForwardBy(10, branchLeafId));
+        const node = result.current.tree.nodes.get(result.current.tree.currentNodeId);
+        expect(node?.ply).toBe(10);
+        expect(node?.usiMove).toBe("2g2f");
+    });
+
     it("recordEvalByPly は normalized を KifuEval に転送する", () => {
         const { result } = setup();
 

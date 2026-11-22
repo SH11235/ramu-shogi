@@ -27,6 +27,10 @@ export interface NavigationState {
 export interface NavigationHandlers {
     goBack: () => void;
     goForward: (branchNodeId?: string) => void;
+    /** 複数手戻る */
+    goBackBy: (steps: number) => void;
+    /** 複数手進む（1 手進むと同じく、分岐ビューで選んでいる分岐をたどる） */
+    goForwardBy: (steps: number, branchNodeId?: string) => void;
     goToStart: () => void;
     goToEnd: () => void;
     switchBranch: (index: number) => void;

@@ -21,7 +21,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from "../../dialog";
-import { KifuNavigationToolbar } from "../components/KifuNavigationToolbar";
+import { KIFU_NAV_STEP_TEN, KifuNavigationToolbar } from "../components/KifuNavigationToolbar";
 import { PCBoardContent } from "../components/PCBoardContent";
 import { useMatchState } from "../contexts/MatchStateContext";
 import { useNavigation } from "../contexts/NavigationContext";
@@ -173,6 +173,12 @@ export function PlayPCLayout({
                                             onForward={() => navigationHandlers.goForward()}
                                             onToStart={navigationHandlers.goToStart}
                                             onToEnd={navigationHandlers.goToEnd}
+                                            onBackTen={() =>
+                                                navigationHandlers.goBackBy(KIFU_NAV_STEP_TEN)
+                                            }
+                                            onForwardTen={() =>
+                                                navigationHandlers.goForwardBy(KIFU_NAV_STEP_TEN)
+                                            }
                                             canGoForward={navigationState.canGoForward}
                                             size="large"
                                         />

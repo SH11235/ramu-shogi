@@ -1285,6 +1285,8 @@ export function ShogiMatch({
         navigationHandlers: {
             goBack: navigation.goBack,
             goForward: handleKeyboardForward,
+            goBackBy: navigation.goBackBy,
+            goForwardBy: navigation.goForwardBy,
             goToStart: navigation.goToStart,
             goToEnd: navigation.goToEnd,
             switchBranch: navigation.switchBranch,

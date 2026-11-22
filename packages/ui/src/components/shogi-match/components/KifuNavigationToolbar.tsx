@@ -12,6 +12,23 @@ import { useRef, useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "../../popover";
 import { handleMenuKeyDown } from "../utils/menuKeyNavigation";
 
+export const KIFU_NAV_STEP_TEN = 10;
+
+/**
+ * 10 手の移動の印。1 手の移動の塗りつぶした三角（◀ ▶）を 2 つ重ねた形にして、並びの見た目を揃える。
+ */
+function DoubleTriangleIcon({ direction }: { direction: "back" | "forward" }): ReactElement {
+    return (
+        <svg
+            viewBox="0 0 16 12"
+            aria-hidden="true"
+            className={cn("h-3 w-4 fill-current", direction === "back" && "-scale-x-100")}
+        >
+            <path d="M0 0l8 6-8 6zM8 0l8 6-8 6z" />
+        </svg>
+    );
+}
+
 interface BranchInfo {
     hasBranches: boolean;
     currentIndex: number;
@@ -34,6 +51,9 @@ interface KifuNavigationToolbarProps {
     onToStart: () => void;
     /** 最後へ */
     onToEnd: () => void;
+    /** 10 手戻る・10 手進む。渡したときだけ出す（`size="bar"` では出さない）。 */
+    onBackTen?: () => void;
+    onForwardTen?: () => void;
     /** 無効化（対局中など） */
     disabled?: boolean;
     /** 分岐情報 */
@@ -102,6 +122,8 @@ export function KifuNavigationToolbar({
     onForward,
     onToStart,
     onToEnd,
+    onBackTen,
+    onForwardTen,
     disabled = false,
     branchInfo,
     isRewound = false,
@@ -145,6 +167,17 @@ export function KifuNavigationToolbar({
             >
                 ⏮
             </NavButton>
+            {!bar && onBackTen && (
+                <NavButton
+                    onClick={onBackTen}
+                    disabled={disabled || !canGoBack}
+                    title="10手戻る"
+                    large={large}
+                    bar={bar}
+                >
+                    <DoubleTriangleIcon direction="back" />
+                </NavButton>
+            )}
             {/* 1手戻る */}
             {!bar && (
                 <NavButton
@@ -185,6 +218,17 @@ export function KifuNavigationToolbar({
                 </NavButton>
             )}
 
+            {!bar && onForwardTen && (
+                <NavButton
+                    onClick={onForwardTen}
+                    disabled={disabled || !canGoForward}
+                    title="10手進む"
+                    large={large}
+                    bar={bar}
+                >
+                    <DoubleTriangleIcon direction="forward" />
+                </NavButton>
+            )}
             {/* 最後へ */}
             <NavButton
                 onClick={onToEnd}

@@ -191,6 +191,24 @@ export function PrevIcon({ className }: IconProps): ReactElement {
     );
 }
 
+/** 10 手戻る。 */
+export function BackTenIcon({ className }: IconProps): ReactElement {
+    return (
+        <StrokeIcon className={className}>
+            <path d="m12 5-7 7 7 7M19 5l-7 7 7 7" />
+        </StrokeIcon>
+    );
+}
+
+/** 10 手進む。 */
+export function ForwardTenIcon({ className }: IconProps): ReactElement {
+    return (
+        <StrokeIcon className={className}>
+            <path d="m5 5 7 7-7 7M12 5l7 7-7 7" />
+        </StrokeIcon>
+    );
+}
+
 /** 1 手進む。 */
 export function NextIcon({ className }: IconProps): ReactElement {
     return (

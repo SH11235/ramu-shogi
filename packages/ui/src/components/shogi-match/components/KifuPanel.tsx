@@ -64,6 +64,9 @@ interface NavigationProps {
     onToStart: () => void;
     /** 最後へ */
     onToEnd: () => void;
+    /** 10 手戻る・10 手進む */
+    onBackTen?: () => void;
+    onForwardTen?: () => void;
     /** 巻き戻し中か */
     isRewound?: boolean;
     /** 分岐情報 */
@@ -324,6 +327,8 @@ export function KifuPanel({
                         onForward={navigation.onForward}
                         onToStart={navigation.onToStart}
                         onToEnd={navigation.onToEnd}
+                        onBackTen={navigation.onBackTen}
+                        onForwardTen={navigation.onForwardTen}
                         disabled={navigationDisabled}
                         branchInfo={navigation.branchInfo}
                         isRewound={navigation.isRewound}
