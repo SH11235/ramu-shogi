@@ -18,7 +18,7 @@ import type {
     StudySource,
 } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { useEffect, useId, useState } from "react";
 import { Button } from "../button";
 import { cardVariants } from "../card";
@@ -45,6 +45,28 @@ import {
 import { STUDY_DEEP_TIME_MS, type StudyLiveSearch } from "./useStudyAnalysis";
 
 const DEEP_SEGMENT_SECONDS = STUDY_DEEP_TIME_MS / 1000;
+
+/** 自動で読むで、続きから読めずに読み終えたときの知らせ。 */
+export const STUDY_AUTO_ANALYZE_FINISHED = "この局面は読み終えました。局面を移ると読みます";
+
+function AutoAnalyzeStatusLine({
+    visible,
+    children,
+}: {
+    visible: boolean;
+    children: ReactNode;
+}): ReactElement {
+    return (
+        <span
+            className={cn(
+                "col-start-1 row-start-1 flex min-h-7 min-w-0 items-center gap-1.5",
+                !visible && "invisible",
+            )}
+        >
+            {children}
+        </span>
+    );
+}
 
 import type { StudyMateState, StudyShortestState } from "./useStudyMate";
 
@@ -471,6 +493,7 @@ export function StudyCandidatesPanel({
     const autoAnalyzeStatusId = useId();
     const previousListId = useId();
     const autoOn = autoAnalyze?.enabled ?? false;
+    const autoFinished = autoAnalyze?.reading === STUDY_AUTO_ANALYZE_FINISHED;
     const isDeepHere = live !== undefined;
     const [isPreviousOpen, setIsPreviousOpen] = useState(false);
     // 別の局面の深い解析・詰み探索は、押せばそれを止めて切り替える。全体の解析の途中だけは始めない。
@@ -500,23 +523,29 @@ export function StudyCandidatesPanel({
                         >
                             自動で読む
                         </label>
-                        {/* 高さを固定して、入り切りで欄が上下しないようにする。読んでいる中身はスイッチの
-                            名前に含めず説明にする（深さが変わるたびに名前が変わらないように）。 */}
-                        <span
-                            id={autoAnalyzeStatusId}
-                            className="flex min-h-7 items-center gap-1.5 text-xs"
-                        >
-                            {autoAnalyze.reading !== null ? (
-                                <>
+                        {/* 説明・読み終えた知らせ・読んでいる表示を同じ升目に重ね、見せないものは透明に
+                            して高さだけ残す。どの幅でも一番長い文に高さが揃い、入り切りや読み終えで欄が
+                            上下せず、文も切れない。読んでいる中身はスイッチの名前に含めず説明にする
+                            （深さが変わるたびに名前が変わらないように）。 */}
+                        <span id={autoAnalyzeStatusId} className="grid min-w-0 text-xs leading-4">
+                            <AutoAnalyzeStatusLine visible={autoAnalyze.reading === null}>
+                                <span className="text-muted-foreground">
+                                    入れている間、見ている局面を読み続けます
+                                </span>
+                            </AutoAnalyzeStatusLine>
+                            <AutoAnalyzeStatusLine visible={autoFinished}>
+                                <RamRunningIcon running={false} />
+                                <span className="min-w-0 font-medium text-wafuu-sumi">
+                                    {STUDY_AUTO_ANALYZE_FINISHED}
+                                </span>
+                            </AutoAnalyzeStatusLine>
+                            {autoAnalyze.reading !== null && !autoFinished && (
+                                <AutoAnalyzeStatusLine visible>
                                     <RamRunningIcon running={isDeepHere} />
-                                    <span className="min-w-0 truncate font-medium text-wafuu-sumi">
+                                    <span className="min-w-0 font-medium text-wafuu-sumi">
                                         {autoAnalyze.reading}
                                     </span>
-                                </>
-                            ) : (
-                                <span className="text-muted-foreground">
-                                    入れている間、見ている局面を読み続けます。切ると止まります
-                                </span>
+                                </AutoAnalyzeStatusLine>
                             )}
                         </span>
                     </div>
