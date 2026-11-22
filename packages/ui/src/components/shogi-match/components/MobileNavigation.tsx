@@ -26,6 +26,8 @@ interface MobileNavigationProps {
     canGoForward?: boolean;
     /** 手数の表示の代わりに置くもの（研究ノートで変化に入っている間の「本譜へ」など） */
     center?: ReactNode;
+    /** 最新の局面から戻して見ている（ライブで進む対局で、手数を目立たせて知らせる） */
+    isRewound?: boolean;
     className?: string;
 }
 
@@ -49,7 +51,8 @@ function MobileNavButton({
             title={title}
             aria-label={title}
             className={cn(
-                "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-background text-wafuu-sumi transition-colors",
+                // 375px 未満の画面では、左右の余白を含めて 1 行に収まるよう 36px に詰める。
+                "inline-flex h-10 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-background text-wafuu-sumi transition-colors min-[375px]:w-10",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 disabled ? "cursor-not-allowed opacity-40" : "hover:bg-muted/60 active:bg-muted",
             )}
@@ -61,7 +64,8 @@ function MobileNavButton({
 
 /**
  * スマートフォンの手送りの行。どの画面でも同じ 7 つの操作だけを並べる（画面ごとのボタンはこの行に
- * 置かない）。40px のボタン 6 つと手数で約 320px にし、375px 幅の画面に詰めずに収める。
+ * 置かない）。375px 幅では 40px のボタンで約 324px、それより狭い画面では 36px に詰めて約 292px にし、
+ * 左右の余白（12〜16px）を含めて 1 行に収める。
  */
 export function MobileNavigation({
     currentPly,
@@ -75,6 +79,7 @@ export function MobileNavigation({
     disabled = false,
     canGoForward: canGoForwardProp,
     center,
+    isRewound = false,
     className,
 }: MobileNavigationProps): ReactElement {
     const canGoBack = !disabled && currentPly > 0;
@@ -94,9 +99,15 @@ export function MobileNavigation({
             <MobileNavButton title="1手戻る" onClick={onBack} disabled={!canGoBack}>
                 <PrevIcon className="h-5 w-5" />
             </MobileNavButton>
-            <div className="flex min-w-14 justify-center">
+            {/* 3 桁の手数（143/143）でも幅が増えないよう、空白を入れず、狭い画面では文字を小さくする。 */}
+            <div className="flex min-w-[3.25rem] justify-center min-[375px]:min-w-[3.75rem]">
                 {center ?? (
-                    <output className="text-center font-mono text-sm tabular-nums text-wafuu-sumi">
+                    <output
+                        className={cn(
+                            "text-center font-mono text-xs tabular-nums min-[375px]:text-sm",
+                            isRewound ? "text-wafuu-shu" : "text-wafuu-sumi",
+                        )}
+                    >
                         {currentPly}/{totalPly}
                     </output>
                 )}

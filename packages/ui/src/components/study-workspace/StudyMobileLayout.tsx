@@ -252,7 +252,7 @@ export function StudyMobileLayout({
                                     type="button"
                                     aria-label="本譜に戻る"
                                     onClick={onBackToMainLine}
-                                    className="flex h-10 w-14 items-center justify-center rounded-md border border-wafuu-border bg-card text-xs font-medium text-wafuu-ai transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                    className="flex h-10 w-[3.25rem] items-center justify-center rounded-md border border-wafuu-border bg-card text-xs min-[375px]:w-[3.75rem] font-medium text-wafuu-ai transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                 >
                                     本譜へ
                                 </button>

@@ -216,7 +216,7 @@ export function MobileLayout({
     const isEditModeActive = isEditMode && !isMatchRunning;
     // 持っていない駒を出すのは、局面編集で駒台から駒を足すときだけ。
     const hideEmptyHandPieces = !isEditModeActive;
-    // 検討の並び（手送りの行を出す）か。手送りの行には手送りだけを置き、設定・AI は盤の上の行に置く。
+    // 検討の並び（手送りの行を出す）か。手送りの行には手送りだけを置き、設定・AI はほかの行に置く。
     const showsReviewNavigation = isReviewMode && (totalPly > 0 || viewerMode);
     // FAB表示条件: 検討モードで棋譜がある場合と編集モードではインライン表示するため非表示
     // （棋譜を見るだけの画面は 0 手の棋譜でも検討モードの並びで出すので、同じく非表示）
@@ -238,11 +238,11 @@ export function MobileLayout({
                 🔄
             </button>
             <SoundToggle />
-            {showsReviewNavigation && (
+            {/* 時計を並べる画面では、この行に余裕が無いので評価値の行に置く。 */}
+            {showsReviewNavigation && viewerMode && (
                 <MobileSettingsActions
                     variant="header"
                     onSettingsClick={() => setIsSettingsOpen(true)}
-                    onNnueManagerClick={viewerMode ? undefined : onOpenNnueManager}
                 />
             )}
         </>
@@ -442,6 +442,13 @@ export function MobileLayout({
                                     </button>
                                 )}
                                 {mobileReviewActions}
+                                {!viewerMode && (
+                                    <MobileSettingsActions
+                                        variant="header"
+                                        onSettingsClick={() => setIsSettingsOpen(true)}
+                                        onNnueManagerClick={onOpenNnueManager}
+                                    />
+                                )}
                             </div>
                         </div>
 
