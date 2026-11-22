@@ -95,4 +95,23 @@ describe("AuthSessionProvider", () => {
         expect(result.current.session).toMatchObject({ user: { id: "user-b" } });
         expect(result.current.isLoadingSession).toBe(false);
     });
+
+    it("取り直しを始めたら、前の問い合わせを中止する", async () => {
+        const signals: AbortSignal[] = [];
+        vi.stubGlobal(
+            "fetch",
+            vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+                if (init?.signal) signals.push(init.signal);
+                return new Promise<Response>(() => undefined);
+            }),
+        );
+        const { result } = renderHook(() => useAuthSession(), { wrapper });
+        act(() => {
+            void result.current.refreshSession();
+        });
+        expect(signals).toHaveLength(2);
+        expect(signals[0].aborted).toBe(true);
+        expect(signals[1].aborted).toBe(false);
+        expect(result.current.isLoadingSession).toBe(true);
+    });
 });

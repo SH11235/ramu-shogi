@@ -101,7 +101,9 @@ export function AuthSessionProvider({ children }: { children: ReactNode }): Reac
 
     // 取り直しが重なったときは、最後に始めた問い合わせの結果だけを使う（先に始めた方の応答が
     // あとから届いて、切り替え後のアカウントを前のアカウントで上書きしないため）。
+    // 前の問い合わせは結果を使わないので、新しく始めるときに中止する。
     const latestRequest = useRef(0);
+    const latestController = useRef<AbortController | null>(null);
 
     async function refreshSession(): Promise<void> {
         const request = ++latestRequest.current;
@@ -109,7 +111,9 @@ export function AuthSessionProvider({ children }: { children: ReactNode }): Reac
         setIsLoading(true);
         setError(null);
 
+        latestController.current?.abort();
         const controller = new AbortController();
+        latestController.current = controller;
         let timer: ReturnType<typeof setTimeout> | undefined;
         const timeout = new Promise<never>((_, reject) => {
             timer = setTimeout(() => {
