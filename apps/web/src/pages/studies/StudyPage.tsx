@@ -402,9 +402,9 @@ export default function StudyPage(): ReactElement {
                 // 分かった）。確かめ直せるまで、アカウントのノートの編集を止める: 確かめ直しに失敗すると
                 // 認証の状態には前のユーザーが残り、送れない編集を続けられてしまう。
                 // 解くのは、確かめ直せて、同じ持ち主としてノートを読めたとき（`presentFromStore`）。
+                // ログイン状態の取り直しは `getStudySync` が頼む（取り直すと、保存の案内が
+                // 「ログインすると…」に変わる）。
                 lockOpenStudy();
-                // ログイン状態を取り直すと、保存の案内が「ログインすると…」に変わる。
-                dispatchAuthSessionSyncEvent();
                 return;
             }
             if (event.studyId !== studyId || stateRef.current.status === "public") return;

@@ -80,6 +80,24 @@ describe("studySync", () => {
         });
     });
 
+    it("同期エンジンが別のアカウントへの切り替えに気づいたら、画面のログイン状態を取り直させる", async () => {
+        memorySync = createStudySync({
+            store: createMemoryStudyStore(),
+            api: offlineApi,
+            verifySession: async () => ({ userId: "user-2" }),
+        });
+        const refresh = vi.fn();
+        window.addEventListener("ramu-auth-session-sync", refresh);
+        try {
+            syncStudySession("user-1");
+            await getStudySync().createStudy(createDoc("44444444-4444-4444-8444-444444444444"));
+            expect(refresh).toHaveBeenCalledTimes(1);
+            expect(getStudySync().getSession()).toEqual({ userId: "user-2" });
+        } finally {
+            window.removeEventListener("ramu-auth-session-sync", refresh);
+        }
+    });
+
     describe("未ログイン中のノートの引き継ぎと、コメントの書きかけ", () => {
         const ANON = "11111111-1111-4111-8111-111111111111";
         const OTHERS = "22222222-2222-4222-8222-222222222222";
@@ -134,6 +152,20 @@ describe("studySync", () => {
             expect(readStudyCommentDrafts(STILL_ANON, "user-1")).toEqual([]);
         });
 
+        it("引き継ぎを終えたあとに残った匿名のノートも、次の呼び出しで引き継ぐ", async () => {
+            const store = createMemoryStudyStore();
+            memorySync = createSync(store);
+            await ensureStudySession("user-1");
+            // 引き継ぎのあとに、匿名のノートができた（ログイン状態を確かめられずに作った、など）。
+            const otherTab = createSync(store);
+            await otherTab.createStudy(createDoc(ANON));
+            otherTab.dispose();
+
+            await ensureStudySession("user-1");
+
+            expect((await getStudySync().load(ANON))?.owner).toBe("user-1");
+        });
+
         it("書きかけを移す前の確認（ノートの読み込み）に失敗したら、次にセッションが確定したときに確かめ直して移す", async () => {
             const store = createMemoryStudyStore();
             memorySync = createSync(store);
@@ -173,7 +205,7 @@ describe("studySync", () => {
             expect(readStudyCommentDrafts(ANON, null)).toEqual([]);
             expect(readStudyCommentDrafts(ANON, "user-1")).toHaveLength(1);
 
-            // すべて確かめ終えたら、同じユーザーではやり直さない。
+            // すべて移し終えたら、確かめる書きかけが無いので読み直さない。
             const calls = load.mock.calls.length;
             await ensureStudySession("user-1");
             expect(load.mock.calls.length).toBe(calls);

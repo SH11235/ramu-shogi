@@ -263,13 +263,9 @@ export default function StudiesPage({ api, verifySession }: StudiesPageProps): R
 
         // 削除・統合・他のタブでの変更を一覧に反映する。
         const unsubscribe = sync.subscribeEvents((event) => {
-            if (event.type === "unauthorized") {
-                // セッションが切れた・別のタブでアカウントが変わった。ログイン状態を取り直す
-                // （取り直した結果で、一覧もそのアカウントのものに変わる）。
-                dispatchAuthSessionSyncEvent();
-                return;
-            }
-            if (event.type === "pulled") return;
+            // セッション切れ・別のタブでのアカウントの切り替え（`unauthorized`）は、`getStudySync` が
+            // ログイン状態を取り直させる（取り直した結果で、一覧もそのアカウントのものに変わる）。
+            if (event.type === "unauthorized" || event.type === "pulled") return;
             if (event.type === "removed") {
                 setRemote((items) => items.filter((item) => item.id !== event.studyId));
             }

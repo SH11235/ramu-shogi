@@ -1111,6 +1111,39 @@ describe.each(STORES)("同期エンジン（保存層: $name）", ({ create }) =
             });
         });
 
+        it("匿名で作っている途中にログインして引き継ぎが走っても、そのノートはアカウントのものになる", async () => {
+            const harness = createHarness();
+            // 書き終える前にログイン状態が分かり、引き継ぎが走る。
+            const creating = harness.sync.createStudy(doc);
+            harness.login(USER_A);
+            await harness.sync.adoptAnonymousStudies();
+            await creating;
+            expect((await harness.store.read(TEST_STUDY_ID)).study?.owner).toBe(USER_A);
+        });
+
+        it("匿名のノートを書いている最中に引き継ぎが走っても、書き終えるのを待って引き継ぐ", async () => {
+            const inner = createStore();
+            let onTransact: (() => void) | null = null;
+            const store: StudyStore = {
+                ...inner,
+                transact: (studyId, mutate) => {
+                    const hook = onTransact;
+                    onTransact = null;
+                    hook?.();
+                    return inner.transact(studyId, mutate);
+                },
+            };
+            const harness = createHarness({ store });
+            let adopting: Promise<string[]> = Promise.resolve([]);
+            onTransact = () => {
+                harness.login(USER_A);
+                adopting = harness.sync.adoptAnonymousStudies();
+            };
+            expect((await harness.sync.createStudy(doc)).owner).toBeNull();
+            expect(await adopting).toEqual([TEST_STUDY_ID]);
+            expect((await harness.store.read(TEST_STUDY_ID)).study?.owner).toBe(USER_A);
+        });
+
         it("引き継ぎの途中で別のアカウントに切り替わったら、古いアカウントのものにしない", async () => {
             const harness = createHarness();
             await harness.sync.createStudy(createTestDocument());
@@ -1858,13 +1891,14 @@ describe.each(STORES)("同期エンジン（保存層: $name）", ({ create }) =
         });
 
         it("別のタブでアカウントが切り替わっていたら、サーバーには作成しない", async () => {
-            let serverSideUser: string | null = USER_B;
+            let serverSideUser: string | null = USER_A;
             const harness = createHarness({
                 verifySession: async () => (serverSideUser ? { userId: serverSideUser } : null),
             });
-            // このタブは A のつもりだが、Cookie は別のタブで B に切り替わっている。
             harness.login(USER_A);
             await harness.sync.createStudy(doc);
+            // 作ったあと、送る前に、Cookie が別のタブで B に切り替わった。
+            serverSideUser = USER_B;
             await harness.advance(0);
             expect(harness.server.calls.filter((call) => call.method === "create")).toEqual([]);
             expect(harness.sync.getSession()).toEqual({ userId: USER_B });
@@ -1889,7 +1923,7 @@ describe.each(STORES)("同期エンジン（保存層: $name）", ({ create }) =
         });
 
         it("ログイン状態を確認できないときは、作成せずにあとで試し直す", async () => {
-            let fail = true;
+            let fail = false;
             const harness = createHarness({
                 verifySession: async () => {
                     if (fail) throw new Error("ログイン状態を確認できませんでした (503)");
@@ -1898,6 +1932,7 @@ describe.each(STORES)("同期エンジン（保存層: $name）", ({ create }) =
             });
             harness.login(USER_A);
             await harness.sync.createStudy(doc);
+            fail = true;
             await harness.advance(0);
             expect(harness.server.calls).toEqual([]);
             expect(harness.sync.getStatus(TEST_STUDY_ID)).toMatchObject({
@@ -2586,8 +2621,8 @@ describe.each(STORES)("同期エンジン（保存層: $name）", ({ create }) =
             async ({ other, reason }) => {
                 const harness = createVerifyingHarness();
                 harness.login(USER_A);
-                harness.switchCookie(other);
                 await harness.sync.createStudy(doc);
+                harness.switchCookie(other);
                 await harness.advance(0);
                 expect(harness.server.calls.filter((call) => call.method === "create")).toEqual([]);
                 expect(harness.sync.getStatus(TEST_STUDY_ID)).toMatchObject({
@@ -2607,6 +2642,161 @@ describe.each(STORES)("同期エンジン（保存層: $name）", ({ create }) =
                 expect(harness.sync.getStatus(TEST_STUDY_ID).state).toBe("synced");
             },
         );
+
+        it.each([
+            { label: "別のアカウントへの切り替え", other: USER_B },
+            { label: "ログアウト", other: null },
+        ])(
+            "画面が $label を知らないまま作ったノートは、サーバーから見たユーザーのものにする",
+            async ({ other }) => {
+                const harness = createVerifyingHarness();
+                harness.login(USER_A);
+                harness.switchCookie(other);
+                const created = await harness.sync.createStudy(doc);
+                expect(created.owner).toBe(other);
+                expect(harness.sync.getSession()).toEqual(other ? { userId: other } : null);
+                expect(harness.events).toContainEqual({ type: "unauthorized" });
+                // 作ったノートは、切り替え後のアカウントから見える。
+                expect((await harness.sync.load(TEST_STUDY_ID))?.owner).toBe(other);
+                await harness.advance(0);
+                expect(harness.server.study(TEST_STUDY_ID)?.revision ?? null).toBe(
+                    other ? 1 : null,
+                );
+            },
+        );
+
+        it("作る前にログイン状態を確かめられなければ、匿名で作り、確かめられたアカウントに引き継ぐ", async () => {
+            let serverSideUser: string | null = USER_A;
+            let fail = false;
+            const harness = createHarness({
+                verifySession: async () => {
+                    if (fail) throw new Error("ログイン状態を確認できませんでした (503)");
+                    return serverSideUser ? { userId: serverSideUser } : null;
+                },
+            });
+            harness.login(USER_A);
+            // 別のタブで B に切り替わったが、確かめようとすると通信に失敗する。
+            harness.switchCookie(USER_B);
+            serverSideUser = USER_B;
+            fail = true;
+            const created = await harness.sync.createStudy(doc);
+            expect(created.owner).toBeNull();
+            // 引き継ぎも、確かめられるまでは行わない。
+            await expect(harness.sync.adoptAnonymousStudies()).rejects.toThrow();
+            expect((await harness.store.read(TEST_STUDY_ID)).study?.owner).toBeNull();
+
+            fail = false;
+            harness.login(USER_B);
+            expect(await harness.sync.adoptAnonymousStudies()).toEqual([TEST_STUDY_ID]);
+            await harness.advance(0);
+            expect(harness.server.study(TEST_STUDY_ID)?.revision).toBe(1);
+        });
+
+        it("確かめている間にログイン状態が伝え直されたら、どちらのものにもせず匿名で作る", async () => {
+            let release: (value: { userId: string }) => void = () => undefined;
+            const harness = createHarness({
+                verifySession: () =>
+                    new Promise((resolve) => {
+                        release = resolve;
+                    }),
+            });
+            harness.login(USER_A);
+            const creating = harness.sync.createStudy(doc);
+            await settle(5);
+            harness.login(USER_B);
+            release({ userId: USER_A });
+            expect((await creating).owner).toBeNull();
+            expect(harness.sync.getSession()).toEqual({ userId: USER_B });
+        });
+
+        it("確かめてから書くまでの間にログイン状態が伝え直されたら、匿名で作る", async () => {
+            const inner = createStore();
+            let onTransact: (() => void) | null = null;
+            const store: StudyStore = {
+                ...inner,
+                transact: (studyId, mutate) => {
+                    const hook = onTransact;
+                    onTransact = null;
+                    hook?.();
+                    return inner.transact(studyId, mutate);
+                },
+            };
+            const harness = createHarness({
+                store,
+                verifySession: async () => ({ userId: USER_A }),
+            });
+            harness.login(USER_A);
+            onTransact = () => harness.login(USER_B);
+            expect((await harness.sync.createStudy(doc)).owner).toBeNull();
+        });
+
+        it("持ち主を確かめている間の作成も、書き込みの完了待ちに含める", async () => {
+            let release: (value: { userId: string }) => void = () => undefined;
+            const harness = createHarness({
+                verifySession: () =>
+                    new Promise((resolve) => {
+                        release = resolve;
+                    }),
+            });
+            harness.login(USER_A);
+            void harness.sync.createStudy(doc);
+            let settled = false;
+            const waiting = harness.sync.whenLocalWritesSettled().then(() => {
+                settled = true;
+            });
+            await settle(5);
+            expect(settled).toBe(false);
+            release({ userId: USER_A });
+            await waiting;
+            expect((await harness.store.read(TEST_STUDY_ID)).study?.owner).toBe(USER_A);
+        });
+
+        it("持ち主を確かめている間に呼んだ同じノートの編集と flush は、作成のあとに行う", async () => {
+            let release: (value: { userId: string }) => void = () => undefined;
+            const gate = new Promise<{ userId: string }>((resolve) => {
+                release = resolve;
+            });
+            const harness = createHarness({ verifySession: () => gate });
+            harness.login(USER_A);
+            harness.switchCookie(USER_A);
+            const creating = harness.sync.createStudy(doc);
+            const editing = harness.sync.applyOps(TEST_STUDY_ID, [comment("作った直後の編集")]);
+            let flushed = false;
+            const flushing = harness.sync.flush(TEST_STUDY_ID).then(() => {
+                flushed = true;
+            });
+            await settle(5);
+            expect(flushed).toBe(false);
+            release({ userId: USER_A });
+            await creating;
+            await editing;
+            await flushing;
+            expect(harness.server.study(TEST_STUDY_ID)).not.toBeNull();
+        });
+
+        it("引き継ぐ前の確認で別のアカウントだと分かったら、引き継がずに取り直しを促す", async () => {
+            const harness = createVerifyingHarness();
+            await harness.sync.createStudy(doc);
+            harness.login(USER_A);
+            harness.switchCookie(USER_B);
+            expect(await harness.sync.adoptAnonymousStudies()).toEqual([]);
+            expect((await harness.store.read(TEST_STUDY_ID)).study?.owner).toBeNull();
+            expect(harness.sync.getSession()).toEqual({ userId: USER_B });
+            expect(harness.events).toContainEqual({ type: "unauthorized" });
+        });
+
+        it("引き継ぐ匿名のノートが無ければ、ログイン状態を確かめに行かない", async () => {
+            let verifyCalls = 0;
+            const harness = createHarness({
+                verifySession: async () => {
+                    verifyCalls += 1;
+                    return { userId: USER_A };
+                },
+            });
+            harness.login(USER_A);
+            expect(await harness.sync.adoptAnonymousStudies()).toEqual([]);
+            expect(verifyCalls).toBe(0);
+        });
 
         it("別のアカウントとして送った削除の 404 では、削除済みにしない", async () => {
             const harness = createVerifyingHarness();

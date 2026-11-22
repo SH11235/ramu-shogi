@@ -5,10 +5,17 @@ import type {
     UpdateProfileRequest,
 } from "@shogi/api-contract";
 import type { ReactElement, ReactNode } from "react";
-import { createContext, useContext, useEffect, useEffectEvent, useState } from "react";
+import { createContext, useContext, useEffect, useEffectEvent, useRef, useState } from "react";
 import { RATE_LIMITED_MESSAGE } from "../lib/rateLimitMessage";
 
 const AUTH_SESSION_SYNC_EVENT = "ramu-auth-session-sync";
+
+/**
+ * `/api/auth/session` を待つ上限。返らないままだと `isLoadingSession` が true のまま残り、
+ * ログイン状態が分かるのを待つ画面（研究ノートの入口など）が進めなくなる。
+ */
+export const AUTH_SESSION_TIMEOUT_MS = 10_000;
+const SESSION_TIMEOUT_MESSAGE = "ログイン状態を確認できませんでした（時間切れ）";
 
 export type SessionUser = AuthSessionUser;
 
@@ -65,6 +72,19 @@ export async function syncProfileDisplayNameIfNeeded(
     dispatchAuthSessionSyncEvent();
 }
 
+async function fetchSession(signal: AbortSignal): Promise<AuthSessionResponse> {
+    const response = await fetch("/api/auth/session", {
+        credentials: "same-origin",
+        signal,
+    });
+    // 404 はバックエンド未接続のため未認証として扱う
+    if (response.status === 404) return { authenticated: false, user: null };
+    if (!response.ok) {
+        throw new Error(await parseApiError(response));
+    }
+    return (await response.json()) as AuthSessionResponse;
+}
+
 interface AuthSessionContextValue {
     session: AuthSessionResponse | null;
     sessionError: string | null;
@@ -79,29 +99,40 @@ export function AuthSessionProvider({ children }: { children: ReactNode }): Reac
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
+    // 取り直しが重なったときは、最後に始めた問い合わせの結果だけを使う（先に始めた方の応答が
+    // あとから届いて、切り替え後のアカウントを前のアカウントで上書きしないため）。
+    // 前の問い合わせは結果を使わないので、新しく始めるときに中止する。
+    const latestRequest = useRef(0);
+    const latestController = useRef<AbortController | null>(null);
+
     async function refreshSession(): Promise<void> {
+        const request = ++latestRequest.current;
+        const isLatest = (): boolean => request === latestRequest.current;
         setIsLoading(true);
         setError(null);
 
+        latestController.current?.abort();
+        const controller = new AbortController();
+        latestController.current = controller;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const timeout = new Promise<never>((_, reject) => {
+            timer = setTimeout(() => {
+                const timeoutError = new Error(SESSION_TIMEOUT_MESSAGE);
+                controller.abort(timeoutError);
+                reject(timeoutError);
+            }, AUTH_SESSION_TIMEOUT_MS);
+        });
         try {
-            const response = await fetch("/api/auth/session", {
-                credentials: "same-origin",
-            });
-            // 404 はバックエンド未接続のため未認証として扱う
-            if (response.status === 404) {
-                setSession({ authenticated: false, user: null });
-                return;
-            }
-            if (!response.ok) {
-                throw new Error(await parseApiError(response));
-            }
-            setSession((await response.json()) as AuthSessionResponse);
+            const next = await Promise.race([fetchSession(controller.signal), timeout]);
+            if (isLatest()) setSession(next);
         } catch (nextError) {
+            if (!isLatest()) return;
             setError(
                 nextError instanceof Error ? nextError.message : "セッションの取得に失敗しました",
             );
         } finally {
-            setIsLoading(false);
+            clearTimeout(timer);
+            if (isLatest()) setIsLoading(false);
         }
     }
 

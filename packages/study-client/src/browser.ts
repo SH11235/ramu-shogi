@@ -69,29 +69,58 @@ function createBroadcastStudyChannel(name: string = STUDY_CHANNEL_NAME): StudyCh
     };
 }
 
+/** ログイン状態の問い合わせを待つ上限。ノートを作る操作がこれを待つ。 */
+const SESSION_VERIFY_TIMEOUT_MS = 5000;
+
 /**
  * サーバーから見た現在のログイン状態を取り直す関数を作る（`GET /api/auth/session`）。
- * 未ログイン（backend 未接続の 404 を含む）なら null、取得できなければ例外。
+ * 未ログイン（backend 未接続の 404 を含む）なら null、取得できなければ（`timeoutMs` 以内に
+ * 返らないときも）例外。
  */
 export function createSessionVerifier(
-    options: StudyApiClientOptions = {},
+    options: StudyApiClientOptions & { timeoutMs?: number } = {},
 ): () => Promise<StudySession | null> {
     return async () => {
         const doFetch = options.fetch ?? globalThis.fetch;
-        const response = await doFetch(`${options.baseUrl ?? ""}/api/auth/session`, {
-            credentials: "same-origin",
+        const controller = new AbortController();
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const timeout = new Promise<never>((_, reject) => {
+            timer = setTimeout(() => {
+                const error = new Error("ログイン状態を確認できませんでした（時間切れ）");
+                controller.abort(error);
+                reject(error);
+            }, options.timeoutMs ?? SESSION_VERIFY_TIMEOUT_MS);
         });
-        if (response.status === 404) return null;
-        if (!response.ok) {
-            throw new Error(`ログイン状態を確認できませんでした (${response.status})`);
+        try {
+            return await Promise.race([
+                fetchSession(doFetch, options.baseUrl ?? "", controller.signal),
+                timeout,
+            ]);
+        } finally {
+            clearTimeout(timer);
         }
-        const payload = (await response.json()) as {
-            authenticated?: boolean;
-            user?: { id?: unknown } | null;
-        };
-        const userId = payload.authenticated ? payload.user?.id : null;
-        return typeof userId === "string" && userId !== "" ? { userId } : null;
     };
+}
+
+async function fetchSession(
+    doFetch: typeof fetch,
+    baseUrl: string,
+    signal: AbortSignal,
+): Promise<StudySession | null> {
+    const response = await doFetch(`${baseUrl}/api/auth/session`, {
+        credentials: "same-origin",
+        signal,
+    });
+    if (response.status === 404) return null;
+    if (!response.ok) {
+        throw new Error(`ログイン状態を確認できませんでした (${response.status})`);
+    }
+    const payload = (await response.json()) as {
+        authenticated?: boolean;
+        user?: { id?: unknown } | null;
+    };
+    const userId = payload.authenticated ? payload.user?.id : null;
+    return typeof userId === "string" && userId !== "" ? { userId } : null;
 }
 
 interface BrowserStudySyncOptions
