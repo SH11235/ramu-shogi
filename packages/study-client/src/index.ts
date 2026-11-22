@@ -6,7 +6,8 @@
  */
 
 export { createStudyApiClient } from "./api-client";
-export type { StudyApi, StudySummary } from "./api-types";
+export type { StudyApi, StudyApiClient, StudySummary } from "./api-types";
+export { toStudyDocument } from "./api-types";
 export type { BrowserStudySync } from "./browser";
 export { createBrowserStudySync, createSessionVerifier } from "./browser";
 export { createIndexedDbStudyStore } from "./indexeddb-store";

@@ -181,6 +181,8 @@ interface StudyWorkspaceCommonProps {
      * 書きかけのコメントは消さない。
      */
     locked?: boolean;
+    readOnly?: boolean;
+    shareDialog?: { open: boolean; onOpen: () => void };
     /**
      * 最初に入れておくコメントの下書き（前回、保存できないまま残っていた入力）。手ごとに 1 つ。
      * その手を開いたときにコメント欄へ戻す。
@@ -254,6 +256,8 @@ export function StudyWorkspaceView({
     titleDialog,
     fetchLegalMoves,
     locked = false,
+    readOnly = false,
+    shareDialog,
     initialCommentDrafts,
     onCommentDraftChange,
     commentBaseConfirmed = true,
@@ -268,6 +272,7 @@ export function StudyWorkspaceView({
     mate,
 }: StudyWorkspaceViewProps): ReactElement {
     const track = useUsageTracker();
+    const editingDisabled = locked || readOnly;
     const isMobile = useIsMobile();
     // 768〜1023px（タブレットの縦持ち）: 盤を小さくして 2 列にする。
     const isTablet = useMediaQuery("(min-width: 768px) and (max-width: 1023px)");
@@ -353,7 +358,8 @@ export function StudyWorkspaceView({
         doc,
         tree,
         nav,
-        locked,
+        locked: editingDisabled,
+        readOnly,
         fetchLegalMoves,
         onApplyOps,
         onMessageChange,
@@ -374,6 +380,7 @@ export function StudyWorkspaceView({
             deleteTargetId !== null ||
             isSettingsOpen ||
             isTitleDialogOpen ||
+            shareDialog?.open === true ||
             isMoreMenuOpen ||
             isTreeOpen,
         containerRef: boardSectionRef,
@@ -471,7 +478,7 @@ export function StudyWorkspaceView({
     const confirmDeleteVariation = (): void => {
         const targetId = deleteTargetId;
         setDeleteTargetId(null);
-        if (targetId === null || locked) return;
+        if (targetId === null || editingDisabled) return;
         const target = tree.nodes.get(targetId);
         if (!target || target.parentId === null) return;
         // 消す変化の中を見ていたら、枝分かれの手前へ戻ってから消す。
@@ -490,8 +497,8 @@ export function StudyWorkspaceView({
         setIsTitleDialogOpen(false);
         setDeleteTargetId(null);
     }, [locked, setIsTitleDialogOpen]);
-    const settingsOpen = isSettingsOpen && !locked;
-    const deleteDialogTargetId = locked ? null : deleteTargetId;
+    const settingsOpen = isSettingsOpen && !editingDisabled;
+    const deleteDialogTargetId = editingDisabled ? null : deleteTargetId;
 
     // 解析と詰み探索は同時に動かさない（スマートフォンで CPU とメモリを取り合う）
     const mateRunning = (mate?.runningNodeId ?? null) !== null;
@@ -537,10 +544,11 @@ export function StudyWorkspaceView({
     );
     // 自動で読む: 入れている間は、見ている局面を読み続ける（局面を移ればその局面を）。切ると止まる。
     // 読んでいるかどうかはスイッチそのものが表すので、自動で読む専用の止めるボタンは置かない。
-    const [autoAnalyze, setAutoAnalyze] = useLocalStorage<boolean>(
+    const [storedAutoAnalyze, setAutoAnalyze] = useLocalStorage<boolean>(
         STUDY_AUTO_ANALYZE_STORAGE_KEY,
         false,
     );
+    const autoAnalyze = !readOnly && storedAutoAnalyze;
     /**
      * 自動で読む以外の解析の操作を始める前に、自動で読むを切る（押した操作をそのまま通し、切ったことを
      * 知らせる）。読んでいた分は残る。止め終わるまでに別の操作をしたら false（その操作のほうを優先する）。
@@ -876,7 +884,7 @@ export function StudyWorkspaceView({
         mode: analysis.mode,
         progress: analysis.progress,
         fullTargetCount: analysis.fullTargetCount,
-        locked,
+        locked: editingDisabled,
         needsFullAnalysis,
         unanalyzedCount,
         // 自動で読んでいる間も押せる（押すと自動で読むを切ってから始める）。
@@ -1000,7 +1008,7 @@ export function StudyWorkspaceView({
     };
     // 選んでいる駒の影（マウスを乗せた行き先に出す）
     const moveShadow = useMoveShadow({
-        enabled: !locked,
+        enabled: !editingDisabled,
         selection,
         grid,
         turn: position.turn,
@@ -1066,8 +1074,8 @@ export function StudyWorkspaceView({
             unsavedComments={comments.unsaved}
             onSelect={(nodeId) => navigateTo(nodeId)}
             onBackToMainLine={nav.backToMainLine}
-            onPromoteToMainLine={editing.promoteLineToMain}
-            onRequestDeleteVariation={setDeleteTargetId}
+            onPromoteToMainLine={readOnly ? undefined : editing.promoteLineToMain}
+            onRequestDeleteVariation={readOnly ? undefined : setDeleteTargetId}
             onOpenTree={(opener) => {
                 treeOpener.current = opener;
                 setIsTreeOpen(true);
@@ -1087,20 +1095,20 @@ export function StudyWorkspaceView({
             analysisMode={analysis.mode}
             isPreparing={analysis.isPreparing}
             live={analysis.live?.nodeId === currentNodeId ? analysis.live : undefined}
-            onStartDeep={startDeep}
+            onStartDeep={readOnly ? undefined : startDeep}
             autoAnalyze={
-                locked
+                editingDisabled
                     ? undefined
                     : { enabled: autoAnalyze, onChange: changeAutoAnalyze, reading: autoReading }
             }
             collapsePreviousWhileReading={isMobile}
-            onStartDeepAfterPass={locked ? undefined : () => void startDeepAfterPass()}
+            onStartDeepAfterPass={editingDisabled ? undefined : () => void startDeepAfterPass()}
             revision={insights.revision}
             canContinueDeep={analysis.continuableDeepNodeId === currentNodeId}
             onContinueDeep={continueDeep}
             onCancel={cancelAnalysis}
             onPreviewPv={previewPv}
-            onAddPvAsVariation={editing.addPvAsVariation}
+            onAddPvAsVariation={readOnly ? undefined : editing.addPvAsVariation}
             mate={
                 mate?.supported
                     ? {
@@ -1128,9 +1136,25 @@ export function StudyWorkspaceView({
             initialDraft={comments.drafts.get(currentNodeId)}
             onDraftChange={(change) => comments.changeDraft(currentNodeId, change)}
             onConflictChange={(conflicted) => comments.changeConflict(currentNodeId, conflicted)}
-            disabled={locked}
+            disabled={editingDisabled}
             baseConfirmed={commentBaseConfirmed}
         />
+    );
+    const layerPicker = readOnly && doc.layers.length > 0 && (
+        <label className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+            表示する解析
+            <select
+                value={displayLayerId ?? ""}
+                onChange={(event) => onDisplayLayerChange(event.target.value)}
+                className="min-h-8 min-w-0 rounded-md border border-input bg-background px-2 text-foreground"
+            >
+                {doc.layers.map((layer) => (
+                    <option key={layer.id} value={layer.id}>
+                        {layer.display.label}
+                    </option>
+                ))}
+            </select>
+        </label>
     );
     const metaRow = (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1.5 text-xs text-muted-foreground">
@@ -1138,7 +1162,8 @@ export function StudyWorkspaceView({
             <span className="truncate">{originLink ?? studyOriginLabel(doc.origin)}</span>
             <StudyGameInfo meta={doc.meta} className="order-last basis-full" />
             {/* スマートフォンで保存の状態の帯を出している間は、同じ案内をここに重ねない。 */}
-            {!(isMobile && showsStudySaveStrip(saveStatus, localOnly)) && (
+            {readOnly && <span>閲覧のみ</span>}
+            {!readOnly && !(isMobile && showsStudySaveStrip(saveStatus, localOnly)) && (
                 <StudySaveIndicator
                     status={saveStatus}
                     onLogin={onLogin}
@@ -1153,30 +1178,30 @@ export function StudyWorkspaceView({
             onOpenChange={setIsMoreMenuOpen}
             // スマートフォンでは出典・保存先の行と、表題・解析の設定・盤の反転を画面に出さず、ここに置く。
             info={isMobile ? metaRow : undefined}
-            extraItems={
-                isMobile
+            extraItems={[
+                ...(shareDialog && !readOnly
+                    ? [{ label: "公開設定・共有リンク", run: shareDialog.onOpen }]
+                    : []),
+                ...(isMobile && !editingDisabled
                     ? [
-                          ...(locked
-                              ? []
-                              : [
-                                    {
-                                        label: "表題を変更",
-                                        run: () => setIsTitleDialogOpen(true),
-                                    },
-                                    {
-                                        label: "解析の設定",
-                                        note: analysis.settingsLabel,
-                                        run: () => setIsSettingsOpen(true),
-                                    },
-                                ]),
+                          { label: "表題を変更", run: () => setIsTitleDialogOpen(true) },
+                          {
+                              label: "解析の設定",
+                              note: analysis.settingsLabel,
+                              run: () => setIsSettingsOpen(true),
+                          },
+                      ]
+                    : []),
+                ...(isMobile
+                    ? [
                           {
                               label: flipBoard ? "盤面を元に戻す" : "盤面を反転",
                               run: () => setFlipBoard(!flipBoard),
                           },
                       ]
-                    : undefined
-            }
-            onPass={locked ? undefined : () => void editing.passFromCurrent()}
+                    : []),
+            ]}
+            onPass={editingDisabled ? undefined : () => void editing.passFromCurrent()}
             onCopyKifu={copyKifu}
             onSaveKifu={saveKifu}
             csaUnavailableReason={csaUnavailableReason}
@@ -1228,21 +1253,25 @@ export function StudyWorkspaceView({
                     <StudyWorkspaceHeader
                         title={doc.title}
                         locked={locked}
+                        readOnly={readOnly}
                         onCommitTitle={commitTitle}
                         moreMenu={moreMenu}
                         settingsLabel={analysis.settingsLabel}
                         onOpenSettings={() => setIsSettingsOpen(true)}
                         metaRow={metaRow}
+                        layerPicker={layerPicker}
                     />
                 )}
 
                 {/* 編集できない間は、再送とノートの破棄も止める（残すのは「ログインし直す」だけ）。 */}
-                <StudySaveNotice
-                    status={saveStatus}
-                    onRetry={locked ? undefined : onRetrySave}
-                    onDiscard={locked ? undefined : onDiscard}
-                    localOnly={localOnly}
-                />
+                {!readOnly && (
+                    <StudySaveNotice
+                        status={saveStatus}
+                        onRetry={locked ? undefined : onRetrySave}
+                        onDiscard={locked ? undefined : onDiscard}
+                        localOnly={localOnly}
+                    />
+                )}
 
                 {unrestoredCount > 0 && (
                     <output className="block rounded-lg border border-status-warning-border bg-status-warning-bg px-3 py-2 text-sm text-status-warning">
@@ -1293,11 +1322,15 @@ export function StudyWorkspaceView({
                             moreMenu={moreMenu}
                             isReading={isReading}
                             saveStrip={
-                                <StudySaveStrip
-                                    status={saveStatus}
-                                    onLogin={onLogin}
-                                    localOnly={localOnly}
-                                />
+                                readOnly ? (
+                                    layerPicker
+                                ) : (
+                                    <StudySaveStrip
+                                        status={saveStatus}
+                                        onLogin={onLogin}
+                                        localOnly={localOnly}
+                                    />
+                                )
                             }
                             board={sideHandBoard}
                             boardSectionRef={boardSectionRef}
@@ -1356,7 +1389,7 @@ export function StudyWorkspaceView({
             <StudyNotice message={message} onDismiss={() => onMessageChange(null)} />
 
             <StudyTitleDialog
-                open={isTitleDialogOpen && !locked}
+                open={isTitleDialogOpen && !editingDisabled}
                 onOpenChange={setIsTitleDialogOpen}
                 title={doc.title}
                 onCommit={commitTitle}
@@ -1371,7 +1404,11 @@ export function StudyWorkspaceView({
                 onDisplayLayerChange={onDisplayLayerChange}
                 form={analysis.form}
                 settingsLabel={analysis.settingsLabel}
-                canStart={!locked && (analysis.mode === null || autoReadingNow) && !analysisBlocked}
+                canStart={
+                    !editingDisabled &&
+                    (analysis.mode === null || autoReadingNow) &&
+                    !analysisBlocked
+                }
                 onStartFull={startFull}
                 onOpenNnueLibrary={onOpenNnueLibrary}
             />
@@ -1477,6 +1514,7 @@ export function StudyWorkspace({
     onViewChange,
     notice,
     locked = false,
+    readOnly = false,
     ...viewProps
 }: StudyWorkspaceProps): ReactElement {
     const [preferredLayerId, setPreferredLayerId] = useState<string | null>(
@@ -1516,7 +1554,7 @@ export function StudyWorkspace({
         defaultNnuePresetKey,
         onApplyOps,
         onFlush,
-        locked,
+        locked: locked || readOnly,
         // 全体の解析を始めたら、その設定の結果を表示に切り替える。1 局面だけの深い解析では
         // 切り替えない（評価値グラフと悪手・疑問手の印は全体の解析の結果のまま見せる）。
         onLayerStarted: (layerId, mode) => {
@@ -1589,6 +1627,7 @@ export function StudyWorkspace({
             <StudyWorkspaceView
                 {...viewProps}
                 locked={locked}
+                readOnly={readOnly}
                 doc={doc}
                 tree={tree}
                 unrestoredCount={structure.unrestoredCount}
@@ -1596,7 +1635,7 @@ export function StudyWorkspace({
                 displayLayerId={displayLayerId}
                 onDisplayLayerChange={changeDisplayLayer}
                 analysis={analysis}
-                mate={mate}
+                mate={readOnly ? undefined : mate}
                 message={message}
                 onMessageChange={setMessage}
                 deepLayerId={deepLayerId}

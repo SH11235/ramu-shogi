@@ -1,5 +1,5 @@
 import { applyStudyOps, STUDY_LIMITS, type StudyDocument, type StudyOp } from "@shogi/app-core";
-import type { StoredStudy } from "@shogi/study-client";
+import { createStudyApiClient, type StoredStudy, toStudyDocument } from "@shogi/study-client";
 import type { EngineOption, StudyCommentDraft, StudyWorkspaceViewState } from "@shogi/ui";
 import { downloadTextFile, NnueLibraryDialog, StudyWorkspace } from "@shogi/ui";
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
@@ -21,6 +21,7 @@ import {
 } from "../../lib/studyDrafts";
 import { ensureStudySession, getStudySync } from "../../lib/studySync";
 import { createWebWasmEngineClient } from "../../platform/wasm-engine-client";
+import { StudyShareDialog } from "./StudyShareDialog";
 
 const engineOptions: EngineOption[] = [
     {
@@ -34,6 +35,7 @@ const engineOptions: EngineOption[] = [
 
 const builtinEngine = resolveBuiltinEngineIdentity();
 
+const studyApi = createStudyApiClient();
 const routeApi = getRouteApi("/studies/$studyId");
 
 type LoadState =
@@ -60,6 +62,7 @@ type LoadState =
            */
           fresh: boolean;
       }
+    | { status: "public"; studyId: string; doc: StudyDocument }
     /** ブラウザ内にもクラウドにも無い。 */
     | { status: "not_found" }
     /** ブラウザ内に無く、クラウドにも問い合わせられなかった。 */
@@ -157,6 +160,7 @@ export default function StudyPage(): ReactElement {
     const sync = getStudySync();
     const [state, setState] = useState<LoadState>({ status: "loading" });
     const [reloadCount, setReloadCount] = useState(0);
+    const [shareStudyId, setShareStudyId] = useState<string | null>(null);
     const [isTitleDialogOpen, setIsTitleDialogOpen] = useState(false);
     const [notice, setNotice] = useState<{ id: number; text: string; type: "error" } | null>(null);
     const [isNnueLibraryOpen, setIsNnueLibraryOpen] = useState(false);
@@ -289,6 +293,7 @@ export default function StudyPage(): ReactElement {
 
     useEffect(() => {
         let cancelled = false;
+        let openedLocal = false;
         const isCancelled = (): boolean => cancelled;
         // 同じノートを開き直すだけのとき（ログイン状態が変わった、など）は、画面を作り直さない
         // （作り直すと、実行中の解析が止まり、書きかけのコメントも消えてしまう）。
@@ -337,6 +342,59 @@ export default function StudyPage(): ReactElement {
             return true;
         };
 
+        const presentPublicStudy = async (): Promise<boolean> => {
+            try {
+                const result = await studyApi.getPublic(studyId);
+                if (cancelled) return true;
+                if (result.ok) {
+                    setState({
+                        status: "public",
+                        studyId,
+                        doc: toStudyDocument(result.data.study),
+                    });
+                } else if (result.status === 404) {
+                    return false;
+                } else {
+                    setState({
+                        status: "unavailable",
+                        message: result.error.message ?? `HTTP ${result.status}`,
+                    });
+                }
+            } catch {
+                if (!cancelled) {
+                    setState({
+                        status: "unavailable",
+                        message: "共有された研究ノートを取得できませんでした。",
+                    });
+                }
+            }
+            return true;
+        };
+
+        const presentOpenFailure = async (message?: string): Promise<void> => {
+            if (cancelled || lockIfWasOpen()) return;
+            if (
+                sessionState !== "known" ||
+                !sessionConfirmed ||
+                (userId !== null && sync.isUnauthorized())
+            ) {
+                setState((previous) =>
+                    sessionState === "error" &&
+                    previous.status === "ready" &&
+                    previous.studyId === studyId
+                        ? previous
+                        : {
+                              status: "unavailable",
+                              message: "ログイン状態を確認できませんでした。",
+                          },
+                );
+            } else if (message !== undefined) {
+                setState({ status: "unavailable", message });
+            } else if (!(await presentPublicStudy()) && !cancelled) {
+                setState({ status: "not_found" });
+            }
+        };
+
         const unsubscribe = sync.subscribeEvents((event) => {
             if (cancelled) return;
             if (event.type === "unauthorized") {
@@ -349,7 +407,7 @@ export default function StudyPage(): ReactElement {
                 dispatchAuthSessionSyncEvent();
                 return;
             }
-            if (event.studyId !== studyId) return;
+            if (event.studyId !== studyId || stateRef.current.status === "public") return;
             if (event.type === "pulled") {
                 // サーバーの最新の内容を取り込めた。その内容を画面に出してから、コメントの下書きの
                 // 保存を解く（`presentFromStore` が、最新かどうかも一緒に反映する）。
@@ -375,21 +433,17 @@ export default function StudyPage(): ReactElement {
                 // アカウントのノートは保存層が返さない（`load` が null）。その場合は「見つかりません」と
                 // 決めつけず、ログイン状態が分かるまで読み込み中のままにする。
                 const shown = await presentFromStore(studyId, "open", isCancelled);
-                if (cancelled || shown) return;
-                if (sessionState === "error") {
-                    setState((previous) =>
-                        previous.status === "ready" && previous.studyId === studyId
-                            ? previous
-                            : {
-                                  status: "unavailable",
-                                  message: "ログイン状態を確認できませんでした。",
-                              },
-                    );
+                if (cancelled) return;
+                if (shown) {
+                    openedLocal = true;
+                    return;
                 }
+                if (sessionState === "error") await presentOpenFailure();
                 return;
             }
             // ログイン状態を伝え、未ログイン中に作ったノートをアカウントへ引き継いでから開く。
             await ensureStudySession(userId, { confirmed: sessionConfirmed });
+            if (cancelled) return;
             const result = await sync.open(studyId);
             if (cancelled) return;
             if (result.status === "merged") {
@@ -398,36 +452,23 @@ export default function StudyPage(): ReactElement {
             }
             // 開けたら、保存層の内容を画面に出す（`open` が返した文書は、待っている間の編集で
             // 古くなっていることがあるので、そのままは使わない）。
-            if (result.status === "ok" && (await presentFromStore(studyId, "open", isCancelled))) {
+            if (result.status === "ok") {
+                openedLocal = true;
+                if (await presentFromStore(studyId, "open", isCancelled)) return;
+                await presentOpenFailure("保存された研究ノートを取得できませんでした。");
                 return;
             }
-            if (cancelled || lockIfWasOpen()) return;
-            if (result.status === "unavailable") {
-                setState({ status: "unavailable", message: result.message });
-            } else if (userId !== null && (!sessionConfirmed || sync.isUnauthorized())) {
-                // ログイン状態を確かめられていない（サーバーが 401 を返した・確かめ直しに失敗した）
-                // ので、「無い」とは言い切れない。確認からやり直せるようにする。
-                setState({
-                    status: "unavailable",
-                    message: "ログイン状態を確認できませんでした。",
-                });
-            } else {
-                setState({ status: "not_found" });
-            }
-        })().catch((error: unknown) => {
-            if (cancelled) return;
-            setState({
-                status: "unavailable",
-                message: error instanceof Error ? error.message : String(error),
-            });
-        });
+            await presentOpenFailure(result.status === "unavailable" ? result.message : undefined);
+        })().catch((error: unknown) =>
+            presentOpenFailure(error instanceof Error ? error.message : String(error)),
+        );
 
         return () => {
             cancelled = true;
             unsubscribe();
             sync.close(studyId);
             // 画面を離れるときは、間引きを待たずに送る。
-            void sync.flush(studyId).catch(() => undefined);
+            if (openedLocal) void sync.flush(studyId).catch(() => undefined);
         };
     }, [studyId, sessionState, userId, sessionConfirmed, sync, navigate, reloadCount]);
 
@@ -561,7 +602,18 @@ export default function StudyPage(): ReactElement {
 
     // パンくずは表示名をキーにするので、一覧の「研究ノート」と同じ名前にならないようにする。
     const title =
-        state.status === "ready" && state.doc.title !== "研究ノート" ? state.doc.title : "ノート";
+        (state.status === "ready" || state.status === "public") &&
+        state.studyId === studyId &&
+        state.doc.title !== "研究ノート"
+            ? state.doc.title
+            : "ノート";
+    const shareUnavailable =
+        userId === null || (state.status === "ready" && (state.locked || !sessionConfirmed))
+            ? "ログインしてクラウドに保存すると共有できます。"
+            : (state.status === "ready" && state.ownerId !== userId) ||
+                saveStatus.reason === "deleted_remotely"
+              ? "クラウドに保存すると共有できます。"
+              : null;
 
     return (
         <>
@@ -572,7 +624,7 @@ export default function StudyPage(): ReactElement {
                     {
                         label: title,
                         action:
-                            state.status === "ready" && !state.locked
+                            state.status === "ready" && state.studyId === studyId && !state.locked
                                 ? { onClick: () => setIsTitleDialogOpen(true), hint: "表題を変更" }
                                 : undefined,
                     },
@@ -628,6 +680,21 @@ export default function StudyPage(): ReactElement {
                     </p>
                 </StudyStateCard>
             )}
+            {state.status === "public" && state.studyId === studyId && (
+                <div className="flex flex-col">
+                    <StudyWorkspace
+                        key={studyId}
+                        doc={state.doc}
+                        readOnly
+                        onApplyOps={() => Promise.resolve(false)}
+                        saveStatus={saveStatus}
+                        originLink={renderOriginLink(state.doc.origin)}
+                        engineOptions={[]}
+                        manifestUrl={import.meta.env.VITE_NNUE_MANIFEST_URL as string}
+                        engine={builtinEngine}
+                    />
+                </div>
+            )}
             {state.status === "ready" && state.studyId === studyId && (
                 // 画面の中央寄せは、ここ（親）で行う。
                 <div className="flex flex-col">
@@ -641,6 +708,10 @@ export default function StudyPage(): ReactElement {
                         onLogin={handleLogin}
                         onOpenNnueLibrary={() => setIsNnueLibraryOpen(true)}
                         onDiscard={handleDiscard}
+                        shareDialog={{
+                            open: shareStudyId === studyId,
+                            onOpen: () => setShareStudyId(studyId),
+                        }}
                         originLink={renderOriginLink(state.doc.origin)}
                         onPlayFromPosition={playFromPosition}
                         onSaveKifuFile={downloadTextFile}
@@ -668,6 +739,15 @@ export default function StudyPage(): ReactElement {
                         engine={builtinEngine}
                     />
                 </div>
+            )}
+            {state.status === "ready" && state.studyId === studyId && shareStudyId === studyId && (
+                <StudyShareDialog
+                    key={JSON.stringify([studyId, userId])}
+                    studyId={studyId}
+                    api={studyApi}
+                    unavailableReason={shareUnavailable}
+                    onClose={() => setShareStudyId(null)}
+                />
             )}
             {/* 解析中でも中断しないよう、画面を離れずに開く */}
             <NnueLibraryDialog

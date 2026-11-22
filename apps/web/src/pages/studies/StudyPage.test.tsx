@@ -3,6 +3,7 @@ import {
     createMemoryStudyStore,
     createStudySync,
     type StoredStudy,
+    type StudyApi,
     type StudySync,
     type StudySyncEvent,
 } from "@shogi/study-client";
@@ -23,6 +24,7 @@ import {
 const STUDY_ID = "11111111-1111-4111-8111-111111111111";
 const DRAFTS_KEY = "ramu-study-comment-drafts";
 const OTHER_ID = "22222222-2222-4222-8222-222222222222";
+const getPublic = vi.fn();
 const navigate = vi.fn(async () => {});
 let currentSync: StudySync;
 let currentStudyId = STUDY_ID;
@@ -55,6 +57,7 @@ vi.mock("../../platform/wasm-engine-client", () => ({ createWebWasmEngineClient:
 // `lib/studySync`（セッションの伝達・引き継ぎ）は本物を使い、その下の同期エンジンだけを差し替える。
 vi.mock("@shogi/study-client", async (importOriginal) => ({
     ...(await importOriginal<typeof import("@shogi/study-client")>()),
+    createStudyApiClient: () => ({ getPublic }),
     createBrowserStudySync: () => ({ sync: currentSync, store: null, dispose: () => {} }),
 }));
 // 画面そのものは `@shogi/ui` 側でテストしている。ここではページが渡すものを確かめる。
@@ -82,6 +85,24 @@ const { default: StudyPage } = await import("./StudyPage");
 
 const workspaceText = (): string => screen.getByTestId("workspace").textContent ?? "";
 
+const mockSharedStudy = () => {
+    const doc = createTestDoc(STUDY_ID, "公開したノート");
+    getPublic.mockResolvedValue({
+        ok: true,
+        status: 200,
+        data: {
+            study: {
+                ...doc,
+                visibility: "unlisted",
+                revision: 1,
+                createdAt: "",
+                updatedAt: "",
+            },
+        },
+    });
+    return doc;
+};
+
 /** アカウント（user-1）のノートが保存層にあり、ログイン状態はまだ伝わっていない同期エンジンを用意する。 */
 const prepareOwnedStudy = async (title: string): Promise<void> => {
     const store = createMemoryStudyStore();
@@ -95,6 +116,7 @@ const prepareOwnedStudy = async (title: string): Promise<void> => {
 describe("StudyPage", () => {
     beforeEach(() => {
         navigate.mockClear();
+        getPublic.mockReset().mockResolvedValue({ ok: false, status: 404, error: {} });
         refreshSession.mockClear();
         dispatchAuthSessionSyncEvent.mockClear();
         headerLogin = undefined;
@@ -113,7 +135,112 @@ describe("StudyPage", () => {
         expect((await screen.findByTestId("workspace")).textContent).toBe(
             "開くノート/local/anonymous",
         );
+        expect(getPublic).not.toHaveBeenCalled();
         expect(workspaceProps?.engine).toMatchObject({ kind: "wasm", name: "rshogi" });
+    });
+
+    it.each([AUTH_SIGNED_OUT, authSignedIn("other-user")])(
+        "公開ノートを閲覧専用で開き、保存に流さない",
+        async (session) => {
+            auth = session;
+            currentSync = createTestSync(
+                createOfflineApi({ get: async () => ({ ok: false, status: 404, error: {} }) }),
+            );
+            const doc = mockSharedStudy();
+            const applyOps = vi.spyOn(currentSync, "applyOps");
+            const flush = vi.spyOn(currentSync, "flush");
+            const view = render(<StudyPage />);
+
+            expect((await screen.findByTestId("workspace")).textContent).toContain(doc.title);
+            expect(getPublic).toHaveBeenCalledWith(STUDY_ID);
+            expect(workspaceProps?.doc).toEqual(doc);
+            expect(workspaceProps?.readOnly).toBe(true);
+            expect(workspaceProps?.onViewChange).toBeUndefined();
+            expect(workspaceProps?.shareDialog).toBeUndefined();
+            expect(await workspaceProps?.onApplyOps([{ type: "setTitle", value: "変更" }])).toBe(
+                false,
+            );
+            expect(applyOps).not.toHaveBeenCalled();
+            expect(await currentSync.load(STUDY_ID)).toBeNull();
+            view.unmount();
+            expect(flush).not.toHaveBeenCalled();
+        },
+    );
+
+    it.each([0, 503])("公開 API の status %i は読み込みに失敗したと表示する", async (status) => {
+        getPublic.mockResolvedValueOnce({ ok: false, status, error: {} });
+        render(<StudyPage />);
+
+        expect(
+            await screen.findByRole("heading", { name: "研究ノートを読み込めませんでした" }),
+        ).toBeTruthy();
+        expect(screen.getByText(`HTTP ${status}`)).toBeTruthy();
+        expect(screen.queryByRole("heading", { name: "研究ノートが見つかりません" })).toBeNull();
+        mockSharedStudy();
+        fireEvent.click(screen.getByRole("button", { name: "もう一度読み込む" }));
+        expect(await screen.findByTestId("workspace")).toBeTruthy();
+    });
+
+    it.each([0, 503])(
+        "持ち主の GET が status %i なら公開 API に進まず、再試行で編集画面を開ける",
+        async (status) => {
+            auth = authSignedIn("user-1");
+            const doc = mockSharedStudy();
+            const get = vi
+                .fn<StudyApi["get"]>()
+                .mockResolvedValueOnce({ ok: false, status, error: {} })
+                .mockResolvedValue({
+                    ok: true,
+                    status: 200,
+                    data: {
+                        study: {
+                            ...doc,
+                            revision: 1,
+                            createdAt: "",
+                            updatedAt: "",
+                            visibility: "unlisted",
+                        },
+                    },
+                });
+            currentSync = createTestSync(createOfflineApi({ get }));
+            render(<StudyPage />);
+
+            expect(
+                await screen.findByRole("heading", { name: "研究ノートを読み込めませんでした" }),
+            ).toBeTruthy();
+            expect(screen.getByText(`HTTP ${status}`)).toBeTruthy();
+            expect(screen.queryByTestId("workspace")).toBeNull();
+            expect(get).toHaveBeenCalledExactlyOnceWith(STUDY_ID);
+            expect(getPublic).not.toHaveBeenCalled();
+
+            fireEvent.click(screen.getByRole("button", { name: "もう一度読み込む" }));
+            await screen.findByTestId("workspace");
+            expect(workspaceProps?.doc).toEqual(doc);
+            expect(workspaceProps?.readOnly).not.toBe(true);
+            expect(workspaceProps?.shareDialog).toBeDefined();
+            expect(getPublic).not.toHaveBeenCalled();
+        },
+    );
+
+    it("ノートを開く処理で例外が出たら公開 API に進まず、再試行を案内する", async () => {
+        auth = authSignedIn("user-1");
+        mockSharedStudy();
+        vi.spyOn(currentSync, "open").mockRejectedValueOnce(new Error("read failed"));
+        render(<StudyPage />);
+
+        await screen.findByRole("button", { name: "もう一度読み込む" });
+        expect(screen.getByText("read failed")).toBeTruthy();
+        expect(screen.queryByTestId("workspace")).toBeNull();
+        expect(getPublic).not.toHaveBeenCalled();
+    });
+
+    it("壊れた公開 API の応答は読み込み失敗にする", async () => {
+        getPublic.mockResolvedValue({ ok: true, status: 200, data: {} });
+        render(<StudyPage />);
+
+        await screen.findByRole("heading", { name: "研究ノートを読み込めませんでした" });
+        expect(screen.queryByTestId("workspace")).toBeNull();
+        expect(getPublic).toHaveBeenCalledExactlyOnceWith(STUDY_ID);
     });
 
     describe("ログイン状態が分かる前", () => {
@@ -642,7 +769,13 @@ describe("StudyPage", () => {
          */
         const prepareSyncedStudy = async (options: { held?: boolean } = {}) => {
             const doc = createTestDoc(STUDY_ID, "アカウントのノート");
-            const detail = { ...doc, revision: 1, createdAt: "", updatedAt: "" };
+            const detail = {
+                ...doc,
+                visibility: "private" as const,
+                revision: 1,
+                createdAt: "",
+                updatedAt: "",
+            };
             const remote = { comment: "他の端末のコメント C", revision: 2 };
             let release: () => void = () => {};
             const gate =
@@ -981,13 +1114,15 @@ describe("StudyPage", () => {
 
     it("ログイン状態を確認できなかったあとの「もう一度読み込む」は、確認からやり直す", async () => {
         // 確認そのものが失敗した（backend に届かない）。ブラウザ内にもノートは無い。
-        auth = { session: null, isLoadingSession: false };
+        auth = { session: null, isLoadingSession: false, sessionError: "通信エラー" };
+        mockSharedStudy();
         const view = render(<StudyPage />);
 
         expect(
             await screen.findByRole("heading", { name: "研究ノートを読み込めませんでした" }),
         ).toBeTruthy();
         expect(screen.getByText("ログイン状態を確認できませんでした。")).toBeTruthy();
+        expect(getPublic).not.toHaveBeenCalled();
         expect(refreshSession).not.toHaveBeenCalled();
 
         fireEvent.click(screen.getByRole("button", { name: "もう一度読み込む" }));
@@ -1018,13 +1153,21 @@ describe("StudyPage", () => {
         const unauthorized = async () => ({ ok: false as const, status: 401, error: {} });
         currentSync = createTestSync(createOfflineApi({ get: vi.fn(unauthorized) }));
         auth = authSignedIn("user-1");
-        render(<StudyPage />);
+        mockSharedStudy();
+        const view = render(<StudyPage />);
 
         expect(
             await screen.findByRole("heading", { name: "研究ノートを読み込めませんでした" }),
         ).toBeTruthy();
         expect(screen.queryByText("研究ノートが見つかりません")).toBeNull();
         expect(dispatchAuthSessionSyncEvent).toHaveBeenCalledTimes(1);
+        expect(currentSync.isUnauthorized()).toBe(true);
+        auth = { ...auth, sessionError: "通信エラー" };
+        view.rerender(<StudyPage />);
+        expect(await screen.findByText("ログイン状態を確認できませんでした。")).toBeTruthy();
+        expect(getPublic).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole("button", { name: "もう一度読み込む" }));
+        expect(refreshSession).toHaveBeenCalledTimes(1);
     });
 
     it("クラウドに問い合わせられなかったときは、読み込めなかったと伝えて再試行できる", async () => {

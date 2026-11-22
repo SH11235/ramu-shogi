@@ -256,7 +256,13 @@ export function createFakeStudyServer(): FakeStudyServer {
             const createdAt = timestamp();
             studies.set(doc.id, {
                 ownerId,
-                detail: { ...structuredClone(doc), revision: 1, createdAt, updatedAt: createdAt },
+                detail: {
+                    ...structuredClone(doc),
+                    visibility: "private",
+                    revision: 1,
+                    createdAt,
+                    updatedAt: createdAt,
+                },
                 lastBatchId: null,
                 deleted: false,
             });
@@ -331,6 +337,7 @@ export function createFakeStudyServer(): FakeStudyServer {
                                 .map(({ detail }) => ({
                                     id: detail.id,
                                     title: detail.title,
+                                    visibility: detail.visibility,
                                     origin: detail.origin,
                                     meta: detail.meta,
                                     revision: detail.revision,
@@ -391,6 +398,7 @@ export function createFakeStudyServer(): FakeStudyServer {
                             detail: {
                                 id: body.id,
                                 title: body.title,
+                                visibility: "private",
                                 origin: body.origin,
                                 startSfen: body.startSfen,
                                 rules: body.rules,

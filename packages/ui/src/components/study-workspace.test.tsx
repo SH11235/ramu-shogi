@@ -96,6 +96,7 @@ interface HarnessProps {
     /** 保存層が操作を受け付けなかった場合の模擬（文書を変えず、理由を通知する）。 */
     rejectOps?: boolean;
     locked?: boolean;
+    readOnly?: boolean;
     initialCommentDrafts?: { nodeId: string; text: string; base?: string | null }[];
     onCommentDraftChange?: (nodeId: string, change: StudyCommentDraftChange) => void;
     /**
@@ -128,6 +129,7 @@ function Harness({
     fetchLegalMoves,
     rejectOps = false,
     locked,
+    readOnly,
     initialCommentDrafts,
     onCommentDraftChange,
     interceptOps,
@@ -169,6 +171,7 @@ function Harness({
             onDiscard={onDiscard}
             fetchLegalMoves={fetchLegalMoves}
             locked={locked}
+            readOnly={readOnly}
             initialCommentDrafts={initialCommentDrafts}
             onCommentDraftChange={onCommentDraftChange}
             commentBaseConfirmed={commentBaseConfirmed}
@@ -678,6 +681,57 @@ describe("StudyWorkspaceView", () => {
                 within(candidates).queryByRole("heading", { name: /この手の代わりに/ }),
             ).toBeNull();
         });
+    });
+
+    it("閲覧専用でも棋譜と変化をたどり、解析を切り替えられる", async () => {
+        const { doc, ids } = createTestStudy([cp(0), cp(20)]);
+        const branched = applyStudyOps(doc, [
+            { type: "addMoves", parentId: ids[0], moves: ["5g5f"] },
+        ]);
+        const layer = branched.layers[0];
+        const second = {
+            ...layer,
+            id: "another-layer",
+            display: { ...layer.display, label: "別の解析" },
+        };
+        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+        const analysis = createAnalysis();
+        const onOps = vi.fn();
+        const fetchLegalMoves = vi.fn(async () => ["4g4f"]);
+        render(
+            <Harness
+                initialDoc={{ ...branched, layers: [layer, second] }}
+                readOnly
+                analysis={analysis}
+                onOps={onOps}
+                fetchLegalMoves={fetchLegalMoves}
+            />,
+        );
+
+        expect(screen.queryByRole("textbox", { name: "研究ノートの表題" })).toBeNull();
+        expect(screen.queryByRole("button", { name: "この局面を深く解析" })).toBeNull();
+        expect(screen.queryByRole("button", { name: "全体を解析" })).toBeNull();
+
+        fireEvent.click(screen.getByRole("button", { name: /^4g 先手の歩/ }));
+        fireEvent.click(screen.getByRole("button", { name: /^4f 空マス/ }));
+        expect(fetchLegalMoves).not.toHaveBeenCalled();
+        expect(onOps).not.toHaveBeenCalled();
+
+        fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
+        expect(currentMove()).toContain("☗7六歩");
+        fireEvent.click(within(moveList()).getByRole("button", { name: /変化\s*☗5六歩/ }));
+        expect(within(moveList()).getByText("変化を表示中")).toBeTruthy();
+        expect(within(moveList()).queryByRole("button", { name: "本譜と入れ替える" })).toBeNull();
+        expect(within(moveList()).queryByRole("button", { name: /削除/ })).toBeNull();
+
+        fireEvent.change(screen.getByRole("combobox", { name: "表示する解析" }), {
+            target: { value: second.id },
+        });
+        expect(within(graphRegion()).getByText("解析（別の解析）")).toBeTruthy();
+        await act(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+        expect(analysis.startDeep).not.toHaveBeenCalled();
     });
 
     it("盤上で駒を動かすと変化ができ、操作が保存層へ流れる", async () => {
@@ -2748,6 +2802,25 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         if (!firstMove) throw new Error("横に流す棋譜に 1 手目がありません");
         fireEvent.click(firstMove);
         expect(position().textContent?.replace(/\s/g, "")).toMatch(/^1\//);
+    });
+
+    it("ログイン切れでロック中も盤から既存の手へ進める", async () => {
+        const { doc } = createTestStudy();
+        const onOps = vi.fn();
+        const fetchLegalMoves = vi.fn(async () => ["7g7f"]);
+        render(<Harness initialDoc={doc} locked onOps={onOps} fetchLegalMoves={fetchLegalMoves} />);
+        const position = within(screen.getByRole("navigation", { name: "局面の移動" })).getByRole(
+            "status",
+        );
+
+        expect(position.textContent?.replace(/\s/g, "")).toMatch(/^0\//);
+
+        fireEvent.click(screen.getByRole("button", { name: /^7g 先手の歩/ }));
+        await act(async () => {
+            fireEvent.click(screen.getByRole("button", { name: /^7f 空マス/ }));
+        });
+        expect(position.textContent?.replace(/\s/g, "")).toMatch(/^1\//);
+        expect(onOps).not.toHaveBeenCalled();
     });
 
     it("解析中は、盤の表示のグラフの見出しで進み具合を見て止められ、候補手のタブで読んでいると分かる", () => {

@@ -267,6 +267,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/public/studies/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getPublicStudy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/user/settings": {
         parameters: {
             query?: never;
@@ -389,6 +405,22 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["applyStudyOps"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/studies/{id}/visibility": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["setStudyVisibility"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -575,6 +607,133 @@ export interface components {
         GetPublicGameResponse: {
             game: components["schemas"]["GameRecordDetail"];
         };
+        GetPublicStudyResponse: {
+            study: components["schemas"]["StudyDetail"];
+        };
+        StudyDetail: {
+            id: components["schemas"]["StudyId"];
+            revision: number;
+            title: string;
+            visibility: components["schemas"]["StudyVisibility"];
+            origin: components["schemas"]["StudyOrigin"];
+            startSfen: string;
+            rules: components["schemas"]["StudyRules"];
+            meta: components["schemas"]["StudyMeta"];
+            tree: components["schemas"]["StudyTree"];
+            layers: components["schemas"]["StudyLayer"][];
+            createdAt: string;
+            updatedAt: string;
+        };
+        StudyId: string;
+        /** @enum {string} */
+        StudyVisibility: "private" | "unlisted";
+        StudyOrigin: {
+            kind: components["schemas"]["StudyOriginKind"];
+            ref: string | null;
+        };
+        /** @enum {string} */
+        StudyOriginKind: "rshogi_csa" | "game_record" | "paste";
+        StudyRules: {
+            /** @enum {string} */
+            variant: "standard";
+        };
+        StudyMeta: {
+            [key: string]: string;
+        };
+        StudyTree: {
+            /** @enum {number} */
+            version: 1;
+            rootId: string;
+            nodes: {
+                [key: string]: components["schemas"]["StudyNode"];
+            };
+        };
+        StudyNode: {
+            parentId: string | null;
+            usiMove: string | null;
+            children: string[];
+            comment: string;
+            bookmarked: boolean;
+            source: components["schemas"]["StudyNodeSource"];
+        };
+        StudyNodeSource: {
+            kind: string;
+            score: components["schemas"]["StudyScore"];
+            pv: string[] | null;
+            elapsedMs: number | null;
+        } | null;
+        StudyScore:
+            | {
+                  /** @enum {string} */
+                  kind: "cp";
+                  value: number;
+              }
+            | {
+                  /** @enum {string} */
+                  kind: "mate";
+                  /** @enum {string} */
+                  winner: "sente" | "gote";
+                  plies: number | null;
+              }
+            | null;
+        StudyLayer: {
+            id: string;
+            spec: components["schemas"]["StudyLayerSpec"];
+            display: components["schemas"]["StudyLayerDisplay"];
+            results: components["schemas"]["StudyLayerResults"];
+        };
+        StudyLayerSpec: {
+            /** @enum {number} */
+            version: 1;
+            engine: {
+                /** @enum {string} */
+                kind: "wasm" | "native" | "external";
+                name: string;
+                version: string;
+            };
+            evaluation: {
+                nnueSha256: string | null;
+                fvScale: number | null;
+                progressSha256: string | null;
+                layerStacks: unknown;
+            };
+            limits: {
+                timeMs: number | null;
+                depth: number | null;
+                nodes: number | null;
+            };
+            multiPv: number;
+            rules: components["schemas"]["StudyRules"];
+        };
+        StudyLayerDisplay: {
+            label: string;
+        } & {
+            [key: string]: unknown;
+        };
+        StudyLayerResults: {
+            [key: string]: components["schemas"]["StudyAnalysisResult"];
+        };
+        StudyAnalysisResult: {
+            runId: string;
+            /** @enum {string} */
+            completion: "completed" | "aborted";
+            depth: number;
+            nodes: number | null;
+            timeMs: number | null;
+            execution: {
+                threads: number | null;
+                hashMb: number | null;
+                parallelWorkers: number | null;
+            };
+            candidates: components["schemas"]["StudyAnalysisCandidate"][];
+        };
+        StudyAnalysisCandidate: {
+            rank: number;
+            score: components["schemas"]["StudyScore"];
+            depth: number;
+            seldepth: number | null;
+            pv: string[];
+        };
         ListUserSettingsResponse: {
             documents: components["schemas"]["UserSettingsDocument"][];
         };
@@ -667,6 +826,7 @@ export interface components {
         StudySummary: {
             id: components["schemas"]["StudyId"];
             title: string;
+            visibility: components["schemas"]["StudyVisibility"];
             origin: components["schemas"]["StudyOrigin"];
             meta: components["schemas"]["StudyMeta"];
             revision: number;
@@ -674,16 +834,6 @@ export interface components {
             layerCount: number;
             resultCount: number;
             updatedAt: string;
-        };
-        StudyId: string;
-        StudyOrigin: {
-            kind: components["schemas"]["StudyOriginKind"];
-            ref: string | null;
-        };
-        /** @enum {string} */
-        StudyOriginKind: "rshogi_csa" | "game_record" | "paste";
-        StudyMeta: {
-            [key: string]: string;
         };
         GetStudyLimitsResponse: {
             limits: components["schemas"]["StudyLimits"];
@@ -756,124 +906,13 @@ export interface components {
             tree: components["schemas"]["StudyTree"];
             layers?: components["schemas"]["StudyLayerInput"][];
         };
-        StudyRules: {
-            /** @enum {string} */
-            variant: "standard";
-        };
-        StudyTree: {
-            /** @enum {number} */
-            version: 1;
-            rootId: string;
-            nodes: {
-                [key: string]: components["schemas"]["StudyNode"];
-            };
-        };
-        StudyNode: {
-            parentId: string | null;
-            usiMove: string | null;
-            children: string[];
-            comment: string;
-            bookmarked: boolean;
-            source: components["schemas"]["StudyNodeSource"];
-        };
-        StudyNodeSource: {
-            kind: string;
-            score: components["schemas"]["StudyScore"];
-            pv: string[] | null;
-            elapsedMs: number | null;
-        } | null;
-        StudyScore:
-            | {
-                  /** @enum {string} */
-                  kind: "cp";
-                  value: number;
-              }
-            | {
-                  /** @enum {string} */
-                  kind: "mate";
-                  /** @enum {string} */
-                  winner: "sente" | "gote";
-                  plies: number | null;
-              }
-            | null;
         StudyLayerInput: {
             spec: components["schemas"]["StudyLayerSpec"];
             display: components["schemas"]["StudyLayerDisplay"];
             results: components["schemas"]["StudyLayerResults"];
         };
-        StudyLayerSpec: {
-            /** @enum {number} */
-            version: 1;
-            engine: {
-                /** @enum {string} */
-                kind: "wasm" | "native" | "external";
-                name: string;
-                version: string;
-            };
-            evaluation: {
-                nnueSha256: string | null;
-                fvScale: number | null;
-                progressSha256: string | null;
-                layerStacks: unknown;
-            };
-            limits: {
-                timeMs: number | null;
-                depth: number | null;
-                nodes: number | null;
-            };
-            multiPv: number;
-            rules: components["schemas"]["StudyRules"];
-        };
-        StudyLayerDisplay: {
-            label: string;
-        } & {
-            [key: string]: unknown;
-        };
-        StudyLayerResults: {
-            [key: string]: components["schemas"]["StudyAnalysisResult"];
-        };
-        StudyAnalysisResult: {
-            runId: string;
-            /** @enum {string} */
-            completion: "completed" | "aborted";
-            depth: number;
-            nodes: number | null;
-            timeMs: number | null;
-            execution: {
-                threads: number | null;
-                hashMb: number | null;
-                parallelWorkers: number | null;
-            };
-            candidates: components["schemas"]["StudyAnalysisCandidate"][];
-        };
-        StudyAnalysisCandidate: {
-            rank: number;
-            score: components["schemas"]["StudyScore"];
-            depth: number;
-            seldepth: number | null;
-            pv: string[];
-        };
         GetStudyResponse: {
             study: components["schemas"]["StudyDetail"];
-        };
-        StudyDetail: {
-            id: components["schemas"]["StudyId"];
-            revision: number;
-            title: string;
-            origin: components["schemas"]["StudyOrigin"];
-            startSfen: string;
-            rules: components["schemas"]["StudyRules"];
-            meta: components["schemas"]["StudyMeta"];
-            tree: components["schemas"]["StudyTree"];
-            layers: components["schemas"]["StudyLayer"][];
-            createdAt: string;
-            updatedAt: string;
-        };
-        StudyLayer: {
-            id: string;
-            spec: components["schemas"]["StudyLayerSpec"];
-            display: components["schemas"]["StudyLayerDisplay"];
-            results: components["schemas"]["StudyLayerResults"];
         };
         ApplyStudyOpsResponse: {
             revision: number;
@@ -944,6 +983,9 @@ export interface components {
                   type: "setTitle";
                   value: string;
               };
+        SetStudyVisibilityRequest: {
+            visibility: components["schemas"]["StudyVisibility"];
+        };
     };
     responses: never;
     parameters: never;
@@ -1782,6 +1824,38 @@ export interface operations {
             };
         };
     };
+    getPublicStudy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Get an unlisted study */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GetPublicStudyResponse"];
+                };
+            };
+            /** @description Study not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
     listUserSettings: {
         parameters: {
             query?: never;
@@ -2462,6 +2536,84 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StudyLimitExceededResponse"];
+                };
+            };
+            /** @description Rate limited */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    setStudyVisibility: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["schemas"]["StudyId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetStudyVisibilityRequest"];
+            };
+        };
+        responses: {
+            /** @description Study visibility saved */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Request origin is not allowed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Study not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Request body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
                 };
             };
             /** @description Rate limited */

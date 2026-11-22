@@ -34,6 +34,7 @@ import type {
     StudyApiResult,
     StudyDetail,
 } from "./api-types";
+import { toStudyDocument } from "./api-types";
 import { deriveStudySaveStatus, isSameStudySaveStatus, type StudySaveStatus } from "./status";
 import {
     type PendingStudyOp,
@@ -308,17 +309,6 @@ const isTransient = (status: number): boolean =>
 
 const describeError = (status: number, error: StudyApiErrorBody): string =>
     error.message ?? error.error ?? `HTTP ${status}`;
-
-const toDocument = (detail: StudyDetail): StudyDocument => ({
-    id: detail.id,
-    title: detail.title,
-    origin: detail.origin,
-    startSfen: detail.startSfen,
-    rules: detail.rules,
-    meta: detail.meta,
-    tree: detail.tree,
-    layers: detail.layers,
-});
 
 /**
  * 作成リクエスト。ツリー（と対局時の評価値、メタ情報）だけを送り、解析レイヤーと結果は送らない
@@ -726,7 +716,7 @@ export function createStudySync(options: StudySyncOptions): StudySync {
         const changed = await mutate(studyId, (snapshot) => {
             if (!snapshot.study) return { result: false };
             const rebased = applyEffectiveOps(
-                toDocument(detail),
+                toStudyDocument(detail),
                 snapshot.pending.map((item) => item.op),
             );
             const extra = keepLocalDocument
@@ -834,7 +824,7 @@ export function createStudySync(options: StudySyncOptions): StudySync {
         const applied = await mutate(targetId, (snapshot) => {
             const base =
                 snapshot.study ??
-                (seed ? newStoredStudy(toDocument(seed), source.owner, seed.revision) : null);
+                (seed ? newStoredStudy(toStudyDocument(seed), source.owner, seed.revision) : null);
             if (!base) return { result: false };
             // 同じノードの両方にコメントがあれば、統合先のコメントを消さずにつなぐ。
             const ops = studyDocumentToOps(source.doc, { mergeInto: base.doc });
@@ -1086,7 +1076,7 @@ export function createStudySync(options: StudySyncOptions): StudySync {
         const detail = fetched.data.study;
         const changed = await mutate(studyId, (snapshot) => {
             if (!snapshot.study) return { result: false };
-            const serverDoc = toDocument(detail);
+            const serverDoc = toStudyDocument(detail);
             // まず送信待ちをサーバーの最新の文書に再適用する（他の端末の変更は残る。サーバー側が
             // 優先度で勝つ解析結果はサーバーのものになる）。その結果とサーバーの文書の差分に
             // 畳むことで、拒否された途中の操作（長すぎたコメントなど）を引きずらずに、最終的な
@@ -1567,7 +1557,7 @@ export function createStudySync(options: StudySyncOptions): StudySync {
                 const study = await mutate(studyId, (snapshot) => {
                     if (snapshot.study) return { result: snapshot.study };
                     const created = newStoredStudy(
-                        toDocument(detail),
+                        toStudyDocument(detail),
                         current.userId,
                         detail.revision,
                     );

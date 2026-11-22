@@ -6,13 +6,15 @@
  * 本文は `Content-Type: application/json`。
  */
 
+import type { SetStudyVisibilityRequest } from "@shogi/api-contract";
 import type {
     CreateStudyRequest,
     CreateStudyResponse,
+    GetPublicStudyResponse,
     GetStudyResponse,
     ListStudiesParams,
     ListStudiesResponse,
-    StudyApi,
+    StudyApiClient,
     StudyApiErrorBody,
     StudyApiResult,
     StudyLimitsResponse,
@@ -42,20 +44,21 @@ const readErrorBody = async (response: Response): Promise<StudyApiErrorBody> => 
     return {};
 };
 
-export function createStudyApiClient(options: StudyApiClientOptions = {}): StudyApi {
+export function createStudyApiClient(options: StudyApiClientOptions = {}): StudyApiClient {
     const baseUrl = options.baseUrl ?? "";
 
     const request = async <T>(
-        method: "GET" | "POST" | "DELETE",
+        method: "GET" | "POST" | "PUT" | "DELETE",
         path: string,
         body?: unknown,
+        credentials: RequestCredentials = "same-origin",
     ): Promise<StudyApiResult<T>> => {
         const doFetch = options.fetch ?? globalThis.fetch;
         let response: Response;
         try {
             response = await doFetch(`${baseUrl}${path}`, {
                 method,
-                credentials: "same-origin",
+                credentials,
                 ...(body === undefined
                     ? {}
                     : {
@@ -117,6 +120,17 @@ export function createStudyApiClient(options: StudyApiClientOptions = {}): Study
         },
         get(studyId: string) {
             return request<GetStudyResponse>("GET", studyPath(studyId));
+        },
+        getPublic(studyId: string) {
+            return request<GetPublicStudyResponse>(
+                "GET",
+                `/api/public/studies/${encodeURIComponent(studyId)}`,
+                undefined,
+                "omit",
+            );
+        },
+        setVisibility(studyId: string, body: SetStudyVisibilityRequest) {
+            return request<null>("PUT", `${studyPath(studyId)}/visibility`, body);
         },
         postOps(studyId: string, body: StudyOpsRequest) {
             return request<StudyOpsResponse>("POST", `${studyPath(studyId)}/ops`, body);

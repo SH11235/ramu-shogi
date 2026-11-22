@@ -633,6 +633,435 @@
                 },
                 "required": ["game"]
             },
+            "GetPublicStudyResponse": {
+                "type": "object",
+                "properties": {
+                    "study": {
+                        "$ref": "#/components/schemas/StudyDetail"
+                    }
+                },
+                "required": ["study"]
+            },
+            "StudyDetail": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "$ref": "#/components/schemas/StudyId"
+                    },
+                    "revision": {
+                        "type": "integer",
+                        "minimum": 1
+                    },
+                    "title": {
+                        "type": "string"
+                    },
+                    "visibility": {
+                        "$ref": "#/components/schemas/StudyVisibility"
+                    },
+                    "origin": {
+                        "$ref": "#/components/schemas/StudyOrigin"
+                    },
+                    "startSfen": {
+                        "type": "string"
+                    },
+                    "rules": {
+                        "$ref": "#/components/schemas/StudyRules"
+                    },
+                    "meta": {
+                        "$ref": "#/components/schemas/StudyMeta"
+                    },
+                    "tree": {
+                        "$ref": "#/components/schemas/StudyTree"
+                    },
+                    "layers": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/StudyLayer"
+                        }
+                    },
+                    "createdAt": {
+                        "type": "string"
+                    },
+                    "updatedAt": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id",
+                    "revision",
+                    "title",
+                    "visibility",
+                    "origin",
+                    "startSfen",
+                    "rules",
+                    "meta",
+                    "tree",
+                    "layers",
+                    "createdAt",
+                    "updatedAt"
+                ]
+            },
+            "StudyId": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+            },
+            "StudyVisibility": {
+                "type": "string",
+                "enum": ["private", "unlisted"]
+            },
+            "StudyOrigin": {
+                "type": "object",
+                "properties": {
+                    "kind": {
+                        "$ref": "#/components/schemas/StudyOriginKind"
+                    },
+                    "ref": {
+                        "type": ["string", "null"],
+                        "minLength": 1,
+                        "maxLength": 256
+                    }
+                },
+                "required": ["kind", "ref"],
+                "additionalProperties": false
+            },
+            "StudyOriginKind": {
+                "type": "string",
+                "enum": ["rshogi_csa", "game_record", "paste"]
+            },
+            "StudyRules": {
+                "type": "object",
+                "properties": {
+                    "variant": {
+                        "type": "string",
+                        "enum": ["standard"]
+                    }
+                },
+                "required": ["variant"],
+                "additionalProperties": false
+            },
+            "StudyMeta": {
+                "type": "object",
+                "additionalProperties": {
+                    "type": "string"
+                }
+            },
+            "StudyTree": {
+                "type": "object",
+                "properties": {
+                    "version": {
+                        "type": "number",
+                        "enum": [1]
+                    },
+                    "rootId": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{32}$"
+                    },
+                    "nodes": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "$ref": "#/components/schemas/StudyNode"
+                        }
+                    }
+                },
+                "required": ["version", "rootId", "nodes"],
+                "additionalProperties": false
+            },
+            "StudyNode": {
+                "type": "object",
+                "properties": {
+                    "parentId": {
+                        "type": ["string", "null"],
+                        "pattern": "^[0-9a-f]{32}$"
+                    },
+                    "usiMove": {
+                        "type": ["string", "null"],
+                        "pattern": "^(?:[1-9][a-i][1-9][a-i]\\+?|[PLNSBRG]\\*[1-9][a-i]|pass)$"
+                    },
+                    "children": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{32}$"
+                        }
+                    },
+                    "comment": {
+                        "type": "string"
+                    },
+                    "bookmarked": {
+                        "type": "boolean"
+                    },
+                    "source": {
+                        "$ref": "#/components/schemas/StudyNodeSource"
+                    }
+                },
+                "required": ["parentId", "usiMove", "children", "comment", "bookmarked", "source"],
+                "additionalProperties": false
+            },
+            "StudyNodeSource": {
+                "type": ["object", "null"],
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 32
+                    },
+                    "score": {
+                        "$ref": "#/components/schemas/StudyScore"
+                    },
+                    "pv": {
+                        "type": ["array", "null"],
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "elapsedMs": {
+                        "type": ["integer", "null"],
+                        "minimum": 0
+                    }
+                },
+                "required": ["kind", "score", "pv", "elapsedMs"],
+                "additionalProperties": false
+            },
+            "StudyScore": {
+                "oneOf": [
+                    {
+                        "type": "object",
+                        "properties": {
+                            "kind": {
+                                "type": "string",
+                                "enum": ["cp"]
+                            },
+                            "value": {
+                                "type": "integer"
+                            }
+                        },
+                        "required": ["kind", "value"],
+                        "additionalProperties": false
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "kind": {
+                                "type": "string",
+                                "enum": ["mate"]
+                            },
+                            "winner": {
+                                "type": "string",
+                                "enum": ["sente", "gote"]
+                            },
+                            "plies": {
+                                "type": ["integer", "null"],
+                                "minimum": 0
+                            }
+                        },
+                        "required": ["kind", "winner", "plies"],
+                        "additionalProperties": false
+                    },
+                    {
+                        "type": "null"
+                    }
+                ]
+            },
+            "StudyLayer": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{32}$"
+                    },
+                    "spec": {
+                        "$ref": "#/components/schemas/StudyLayerSpec"
+                    },
+                    "display": {
+                        "$ref": "#/components/schemas/StudyLayerDisplay"
+                    },
+                    "results": {
+                        "$ref": "#/components/schemas/StudyLayerResults"
+                    }
+                },
+                "required": ["id", "spec", "display", "results"],
+                "additionalProperties": false
+            },
+            "StudyLayerSpec": {
+                "type": "object",
+                "properties": {
+                    "version": {
+                        "type": "number",
+                        "enum": [1]
+                    },
+                    "engine": {
+                        "type": "object",
+                        "properties": {
+                            "kind": {
+                                "type": "string",
+                                "enum": ["wasm", "native", "external"]
+                            },
+                            "name": {
+                                "type": "string",
+                                "minLength": 1
+                            },
+                            "version": {
+                                "type": "string",
+                                "minLength": 1
+                            }
+                        },
+                        "required": ["kind", "name", "version"],
+                        "additionalProperties": false
+                    },
+                    "evaluation": {
+                        "type": "object",
+                        "properties": {
+                            "nnueSha256": {
+                                "type": ["string", "null"],
+                                "pattern": "^[0-9a-f]{64}$"
+                            },
+                            "fvScale": {
+                                "type": ["integer", "null"]
+                            },
+                            "progressSha256": {
+                                "type": ["string", "null"],
+                                "pattern": "^[0-9a-f]{64}$"
+                            },
+                            "layerStacks": {}
+                        },
+                        "required": ["nnueSha256", "fvScale", "progressSha256", "layerStacks"],
+                        "additionalProperties": false
+                    },
+                    "limits": {
+                        "type": "object",
+                        "properties": {
+                            "timeMs": {
+                                "type": ["integer", "null"],
+                                "minimum": 0
+                            },
+                            "depth": {
+                                "type": ["integer", "null"],
+                                "minimum": 0
+                            },
+                            "nodes": {
+                                "type": ["integer", "null"],
+                                "minimum": 0
+                            }
+                        },
+                        "required": ["timeMs", "depth", "nodes"],
+                        "additionalProperties": false
+                    },
+                    "multiPv": {
+                        "type": "integer",
+                        "minimum": 1
+                    },
+                    "rules": {
+                        "$ref": "#/components/schemas/StudyRules"
+                    }
+                },
+                "required": ["version", "engine", "evaluation", "limits", "multiPv", "rules"],
+                "additionalProperties": false
+            },
+            "StudyLayerDisplay": {
+                "type": "object",
+                "properties": {
+                    "label": {
+                        "type": "string"
+                    }
+                },
+                "required": ["label"],
+                "additionalProperties": {}
+            },
+            "StudyLayerResults": {
+                "type": "object",
+                "additionalProperties": {
+                    "$ref": "#/components/schemas/StudyAnalysisResult"
+                }
+            },
+            "StudyAnalysisResult": {
+                "type": "object",
+                "properties": {
+                    "runId": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+                    },
+                    "completion": {
+                        "type": "string",
+                        "enum": ["completed", "aborted"]
+                    },
+                    "depth": {
+                        "type": "integer",
+                        "minimum": 0
+                    },
+                    "nodes": {
+                        "type": ["integer", "null"],
+                        "minimum": 0
+                    },
+                    "timeMs": {
+                        "type": ["integer", "null"],
+                        "minimum": 0
+                    },
+                    "execution": {
+                        "type": "object",
+                        "properties": {
+                            "threads": {
+                                "type": ["integer", "null"],
+                                "minimum": 0
+                            },
+                            "hashMb": {
+                                "type": ["integer", "null"],
+                                "minimum": 0
+                            },
+                            "parallelWorkers": {
+                                "type": ["integer", "null"],
+                                "minimum": 0
+                            }
+                        },
+                        "required": ["threads", "hashMb", "parallelWorkers"],
+                        "additionalProperties": false
+                    },
+                    "candidates": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/StudyAnalysisCandidate"
+                        },
+                        "minItems": 1
+                    }
+                },
+                "required": [
+                    "runId",
+                    "completion",
+                    "depth",
+                    "nodes",
+                    "timeMs",
+                    "execution",
+                    "candidates"
+                ],
+                "additionalProperties": false
+            },
+            "StudyAnalysisCandidate": {
+                "type": "object",
+                "properties": {
+                    "rank": {
+                        "type": "integer",
+                        "minimum": 1
+                    },
+                    "score": {
+                        "$ref": "#/components/schemas/StudyScore"
+                    },
+                    "depth": {
+                        "type": "integer",
+                        "minimum": 0
+                    },
+                    "seldepth": {
+                        "type": ["integer", "null"],
+                        "minimum": 0
+                    },
+                    "pv": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "required": ["rank", "score", "depth", "seldepth", "pv"],
+                "additionalProperties": false
+            },
             "ListUserSettingsResponse": {
                 "type": "object",
                 "properties": {
@@ -914,6 +1343,9 @@
                     "title": {
                         "type": "string"
                     },
+                    "visibility": {
+                        "$ref": "#/components/schemas/StudyVisibility"
+                    },
                     "origin": {
                         "$ref": "#/components/schemas/StudyOrigin"
                     },
@@ -943,6 +1375,7 @@
                 "required": [
                     "id",
                     "title",
+                    "visibility",
                     "origin",
                     "meta",
                     "revision",
@@ -951,35 +1384,6 @@
                     "resultCount",
                     "updatedAt"
                 ]
-            },
-            "StudyId": {
-                "type": "string",
-                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-            },
-            "StudyOrigin": {
-                "type": "object",
-                "properties": {
-                    "kind": {
-                        "$ref": "#/components/schemas/StudyOriginKind"
-                    },
-                    "ref": {
-                        "type": ["string", "null"],
-                        "minLength": 1,
-                        "maxLength": 256
-                    }
-                },
-                "required": ["kind", "ref"],
-                "additionalProperties": false
-            },
-            "StudyOriginKind": {
-                "type": "string",
-                "enum": ["rshogi_csa", "game_record", "paste"]
-            },
-            "StudyMeta": {
-                "type": "object",
-                "additionalProperties": {
-                    "type": "string"
-                }
             },
             "GetStudyLimitsResponse": {
                 "type": "object",
@@ -1196,134 +1600,6 @@
                 "required": ["id", "title", "origin", "startSfen", "rules", "meta", "tree"],
                 "additionalProperties": false
             },
-            "StudyRules": {
-                "type": "object",
-                "properties": {
-                    "variant": {
-                        "type": "string",
-                        "enum": ["standard"]
-                    }
-                },
-                "required": ["variant"],
-                "additionalProperties": false
-            },
-            "StudyTree": {
-                "type": "object",
-                "properties": {
-                    "version": {
-                        "type": "number",
-                        "enum": [1]
-                    },
-                    "rootId": {
-                        "type": "string",
-                        "pattern": "^[0-9a-f]{32}$"
-                    },
-                    "nodes": {
-                        "type": "object",
-                        "additionalProperties": {
-                            "$ref": "#/components/schemas/StudyNode"
-                        }
-                    }
-                },
-                "required": ["version", "rootId", "nodes"],
-                "additionalProperties": false
-            },
-            "StudyNode": {
-                "type": "object",
-                "properties": {
-                    "parentId": {
-                        "type": ["string", "null"],
-                        "pattern": "^[0-9a-f]{32}$"
-                    },
-                    "usiMove": {
-                        "type": ["string", "null"],
-                        "pattern": "^(?:[1-9][a-i][1-9][a-i]\\+?|[PLNSBRG]\\*[1-9][a-i]|pass)$"
-                    },
-                    "children": {
-                        "type": "array",
-                        "items": {
-                            "type": "string",
-                            "pattern": "^[0-9a-f]{32}$"
-                        }
-                    },
-                    "comment": {
-                        "type": "string"
-                    },
-                    "bookmarked": {
-                        "type": "boolean"
-                    },
-                    "source": {
-                        "$ref": "#/components/schemas/StudyNodeSource"
-                    }
-                },
-                "required": ["parentId", "usiMove", "children", "comment", "bookmarked", "source"],
-                "additionalProperties": false
-            },
-            "StudyNodeSource": {
-                "type": ["object", "null"],
-                "properties": {
-                    "kind": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 32
-                    },
-                    "score": {
-                        "$ref": "#/components/schemas/StudyScore"
-                    },
-                    "pv": {
-                        "type": ["array", "null"],
-                        "items": {
-                            "type": "string"
-                        }
-                    },
-                    "elapsedMs": {
-                        "type": ["integer", "null"],
-                        "minimum": 0
-                    }
-                },
-                "required": ["kind", "score", "pv", "elapsedMs"],
-                "additionalProperties": false
-            },
-            "StudyScore": {
-                "oneOf": [
-                    {
-                        "type": "object",
-                        "properties": {
-                            "kind": {
-                                "type": "string",
-                                "enum": ["cp"]
-                            },
-                            "value": {
-                                "type": "integer"
-                            }
-                        },
-                        "required": ["kind", "value"],
-                        "additionalProperties": false
-                    },
-                    {
-                        "type": "object",
-                        "properties": {
-                            "kind": {
-                                "type": "string",
-                                "enum": ["mate"]
-                            },
-                            "winner": {
-                                "type": "string",
-                                "enum": ["sente", "gote"]
-                            },
-                            "plies": {
-                                "type": ["integer", "null"],
-                                "minimum": 0
-                            }
-                        },
-                        "required": ["kind", "winner", "plies"],
-                        "additionalProperties": false
-                    },
-                    {
-                        "type": "null"
-                    }
-                ]
-            },
             "StudyLayerInput": {
                 "type": "object",
                 "properties": {
@@ -1340,186 +1616,6 @@
                 "required": ["spec", "display", "results"],
                 "additionalProperties": false
             },
-            "StudyLayerSpec": {
-                "type": "object",
-                "properties": {
-                    "version": {
-                        "type": "number",
-                        "enum": [1]
-                    },
-                    "engine": {
-                        "type": "object",
-                        "properties": {
-                            "kind": {
-                                "type": "string",
-                                "enum": ["wasm", "native", "external"]
-                            },
-                            "name": {
-                                "type": "string",
-                                "minLength": 1
-                            },
-                            "version": {
-                                "type": "string",
-                                "minLength": 1
-                            }
-                        },
-                        "required": ["kind", "name", "version"],
-                        "additionalProperties": false
-                    },
-                    "evaluation": {
-                        "type": "object",
-                        "properties": {
-                            "nnueSha256": {
-                                "type": ["string", "null"],
-                                "pattern": "^[0-9a-f]{64}$"
-                            },
-                            "fvScale": {
-                                "type": ["integer", "null"]
-                            },
-                            "progressSha256": {
-                                "type": ["string", "null"],
-                                "pattern": "^[0-9a-f]{64}$"
-                            },
-                            "layerStacks": {}
-                        },
-                        "required": ["nnueSha256", "fvScale", "progressSha256", "layerStacks"],
-                        "additionalProperties": false
-                    },
-                    "limits": {
-                        "type": "object",
-                        "properties": {
-                            "timeMs": {
-                                "type": ["integer", "null"],
-                                "minimum": 0
-                            },
-                            "depth": {
-                                "type": ["integer", "null"],
-                                "minimum": 0
-                            },
-                            "nodes": {
-                                "type": ["integer", "null"],
-                                "minimum": 0
-                            }
-                        },
-                        "required": ["timeMs", "depth", "nodes"],
-                        "additionalProperties": false
-                    },
-                    "multiPv": {
-                        "type": "integer",
-                        "minimum": 1
-                    },
-                    "rules": {
-                        "$ref": "#/components/schemas/StudyRules"
-                    }
-                },
-                "required": ["version", "engine", "evaluation", "limits", "multiPv", "rules"],
-                "additionalProperties": false
-            },
-            "StudyLayerDisplay": {
-                "type": "object",
-                "properties": {
-                    "label": {
-                        "type": "string"
-                    }
-                },
-                "required": ["label"],
-                "additionalProperties": {}
-            },
-            "StudyLayerResults": {
-                "type": "object",
-                "additionalProperties": {
-                    "$ref": "#/components/schemas/StudyAnalysisResult"
-                }
-            },
-            "StudyAnalysisResult": {
-                "type": "object",
-                "properties": {
-                    "runId": {
-                        "type": "string",
-                        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-                    },
-                    "completion": {
-                        "type": "string",
-                        "enum": ["completed", "aborted"]
-                    },
-                    "depth": {
-                        "type": "integer",
-                        "minimum": 0
-                    },
-                    "nodes": {
-                        "type": ["integer", "null"],
-                        "minimum": 0
-                    },
-                    "timeMs": {
-                        "type": ["integer", "null"],
-                        "minimum": 0
-                    },
-                    "execution": {
-                        "type": "object",
-                        "properties": {
-                            "threads": {
-                                "type": ["integer", "null"],
-                                "minimum": 0
-                            },
-                            "hashMb": {
-                                "type": ["integer", "null"],
-                                "minimum": 0
-                            },
-                            "parallelWorkers": {
-                                "type": ["integer", "null"],
-                                "minimum": 0
-                            }
-                        },
-                        "required": ["threads", "hashMb", "parallelWorkers"],
-                        "additionalProperties": false
-                    },
-                    "candidates": {
-                        "type": "array",
-                        "items": {
-                            "$ref": "#/components/schemas/StudyAnalysisCandidate"
-                        },
-                        "minItems": 1
-                    }
-                },
-                "required": [
-                    "runId",
-                    "completion",
-                    "depth",
-                    "nodes",
-                    "timeMs",
-                    "execution",
-                    "candidates"
-                ],
-                "additionalProperties": false
-            },
-            "StudyAnalysisCandidate": {
-                "type": "object",
-                "properties": {
-                    "rank": {
-                        "type": "integer",
-                        "minimum": 1
-                    },
-                    "score": {
-                        "$ref": "#/components/schemas/StudyScore"
-                    },
-                    "depth": {
-                        "type": "integer",
-                        "minimum": 0
-                    },
-                    "seldepth": {
-                        "type": ["integer", "null"],
-                        "minimum": 0
-                    },
-                    "pv": {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        }
-                    }
-                },
-                "required": ["rank", "score", "depth", "seldepth", "pv"],
-                "additionalProperties": false
-            },
             "GetStudyResponse": {
                 "type": "object",
                 "properties": {
@@ -1528,81 +1624,6 @@
                     }
                 },
                 "required": ["study"]
-            },
-            "StudyDetail": {
-                "type": "object",
-                "properties": {
-                    "id": {
-                        "$ref": "#/components/schemas/StudyId"
-                    },
-                    "revision": {
-                        "type": "integer",
-                        "minimum": 1
-                    },
-                    "title": {
-                        "type": "string"
-                    },
-                    "origin": {
-                        "$ref": "#/components/schemas/StudyOrigin"
-                    },
-                    "startSfen": {
-                        "type": "string"
-                    },
-                    "rules": {
-                        "$ref": "#/components/schemas/StudyRules"
-                    },
-                    "meta": {
-                        "$ref": "#/components/schemas/StudyMeta"
-                    },
-                    "tree": {
-                        "$ref": "#/components/schemas/StudyTree"
-                    },
-                    "layers": {
-                        "type": "array",
-                        "items": {
-                            "$ref": "#/components/schemas/StudyLayer"
-                        }
-                    },
-                    "createdAt": {
-                        "type": "string"
-                    },
-                    "updatedAt": {
-                        "type": "string"
-                    }
-                },
-                "required": [
-                    "id",
-                    "revision",
-                    "title",
-                    "origin",
-                    "startSfen",
-                    "rules",
-                    "meta",
-                    "tree",
-                    "layers",
-                    "createdAt",
-                    "updatedAt"
-                ]
-            },
-            "StudyLayer": {
-                "type": "object",
-                "properties": {
-                    "id": {
-                        "type": "string",
-                        "pattern": "^[0-9a-f]{32}$"
-                    },
-                    "spec": {
-                        "$ref": "#/components/schemas/StudyLayerSpec"
-                    },
-                    "display": {
-                        "$ref": "#/components/schemas/StudyLayerDisplay"
-                    },
-                    "results": {
-                        "$ref": "#/components/schemas/StudyLayerResults"
-                    }
-                },
-                "required": ["id", "spec", "display", "results"],
-                "additionalProperties": false
             },
             "ApplyStudyOpsResponse": {
                 "type": "object",
@@ -1824,6 +1845,16 @@
                         "additionalProperties": false
                     }
                 ]
+            },
+            "SetStudyVisibilityRequest": {
+                "type": "object",
+                "properties": {
+                    "visibility": {
+                        "$ref": "#/components/schemas/StudyVisibility"
+                    }
+                },
+                "required": ["visibility"],
+                "additionalProperties": false
             }
         },
         "parameters": {}
@@ -2863,6 +2894,53 @@
                 }
             }
         },
+        "/api/public/studies/{id}": {
+            "get": {
+                "operationId": "getPublicStudy",
+                "tags": ["PublicStudies"],
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+                        },
+                        "required": true,
+                        "name": "id",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Get an unlisted study",
+                        "headers": {
+                            "Cache-Control": {
+                                "schema": {
+                                    "type": "string",
+                                    "enum": ["no-store"]
+                                }
+                            }
+                        },
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/GetPublicStudyResponse"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Study not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/user/settings": {
             "get": {
                 "operationId": "listUserSettings",
@@ -3686,6 +3764,97 @@
                             "application/json": {
                                 "schema": {
                                     "$ref": "#/components/schemas/StudyLimitExceededResponse"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/studies/{id}/visibility": {
+            "put": {
+                "operationId": "setStudyVisibility",
+                "tags": ["Studies"],
+                "parameters": [
+                    {
+                        "schema": {
+                            "$ref": "#/components/schemas/StudyId"
+                        },
+                        "required": true,
+                        "name": "id",
+                        "in": "path"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SetStudyVisibilityRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "204": {
+                        "description": "Study visibility saved"
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Authentication is required",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Request origin is not allowed",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Study not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "413": {
+                        "description": "Request body is too large",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
                                 }
                             }
                         }
