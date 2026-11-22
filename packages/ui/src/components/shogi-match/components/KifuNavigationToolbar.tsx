@@ -12,7 +12,6 @@ import { useRef, useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "../../popover";
 import { handleMenuKeyDown } from "../utils/menuKeyNavigation";
 
-/** 10 手戻る・10 手進むで動く手数。 */
 export const KIFU_NAV_STEP_TEN = 10;
 
 /**

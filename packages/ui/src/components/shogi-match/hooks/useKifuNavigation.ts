@@ -236,7 +236,7 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
 
     /**
      * 複数手進む。分岐ビューで選んでいる分岐を、1 手進むと同じ道筋でたどる。
-     * 局面の知らせは、動き終えた局面について 1 回だけ出す。
+     * 途中の局面では知らせず、動き終えた局面だけを知らせる。
      */
     const goForwardBy = (steps: number, preferredBranchNodeId?: string) => {
         setTree((prev) => {
@@ -267,7 +267,7 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
     };
 
     /**
-     * 複数手戻る。局面の知らせは、動き終えた局面について 1 回だけ出す。
+     * 複数手戻る。途中の局面では知らせず、動き終えた局面だけを知らせる。
      */
     const goBackBy = (steps: number) => {
         setTree((prev) => {
