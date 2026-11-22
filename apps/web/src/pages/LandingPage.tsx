@@ -41,7 +41,8 @@ export default function LandingPage(): ReactElement {
     const { isLoadingSession } = useAuthSession();
     // ログイン状態が分かる前に作ると、ログイン中でも匿名のノートとして作られ、クラウドへ
     // 引き継がれないことがある。押されたら分かるまで待つ。問い合わせが返らない通信状態でも
-    // 作れなくならないよう、待つのは SESSION_WAIT_MS までにして、過ぎたら匿名として作る。
+    // 作れなくならないよう、待つのは SESSION_WAIT_MS までにし、過ぎたら研究ノートのほかの
+    // 入口（`useOpenStudy`）と同じく、そのとき分かっているログイン状態のまま作る。
     const [isWaitingSession, setIsWaitingSession] = useState(false);
     const startStudyFromHirate = (): void => {
         setIsWaitingSession(false);
