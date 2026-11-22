@@ -80,6 +80,24 @@ describe("studySync", () => {
         });
     });
 
+    it("同期エンジンが別のアカウントへの切り替えに気づいたら、画面のログイン状態を取り直させる", async () => {
+        memorySync = createStudySync({
+            store: createMemoryStudyStore(),
+            api: offlineApi,
+            verifySession: async () => ({ userId: "user-2" }),
+        });
+        const refresh = vi.fn();
+        window.addEventListener("ramu-auth-session-sync", refresh);
+        try {
+            syncStudySession("user-1");
+            await getStudySync().createStudy(createDoc("44444444-4444-4444-8444-444444444444"));
+            expect(refresh).toHaveBeenCalledTimes(1);
+            expect(getStudySync().getSession()).toEqual({ userId: "user-2" });
+        } finally {
+            window.removeEventListener("ramu-auth-session-sync", refresh);
+        }
+    });
+
     describe("未ログイン中のノートの引き継ぎと、コメントの書きかけ", () => {
         const ANON = "11111111-1111-4111-8111-111111111111";
         const OTHERS = "22222222-2222-4222-8222-222222222222";

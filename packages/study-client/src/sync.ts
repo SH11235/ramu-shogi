@@ -631,23 +631,31 @@ export function createStudySync(options: StudySyncOptions): StudySync {
     };
 
     /**
-     * `createStudy` で作るノートの持ち主。伝えられているログイン状態は、画面が取り直している間
-     * （別のタブでのアカウントの切り替えのあとなど）は古いことがあるので、ログイン中と伝えられて
-     * いればサーバーに確かめる。確かめられなければ、どのアカウントのものとも決めずに匿名にする。
+     * `createStudy` で作るノートの持ち主と、それを決めたときのログイン状態（`basis`）。
+     * 伝えられているログイン状態は、画面が取り直している間（別のタブでのアカウントの切り替えの
+     * あとなど）は古いことがあるので、ログイン中と伝えられていればサーバーに確かめる。
+     * 確かめられなければ、どのアカウントのものとも決めずに匿名にする。
      */
-    const decideCreatedOwner = async (): Promise<string | null> => {
+    const decideCreatedOwner = async (): Promise<{
+        owner: string | null;
+        basis: string | null;
+    }> => {
         const current = session;
-        if (current === null || !options.verifySession) return current?.userId ?? null;
+        if (current === null || !options.verifySession) {
+            const userId = current?.userId ?? null;
+            return { owner: userId, basis: userId };
+        }
         let verified: StudySession | null;
         try {
             verified = await options.verifySession();
         } catch {
-            return null;
+            return { owner: null, basis: current.userId };
         }
         // 確かめている間に `setSession` で変わっていたら、どちらのものとも言えない。
-        if (session?.userId !== current.userId) return null;
+        if (session?.userId !== current.userId) return { owner: null, basis: null };
         isVerifiedOwner(verified, current.userId);
-        return verified?.userId ?? null;
+        const userId = verified?.userId ?? null;
+        return { owner: userId, basis: userId };
     };
 
     const setRemote = (
@@ -1546,7 +1554,7 @@ export function createStudySync(options: StudySyncOptions): StudySync {
         },
 
         createStudy(doc) {
-            const created = decideCreatedOwner().then((owner) =>
+            const created = decideCreatedOwner().then(({ owner, basis }) =>
                 enqueueWrite(doc.id, async () => {
                     const study = await mutate(doc.id, (snapshot) => {
                         if (snapshot.study) {
@@ -1555,7 +1563,10 @@ export function createStudySync(options: StudySyncOptions): StudySync {
                                 `研究ノートは既にあります: ${doc.id}`,
                             );
                         }
-                        const fresh = newStoredStudy(doc, owner, null);
+                        // 持ち主を決めてから書くまでの間にログイン状態が変わっていたら、匿名にして
+                        // 引き継ぎに任せる（変わったあとのアカウントから見えなくしないため）。
+                        const settled = (session?.userId ?? null) === basis ? owner : null;
+                        const fresh = newStoredStudy(doc, settled, null);
                         return { study: fresh, result: fresh };
                     });
                     emit({ type: "document", studyId: doc.id, origin: "local" });
@@ -1568,7 +1579,8 @@ export function createStudySync(options: StudySyncOptions): StudySync {
                 pendingCreates.delete(created);
             };
             created.then(forget, forget);
-            return created;
+            // 持ち主を確かめている間も、書き込み待ち（`whenLocalWritesSettled`・`flush`）に含める。
+            return trackWrite(created);
         },
 
         async open(studyId) {

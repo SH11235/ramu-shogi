@@ -2686,6 +2686,48 @@ describe.each(STORES)("同期エンジン（保存層: $name）", ({ create }) =
             expect(harness.sync.getSession()).toEqual({ userId: USER_B });
         });
 
+        it("確かめてから書くまでの間にログイン状態が伝え直されたら、匿名で作る", async () => {
+            const inner = createStore();
+            let onTransact: (() => void) | null = null;
+            const store: StudyStore = {
+                ...inner,
+                transact: (studyId, mutate) => {
+                    const hook = onTransact;
+                    onTransact = null;
+                    hook?.();
+                    return inner.transact(studyId, mutate);
+                },
+            };
+            const harness = createHarness({
+                store,
+                verifySession: async () => ({ userId: USER_A }),
+            });
+            harness.login(USER_A);
+            onTransact = () => harness.login(USER_B);
+            expect((await harness.sync.createStudy(doc)).owner).toBeNull();
+        });
+
+        it("持ち主を確かめている間の作成も、書き込みの完了待ちに含める", async () => {
+            let release: (value: { userId: string }) => void = () => undefined;
+            const harness = createHarness({
+                verifySession: () =>
+                    new Promise((resolve) => {
+                        release = resolve;
+                    }),
+            });
+            harness.login(USER_A);
+            void harness.sync.createStudy(doc);
+            let settled = false;
+            const waiting = harness.sync.whenLocalWritesSettled().then(() => {
+                settled = true;
+            });
+            await settle(5);
+            expect(settled).toBe(false);
+            release({ userId: USER_A });
+            await waiting;
+            expect((await harness.store.read(TEST_STUDY_ID)).study?.owner).toBe(USER_A);
+        });
+
         it("引き継ぐ前の確認で別のアカウントだと分かったら、引き継がずに取り直しを促す", async () => {
             const harness = createVerifyingHarness();
             await harness.sync.createStudy(doc);

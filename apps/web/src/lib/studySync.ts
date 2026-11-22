@@ -6,13 +6,23 @@
  */
 
 import { type BrowserStudySync, createBrowserStudySync, type StudySync } from "@shogi/study-client";
+import { dispatchAuthSessionSyncEvent } from "../hooks/useAuthSession";
 import { adoptStudyCommentDrafts, listAnonymousStudyCommentDraftIds } from "./studyDrafts";
 
 let instance: BrowserStudySync | null = null;
+let unsubscribeUnauthorized: (() => void) | null = null;
 
 /** 研究ノートの同期エンジンを返す。 */
 export const getStudySync = (): StudySync => {
-    instance ??= createBrowserStudySync();
+    if (instance === null) {
+        instance = createBrowserStudySync();
+        // 同期エンジンがセッション切れや別のアカウントへの切り替えに気づいたら、どのページに
+        // いても画面のログイン状態を取り直す（研究ノートのページの外でノートを作ったときも、
+        // 画面に古いアカウントが残ったまま、そのアカウントを同期エンジンに伝え直さないため）。
+        unsubscribeUnauthorized = instance.sync.subscribeEvents((event) => {
+            if (event.type === "unauthorized") dispatchAuthSessionSyncEvent();
+        });
+    }
     return instance.sync;
 };
 
@@ -108,6 +118,8 @@ export const ensureStudySession = (
 
 /** 同期エンジンを破棄する（テスト用）。 */
 export const resetStudySyncForTest = (): void => {
+    unsubscribeUnauthorized?.();
+    unsubscribeUnauthorized = null;
     instance?.dispose();
     instance = null;
     adoption = null;
