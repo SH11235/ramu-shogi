@@ -35,6 +35,8 @@ interface MobileAnalysisSheetProps {
     onForward: () => void;
     onToStart: () => void;
     onToEnd: () => void;
+    onBackTen: () => void;
+    onForwardTen: () => void;
     /** PVを分岐として追加するコールバック */
     onAddBranch?: (ply: number, pv: string[]) => void;
     /** PVを盤面で確認するコールバック */
@@ -196,6 +198,8 @@ export function MobileAnalysisSheet({
     onForward,
     onToStart,
     onToEnd,
+    onBackTen,
+    onForwardTen,
     onAddBranch,
     onPreview,
     isOnMainLine = true,
@@ -260,6 +264,8 @@ export function MobileAnalysisSheet({
                     onForward={onForward}
                     onToStart={onToStart}
                     onToEnd={onToEnd}
+                    onBackTen={onBackTen}
+                    onForwardTen={onForwardTen}
                 />
 
                 {/* 読み筋 */}

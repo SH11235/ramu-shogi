@@ -42,6 +42,7 @@ import {
     KifuNavigationToolbar,
 } from "./shogi-match/components/KifuNavigationToolbar";
 import { type HandInfo, MobileBoardSection } from "./shogi-match/components/MobileBoardSection";
+import { MobileNavigation } from "./shogi-match/components/MobileNavigation";
 import { PCBoardContent } from "./shogi-match/components/PCBoardContent";
 import { PvPreviewDialog } from "./shogi-match/components/PvPreviewDialog";
 import { TabHeader } from "./shogi-match/components/TabHeader";
@@ -758,21 +759,36 @@ export function OnlineGameView({
                 )}
 
                 {/* 棋譜ナビゲーション */}
-                {positionHistory.length > 0 && (
-                    <KifuNavigationToolbar
-                        currentPly={currentPly}
-                        totalPly={totalPly}
-                        onBack={handleNavBack}
-                        onForward={handleNavForward}
-                        onToStart={handleNavStart}
-                        onToEnd={handleNavEnd}
-                        onBackTen={handleNavBackTen}
-                        onForwardTen={handleNavForwardTen}
-                        isRewound={isRewound}
-                        disabled={!gameResult && !isSpectator}
-                        className="mb-2"
-                    />
-                )}
+                {positionHistory.length > 0 &&
+                    (isMobile ? (
+                        // スマートフォンでは、ほかの画面と同じ手送りの行にする。
+                        <MobileNavigation
+                            currentPly={currentPly}
+                            totalPly={totalPly}
+                            onBack={handleNavBack}
+                            onForward={handleNavForward}
+                            onToStart={handleNavStart}
+                            onToEnd={handleNavEnd}
+                            onBackTen={handleNavBackTen}
+                            onForwardTen={handleNavForwardTen}
+                            disabled={!gameResult && !isSpectator}
+                            className="mb-2"
+                        />
+                    ) : (
+                        <KifuNavigationToolbar
+                            currentPly={currentPly}
+                            totalPly={totalPly}
+                            onBack={handleNavBack}
+                            onForward={handleNavForward}
+                            onToStart={handleNavStart}
+                            onToEnd={handleNavEnd}
+                            onBackTen={handleNavBackTen}
+                            onForwardTen={handleNavForwardTen}
+                            isRewound={isRewound}
+                            disabled={!gameResult && !isSpectator}
+                            className="mb-2"
+                        />
+                    ))}
 
                 {pendingTakeback && pendingTakeback.seat === seat && !isSpectator && (
                     <TakebackPendingBanner canCancel={canSend} onCancel={handleTakebackCancel} />

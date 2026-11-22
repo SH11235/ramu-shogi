@@ -80,7 +80,7 @@ describe("KifuNavigationToolbar の分岐メニュー", () => {
 });
 
 describe("KifuNavigationToolbar の 10 手の移動", () => {
-    const renderWithTen = (props: { currentPly: number; size?: "default" | "large" | "bar" }) => {
+    const renderWithTen = (props: { currentPly: number; size?: "default" | "large" }) => {
         const onBackTen = vi.fn();
         const onForwardTen = vi.fn();
         render(
@@ -115,11 +115,5 @@ describe("KifuNavigationToolbar の 10 手の移動", () => {
         expect(
             (screen.getByRole("button", { name: "10手進む" }) as HTMLButtonElement).disabled,
         ).toBe(false);
-    });
-
-    it("1 行の帯（bar）には 10 手の移動を出さない", () => {
-        renderWithTen({ currentPly: 15, size: "bar" });
-        expect(screen.queryByRole("button", { name: "10手戻る" })).toBeNull();
-        expect(screen.queryByRole("button", { name: "10手進む" })).toBeNull();
     });
 });

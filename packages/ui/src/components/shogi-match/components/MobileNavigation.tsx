@@ -1,27 +1,32 @@
 import { cn } from "@shogi/design-system";
 import type { ReactElement, ReactNode } from "react";
-import { FirstIcon, LastIcon, NextIcon, PrevIcon } from "../../study-workspace/StudyIcons";
-import { MobileSettingsActions } from "./MobileSettingsActions";
+import {
+    BackTenIcon,
+    FirstIcon,
+    ForwardTenIcon,
+    LastIcon,
+    NextIcon,
+    PrevIcon,
+} from "../../study-workspace/StudyIcons";
 
 interface MobileNavigationProps {
     /** 現在の手数 */
     currentPly: number;
     /** 総手数 */
     totalPly: number;
-    /** 戻るボタン */
     onBack: () => void;
-    /** 進むボタン */
     onForward: () => void;
-    /** 最初へ */
     onToStart: () => void;
-    /** 最後へ */
     onToEnd: () => void;
+    onBackTen: () => void;
+    onForwardTen: () => void;
     /** 無効状態 */
     disabled?: boolean;
-    /** 設定ボタンクリック（指定時は右端に設定ボタンを表示） */
-    onSettingsClick?: () => void;
-    /** AI（評価関数）ボタンクリック（指定時は設定ボタンの左に表示） */
-    onNnueManagerClick?: () => void;
+    /** 進めるか（分岐の途中など、手数だけでは決まらないときに渡す） */
+    canGoForward?: boolean;
+    /** 手数の表示の代わりに置くもの（研究ノートで変化に入っている間の「本譜へ」など） */
+    center?: ReactNode;
+    className?: string;
 }
 
 // 見た目は研究ノートの手送り（StudyIconButton）と合わせている。変えるときは両方をそろえる。
@@ -55,7 +60,8 @@ function MobileNavButton({
 }
 
 /**
- * スマホ検討モード用のナビゲーションボタン
+ * スマートフォンの手送りの行。どの画面でも同じ 7 つの操作だけを並べる（画面ごとのボタンはこの行に
+ * 置かない）。40px のボタン 6 つと手数で約 320px にし、375px 幅の画面に詰めずに収める。
  */
 export function MobileNavigation({
     currentPly,
@@ -64,42 +70,46 @@ export function MobileNavigation({
     onForward,
     onToStart,
     onToEnd,
+    onBackTen,
+    onForwardTen,
     disabled = false,
-    onSettingsClick,
-    onNnueManagerClick,
+    canGoForward: canGoForwardProp,
+    center,
+    className,
 }: MobileNavigationProps): ReactElement {
-    const canGoBack = currentPly > 0;
-    const canGoForward = currentPly < totalPly;
+    const canGoBack = !disabled && currentPly > 0;
+    const canGoForward = !disabled && (canGoForwardProp ?? currentPly < totalPly);
 
     return (
-        <div className="flex items-center justify-center gap-2 py-2">
-            <MobileNavButton title="最初へ" onClick={onToStart} disabled={disabled || !canGoBack}>
+        <nav
+            aria-label="局面の移動"
+            className={cn("flex items-center justify-center gap-1", className)}
+        >
+            <MobileNavButton title="最初へ" onClick={onToStart} disabled={!canGoBack}>
                 <FirstIcon className="h-5 w-5" />
             </MobileNavButton>
-            <MobileNavButton title="1手戻る" onClick={onBack} disabled={disabled || !canGoBack}>
+            <MobileNavButton title="10手戻る" onClick={onBackTen} disabled={!canGoBack}>
+                <BackTenIcon className="h-5 w-5" />
+            </MobileNavButton>
+            <MobileNavButton title="1手戻る" onClick={onBack} disabled={!canGoBack}>
                 <PrevIcon className="h-5 w-5" />
             </MobileNavButton>
-
-            <div className="min-w-[60px] text-center font-mono text-sm tabular-nums text-wafuu-sumi">
-                {currentPly} / {totalPly}
+            <div className="flex min-w-14 justify-center">
+                {center ?? (
+                    <output className="text-center font-mono text-sm tabular-nums text-wafuu-sumi">
+                        {currentPly}/{totalPly}
+                    </output>
+                )}
             </div>
-
-            <MobileNavButton
-                title="1手進む"
-                onClick={onForward}
-                disabled={disabled || !canGoForward}
-            >
+            <MobileNavButton title="1手進む" onClick={onForward} disabled={!canGoForward}>
                 <NextIcon className="h-5 w-5" />
             </MobileNavButton>
-            <MobileNavButton title="最後へ" onClick={onToEnd} disabled={disabled || !canGoForward}>
+            <MobileNavButton title="10手進む" onClick={onForwardTen} disabled={!canGoForward}>
+                <ForwardTenIcon className="h-5 w-5" />
+            </MobileNavButton>
+            <MobileNavButton title="最後へ" onClick={onToEnd} disabled={!canGoForward}>
                 <LastIcon className="h-5 w-5" />
             </MobileNavButton>
-
-            <MobileSettingsActions
-                variant="navigation"
-                onSettingsClick={onSettingsClick}
-                onNnueManagerClick={onNnueManagerClick}
-            />
-        </div>
+        </nav>
     );
 }

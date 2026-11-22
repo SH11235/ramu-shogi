@@ -15,7 +15,7 @@ import {
  * 分岐切替機能を提供する
  */
 
-import type { ReactElement, ReactNode } from "react";
+import type { ReactElement } from "react";
 import { useRef, useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "../../popover";
 import { handleMenuKeyDown } from "../utils/menuKeyNavigation";
@@ -44,7 +44,7 @@ interface KifuNavigationToolbarProps {
     onToStart: () => void;
     /** 最後へ */
     onToEnd: () => void;
-    /** 10 手戻る・10 手進む。渡したときだけ出す（`size="bar"` では出さない）。 */
+    /** 10 手戻る・10 手進む。渡したときだけ出す。 */
     onBackTen?: () => void;
     onForwardTen?: () => void;
     /** 無効化（対局中など） */
@@ -57,12 +57,8 @@ interface KifuNavigationToolbarProps {
     canGoForward?: boolean;
     /**
      * "large": 押しやすい大きさのボタンで、欄の幅いっぱいに並べる（終局後の振り返りなど、主な操作にするとき）。
-     * "bar": 高さ 32px の 1 行。最初・最後へのボタンだけを両端に置き、その間を `center` に使う
-     * （スマホの終局後。1 手ずつの送りは `center` の棋譜の帯で行う）。
      */
-    size?: "default" | "large" | "bar";
-    /** 手数の表示の代わりに、前後のボタンの間に置くもの（`size="bar"` のとき） */
-    center?: ReactNode;
+    size?: "default" | "large";
     className?: string;
 }
 
@@ -74,14 +70,12 @@ function NavButton({
     disabled,
     title,
     large = false,
-    bar = false,
     children,
 }: {
     onClick: () => void;
     disabled?: boolean;
     title: string;
     large?: boolean;
-    bar?: boolean;
     children: React.ReactNode;
 }) {
     return (
@@ -93,7 +87,7 @@ function NavButton({
             aria-label={title}
             // 見た目は研究ノートの手送り（StudyIconButton）と合わせている。変えるときは両方をそろえる。
             className={cn(
-                bar ? "h-8 w-10 shrink-0" : large ? "h-10 min-w-12 flex-1" : "h-8 w-8",
+                large ? "h-10 min-w-12 flex-1" : "h-8 w-8",
                 "inline-flex items-center justify-center rounded-md border border-border bg-background text-wafuu-sumi transition-colors",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 disabled ? "cursor-not-allowed opacity-40" : "hover:bg-muted/60 active:bg-muted",
@@ -118,11 +112,9 @@ export function KifuNavigationToolbar({
     isRewound = false,
     canGoForward: canGoForwardProp,
     size = "default",
-    center,
     className,
 }: KifuNavigationToolbarProps): ReactElement {
     const large = size === "large";
-    const bar = size === "bar";
     const [showBranchMenu, setShowBranchMenu] = useState(false);
     const branchMenuRef = useRef<HTMLDivElement>(null);
 
@@ -138,11 +130,7 @@ export function KifuNavigationToolbar({
     return (
         <div
             className={cn(
-                bar
-                    ? "flex w-full items-center gap-1.5"
-                    : large
-                      ? "flex w-full items-center gap-2"
-                      : "flex items-center gap-1.5",
+                large ? "flex w-full items-center gap-2" : "flex items-center gap-1.5",
                 className,
             )}
         >
@@ -152,68 +140,55 @@ export function KifuNavigationToolbar({
                 disabled={disabled || !canGoBack}
                 title="最初へ戻る"
                 large={large}
-                bar={bar}
             >
                 <FirstIcon className={large ? "h-5 w-5" : undefined} />
             </NavButton>
-            {!bar && onBackTen && (
+            {onBackTen && (
                 <NavButton
                     onClick={onBackTen}
                     disabled={disabled || !canGoBack}
                     title="10手戻る"
                     large={large}
-                    bar={bar}
                 >
                     <BackTenIcon className={large ? "h-5 w-5" : undefined} />
                 </NavButton>
             )}
             {/* 1手戻る */}
-            {!bar && (
-                <NavButton
-                    onClick={onBack}
-                    disabled={disabled || !canGoBack}
-                    title="1手戻る"
-                    large={large}
-                    bar={bar}
-                >
-                    <PrevIcon className={large ? "h-5 w-5" : undefined} />
-                </NavButton>
-            )}
+            <NavButton
+                onClick={onBack}
+                disabled={disabled || !canGoBack}
+                title="1手戻る"
+                large={large}
+            >
+                <PrevIcon className={large ? "h-5 w-5" : undefined} />
+            </NavButton>
 
             {/* 手数表示 */}
-            {center ? (
-                <div className="min-w-0 flex-1">{center}</div>
-            ) : (
-                <div
-                    className={`
+            <div
+                className={`
                     ${large ? "min-w-16 shrink-0 text-sm tabular-nums" : "flex-1 text-[13px]"} text-center font-medium
                     ${isRewound ? "text-wafuu-shu" : "text-foreground"}
                 `}
-                >
-                    {currentPly}/{totalPly}手
-                </div>
-            )}
+            >
+                {currentPly}/{totalPly}手
+            </div>
 
             {/* 1手進む */}
-            {!bar && (
-                <NavButton
-                    onClick={onForward}
-                    disabled={disabled || !canGoForward}
-                    title="1手進む"
-                    large={large}
-                    bar={bar}
-                >
-                    <NextIcon className={large ? "h-5 w-5" : undefined} />
-                </NavButton>
-            )}
+            <NavButton
+                onClick={onForward}
+                disabled={disabled || !canGoForward}
+                title="1手進む"
+                large={large}
+            >
+                <NextIcon className={large ? "h-5 w-5" : undefined} />
+            </NavButton>
 
-            {!bar && onForwardTen && (
+            {onForwardTen && (
                 <NavButton
                     onClick={onForwardTen}
                     disabled={disabled || !canGoForward}
                     title="10手進む"
                     large={large}
-                    bar={bar}
                 >
                     <ForwardTenIcon className={large ? "h-5 w-5" : undefined} />
                 </NavButton>
@@ -224,7 +199,6 @@ export function KifuNavigationToolbar({
                 disabled={disabled || !canGoForward}
                 title="最後へ進む"
                 large={large}
-                bar={bar}
             >
                 <LastIcon className={large ? "h-5 w-5" : undefined} />
             </NavButton>

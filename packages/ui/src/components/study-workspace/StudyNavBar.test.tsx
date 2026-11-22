@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "../tooltip";
 import { StudyNavBar } from "./StudyNavBar";
 
-function renderNavBar(props: { index: number; total: number; compact?: boolean }) {
+function renderNavBar(props: { index: number; total: number }) {
     const onBackTen = vi.fn();
     const onForwardTen = vi.fn();
     render(
@@ -17,7 +17,6 @@ function renderNavBar(props: { index: number; total: number; compact?: boolean }
                 onToEnd={vi.fn()}
                 onBackTen={onBackTen}
                 onForwardTen={onForwardTen}
-                compact={props.compact}
             />
         </TooltipProvider>,
     );
@@ -39,11 +38,5 @@ describe("StudyNavBar の 10 手の移動", () => {
         renderNavBar({ index: 0, total: 30 });
         expect(button("10 手戻る").disabled).toBe(true);
         expect(button("10 手進む").disabled).toBe(false);
-    });
-
-    it("スマートフォンの詰めた行（compact）には出さない", () => {
-        renderNavBar({ index: 15, total: 30, compact: true });
-        expect(screen.queryByRole("button", { name: "10 手戻る" })).toBeNull();
-        expect(screen.queryByRole("button", { name: "10 手進む" })).toBeNull();
     });
 });
