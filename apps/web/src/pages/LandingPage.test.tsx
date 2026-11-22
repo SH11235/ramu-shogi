@@ -13,7 +13,7 @@ import LandingPage from "./LandingPage";
 
 let authState = { session: { authenticated: false }, isLoadingSession: false, sessionError: null };
 const createStudyFromKifuSource = vi.fn();
-const ensureStudySession = vi.fn(async () => {});
+const ensureStudySession = vi.fn(async (..._args: unknown[]) => {});
 
 vi.mock("../hooks/useAuthSession", () => ({ useAuthSession: () => authState }));
 vi.mock("../lib/studyEntry", () => ({
