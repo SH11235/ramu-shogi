@@ -54,14 +54,14 @@ describe("StudyMateControl", () => {
         ).toBe(true);
     });
 
-    it("調べている間は中止に替わる", () => {
+    it("調べている間は止めるに替わる", () => {
         const handlers = renderControl({
             status: "running",
             phase: "threat",
             nodes: 1_234_567,
             elapsedMs: 3_200,
         });
-        fireEvent.click(screen.getByRole("button", { name: "詰み探索を中止" }));
+        fireEvent.click(screen.getByRole("button", { name: "詰み探索を止める" }));
         expect(handlers.onStop).toHaveBeenCalled();
     });
 });
@@ -283,7 +283,7 @@ describe("最短手順", () => {
         expect(screen.queryByRole("button", { name: "最短手順を求める" })).toBeNull();
     });
 
-    it("求めている間は経過と途中で分かった手順を出し、中止できる", () => {
+    it("求めている間は経過と途中で分かった手順を出し、止められる", () => {
         const { shortest, node, handlers } = renderShortest({
             status: "running",
             nodes: 100,
@@ -293,7 +293,7 @@ describe("最短手順", () => {
         screen.getByText("最短手順を求めています（3 / 120 秒）");
         screen.getByText("3 手以内に詰むことを証明");
         expect(screen.queryByRole("button", { name: "最短手順を求める" })).toBeNull();
-        fireEvent.click(screen.getByRole("button", { name: "最短手順を求めるのを中止" }));
+        fireEvent.click(screen.getByRole("button", { name: "最短手順を求めるのを止める" }));
         expect(shortest.onStop).toHaveBeenCalled();
         // 詰みの行と最短手順の行の両方に盤で見るボタンがある
         fireEvent.click(screen.getAllByRole("button", { name: "詰み手順を盤で見る" })[1]);

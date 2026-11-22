@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 import { Button } from "../button";
+import { RamRunningIcon } from "../ram-running-icon";
 import { AnalyzeIcon } from "./StudyIcons";
 import type { StudyAnalysisController } from "./useStudyAnalysis";
 
@@ -21,7 +22,7 @@ export interface StudyAnalysisRunState {
 
 /**
  * 評価値グラフの見出しの行に置く解析の操作（PC・スマートフォン共通）。結果の出るグラフのすぐ上に
- * 置き、どの状態（始める・進み具合と中止・残りを解析）でも同じ場所・同じ高さで中身だけを替える。
+ * 置き、どの状態（始める・進み具合と止める・残りを解析）でも同じ場所・同じ高さで中身だけを替える。
  */
 export function StudyCompactAnalysisAction({
     run,
@@ -34,6 +35,7 @@ export function StudyCompactAnalysisAction({
     if (run.mode === "full") {
         return (
             <div className="flex shrink-0 items-center gap-2">
+                <RamRunningIcon />
                 <output aria-live="polite" className="font-mono tabular-nums">
                     解析中 {run.progress?.completed ?? 0} / {run.progress?.total ?? 0}
                     {wide && " 局面"}
@@ -45,7 +47,7 @@ export function StudyCompactAnalysisAction({
                     className="h-7 px-2 text-xs"
                     onClick={run.onCancel}
                 >
-                    中止
+                    止める
                 </Button>
             </div>
         );
