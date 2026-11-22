@@ -1,6 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { act, cleanup, renderHook } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { RATE_LIMITED_MESSAGE } from "../lib/rateLimitMessage";
-import { parseApiError } from "./useAuthSession";
+import {
+    AUTH_SESSION_TIMEOUT_MS,
+    AuthSessionProvider,
+    parseApiError,
+    useAuthSession,
+} from "./useAuthSession";
 
 describe("parseApiError", () => {
     it("429 は本文の英語の message ではなく日本語の文言を返す", async () => {
@@ -25,5 +32,67 @@ describe("parseApiError", () => {
             { status: 400 },
         );
         expect(await parseApiError(response)).toBe("表示名が長すぎます");
+    });
+});
+
+describe("AuthSessionProvider", () => {
+    const wrapper = ({ children }: { children: ReactNode }) => (
+        <AuthSessionProvider>{children}</AuthSessionProvider>
+    );
+    const signedIn = (id: string) =>
+        Response.json({ authenticated: true, user: { id, username: id, displayName: id } });
+
+    afterEach(() => {
+        cleanup();
+        vi.unstubAllGlobals();
+        vi.useRealTimers();
+    });
+
+    it("ログイン状態の問い合わせが返らなければ、時間切れで確認中を終える", async () => {
+        vi.useFakeTimers();
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(() => new Promise<Response>(() => undefined)),
+        );
+        const { result } = renderHook(() => useAuthSession(), { wrapper });
+        expect(result.current.isLoadingSession).toBe(true);
+        await act(() => vi.advanceTimersByTimeAsync(AUTH_SESSION_TIMEOUT_MS));
+        expect(result.current.isLoadingSession).toBe(false);
+        expect(result.current.sessionError).toContain("時間切れ");
+        expect(result.current.session).toBeNull();
+    });
+
+    it("取り直しが重なったら、あとから始めた問い合わせの結果を使う", async () => {
+        const pending: Array<(response: Response) => void> = [];
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(
+                () =>
+                    new Promise<Response>((resolve) => {
+                        pending.push(resolve);
+                    }),
+            ),
+        );
+        const { result } = renderHook(() => useAuthSession(), { wrapper });
+        await act(async () => {
+            pending[0](signedIn("user-a"));
+        });
+        // 別のタブで B に切り替わったあとの取り直しが 2 回重なり、先に始めた方が遅れて返る。
+        let first: Promise<void> = Promise.resolve();
+        let second: Promise<void> = Promise.resolve();
+        act(() => {
+            first = result.current.refreshSession();
+            second = result.current.refreshSession();
+        });
+        await act(async () => {
+            pending[2](signedIn("user-b"));
+            await second;
+        });
+        await act(async () => {
+            pending[1](signedIn("user-a"));
+            await first;
+        });
+        expect(result.current.session).toMatchObject({ user: { id: "user-b" } });
+        expect(result.current.isLoadingSession).toBe(false);
     });
 });

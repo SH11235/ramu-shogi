@@ -47,16 +47,12 @@ interface EnsureStudySessionOptions {
  * 引き継いだノートの一覧ではなく、匿名のまま残っている書きかけの側から確かめる
  * （他のタブが先に引き継いでいた場合や、前回の引き継ぎの途中でページを離れた場合も移せる）。
  * 匿名の書きかけは、そのノートが匿名だったときにこのブラウザで書いたものなので、ノートの
- * 持ち主がいまのアカウントになっていれば、そのアカウントのもの。
- *
- * @returns すべての書きかけについて確かめられたら true。ノートを読めずに確かめられなかった
- *   書きかけが残っていたら false（「別のアカウントのノートなので移さない」とは区別する。
- *   呼び出し側は、次の機会に確かめ直す）。
+ * 持ち主がいまのアカウントになっていれば、そのアカウントのもの。ノートを読めずに確かめられ
+ * なかった書きかけは匿名のまま残し、次の呼び出しで確かめ直す。
  */
-const adoptCommentDrafts = async (userId: string): Promise<boolean> => {
+const adoptCommentDrafts = async (userId: string): Promise<void> => {
     const sync = getStudySync();
     const adopted: string[] = [];
-    let complete = true;
     for (const studyId of listAnonymousStudyCommentDraftIds()) {
         try {
             // いまのアカウントから見えないノート（別のアカウントのノート）は null が返る。
@@ -64,21 +60,20 @@ const adoptCommentDrafts = async (userId: string): Promise<boolean> => {
             if (stored?.owner === userId) adopted.push(studyId);
         } catch (error) {
             console.error("[study] コメントの書きかけの持ち主を確かめられませんでした", error);
-            complete = false;
         }
     }
     // 確かめられた分は移す。
     adoptStudyCommentDrafts(adopted, userId);
-    return complete;
 };
 
 /**
  * セッションが確定したときに呼ぶ。ログイン状態を同期エンジンに伝え、ログイン中なら、
  * 未ログインのあいだにこのブラウザで作ったノートをそのアカウントに引き継ぐ（設計書 7.2）。
  *
- * 引き継ぎはアカウントごとに 1 回だけ走らせ、同じ処理を待てるよう同じ Promise を返す
- * （アプリの起動時と、研究ノートの各ページの両方から呼ばれるため）。失敗した分が残ったときは、
- * その処理が終わったあとの次の呼び出しでやり直す。
+ * 同じアカウントの引き継ぎが走っている間は、同じ Promise を返す（アプリの起動時と、研究ノートの
+ * 各ページの両方から呼ばれるため）。終わったあとの呼び出しでは探し直す: ログイン中でも、
+ * ログイン状態を確かめられずに匿名で作ったノート（`StudySync.createStudy`）や、失敗して
+ * 残った分があるため。匿名のノートが無ければ、探し直しはブラウザ内の一覧を読むだけで済む。
  */
 export const ensureStudySession = (
     userId: string | null,
@@ -98,16 +93,14 @@ export const ensureStudySession = (
         .then(
             () => undefined,
             (error: unknown) => {
-                // 引き継げなくてもノートはブラウザ内に残る。次にセッションが確定したときにやり直す。
+                // 引き継げなくてもノートはブラウザ内に残る。次の呼び出しでやり直す。
                 console.error("[study] 未ログイン中のノートの引き継ぎに失敗しました", error);
-                if (adoption?.done === done) adoption = null;
             },
         )
         // 一部だけ引き継げた場合も、引き継げた分の書きかけは移す。
         .then(() => adoptCommentDrafts(userId))
-        .then((complete) => {
-            // 確かめられなかった書きかけは、次にセッションが確定したときに確かめ直す。
-            if (!complete && adoption?.done === done) adoption = null;
+        .finally(() => {
+            if (adoption?.done === done) adoption = null;
         });
     adoption = { userId, done };
     return done;

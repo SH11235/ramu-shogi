@@ -145,6 +145,8 @@ export interface StudySyncOptions {
      * （別のタブでアカウントが切り替わっていた場合に、別のアカウントへ作ってしまわないため）。
      * 削除が 404 だったときにも呼び、持ち主のままのときだけ削除済みとして扱う
      * （別のアカウントとして送った削除の 404 で、ローカルのノートを消してしまわないため）。
+     * ノートをローカルに作るとき・匿名のノートを引き継ぐときにも呼び、持ち主をサーバーから見た
+     * ユーザーに合わせる（画面がログイン状態を取り直している間も、前のユーザーのものにしないため）。
      * 未ログインなら null を返す。取得できなければ例外を投げる（あとで試し直す）。
      * 省略すると確認しない。
      */
@@ -178,6 +180,11 @@ export interface StudySync {
     /**
      * 新しいノートをローカルに作る。持ち主は、ログイン中ならそのユーザー、未ログインなら匿名。
      * 同じ ID のノートが既にあれば `StudySyncError("already_exists")`。
+     *
+     * `verifySession` があり、ログイン中と伝えられているときは、作る前にサーバーから見たユーザーを
+     * 確かめ、そのユーザーを持ち主にする（違っていれば `setSession` で伝え直されたときと同じく
+     * 切り替え、`unauthorized` のイベントで画面に取り直しを促す）。確かめられなければ匿名で作る
+     * （次の `adoptAnonymousStudies` で、そのとき確かめられたアカウントに引き継がれる）。
      */
     createStudy(doc: StudyDocument): Promise<StoredStudy>;
     /**
@@ -228,6 +235,11 @@ export interface StudySync {
     /**
      * 未ログイン中に作ったノート（匿名）の持ち主を、いまのアカウントに固定して送信を始める。
      * ログインして戻ってきたときに呼ぶ。引き継いだノートの ID を返す。
+     *
+     * 作成中のノートは、書き終えるのを待ってから探す（引き継ぎから漏らさないため）。
+     * `verifySession` があり、引き継ぐノートがあるときは、サーバーから見たユーザーを先に確かめる。
+     * いまのアカウントと違えば何も引き継がず（`createStudy` と同じく切り替えて取り直しを促す）、
+     * 確かめられなければ拒否する。
      */
     adoptAnonymousStudies(): Promise<string[]>;
     /**
@@ -444,6 +456,8 @@ export function createStudySync(options: StudySyncOptions): StudySync {
     /** 待機が明けたときに、開いているノートの取り込みをやり直すためのタイマー。 */
     let authResumeTimer: unknown = null;
     let disposed = false;
+    /** 持ち主を決めて書き終えるまでの `createStudy`。引き継ぎはこれを待ってから匿名のノートを探す。 */
+    const pendingCreates = new Set<Promise<unknown>>();
 
     /** 応答が成功したら、401 の続いた回数を忘れる（通常の送り方に戻る）。 */
     const noteResponse = <T extends { ok: boolean }>(response: T): T => {
@@ -614,6 +628,26 @@ export function createStudySync(options: StudySyncOptions): StudySync {
         for (const id of entries.keys()) refreshStatus(id);
         emit({ type: "unauthorized" });
         return false;
+    };
+
+    /**
+     * `createStudy` で作るノートの持ち主。伝えられているログイン状態は、画面が取り直している間
+     * （別のタブでのアカウントの切り替えのあとなど）は古いことがあるので、ログイン中と伝えられて
+     * いればサーバーに確かめる。確かめられなければ、どのアカウントのものとも決めずに匿名にする。
+     */
+    const decideCreatedOwner = async (): Promise<string | null> => {
+        const current = session;
+        if (current === null || !options.verifySession) return current?.userId ?? null;
+        let verified: StudySession | null;
+        try {
+            verified = await options.verifySession();
+        } catch {
+            return null;
+        }
+        // 確かめている間に `setSession` で変わっていたら、どちらのものとも言えない。
+        if (session?.userId !== current.userId) return null;
+        isVerifiedOwner(verified, current.userId);
+        return verified?.userId ?? null;
     };
 
     const setRemote = (
@@ -1512,22 +1546,29 @@ export function createStudySync(options: StudySyncOptions): StudySync {
         },
 
         createStudy(doc) {
-            const owner = session?.userId ?? null;
-            return enqueueWrite(doc.id, async () => {
-                const study = await mutate(doc.id, (snapshot) => {
-                    if (snapshot.study) {
-                        throw new StudySyncError(
-                            "already_exists",
-                            `研究ノートは既にあります: ${doc.id}`,
-                        );
-                    }
-                    const created = newStoredStudy(doc, owner, null);
-                    return { study: created, result: created };
-                });
-                emit({ type: "document", studyId: doc.id, origin: "local" });
-                schedule(doc.id, 0);
-                return study;
-            });
+            const created = decideCreatedOwner().then((owner) =>
+                enqueueWrite(doc.id, async () => {
+                    const study = await mutate(doc.id, (snapshot) => {
+                        if (snapshot.study) {
+                            throw new StudySyncError(
+                                "already_exists",
+                                `研究ノートは既にあります: ${doc.id}`,
+                            );
+                        }
+                        const fresh = newStoredStudy(doc, owner, null);
+                        return { study: fresh, result: fresh };
+                    });
+                    emit({ type: "document", studyId: doc.id, origin: "local" });
+                    schedule(doc.id, 0);
+                    return study;
+                }),
+            );
+            pendingCreates.add(created);
+            const forget = (): void => {
+                pendingCreates.delete(created);
+            };
+            created.then(forget, forget);
+            return created;
         },
 
         async open(studyId) {
@@ -1712,10 +1753,20 @@ export function createStudySync(options: StudySyncOptions): StudySync {
         async adoptAnonymousStudies() {
             const current = session;
             if (!current) return [];
-            const summaries = await store.list();
+            await Promise.allSettled([...pendingCreates]);
+            if (session?.userId !== current.userId) return [];
+            const candidates = (await store.list()).filter(
+                (summary) => summary.owner === null && summary.mergedInto === null,
+            );
+            if (candidates.length === 0) return [];
+            if (options.verifySession) {
+                const verified = await options.verifySession();
+                // 確かめている間に `setSession` で変わっていたら、新しい方の呼び出しに任せる。
+                if (session?.userId !== current.userId) return [];
+                if (!isVerifiedOwner(verified, current.userId)) return [];
+            }
             const adopted: string[] = [];
-            for (const summary of summaries) {
-                if (summary.owner !== null || summary.mergedInto !== null) continue;
+            for (const summary of candidates) {
                 const done = await enqueueWrite(summary.id, () =>
                     mutate(summary.id, (snapshot) => {
                         // 他のタブが先に持ち主を決めていたら、それを変えない。

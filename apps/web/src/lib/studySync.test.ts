@@ -134,6 +134,20 @@ describe("studySync", () => {
             expect(readStudyCommentDrafts(STILL_ANON, "user-1")).toEqual([]);
         });
 
+        it("引き継ぎを終えたあとに残った匿名のノートも、次の呼び出しで引き継ぐ", async () => {
+            const store = createMemoryStudyStore();
+            memorySync = createSync(store);
+            await ensureStudySession("user-1");
+            // 引き継ぎのあとに、匿名のノートができた（ログイン状態を確かめられずに作った、など）。
+            const otherTab = createSync(store);
+            await otherTab.createStudy(createDoc(ANON));
+            otherTab.dispose();
+
+            await ensureStudySession("user-1");
+
+            expect((await getStudySync().load(ANON))?.owner).toBe("user-1");
+        });
+
         it("書きかけを移す前の確認（ノートの読み込み）に失敗したら、次にセッションが確定したときに確かめ直して移す", async () => {
             const store = createMemoryStudyStore();
             memorySync = createSync(store);
@@ -173,7 +187,7 @@ describe("studySync", () => {
             expect(readStudyCommentDrafts(ANON, null)).toEqual([]);
             expect(readStudyCommentDrafts(ANON, "user-1")).toHaveLength(1);
 
-            // すべて確かめ終えたら、同じユーザーではやり直さない。
+            // すべて移し終えたら、確かめる書きかけが無いので読み直さない。
             const calls = load.mock.calls.length;
             await ensureStudySession("user-1");
             expect(load.mock.calls.length).toBe(calls);
