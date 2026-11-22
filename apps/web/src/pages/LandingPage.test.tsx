@@ -15,7 +15,19 @@ let authState = { session: { authenticated: false }, isLoadingSession: false, se
 const createStudyFromKifuSource = vi.fn();
 const ensureStudySession = vi.fn(async (..._args: unknown[]) => {});
 
-vi.mock("../hooks/useAuthSession", () => ({ useAuthSession: () => authState }));
+const authListeners = new Set<() => void>();
+function setAuthState(next: typeof authState) {
+    authState = next;
+    for (const listener of authListeners) listener();
+}
+vi.mock("../hooks/useAuthSession", async () => {
+    const { useSyncExternalStore } = await import("react");
+    const subscribe = (listener: () => void) => {
+        authListeners.add(listener);
+        return () => authListeners.delete(listener);
+    };
+    return { useAuthSession: () => useSyncExternalStore(subscribe, () => authState) };
+});
 vi.mock("../lib/studyEntry", () => ({
     createStudyFromKifuSource: (...args: unknown[]) => createStudyFromKifuSource(...args),
 }));
@@ -105,10 +117,42 @@ describe("LandingPage", () => {
         await waitFor(() => expect(router.state.location.pathname).toBe("/studies/s2"));
     });
 
-    it("ログイン状態が分かるまでは押せない", async () => {
+    it("ログイン状態の確認中に押すと、分かってから作る", async () => {
+        createStudyFromKifuSource.mockResolvedValue({ studyId: "s1" });
         authState = { session: null, isLoadingSession: true, sessionError: null } as never;
         await renderLanding();
+        await act(async () => {
+            fireEvent.click(startButton());
+        });
+        expect(createStudyFromKifuSource).not.toHaveBeenCalled();
         expect((startButton() as HTMLButtonElement).disabled).toBe(true);
+        act(() =>
+            setAuthState({
+                session: { authenticated: false },
+                isLoadingSession: false,
+                sessionError: null,
+            }),
+        );
+        await waitFor(() => expect(createStudyFromKifuSource).toHaveBeenCalledTimes(1));
+    });
+
+    it("ログイン状態の確認が返らなくても、待ちすぎずに作る", async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        try {
+            createStudyFromKifuSource.mockResolvedValue({ studyId: "s1" });
+            authState = { session: null, isLoadingSession: true, sessionError: null } as never;
+            await renderLanding();
+            await act(async () => {
+                fireEvent.click(startButton());
+            });
+            expect(createStudyFromKifuSource).not.toHaveBeenCalled();
+            await act(async () => {
+                vi.advanceTimersByTime(5000);
+            });
+            await waitFor(() => expect(createStudyFromKifuSource).toHaveBeenCalledTimes(1));
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it("できることに研究ノートの入口を置く", async () => {
