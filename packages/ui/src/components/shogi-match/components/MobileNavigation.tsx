@@ -24,7 +24,7 @@ interface MobileNavigationProps {
     onNnueManagerClick?: () => void;
 }
 
-// 研究ノートの手送り（StudyIconButton）と同じ、アイコンだけの 40px のボタン。
+// 見た目は研究ノートの手送り（StudyIconButton）と合わせている。変えるときは両方をそろえる。
 function MobileNavButton({
     title,
     onClick,

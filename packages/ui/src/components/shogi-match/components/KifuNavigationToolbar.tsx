@@ -91,7 +91,7 @@ function NavButton({
             disabled={disabled}
             title={title}
             aria-label={title}
-            // 研究ノートの手送り（StudyIconButton）と同じ見た目にそろえる。
+            // 見た目は研究ノートの手送り（StudyIconButton）と合わせている。変えるときは両方をそろえる。
             className={cn(
                 bar ? "h-8 w-10 shrink-0" : large ? "h-10 min-w-12 flex-1" : "h-8 w-8",
                 "inline-flex items-center justify-center rounded-md border border-border bg-background text-wafuu-sumi transition-colors",
