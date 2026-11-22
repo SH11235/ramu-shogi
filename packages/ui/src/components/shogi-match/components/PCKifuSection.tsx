@@ -19,6 +19,7 @@ import { useShogiMatchConfig } from "../ShogiMatchContext";
 import { ANALYSIS_TIME_OPTIONS, PARALLEL_WORKER_OPTIONS } from "../utils/threadOptions";
 import { CurrentPositionAiHintPanel } from "./CurrentPositionAiHintPanel";
 import { EvalPanel } from "./EvalPanel";
+import { KIFU_NAV_STEP_TEN } from "./KifuNavigationToolbar";
 import { KifuPanel } from "./KifuPanel";
 import { TabHeader } from "./TabHeader";
 
@@ -129,6 +130,12 @@ export function PCKifuSection(): ReactElement {
                                 navigationHandlers.goForward(selectedBranchNodeId ?? undefined),
                             onToStart: navigationHandlers.goToStart,
                             onToEnd: navigationHandlers.goToEnd,
+                            onBackTen: () => navigationHandlers.goBackBy(KIFU_NAV_STEP_TEN),
+                            onForwardTen: () =>
+                                navigationHandlers.goForwardBy(
+                                    KIFU_NAV_STEP_TEN,
+                                    selectedBranchNodeId ?? undefined,
+                                ),
                             isRewound: navigationState.isRewound,
                             canGoForward: navigationState.canGoForward,
                             branchInfo: navigationState.hasBranches

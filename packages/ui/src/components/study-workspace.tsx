@@ -26,6 +26,7 @@ import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { useUsageTracker } from "../providers/UsageContext";
 import type { PlayFromPosition } from "./rshogi-play-from-position";
+import { KIFU_NAV_STEP_TEN } from "./shogi-match/components/KifuNavigationToolbar";
 import { MatchNnueDownloadDialog } from "./shogi-match/components/MatchNnueDownloadDialog";
 import { type HandInfo, MobileBoardSection } from "./shogi-match/components/MobileBoardSection";
 import { MobileKifuBar } from "./shogi-match/components/MobileKifuBar";
@@ -993,6 +994,9 @@ export function StudyWorkspaceView({
         onBack: nav.goBack,
         onForward: nav.goForward,
         onToEnd: nav.goToEnd,
+        onBackTen: () => nav.navigateToPly(Math.max(0, currentIndex - KIFU_NAV_STEP_TEN)),
+        onForwardTen: () =>
+            nav.navigateToPly(Math.min(line.length - 1, currentIndex + KIFU_NAV_STEP_TEN)),
     };
     // 選んでいる駒の影（マウスを乗せた行き先に出す）
     const moveShadow = useMoveShadow({

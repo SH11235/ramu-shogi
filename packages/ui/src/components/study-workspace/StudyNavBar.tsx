@@ -1,9 +1,9 @@
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
 import { StudyIconButton } from "./StudyIconButton";
-import { FirstIcon, LastIcon, NextIcon, PrevIcon } from "./StudyIcons";
+import { BackTenIcon, FirstIcon, ForwardTenIcon, LastIcon, NextIcon, PrevIcon } from "./StudyIcons";
 
-/** 局面の移動（最初・1 手戻る・1 手進む・最後）と、いまの手数。 */
+/** 局面の移動（最初・10 手戻る・1 手戻る・1 手進む・10 手進む・最後）と、いまの手数。 */
 export function StudyNavBar({
     index,
     total,
@@ -11,6 +11,8 @@ export function StudyNavBar({
     onBack,
     onForward,
     onToEnd,
+    onBackTen,
+    onForwardTen,
     compact = false,
 }: {
     index: number;
@@ -19,6 +21,9 @@ export function StudyNavBar({
     onBack: () => void;
     onForward: () => void;
     onToEnd: () => void;
+    /** 10 手ずつの移動。`compact` のときは行に入らないので出さない。 */
+    onBackTen?: () => void;
+    onForwardTen?: () => void;
     /** スマートフォンで、同じ行にコメントのボタンも並べるときの詰めた幅 */
     compact?: boolean;
 }): ReactElement {
@@ -43,6 +48,16 @@ export function StudyNavBar({
             >
                 <FirstIcon />
             </StudyIconButton>
+            {!compact && onBackTen && (
+                <StudyIconButton
+                    label="10 手戻る"
+                    className={buttonClass}
+                    onClick={onBackTen}
+                    disabled={index <= 0}
+                >
+                    <BackTenIcon />
+                </StudyIconButton>
+            )}
             <StudyIconButton
                 label="1 手戻る（←）"
                 className={buttonClass}
@@ -68,6 +83,16 @@ export function StudyNavBar({
             >
                 <NextIcon />
             </StudyIconButton>
+            {!compact && onForwardTen && (
+                <StudyIconButton
+                    label="10 手進む"
+                    className={buttonClass}
+                    onClick={onForwardTen}
+                    disabled={index >= total}
+                >
+                    <ForwardTenIcon />
+                </StudyIconButton>
+            )}
             <StudyIconButton
                 label="最後の局面へ"
                 className={buttonClass}

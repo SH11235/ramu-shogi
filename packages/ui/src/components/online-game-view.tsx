@@ -37,7 +37,10 @@ import { useOnlineAiAnalysis } from "./online-game-view/useOnlineAiAnalysis";
 import { useOnlineClock } from "./online-game-view/useOnlineClock";
 import { useOnlineGameRoom } from "./online-game-view/useOnlineGameRoom";
 import { BottomSheet } from "./shogi-match/components/BottomSheet";
-import { KifuNavigationToolbar } from "./shogi-match/components/KifuNavigationToolbar";
+import {
+    KIFU_NAV_STEP_TEN,
+    KifuNavigationToolbar,
+} from "./shogi-match/components/KifuNavigationToolbar";
 import { type HandInfo, MobileBoardSection } from "./shogi-match/components/MobileBoardSection";
 import { PCBoardContent } from "./shogi-match/components/PCBoardContent";
 import { PvPreviewDialog } from "./shogi-match/components/PvPreviewDialog";
@@ -291,6 +294,21 @@ export function OnlineGameView({
     const handleNavForward = () => {
         if (navIndex === null) return;
         const next = navIndex + 1;
+        // 最新局面に追いついたらライブ追従モードに戻す
+        dispatchUI({
+            type: "set_nav_index",
+            index: next >= positionHistory.length - 1 ? null : next,
+        });
+    };
+
+    const handleNavBackTen = () => {
+        const cur = navIndex !== null ? navIndex : positionHistory.length - 1;
+        dispatchUI({ type: "set_nav_index", index: Math.max(0, cur - KIFU_NAV_STEP_TEN) });
+    };
+
+    const handleNavForwardTen = () => {
+        if (navIndex === null) return;
+        const next = navIndex + KIFU_NAV_STEP_TEN;
         // 最新局面に追いついたらライブ追従モードに戻す
         dispatchUI({
             type: "set_nav_index",
@@ -748,6 +766,8 @@ export function OnlineGameView({
                         onForward={handleNavForward}
                         onToStart={handleNavStart}
                         onToEnd={handleNavEnd}
+                        onBackTen={handleNavBackTen}
+                        onForwardTen={handleNavForwardTen}
                         isRewound={isRewound}
                         disabled={!gameResult && !isSpectator}
                         className="mb-2"

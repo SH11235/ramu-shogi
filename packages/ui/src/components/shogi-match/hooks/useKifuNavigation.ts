@@ -125,6 +125,10 @@ export interface UseKifuNavigationResult {
     goForward: (preferredBranchNodeId?: string) => void;
     /** 1手戻る */
     goBack: () => void;
+    /** 複数手進む（1 手進むと同じく、優先分岐を指定可能） */
+    goForwardBy: (steps: number, preferredBranchNodeId?: string) => void;
+    /** 複数手戻る */
+    goBackBy: (steps: number) => void;
     /** 最初へ */
     goToStart: () => void;
     /** 最後へ（メインライン） */
@@ -225,6 +229,57 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
                 const node = getCurrentNode(newTree);
                 const lastMove = deriveLastMoveFromUsi(node.usiMove);
                 onPositionChange?.(node.positionAfter, lastMove);
+            }
+            return newTree;
+        });
+    };
+
+    /**
+     * 複数手進む。分岐ビューで選んでいる分岐を、1 手進むと同じ道筋でたどる。
+     * 局面の知らせは、動き終えた局面について 1 回だけ出す。
+     */
+    const goForwardBy = (steps: number, preferredBranchNodeId?: string) => {
+        setTree((prev) => {
+            let cache: PreferredPathCache | undefined;
+            if (preferredBranchNodeId) {
+                const currentCache = pathCacheRef.current;
+                if (currentCache && currentCache.nodeId === preferredBranchNodeId) {
+                    cache = currentCache;
+                } else {
+                    cache = createPreferredPathCache(prev, preferredBranchNodeId);
+                    pathCacheRef.current = cache;
+                }
+            } else {
+                pathCacheRef.current = null;
+            }
+            let newTree = prev;
+            for (let i = 0; i < steps; i++) {
+                const next = goForwardTree(newTree, preferredBranchNodeId, cache);
+                if (next === newTree) break;
+                newTree = next;
+            }
+            if (newTree !== prev) {
+                const node = getCurrentNode(newTree);
+                onPositionChange?.(node.positionAfter, deriveLastMoveFromUsi(node.usiMove));
+            }
+            return newTree;
+        });
+    };
+
+    /**
+     * 複数手戻る。局面の知らせは、動き終えた局面について 1 回だけ出す。
+     */
+    const goBackBy = (steps: number) => {
+        setTree((prev) => {
+            let newTree = prev;
+            for (let i = 0; i < steps; i++) {
+                const next = goBackTree(newTree);
+                if (next === newTree) break;
+                newTree = next;
+            }
+            if (newTree !== prev) {
+                const node = getCurrentNode(newTree);
+                onPositionChange?.(node.positionAfter, deriveLastMoveFromUsi(node.usiMove));
             }
             return newTree;
         });
@@ -988,6 +1043,8 @@ export function useKifuNavigation(options: UseKifuNavigationOptions): UseKifuNav
         state,
         goForward,
         goBack,
+        goForwardBy,
+        goBackBy,
         goToStart,
         goToEnd,
         goToPly,

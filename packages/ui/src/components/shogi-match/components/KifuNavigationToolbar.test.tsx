@@ -78,3 +78,48 @@ describe("KifuNavigationToolbar の分岐メニュー", () => {
         }
     });
 });
+
+describe("KifuNavigationToolbar の 10 手の移動", () => {
+    const renderWithTen = (props: { currentPly: number; size?: "default" | "large" | "bar" }) => {
+        const onBackTen = vi.fn();
+        const onForwardTen = vi.fn();
+        render(
+            <KifuNavigationToolbar
+                currentPly={props.currentPly}
+                totalPly={30}
+                onBack={vi.fn()}
+                onForward={vi.fn()}
+                onToStart={vi.fn()}
+                onToEnd={vi.fn()}
+                onBackTen={onBackTen}
+                onForwardTen={onForwardTen}
+                size={props.size}
+            />,
+        );
+        return { onBackTen, onForwardTen };
+    };
+
+    it("10 手戻る・10 手進むを押すと、それぞれを呼ぶ", () => {
+        const { onBackTen, onForwardTen } = renderWithTen({ currentPly: 15 });
+        fireEvent.click(screen.getByRole("button", { name: "10手戻る" }));
+        fireEvent.click(screen.getByRole("button", { name: "10手進む" }));
+        expect(onBackTen).toHaveBeenCalledTimes(1);
+        expect(onForwardTen).toHaveBeenCalledTimes(1);
+    });
+
+    it("最初の局面では 10 手戻るを押せない", () => {
+        renderWithTen({ currentPly: 0 });
+        expect(
+            (screen.getByRole("button", { name: "10手戻る" }) as HTMLButtonElement).disabled,
+        ).toBe(true);
+        expect(
+            (screen.getByRole("button", { name: "10手進む" }) as HTMLButtonElement).disabled,
+        ).toBe(false);
+    });
+
+    it("1 行の帯（bar）には 10 手の移動を出さない", () => {
+        renderWithTen({ currentPly: 15, size: "bar" });
+        expect(screen.queryByRole("button", { name: "10手戻る" })).toBeNull();
+        expect(screen.queryByRole("button", { name: "10手進む" })).toBeNull();
+    });
+});
