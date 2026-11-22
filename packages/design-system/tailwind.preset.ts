@@ -133,7 +133,7 @@ const preset: Omit<Config, "content"> = {
                 "ram-run": { to: { transform: "translateX(-100%)" } },
             },
             animation: {
-                "ram-run": "ram-run 0.48s steps(4) infinite",
+                "ram-run": "ram-run 0.51s steps(6) infinite",
             },
             dropShadow: {
                 // 盤と駒台の駒
