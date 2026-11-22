@@ -1,6 +1,7 @@
 import { STUDY_HIRATE_SFEN } from "@shogi/app-core";
 import { Link } from "@tanstack/react-router";
 import type { ReactElement, ReactNode } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import { HeaderNav } from "../components/HeaderNav";
 import { HeroBoard } from "../components/HeroBoard";
 import { PageHeader } from "../components/PageHeader";
@@ -17,6 +18,8 @@ interface EntryCardProps {
     heading: string;
     children: ReactNode;
 }
+
+const SESSION_WAIT_MS = 5000;
 
 // 入口は主な導線なので、背景付きのカードにしない（上の罫線と見出しで区切る）。
 function EntryCard({ to, heading, children }: EntryCardProps): ReactElement {
@@ -35,14 +38,32 @@ function EntryCard({ to, heading, children }: EntryCardProps): ReactElement {
 
 export default function LandingPage(): ReactElement {
     const { openStudy, isBusy, error } = useOpenStudy();
-    // ログイン状態が分かる前に作ると、ログイン中でも匿名のノートとして作られ、クラウドへ
-    // 引き継がれないことがある。分かるまで押せなくする。
     const { isLoadingSession } = useAuthSession();
+    // ログイン状態が分かる前に作ると、ログイン中でも匿名のノートとして作られ、クラウドへ
+    // 引き継がれないことがある。押されたら分かるまで待つ。問い合わせが返らない通信状態でも
+    // 作れなくならないよう、待つのは SESSION_WAIT_MS までにして、過ぎたら匿名として作る。
+    const [isWaitingSession, setIsWaitingSession] = useState(false);
     const startStudyFromHirate = (): void => {
+        setIsWaitingSession(false);
         void openStudy(() =>
             createStudyFromKifuSource({ kind: "moves", startSfen: STUDY_HIRATE_SFEN, moves: [] }),
         );
     };
+    const startWhenSessionKnown = useEffectEvent(startStudyFromHirate);
+    useEffect(() => {
+        if (!isWaitingSession) return;
+        if (!isLoadingSession) {
+            startWhenSessionKnown();
+            return;
+        }
+        const timer = setTimeout(startWhenSessionKnown, SESSION_WAIT_MS);
+        return () => clearTimeout(timer);
+    }, [isWaitingSession, isLoadingSession]);
+    const handleStartClick = (): void => {
+        if (isLoadingSession) setIsWaitingSession(true);
+        else startStudyFromHirate();
+    };
+    const isPreparing = isBusy || isWaitingSession;
     return (
         <>
             <PageHeader items={[{ label: "ラム将棋" }]} right={<HeaderNav />} />
@@ -80,11 +101,11 @@ export default function LandingPage(): ReactElement {
                             </Link>
                             <button
                                 type="button"
-                                onClick={startStudyFromHirate}
-                                disabled={isBusy || isLoadingSession}
+                                onClick={handleStartClick}
+                                disabled={isPreparing}
                                 className="inline-flex items-center gap-2 rounded-lg border border-wafuu-border bg-background px-5 py-3 text-sm font-semibold text-wafuu-sumi transition-colors enabled:hover:border-wafuu-ai/50 enabled:hover:text-wafuu-ai disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                             >
-                                {isBusy ? "用意しています…" : "盤で検討する"}
+                                {isPreparing ? "用意しています…" : "盤で検討する"}
                             </button>
                         </div>
                         {error && (
