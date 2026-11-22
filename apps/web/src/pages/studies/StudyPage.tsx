@@ -343,18 +343,58 @@ export default function StudyPage(): ReactElement {
         };
 
         const presentPublicStudy = async (): Promise<boolean> => {
-            const result = await studyApi.getPublic(studyId);
-            if (cancelled) return true;
-            if (result.ok) {
-                setState({ status: "public", studyId, doc: toStudyDocument(result.data.study) });
-                return true;
+            try {
+                const result = await studyApi.getPublic(studyId);
+                if (cancelled) return true;
+                if (result.ok) {
+                    setState({
+                        status: "public",
+                        studyId,
+                        doc: toStudyDocument(result.data.study),
+                    });
+                } else if (result.status === 404) {
+                    return false;
+                } else {
+                    setState({
+                        status: "unavailable",
+                        message: result.error.message ?? `HTTP ${result.status}`,
+                    });
+                }
+            } catch {
+                if (!cancelled) {
+                    setState({
+                        status: "unavailable",
+                        message: "共有された研究ノートを取得できませんでした。",
+                    });
+                }
             }
-            if (result.status === 404) return false;
-            setState({
-                status: "unavailable",
-                message: result.error.message ?? `HTTP ${result.status}`,
-            });
             return true;
+        };
+
+        const presentOpenFailure = async (message?: string): Promise<void> => {
+            if (cancelled || lockIfWasOpen()) return;
+            if (
+                sessionState !== "known" ||
+                !sessionConfirmed ||
+                (userId !== null && sync.isUnauthorized())
+            ) {
+                setState((previous) =>
+                    sessionState === "error" &&
+                    previous.status === "ready" &&
+                    previous.studyId === studyId
+                        ? previous
+                        : {
+                              status: "unavailable",
+                              message: "ログイン状態を確認できませんでした。",
+                          },
+                );
+            } else if (!(await presentPublicStudy()) && !cancelled) {
+                setState(
+                    message === undefined
+                        ? { status: "not_found" }
+                        : { status: "unavailable", message },
+                );
+            }
         };
 
         const unsubscribe = sync.subscribeEvents((event) => {
@@ -400,16 +440,7 @@ export default function StudyPage(): ReactElement {
                     openedLocal = true;
                     return;
                 }
-                if (sessionState === "error" && !lockIfWasOpen() && !(await presentPublicStudy())) {
-                    setState((previous) =>
-                        previous.status === "ready" && previous.studyId === studyId
-                            ? previous
-                            : {
-                                  status: "unavailable",
-                                  message: "ログイン状態を確認できませんでした。",
-                              },
-                    );
-                }
+                if (sessionState === "error") await presentOpenFailure();
                 return;
             }
             // ログイン状態を伝え、未ログイン中に作ったノートをアカウントへ引き継いでから開く。
@@ -427,26 +458,10 @@ export default function StudyPage(): ReactElement {
                 openedLocal = true;
                 if (await presentFromStore(studyId, "open", isCancelled)) return;
             }
-            if (cancelled || lockIfWasOpen() || (await presentPublicStudy())) return;
-            if (result.status === "unavailable") {
-                setState({ status: "unavailable", message: result.message });
-            } else if (userId !== null && (!sessionConfirmed || sync.isUnauthorized())) {
-                // ログイン状態を確かめられていない（サーバーが 401 を返した・確かめ直しに失敗した）
-                // ので、「無い」とは言い切れない。確認からやり直せるようにする。
-                setState({
-                    status: "unavailable",
-                    message: "ログイン状態を確認できませんでした。",
-                });
-            } else {
-                setState({ status: "not_found" });
-            }
-        })().catch(async (error: unknown) => {
-            if (cancelled || lockIfWasOpen() || (await presentPublicStudy())) return;
-            setState({
-                status: "unavailable",
-                message: error instanceof Error ? error.message : String(error),
-            });
-        });
+            await presentOpenFailure(result.status === "unavailable" ? result.message : undefined);
+        })().catch((error: unknown) =>
+            presentOpenFailure(error instanceof Error ? error.message : String(error)),
+        );
 
         return () => {
             cancelled = true;

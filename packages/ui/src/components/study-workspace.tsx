@@ -359,6 +359,7 @@ export function StudyWorkspaceView({
         tree,
         nav,
         locked: editingDisabled,
+        readOnly,
         fetchLegalMoves,
         onApplyOps,
         onMessageChange,

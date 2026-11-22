@@ -11,7 +11,7 @@ import {
     DialogTitle,
 } from "@shogi/ui/components/dialog";
 import type { ReactElement } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const visibilityOptions = [
     { value: "private", label: "非公開" },
@@ -35,6 +35,9 @@ export function StudyShareDialog({
     const [reloadCount, setReloadCount] = useState(0);
     const [error, setError] = useState<string | null>(null);
     const [status, setStatus] = useState<string | null>(null);
+    const readVersion = useRef(0);
+    const pendingSave = useRef<Promise<unknown> | null>(null);
+    const confirmingSave = useRef(false);
 
     useEffect(() => {
         if (unavailableReason !== null) return;
@@ -43,30 +46,70 @@ export function StudyShareDialog({
         setNotSaved(false);
         setError(null);
         setStatus(null);
-        void api.get(studyId).then((result) => {
-            if (cancelled) return;
-            if (result.ok) setVisibility(result.data.study.visibility);
-            else if (result.status === 404 || result.status === 410) setNotSaved(true);
-            else setError("公開設定を読み込めませんでした。");
-        });
+        const loadVisibility = async (): Promise<void> => {
+            const version = ++readVersion.current;
+            if (pendingSave.current) await pendingSave.current;
+            if (cancelled || version !== readVersion.current) return;
+            try {
+                const result = await api.get(studyId);
+                if (cancelled || version !== readVersion.current) return;
+                if (result.ok) {
+                    confirmingSave.current = false;
+                    setVisibility(result.data.study.visibility);
+                    setNotSaved(false);
+                    setError(null);
+                    return;
+                }
+                if (!confirmingSave.current && (result.status === 404 || result.status === 410)) {
+                    setVisibility(null);
+                    setNotSaved(true);
+                    setError(null);
+                    return;
+                }
+            } catch {
+                if (cancelled || version !== readVersion.current) return;
+            }
+            setVisibility(null);
+            setNotSaved(false);
+            setStatus(null);
+            setError("公開設定を読み込めませんでした。");
+        };
+        const onFocus = (): void => {
+            setStatus(null);
+            void loadVisibility();
+        };
+        const onVisibilityChange = (): void => {
+            if (document.visibilityState === "visible") onFocus();
+        };
+        void loadVisibility();
+        window.addEventListener("focus", onFocus);
+        document.addEventListener("visibilitychange", onVisibilityChange);
         return () => {
             cancelled = true;
+            window.removeEventListener("focus", onFocus);
+            document.removeEventListener("visibilitychange", onVisibilityChange);
         };
     }, [api, studyId, unavailableReason, reloadCount]);
 
     const changeVisibility = async (next: StudyVisibility): Promise<void> => {
-        if (unavailableReason !== null || visibility === null || next === visibility || isSaving)
-            return;
+        if (unavailableReason !== null || visibility === null || pendingSave.current) return;
+        // 更新前に始めた GET で、保存後の表示を上書きしない。
+        readVersion.current += 1;
         setIsSaving(true);
         setError(null);
         setStatus(null);
-        const result = await api.setVisibility(studyId, { visibility: next });
+        const save = api.setVisibility(studyId, { visibility: next }).catch(() => null);
+        pendingSave.current = save;
+        const result = await save;
+        pendingSave.current = null;
         setIsSaving(false);
-        if (result.ok) {
+        if (result?.ok) {
             setVisibility(next);
             setStatus("公開設定を保存しました。");
         } else {
-            setError(result.error.message ?? "公開設定を保存できませんでした。");
+            confirmingSave.current = true;
+            setVisibility(null);
+            setReloadCount((count) => count + 1);
         }
     };
 

@@ -2804,6 +2804,25 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         expect(position().textContent?.replace(/\s/g, "")).toMatch(/^1\//);
     });
 
+    it("ログイン切れでロック中も盤から既存の手へ進める", async () => {
+        const { doc } = createTestStudy();
+        const onOps = vi.fn();
+        const fetchLegalMoves = vi.fn(async () => ["7g7f"]);
+        render(<Harness initialDoc={doc} locked onOps={onOps} fetchLegalMoves={fetchLegalMoves} />);
+        const position = within(screen.getByRole("navigation", { name: "局面の移動" })).getByRole(
+            "status",
+        );
+
+        expect(position.textContent?.replace(/\s/g, "")).toMatch(/^0\//);
+
+        fireEvent.click(screen.getByRole("button", { name: /^7g 先手の歩/ }));
+        await act(async () => {
+            fireEvent.click(screen.getByRole("button", { name: /^7f 空マス/ }));
+        });
+        expect(position.textContent?.replace(/\s/g, "")).toMatch(/^1\//);
+        expect(onOps).not.toHaveBeenCalled();
+    });
+
     it("解析中は、盤の表示のグラフの見出しで進み具合を見て止められ、候補手のタブで読んでいると分かる", () => {
         const analysis = createAnalysis({ mode: "full", progress: { completed: 2, total: 5 } });
         render(

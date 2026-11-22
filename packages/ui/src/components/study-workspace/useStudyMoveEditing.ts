@@ -43,6 +43,7 @@ export function useStudyMoveEditing({
     tree,
     nav,
     locked,
+    readOnly,
     fetchLegalMoves,
     onApplyOps,
     onMessageChange,
@@ -51,6 +52,7 @@ export function useStudyMoveEditing({
     tree: KifuTree;
     nav: ReturnType<typeof useStudyNodeNavigation>;
     locked: boolean;
+    readOnly: boolean;
     fetchLegalMoves: StudyFetchLegalMoves | undefined;
     onApplyOps: (ops: StudyOp[]) => StudyApplyOpsResult;
     onMessageChange: (message: Message | null) => void;
@@ -70,7 +72,7 @@ export function useStudyMoveEditing({
 
     /** いまの局面から手を足す（既にある手なら、その手へ移るだけ）。足せなかったときは false。 */
     const addMoveFromCurrent = (usiMove: string): boolean => {
-        if (locked) return false;
+        if (readOnly) return false;
         if (!isStudyUsiMove(usiMove)) {
             onMessageChange({ text: "この手は研究ノートに追加できません", type: "error" });
             return false;
@@ -108,7 +110,7 @@ export function useStudyMoveEditing({
      */
     const passFromCurrent = async (): Promise<string | null> => {
         // 確かめている間の押し直しは受け付けない。
-        if (locked || passPendingRef.current) return null;
+        if (readOnly || passPendingRef.current) return null;
         const nodeId = currentNodeId;
         const moves = [...movesToCurrent, STUDY_PASS_MOVE];
         if (!tree.nodes.has(studyChildNodeId(currentNodeId, STUDY_PASS_MOVE))) {
@@ -168,7 +170,7 @@ export function useStudyMoveEditing({
         isEditMode: false,
         isReviewMode: true,
         isPaused: false,
-        positionReady: !locked,
+        positionReady: !readOnly,
         fetchLegalMoves,
         startSfen: tree.startSfen,
         moves: movesToCurrent,
@@ -205,7 +207,7 @@ export function useStudyMoveEditing({
     });
 
     const addPvAsVariation = (request: StudyPvRequest): void => {
-        if (locked) return;
+        if (readOnly) return;
         const baseNode = tree.nodes.get(request.nodeId);
         if (!baseNode) return;
         const moves: string[] = [];
