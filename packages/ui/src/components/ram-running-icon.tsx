@@ -5,7 +5,7 @@ import type { CSSProperties, ReactElement } from "react";
  * 走るラム（トイプードル）のドット絵。6 コマを横に並べた 1 枚の絵を、窓の中で 1 コマずつ送って動かす。
  * 動きを減らす設定の端末では、最初のコマで止める。
  *
- * 1 文字が 1 ドット: F = 毛、D = 毛の陰（向こう側の脚・耳）、C = 口元、K = 目・鼻。
+ * 1 文字が 1 ドット: F = 毛、D = 毛の陰（向こう側の脚・耳）、C = 口元、K = 目・鼻、B = 首輪。
  * 前脚で支える → 脚を胴の下に集める → 後ろ脚が着く → 後ろ脚で蹴る → 跳ねる → 前脚が着く、の順。
  * 胴が固まって見えないよう、脚を集めるコマでは背中を丸め、伸びるコマでは反らせて胴を長くし、
  * 前脚が着くときは前へ傾ける。頭は低く前に出す（高く立てると馬の走りに見える）。
@@ -21,7 +21,7 @@ const FRAMES: readonly (readonly string[])[] = [
         "....FFF......DFFFF....",
         "......F..FFFDDFFKFCC..",
         "......F.FFFFDDFFFCCCK.",
-        ".......FFFFFFFFFFC....",
+        ".......FFFFFFFBBFC....",
         "......FFFDDDDFFF......",
         "......FFFFF..FFF......",
         ".........FFD..FF......",
@@ -36,7 +36,7 @@ const FRAMES: readonly (readonly string[])[] = [
         ".....FF......DFFFF....",
         "....FFF.....DDFFKFCC..",
         "......F..FFFDDFFFCCCK.",
-        "......F.FFFFFFFFFC....",
+        "......F.FFFFFFBBFC....",
         ".......FFFFFFFFF......",
         "......FFFDDDDFFF......",
         "......FFFFF.FFF.......",
@@ -52,7 +52,7 @@ const FRAMES: readonly (readonly string[])[] = [
         "....FFF......FFFFF....",
         "......F..FFFDDFFKFCC..",
         "......F.FFFDDDFFFCCCK.",
-        ".......FFFFFDFFFFC....",
+        ".......FFFFFDFBBFC....",
         "......FFFDDDDFFF......",
         "......FFFF...DFF......",
         ".......FFF...DFF......",
@@ -68,7 +68,7 @@ const FRAMES: readonly (readonly string[])[] = [
         "...FF........FFFFF....",
         "...FFF......DDFFKFCC..",
         ".....FF....DDDFFFCCCK.",
-        "......F.....DFFFFC....",
+        "......F.....DFBBFC....",
         ".....FFFFFFFFFFF......",
         ".....FFFFFFFFF........",
         ".......FFFFFDFFF......",
@@ -83,7 +83,7 @@ const FRAMES: readonly (readonly string[])[] = [
         ".............FFFFF....",
         ".FF.........DDFFKFCC..",
         ".FFF.......DDDFFFCCCK.",
-        ".F..FFF.....DFFFFC....",
+        ".F..FFF.....DFBBFC....",
         "....FFFFFFFFFFFF......",
         "....FFFFFFFFFF........",
         ".....FFFFFFFDFFF......",
@@ -102,7 +102,7 @@ const FRAMES: readonly (readonly string[])[] = [
         "......FF.....DFFFF....",
         ".....FFFFFFFDDFFKFCC..",
         ".....FFFFFFFDDFFFCCCK.",
-        ".......FFFFFFFFFFC....",
+        ".......FFFFFFFBBFC....",
         "........FFDDDFFF......",
         ".......FFD...FFF......",
         ".......F.D....FFD.....",
@@ -118,6 +118,7 @@ const DOT_CLASS: Record<string, string> = {
     D: "fill-ram-fur-deep",
     C: "fill-ram-cream",
     K: "fill-ram-ink",
+    B: "fill-wafuu-ai",
 };
 
 // 同じ色が横に続くドットは 1 つの矩形にまとめる（矩形の数を減らし、境目の隙間も出さない）。
