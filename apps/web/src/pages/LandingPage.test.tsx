@@ -89,14 +89,20 @@ describe("LandingPage", () => {
         await act(async () => finish({ studyId: "s1" }));
     });
 
-    it("作れなかったら知らせ、もう一度押せる", async () => {
-        createStudyFromKifuSource.mockRejectedValueOnce(new Error("保存できません"));
-        await renderLanding();
+    it("作れなかったら知らせ、もう一度押すと作り直して移る", async () => {
+        createStudyFromKifuSource
+            .mockRejectedValueOnce(new Error("保存できません"))
+            .mockResolvedValueOnce({ studyId: "s2" });
+        const router = await renderLanding();
         await act(async () => {
             fireEvent.click(startButton());
         });
         expect(screen.getByRole("alert").textContent).toContain("保存できません");
-        expect((startButton() as HTMLButtonElement).disabled).toBe(false);
+        await act(async () => {
+            fireEvent.click(startButton());
+        });
+        expect(createStudyFromKifuSource).toHaveBeenCalledTimes(2);
+        await waitFor(() => expect(router.state.location.pathname).toBe("/studies/s2"));
     });
 
     it("ログイン状態が分かるまでは押せない", async () => {
