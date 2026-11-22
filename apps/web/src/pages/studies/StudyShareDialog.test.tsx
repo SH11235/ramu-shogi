@@ -230,13 +230,13 @@ describe("StudyShareDialog", () => {
     });
 
     it.each([
-        { status: 404, retry: false },
-        { status: 410, retry: false },
-        { status: 404, retry: true },
-        { status: 410, retry: true },
+        { status: 404, retry: false, message: "クラウドに保存すると共有できます。" },
+        { status: 410, retry: false, message: "このノートはクラウドから削除されています。" },
+        { status: 404, retry: true, message: "クラウドに保存すると共有できます。" },
+        { status: 410, retry: true, message: "このノートはクラウドから削除されています。" },
     ])(
-        "PUT 後に削除済み（$status、再読み込み $retry）ならクラウド保存を案内する",
-        async ({ status, retry }) => {
+        "PUT 後にサーバーに無い（$status、再読み込み $retry）なら共有できない理由を出す",
+        async ({ status, retry, message }) => {
             const get = vi
                 .fn<StudyApiClient["get"]>()
                 .mockResolvedValue({ ok: false, status, error: {} })
@@ -258,7 +258,7 @@ describe("StudyShareDialog", () => {
             if (retry) {
                 fireEvent.click(await screen.findByRole("button", { name: "もう一度読み込む" }));
             }
-            await screen.findByText("クラウドに保存すると共有できます。");
+            await screen.findByText(message);
             expect(screen.queryByRole("button", { name: "もう一度読み込む" })).toBeNull();
             expect(screen.queryByRole("button", { name: "非公開" })).toBeNull();
             expect(screen.queryByRole("alert")).toBeNull();

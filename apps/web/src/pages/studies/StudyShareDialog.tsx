@@ -30,7 +30,7 @@ export function StudyShareDialog({
     onClose: () => void;
 }): ReactElement {
     const [visibility, setVisibility] = useState<StudyVisibility | null>(null);
-    const [notSaved, setNotSaved] = useState(false);
+    const [notSharable, setNotSharable] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [reloadCount, setReloadCount] = useState(0);
     const [error, setError] = useState<string | null>(null);
@@ -43,7 +43,7 @@ export function StudyShareDialog({
         if (unavailableReason !== null) return;
         let cancelled = false;
         setVisibility(null);
-        setNotSaved(false);
+        setNotSharable(null);
         setError(null);
         setStatus(null);
         const loadVisibility = async (): Promise<void> => {
@@ -57,7 +57,7 @@ export function StudyShareDialog({
                     const current = result.data.study.visibility;
                     const confirmation = confirmingSave.current;
                     setVisibility(current);
-                    setNotSaved(false);
+                    setNotSharable(null);
                     if (confirmation && current !== confirmation.visibility) {
                         setStatus(null);
                         setError(confirmation.error);
@@ -69,7 +69,11 @@ export function StudyShareDialog({
                 }
                 if (result.status === 404 || result.status === 410) {
                     setVisibility(null);
-                    setNotSaved(true);
+                    setNotSharable(
+                        result.status === 410
+                            ? "このノートはクラウドから削除されています。"
+                            : "クラウドに保存すると共有できます。",
+                    );
                     setError(null);
                     return;
                 }
@@ -79,7 +83,7 @@ export function StudyShareDialog({
                 if (!cancelled && version === readVersion.current) confirmingSave.current = null;
             }
             setVisibility(null);
-            setNotSaved(false);
+            setNotSharable(null);
             setStatus(null);
             setError("公開設定を読み込めませんでした。");
         };
@@ -130,8 +134,7 @@ export function StudyShareDialog({
         }
     };
 
-    const disabledReason =
-        unavailableReason ?? (notSaved ? "クラウドに保存すると共有できます。" : null);
+    const disabledReason = unavailableReason ?? notSharable;
     const shareUrl = new URL(`/studies/${encodeURIComponent(studyId)}`, window.location.origin)
         .href;
     const copyShareUrl = async (): Promise<void> => {
