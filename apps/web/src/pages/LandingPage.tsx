@@ -8,7 +8,6 @@ import { PageHeader } from "../components/PageHeader";
 import { useAuthSession } from "../hooks/useAuthSession";
 import { useOpenStudy } from "../hooks/useOpenStudy";
 import { createStudyFromKifuSource } from "../lib/studyEntry";
-import { ensureStudySession } from "../lib/studySync";
 
 // トップ（迎える面 / T0）。低密度・暖。盤をヒーローに置き、余白と明朝見出しで
 // 「何のページで、次に何をするか」を一目で伝える入口。対局盤そのものは /play。
@@ -40,33 +39,24 @@ function EntryCard({ to, heading, children }: EntryCardProps): ReactElement {
 export default function LandingPage(): ReactElement {
     const { openStudy, isBusy, error } = useOpenStudy();
     const { isLoadingSession } = useAuthSession();
-    // ログイン状態が分かる前に作ると、同期エンジンに残っている前のアカウント（または匿名）の
-    // ノートとして作られ、いまのアカウントへ引き継がれないことがある。押されたら分かるまで待つ。
-    // 問い合わせが返らない通信状態でも作れなくならないよう、待つのは SESSION_WAIT_MS までにし、
-    // 過ぎたら持ち主を匿名にしてから作る（ログイン状態が分かった時点で、そのアカウントへ引き継がれる）。
+    // ログイン状態が分かる前に作ると、ログイン中でも匿名のノートとして作られ、クラウドへ
+    // 引き継がれないことがある。押されたら分かるまで待つ。問い合わせが返らない通信状態でも
+    // 作れなくならないよう、待つのは SESSION_WAIT_MS までにして、過ぎたら匿名として作る。
     const [isWaitingSession, setIsWaitingSession] = useState(false);
-    const startStudyFromHirate = ({ ownerUnknown = false } = {}): void => {
+    const startStudyFromHirate = (): void => {
         setIsWaitingSession(false);
-        void openStudy(async () => {
-            if (ownerUnknown) await ensureStudySession(null);
-            return createStudyFromKifuSource({
-                kind: "moves",
-                startSfen: STUDY_HIRATE_SFEN,
-                moves: [],
-            });
-        });
+        void openStudy(() =>
+            createStudyFromKifuSource({ kind: "moves", startSfen: STUDY_HIRATE_SFEN, moves: [] }),
+        );
     };
-    const startWhenSessionKnown = useEffectEvent(() => startStudyFromHirate());
-    const startWithUnknownOwner = useEffectEvent(() =>
-        startStudyFromHirate({ ownerUnknown: true }),
-    );
+    const startWhenSessionKnown = useEffectEvent(startStudyFromHirate);
     useEffect(() => {
         if (!isWaitingSession) return;
         if (!isLoadingSession) {
             startWhenSessionKnown();
             return;
         }
-        const timer = setTimeout(startWithUnknownOwner, SESSION_WAIT_MS);
+        const timer = setTimeout(startWhenSessionKnown, SESSION_WAIT_MS);
         return () => clearTimeout(timer);
     }, [isWaitingSession, isLoadingSession]);
     const handleStartClick = (): void => {
