@@ -3,6 +3,7 @@ import {
     createMemoryStudyStore,
     createStudySync,
     type StoredStudy,
+    type StudyApi,
     type StudySync,
     type StudySyncEvent,
 } from "@shogi/study-client";
@@ -142,6 +143,9 @@ describe("StudyPage", () => {
         "公開ノートを閲覧専用で開き、保存に流さない",
         async (session) => {
             auth = session;
+            currentSync = createTestSync(
+                createOfflineApi({ get: async () => ({ ok: false, status: 404, error: {} }) }),
+            );
             const doc = mockSharedStudy();
             const applyOps = vi.spyOn(currentSync, "applyOps");
             const flush = vi.spyOn(currentSync, "flush");
@@ -177,21 +181,67 @@ describe("StudyPage", () => {
         expect(await screen.findByTestId("workspace")).toBeTruthy();
     });
 
-    it.each([false, true])(
-        "壊れた公開 API の応答は読み込み失敗にする (sync.open の reject: %s)",
-        async (openRejects) => {
-            if (openRejects)
-                vi.spyOn(currentSync, "open").mockRejectedValueOnce(new Error("read failed"));
-            getPublic.mockResolvedValue({ ok: true, status: 200, data: {} });
+    it.each([0, 503])(
+        "持ち主の GET が status %i なら公開 API に進まず、再試行で編集画面を開ける",
+        async (status) => {
+            auth = authSignedIn("user-1");
+            const doc = mockSharedStudy();
+            const get = vi
+                .fn<StudyApi["get"]>()
+                .mockResolvedValueOnce({ ok: false, status, error: {} })
+                .mockResolvedValue({
+                    ok: true,
+                    status: 200,
+                    data: {
+                        study: {
+                            ...doc,
+                            revision: 1,
+                            createdAt: "",
+                            updatedAt: "",
+                            visibility: "unlisted",
+                        },
+                    },
+                });
+            currentSync = createTestSync(createOfflineApi({ get }));
             render(<StudyPage />);
 
             expect(
                 await screen.findByRole("heading", { name: "研究ノートを読み込めませんでした" }),
             ).toBeTruthy();
+            expect(screen.getByText(`HTTP ${status}`)).toBeTruthy();
             expect(screen.queryByTestId("workspace")).toBeNull();
-            expect(getPublic).toHaveBeenCalledExactlyOnceWith(STUDY_ID);
+            expect(get).toHaveBeenCalledExactlyOnceWith(STUDY_ID);
+            expect(getPublic).not.toHaveBeenCalled();
+
+            fireEvent.click(screen.getByRole("button", { name: "もう一度読み込む" }));
+            await screen.findByTestId("workspace");
+            expect(workspaceProps?.doc).toEqual(doc);
+            expect(workspaceProps?.readOnly).not.toBe(true);
+            expect(workspaceProps?.shareDialog).toBeDefined();
+            expect(getPublic).not.toHaveBeenCalled();
         },
     );
+
+    it("ノートを開く処理で例外が出たら公開 API に進まず、再試行を案内する", async () => {
+        auth = authSignedIn("user-1");
+        mockSharedStudy();
+        vi.spyOn(currentSync, "open").mockRejectedValueOnce(new Error("read failed"));
+        render(<StudyPage />);
+
+        await screen.findByRole("button", { name: "もう一度読み込む" });
+        expect(screen.getByText("read failed")).toBeTruthy();
+        expect(screen.queryByTestId("workspace")).toBeNull();
+        expect(getPublic).not.toHaveBeenCalled();
+    });
+
+    it("壊れた公開 API の応答は読み込み失敗にする", async () => {
+        getPublic.mockResolvedValue({ ok: true, status: 200, data: {} });
+        render(<StudyPage />);
+
+        await screen.findByRole("heading", { name: "研究ノートを読み込めませんでした" });
+        expect(screen.queryByTestId("workspace")).toBeNull();
+        expect(getPublic).toHaveBeenCalledExactlyOnceWith(STUDY_ID);
+    });
 
     describe("ログイン状態が分かる前", () => {
         it("匿名のノート（未ログイン中に作ったノート）は、確認を待たずに開く", async () => {

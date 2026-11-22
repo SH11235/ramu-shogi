@@ -1,4 +1,5 @@
 import type { StudyVisibility } from "@shogi/api-contract";
+import type { StudyApiClient } from "@shogi/study-client";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { StudyShareDialog } from "./StudyShareDialog";
@@ -148,7 +149,10 @@ describe("StudyShareDialog", () => {
         fireEvent.click(
             await screen.findByRole("button", { name: "リンクを知っている人が閲覧可" }),
         );
+        fireEvent.focus(window);
         await screen.findByRole("textbox", { name: "共有リンク" });
+        expect(screen.getByRole("status").textContent).toBe("公開設定を保存しました。");
+        expect(screen.queryByRole("alert")).toBeNull();
         expect(api.get).toHaveBeenCalledTimes(2);
         expect(
             screen.getByRole("button", {
@@ -158,19 +162,19 @@ describe("StudyShareDialog", () => {
         ).toBeTruthy();
     });
 
-    it.each([0, 404])(
-        "PUT 後の GET が status %i なら公開設定を隠し、再読み込みできる",
-        async (status) => {
+    it.each([
+        [403, "公開設定を変更する権限がありません。", "公開設定を変更する権限がありません。"],
+        [500, undefined, "公開設定を保存できませんでした。"],
+    ])(
+        "PUT が status %i で拒否され、GET が元の設定を返したら保存エラーを出す",
+        async (status, message, expected) => {
             const api = {
-                get: vi
-                    .fn(
-                        async (): Promise<
-                            ReturnType<typeof studyWithVisibility> | typeof networkFailure
-                        > => studyWithVisibility("unlisted"),
-                    )
-                    .mockResolvedValueOnce(studyWithVisibility("private"))
-                    .mockResolvedValueOnce({ ok: false, status, error: {} }),
-                setVisibility: vi.fn(async () => networkFailure),
+                get: vi.fn(async () => studyWithVisibility("private")),
+                setVisibility: vi.fn(async () => ({
+                    ok: false as const,
+                    status,
+                    error: { message },
+                })),
             };
             render(
                 <StudyShareDialog
@@ -184,12 +188,81 @@ describe("StudyShareDialog", () => {
             fireEvent.click(
                 await screen.findByRole("button", { name: "リンクを知っている人が閲覧可" }),
             );
-            const retry = await screen.findByRole("button", { name: "もう一度読み込む" });
-            expect(screen.getByRole("alert").textContent).toBe("公開設定を読み込めませんでした。");
+            expect((await screen.findByRole("alert")).textContent).toBe(expected);
+            expect(screen.getByRole("button", { name: "非公開", pressed: true })).toBeTruthy();
+            expect(screen.queryByRole("textbox", { name: "共有リンク" })).toBeNull();
+            expect(screen.queryByText("公開設定を保存しました。")).toBeNull();
+            expect(api.get).toHaveBeenCalledTimes(2);
+        },
+    );
+
+    it("PUT 後の GET が通信に失敗したら公開設定を隠し、再読み込みできる", async () => {
+        const api = {
+            get: vi
+                .fn(
+                    async (): Promise<
+                        ReturnType<typeof studyWithVisibility> | typeof networkFailure
+                    > => studyWithVisibility("unlisted"),
+                )
+                .mockResolvedValueOnce(studyWithVisibility("private"))
+                .mockResolvedValueOnce(networkFailure),
+            setVisibility: vi.fn(async () => networkFailure),
+        };
+        render(
+            <StudyShareDialog
+                studyId={studyId}
+                api={api}
+                unavailableReason={null}
+                onClose={() => {}}
+            />,
+        );
+
+        fireEvent.click(
+            await screen.findByRole("button", { name: "リンクを知っている人が閲覧可" }),
+        );
+        const retry = await screen.findByRole("button", { name: "もう一度読み込む" });
+        expect(screen.getByRole("alert").textContent).toBe("公開設定を読み込めませんでした。");
+        expect(screen.queryByRole("button", { name: "非公開" })).toBeNull();
+        fireEvent.click(retry);
+        await screen.findByRole("textbox", { name: "共有リンク" });
+        expect(api.get).toHaveBeenCalledTimes(3);
+        expect(screen.queryByText("公開設定を保存しました。")).toBeNull();
+    });
+
+    it.each([
+        { status: 404, retry: false },
+        { status: 410, retry: false },
+        { status: 404, retry: true },
+        { status: 410, retry: true },
+    ])(
+        "PUT 後に削除済み（$status、再読み込み $retry）ならクラウド保存を案内する",
+        async ({ status, retry }) => {
+            const get = vi
+                .fn<StudyApiClient["get"]>()
+                .mockResolvedValue({ ok: false, status, error: {} })
+                .mockResolvedValueOnce(studyWithVisibility("private"));
+            if (retry) get.mockResolvedValueOnce(networkFailure);
+            const api = { get, setVisibility: vi.fn(async () => networkFailure) };
+            render(
+                <StudyShareDialog
+                    studyId={studyId}
+                    api={api}
+                    unavailableReason={null}
+                    onClose={() => {}}
+                />,
+            );
+
+            fireEvent.click(
+                await screen.findByRole("button", { name: "リンクを知っている人が閲覧可" }),
+            );
+            if (retry) {
+                fireEvent.click(await screen.findByRole("button", { name: "もう一度読み込む" }));
+            }
+            await screen.findByText("クラウドに保存すると共有できます。");
+            expect(screen.queryByRole("button", { name: "もう一度読み込む" })).toBeNull();
             expect(screen.queryByRole("button", { name: "非公開" })).toBeNull();
-            fireEvent.click(retry);
-            await screen.findByRole("textbox", { name: "共有リンク" });
-            expect(api.get).toHaveBeenCalledTimes(3);
+            expect(screen.queryByRole("alert")).toBeNull();
+            expect(api.get).toHaveBeenCalledTimes(retry ? 3 : 2);
         },
     );
 

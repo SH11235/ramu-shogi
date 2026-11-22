@@ -388,12 +388,10 @@ export default function StudyPage(): ReactElement {
                               message: "ログイン状態を確認できませんでした。",
                           },
                 );
+            } else if (message !== undefined) {
+                setState({ status: "unavailable", message });
             } else if (!(await presentPublicStudy()) && !cancelled) {
-                setState(
-                    message === undefined
-                        ? { status: "not_found" }
-                        : { status: "unavailable", message },
-                );
+                setState({ status: "not_found" });
             }
         };
 
@@ -457,6 +455,8 @@ export default function StudyPage(): ReactElement {
             if (result.status === "ok") {
                 openedLocal = true;
                 if (await presentFromStore(studyId, "open", isCancelled)) return;
+                await presentOpenFailure("保存された研究ノートを取得できませんでした。");
+                return;
             }
             await presentOpenFailure(result.status === "unavailable" ? result.message : undefined);
         })().catch((error: unknown) =>

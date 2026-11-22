@@ -37,7 +37,7 @@ export function StudyShareDialog({
     const [status, setStatus] = useState<string | null>(null);
     const readVersion = useRef(0);
     const pendingSave = useRef<Promise<unknown> | null>(null);
-    const confirmingSave = useRef(false);
+    const confirmingSave = useRef<{ visibility: StudyVisibility; error: string } | null>(null);
 
     useEffect(() => {
         if (unavailableReason !== null) return;
@@ -54,13 +54,20 @@ export function StudyShareDialog({
                 const result = await api.get(studyId);
                 if (cancelled || version !== readVersion.current) return;
                 if (result.ok) {
-                    confirmingSave.current = false;
-                    setVisibility(result.data.study.visibility);
+                    const current = result.data.study.visibility;
+                    const confirmation = confirmingSave.current;
+                    setVisibility(current);
                     setNotSaved(false);
-                    setError(null);
+                    if (confirmation && current !== confirmation.visibility) {
+                        setStatus(null);
+                        setError(confirmation.error);
+                    } else {
+                        setError(null);
+                        if (confirmation) setStatus("公開設定を保存しました。");
+                    }
                     return;
                 }
-                if (!confirmingSave.current && (result.status === 404 || result.status === 410)) {
+                if (result.status === 404 || result.status === 410) {
                     setVisibility(null);
                     setNotSaved(true);
                     setError(null);
@@ -68,6 +75,8 @@ export function StudyShareDialog({
                 }
             } catch {
                 if (cancelled || version !== readVersion.current) return;
+            } finally {
+                if (!cancelled && version === readVersion.current) confirmingSave.current = null;
             }
             setVisibility(null);
             setNotSaved(false);
@@ -98,16 +107,24 @@ export function StudyShareDialog({
         setIsSaving(true);
         setError(null);
         setStatus(null);
-        const save = api.setVisibility(studyId, { visibility: next }).catch(() => null);
+        const save = api.setVisibility(studyId, { visibility: next }).catch((error: unknown) => ({
+            ok: false as const,
+            error: { message: error instanceof Error ? error.message : undefined },
+        }));
         pendingSave.current = save;
         const result = await save;
         pendingSave.current = null;
         setIsSaving(false);
-        if (result?.ok) {
+        if (result.ok) {
             setVisibility(next);
             setStatus("公開設定を保存しました。");
         } else {
-            confirmingSave.current = true;
+            // PUT を待っていた GET と、結果を確かめる GET が重ならないようにする。
+            readVersion.current += 1;
+            confirmingSave.current = {
+                visibility: next,
+                error: result.error.message || "公開設定を保存できませんでした。",
+            };
             setVisibility(null);
             setReloadCount((count) => count + 1);
         }
