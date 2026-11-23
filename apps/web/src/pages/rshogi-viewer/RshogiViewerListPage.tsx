@@ -31,10 +31,16 @@ export default function RshogiViewerListPage(): ReactElement {
         next: RshogiGameBrowserSearch,
         options?: { replace?: boolean },
     ): void => {
+        const { page: _currentPage, ...currentConditions } = search;
+        const { page: _nextPage, ...nextConditions } = next;
+        const isPageOnlyChange =
+            JSON.stringify(currentConditions) === JSON.stringify(nextConditions);
         void navigate({
             to: "/rshogi-viewer",
             search: next,
             ...(options?.replace ? { replace: true } : {}),
+            // ページ送りと自動の補正では、一覧側が表示位置を決める。ルーターに先頭へ戻させない。
+            ...(isPageOnlyChange || options?.replace ? { resetScroll: false } : {}),
         });
     };
 

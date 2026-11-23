@@ -320,6 +320,8 @@ export function RshogiCsaGameBrowser({
         searchControllerRef.current = controller;
         setIsSearchLoading(true);
         setErrorMessage(null);
+        // 範囲外のページを補正して取得し直すあいだは、読み込み中のままにする。
+        let isRedirecting = false;
         try {
             const result = await fetchRshogiGameSearch({
                 ...toSearchOptions(conditions),
@@ -339,6 +341,7 @@ export function RshogiCsaGameBrowser({
             if (result.totalCount > 0 && page > lastPage && result.page !== lastPage) {
                 if (pendingPageFocusRef.current?.key === searchKey)
                     pendingPageFocusRef.current.key = destinationKey;
+                isRedirecting = true;
                 onSearchChange(destination, { replace: true });
                 return;
             }
@@ -368,7 +371,7 @@ export function RshogiCsaGameBrowser({
                 onSearchChange(previous, { replace: true });
             }
         } finally {
-            if (!controller.signal.aborted) setIsSearchLoading(false);
+            if (!controller.signal.aborted && !isRedirecting) setIsSearchLoading(false);
         }
     };
 

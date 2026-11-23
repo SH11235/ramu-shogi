@@ -135,8 +135,28 @@ describe("RshogiViewerListPage", () => {
                 to: "/rshogi-viewer",
                 search: { name: "RAMU", page: 2 },
                 replace: true,
+                resetScroll: false,
             }),
         );
+    });
+
+    it("ページ送りは履歴に残し、ルーターには表示位置を戻させない", async () => {
+        currentSearch = { name: "RAMU" };
+        fetchRshogiGameSearch.mockResolvedValueOnce({
+            games: [],
+            page: 1,
+            pageSize: 20,
+            totalCount: 23,
+        });
+        render(<RshogiViewerListPage />);
+
+        fireEvent.click(await screen.findByRole("button", { name: "次へ" }));
+
+        expect(navigate).toHaveBeenCalledWith({
+            to: "/rshogi-viewer",
+            search: { name: "RAMU", page: 2 },
+            resetScroll: false,
+        });
     });
 
     it("イベントタグを押すと ?event=<名前> へ遷移する", async () => {
