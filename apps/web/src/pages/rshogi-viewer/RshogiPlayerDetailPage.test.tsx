@@ -57,6 +57,7 @@ const { default: RshogiPlayerDetailPage } = await import("./RshogiPlayerDetailPa
 describe("RshogiPlayerDetailPage", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        Element.prototype.scrollIntoView = vi.fn();
         routePlayerId = "p_one";
         vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ status: 404 }));
         fetchRshogiPlayerDetail.mockImplementation(
@@ -98,6 +99,29 @@ describe("RshogiPlayerDetailPage", () => {
         );
         expect(await screen.findByRole("button", { name: "game-2" })).toBeTruthy();
         expect(screen.getByText("2 / 2")).toBeTruthy();
+        const heading = screen.getByRole("heading", { name: "対局記録" });
+        expect(document.activeElement).toBe(heading);
+        expect(heading.getAttribute("tabindex")).toBe("-1");
+        expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
+            behavior: "smooth",
+            block: "start",
+        });
+        fireEvent.click(screen.getByRole("button", { name: "← 新しい対局" }));
+        expect(await screen.findByRole("button", { name: "game-1" })).toBeTruthy();
+        expect(document.activeElement).toBe(heading);
+    });
+
+    it("動きを減らす設定では即座にスクロールする", async () => {
+        vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true }));
+        render(<RshogiPlayerDetailPage />);
+        await screen.findByRole("button", { name: "game-1" });
+        fireEvent.click(screen.getByRole("button", { name: "古い対局 →" }));
+        await screen.findByRole("button", { name: "game-2" });
+        expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
+            behavior: "instant",
+            block: "start",
+        });
+        vi.unstubAllGlobals();
     });
 
     it("次ページの取得失敗時は成功済みページを表示して再試行できる", async () => {

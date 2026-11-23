@@ -55,6 +55,7 @@ export interface RshogiGameBrowserSearch {
     from?: string;
     /** 終了日の上限 (`YYYY-MM-DD`)。 */
     to?: string;
+    page?: number;
 }
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -93,6 +94,9 @@ export function normalizeRshogiGameBrowserSearch(
     if (from) search.from = from;
     const to = normalizeDate(raw.to);
     if (to) search.to = to;
+    const page =
+        typeof raw.page === "string" && /^\d+$/.test(raw.page) ? Number(raw.page) : raw.page;
+    if (typeof page === "number" && Number.isSafeInteger(page) && page > 1) search.page = page;
     return search;
 }
 
@@ -115,7 +119,7 @@ const toFormValues = (search: RshogiGameBrowserSearch): SearchFormValues => ({
 });
 
 const hasSearchCondition = (search: RshogiGameBrowserSearch): boolean =>
-    Object.keys(search).length > 0;
+    Object.keys(search).some((key) => key !== "page");
 
 const dateStartMs = (value: string | undefined): number | undefined => {
     if (!value) return undefined;
@@ -205,6 +209,8 @@ export function RshogiCsaGameBrowser({
     );
     /** 終了日の範囲が逆のまま検索を押したか。押すまでは、入力の途中でメッセージを出さない。 */
     const [showDateRangeError, setShowDateRangeError] = useState(false);
+    const resultsRef = useRef<HTMLDivElement>(null);
+    const pendingPageFocusRef = useRef<number | null>(null);
     const searchControllerRef = useRef<AbortController | null>(null);
     const loadMoreControllerRef = useRef<AbortController | null>(null);
     /** 新着順の一覧をどの接続先について取得済みか。 */
@@ -216,7 +222,21 @@ export function RshogiCsaGameBrowser({
     // 条件の中身が同じなら、呼び出し側がオブジェクトを作り直しても検索し直さない。
     const appliedSearch = normalizeRshogiGameBrowserSearch({ ...search });
     const searchKey = JSON.stringify(appliedSearch);
+    const { page: _page, ...appliedConditions } = appliedSearch;
+    const conditionsKey = JSON.stringify(appliedConditions);
     const isSearchMode = hasSearchCondition(appliedSearch);
+
+    useEffect(() => {
+        if (!searchPage || searchPage.page !== pendingPageFocusRef.current) return;
+        pendingPageFocusRef.current = null;
+        resultsRef.current?.focus({ preventScroll: true });
+        resultsRef.current?.scrollIntoView({
+            behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+                ? "instant"
+                : "smooth",
+            block: "start",
+        });
+    }, [searchPage]);
 
     // 新着順の一覧。検索モードのあいだは使わないので取得しない (検索結果の画面に、裏で
     // 走った新着一覧の取得失敗が出ることも無くなる)。検索をやめたときに未取得なら取得する。
@@ -289,24 +309,28 @@ export function RshogiCsaGameBrowser({
             if (!controller.signal.aborted) setSearchPage(result);
         } catch (error) {
             if (controller.signal.aborted) return;
+            pendingPageFocusRef.current = null;
             setErrorMessage(describeError(error, "棋譜検索に失敗しました"));
         } finally {
             if (!controller.signal.aborted) setIsSearchLoading(false);
         }
     };
 
-    // 絞り込み条件が変わったらフォームを合わせ、1 ページ目から検索し直す。
+    useEffect(() => {
+        const conditions = JSON.parse(conditionsKey) as RshogiGameBrowserSearch;
+        pendingPageFocusRef.current = null;
+        setSearchForm(toFormValues(conditions));
+        if (countDetailConditions(conditions) > 0) setIsDetailOpen(true);
+    }, [conditionsKey]);
+
     // biome-ignore lint/correctness/useExhaustiveDependencies: 条件は中身 (searchKey) で比較する。runSearch は毎レンダー作り直されるので依存に入れない。
     useEffect(() => {
         const conditions = normalizeRshogiGameBrowserSearch(
             JSON.parse(searchKey) as Record<string, unknown>,
         );
-        setSearchForm(toFormValues(conditions));
-        // リンクやイベントタグで詳細条件が入ったら、何で絞っているかが見えるように開く。
-        if (countDetailConditions(conditions) > 0) setIsDetailOpen(true);
         setSearchPage(null);
         if (hasSearchCondition(conditions)) {
-            void runSearch(conditions, 1);
+            void runSearch(conditions, conditions.page ?? 1);
         } else {
             setIsSearchLoading(false);
             // 検索をやめたら、検索のエラーを新着順の一覧に持ち越さない。
@@ -387,7 +411,8 @@ export function RshogiCsaGameBrowser({
 
     const handleSearchPage = (page: number): void => {
         if (!isSearchMode || isSearchLoading) return;
-        void runSearch(appliedSearch, page);
+        pendingPageFocusRef.current = page;
+        onSearchChange({ ...appliedConditions, ...(page > 1 ? { page } : {}) });
     };
 
     const displayedGames = isSearchMode ? (searchPage?.games ?? []) : games;
@@ -603,17 +628,21 @@ export function RshogiCsaGameBrowser({
 
                 {appliedEventMeta && <RshogiEventMetaLine meta={appliedEventMeta} />}
 
-                <RshogiCsaGameList
-                    games={displayedGames}
-                    onSelect={onSelectGame}
-                    onSelectEvent={handleSelectEvent}
-                    onLoadMore={isSearchMode ? undefined : () => void handleLoadMore()}
-                    isLoading={isSearchMode ? isSearchLoading : isLoading}
-                    hasMore={!isSearchMode && nextCursor !== undefined}
-                    emptyMessage={isSearchMode ? "検索条件に一致する棋譜はありません。" : undefined}
-                />
+                <div ref={resultsRef} tabIndex={-1} className="scroll-mt-16">
+                    <RshogiCsaGameList
+                        games={displayedGames}
+                        onSelect={onSelectGame}
+                        onSelectEvent={handleSelectEvent}
+                        onLoadMore={isSearchMode ? undefined : () => void handleLoadMore()}
+                        isLoading={isSearchMode ? isSearchLoading : isLoading}
+                        hasMore={!isSearchMode && nextCursor !== undefined}
+                        emptyMessage={
+                            isSearchMode ? "検索条件に一致する棋譜はありません。" : undefined
+                        }
+                    />
+                </div>
 
-                {isSearchMode && searchPage && (
+                {isSearchMode && searchPage && searchPage.totalCount > 0 && (
                     <nav
                         className="flex flex-wrap items-center justify-between gap-3"
                         aria-label="検索結果のページネーション"

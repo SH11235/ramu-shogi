@@ -5,7 +5,7 @@ import { Card, cardVariants } from "@shogi/ui/components/card";
 import { RshogiCsaGameList } from "@shogi/ui/components/rshogi-csa-game-list";
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import type { ReactElement } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { HeaderNav } from "../../components/HeaderNav";
 import { PageContainer } from "../../components/PageContainer";
 import { PageHeader } from "../../components/PageHeader";
@@ -27,6 +27,8 @@ export default function RshogiPlayerDetailPage(): ReactElement {
     const navigate = useNavigate();
     const apiBaseUrl = resolveRshogiApiBaseUrl();
     const nnueLabBaseUrl = resolveNnueLabBaseUrl();
+    const archiveRef = useRef<HTMLHeadingElement>(null);
+    const pendingPageFocusRef = useRef<number | null>(null);
     const [detail, setDetail] = useState<RshogiPlayerDetail | null>(null);
     const [nnueLabExperiment, setNnueLabExperiment] = useState<NnueLabExperiment | null>(null);
     const [pageRequest, setPageRequest] = useState({ page: 1, attempt: 0 });
@@ -57,6 +59,7 @@ export default function RshogiPlayerDetailPage(): ReactElement {
             })
             .catch((error: unknown) => {
                 if (!controller.signal.aborted) {
+                    pendingPageFocusRef.current = null;
                     setErrorMessage(
                         error instanceof Error
                             ? error.message
@@ -104,7 +107,20 @@ export default function RshogiPlayerDetailPage(): ReactElement {
 
     const totalPages = detail ? Math.max(1, Math.ceil(detail.totalCount / detail.pageSize)) : 1;
     const displayedPage = detail?.page ?? pageRequest.page;
+    useEffect(() => {
+        if (!detail || detail.page !== pendingPageFocusRef.current) return;
+        pendingPageFocusRef.current = null;
+        archiveRef.current?.focus({ preventScroll: true });
+        archiveRef.current?.scrollIntoView({
+            behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+                ? "instant"
+                : "smooth",
+            block: "start",
+        });
+    }, [detail]);
+
     const requestPage = (nextPage: number): void => {
+        pendingPageFocusRef.current = nextPage;
         setPageRequest((current) => ({ page: nextPage, attempt: current.attempt + 1 }));
     };
 
@@ -228,7 +244,11 @@ export default function RshogiPlayerDetailPage(): ReactElement {
                                     <p className="text-[11px] font-semibold tracking-[0.2em] text-wafuu-shu">
                                         GAME ARCHIVE
                                     </p>
-                                    <h2 className="font-serif text-xl font-bold text-wafuu-sumi">
+                                    <h2
+                                        ref={archiveRef}
+                                        tabIndex={-1}
+                                        className="scroll-mt-16 font-serif text-xl font-bold text-wafuu-sumi"
+                                    >
                                         対局記録
                                     </h2>
                                 </div>

@@ -55,6 +55,7 @@ const gameIds = (): string[] =>
 describe("RshogiCsaGameBrowser", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        Element.prototype.scrollIntoView = vi.fn();
         fetchRshogiGameList.mockResolvedValue({
             games: [game("recent-1", { source: "kifu" })],
             nextCursor: "cursor-2",
@@ -613,6 +614,12 @@ describe("RshogiCsaGameBrowser", () => {
             );
             expect(await screen.findByText("23件中 21-23件")).toBeTruthy();
             expect(gameIds()).toEqual(["search-2"]);
+            expect(onSearchChange).toHaveBeenLastCalledWith({ name: "RAMU", page: 2 });
+            expect(document.activeElement?.getAttribute("tabindex")).toBe("-1");
+            expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
+                behavior: "smooth",
+                block: "start",
+            });
 
             fireEvent.click(screen.getByRole("button", { name: "前へ" }));
 
@@ -623,7 +630,65 @@ describe("RshogiCsaGameBrowser", () => {
             );
             expect(await screen.findByText("23件中 1-20件")).toBeTruthy();
             expect(gameIds()).toEqual(["search-1-returned"]);
+            expect(onSearchChange).toHaveBeenLastCalledWith({ name: "RAMU" });
             expect((screen.getByLabelText("名前") as HTMLInputElement).value).toBe("OTHER");
+        });
+
+        it("URL のページから検索し、条件変更で先頭に戻る", async () => {
+            render(<Harness initial={{ name: "RAMU", page: 2 }} />);
+            await waitFor(() =>
+                expect(fetchRshogiGameSearch).toHaveBeenCalledWith(
+                    expect.objectContaining({ name: "RAMU", page: 2 }),
+                ),
+            );
+            fireEvent.change(screen.getByLabelText("名前"), { target: { value: "OTHER" } });
+            fireEvent.click(screen.getByRole("button", { name: "検索" }));
+            expect(onSearchChange).toHaveBeenLastCalledWith({ name: "OTHER" });
+            await waitFor(() =>
+                expect(fetchRshogiGameSearch).toHaveBeenLastCalledWith(
+                    expect.objectContaining({ name: "OTHER", page: 1 }),
+                ),
+            );
+        });
+
+        it("0 件なら件数とページ送りを表示しない", async () => {
+            fetchRshogiGameSearch.mockResolvedValueOnce({
+                games: [],
+                page: 1,
+                pageSize: 20,
+                totalCount: 0,
+            });
+            render(<Harness initial={{ name: "RAMU" }} />);
+            await screen.findByText("検索条件に一致する棋譜はありません。");
+            expect(
+                screen.queryByRole("navigation", { name: "検索結果のページネーション" }),
+            ).toBeNull();
+        });
+
+        it("動きを減らす設定では即座にスクロールする", async () => {
+            vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true }));
+            fetchRshogiGameSearch
+                .mockResolvedValueOnce({
+                    games: [game("one")],
+                    page: 1,
+                    pageSize: 20,
+                    totalCount: 23,
+                })
+                .mockResolvedValueOnce({
+                    games: [game("two")],
+                    page: 2,
+                    pageSize: 20,
+                    totalCount: 23,
+                });
+            render(<Harness initial={{ name: "RAMU" }} />);
+            await screen.findByText("23件中 1-20件");
+            fireEvent.click(screen.getByRole("button", { name: "次へ" }));
+            await screen.findByText("23件中 21-23件");
+            expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
+                behavior: "instant",
+                block: "start",
+            });
+            vi.unstubAllGlobals();
         });
 
         it("クリアで検索条件とページ送りを消し、新着順の一覧へ戻る", async () => {
@@ -677,6 +742,7 @@ describe("normalizeRshogiGameBrowserSearch", () => {
             result: "resignation",
             from: "2026-10-01",
             to: "2026-10-09",
+            page: 3,
         });
     });
 
@@ -693,6 +759,22 @@ describe("normalizeRshogiGameBrowserSearch", () => {
         ).toEqual({});
         expect(normalizeRshogiGameBrowserSearch({ event: "x".repeat(201) })).toEqual({});
         expect(normalizeRshogiGameBrowserSearch({})).toEqual({});
+    });
+
+    it.each([0, -1, 1, "0", "-2", "abc", "2.5", "2e2", "", 1.5])(
+        "不正または先頭ページ %s は省く",
+        (page) => {
+            expect(normalizeRshogiGameBrowserSearch({ name: "RAMU", page })).toEqual({
+                name: "RAMU",
+            });
+        },
+    );
+
+    it("文字列のページを数値に直す", () => {
+        expect(normalizeRshogiGameBrowserSearch({ name: "RAMU", page: "2" })).toEqual({
+            name: "RAMU",
+            page: 2,
+        });
     });
 
     it("数値として届いたイベント名・名前は文字列に直す", () => {
