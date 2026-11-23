@@ -1,4 +1,5 @@
 import {
+    normalizeRshogiGameBrowserSearch,
     RshogiCsaGameBrowser,
     type RshogiGameBrowserSearch,
 } from "@shogi/ui/components/rshogi-csa-game-browser";
@@ -27,8 +28,24 @@ export default function RshogiViewerListPage(): ReactElement {
     const search = routeApi.useSearch();
     const apiBaseUrl = resolveApiBaseUrl();
 
-    const handleSearchChange = (next: RshogiGameBrowserSearch): void => {
-        void navigate({ to: "/rshogi-viewer", search: next });
+    const handleSearchChange = (
+        next: RshogiGameBrowserSearch,
+        options?: { replace?: boolean },
+    ): void => {
+        // ルーターの search には未知のキーや不正な値が残り得るので、遷移先と同じ形に揃えてから比べる。
+        const { page: _currentPage, ...currentConditions } = normalizeRshogiGameBrowserSearch({
+            ...search,
+        });
+        const { page: _nextPage, ...nextConditions } = next;
+        const isPageOnlyChange =
+            JSON.stringify(currentConditions) === JSON.stringify(nextConditions);
+        void navigate({
+            to: "/rshogi-viewer",
+            search: next,
+            ...(options?.replace ? { replace: true } : {}),
+            // ページ送りと自動の補正では、一覧側が表示位置を決める。ルーターに先頭へ戻させない。
+            ...(isPageOnlyChange || options?.replace ? { resetScroll: false } : {}),
+        });
     };
 
     return (

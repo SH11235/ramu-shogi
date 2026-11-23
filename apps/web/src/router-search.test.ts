@@ -1,3 +1,4 @@
+import { normalizeRshogiGameBrowserSearch } from "@shogi/ui/components/rshogi-csa-game-browser";
 import { describe, expect, it } from "vitest";
 import { parseSearch, stringifySearch } from "./router-search";
 
@@ -94,4 +95,13 @@ describe("parseSearch と stringifySearch の往復", () => {
     ])("文字列 %j は同じ文字列として戻る", (value) => {
         expect(parseSearch(stringifySearch({ event: value }))).toEqual({ event: value });
     });
+});
+
+it("検索ページを URL から復元し、先頭ページは省略する", () => {
+    const second = normalizeRshogiGameBrowserSearch(parseSearch("?name=RAMU&page=2"));
+    expect(second).toEqual({ name: "RAMU", page: 2 });
+    expect(stringifySearch({ ...second })).toBe("?name=RAMU&page=2");
+    expect(
+        stringifySearch({ ...normalizeRshogiGameBrowserSearch(parseSearch("?name=RAMU&page=1")) }),
+    ).toBe("?name=RAMU");
 });

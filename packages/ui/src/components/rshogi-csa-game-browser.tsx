@@ -55,6 +55,8 @@ export interface RshogiGameBrowserSearch {
     from?: string;
     /** 終了日の上限 (`YYYY-MM-DD`)。 */
     to?: string;
+    /** 2 ページ目以降のページ番号。 */
+    page?: number;
 }
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -93,6 +95,15 @@ export function normalizeRshogiGameBrowserSearch(
     if (from) search.from = from;
     const to = normalizeDate(raw.to);
     if (to) search.to = to;
+    const page =
+        typeof raw.page === "string" && /^\d+$/.test(raw.page) ? Number(raw.page) : raw.page;
+    if (
+        Object.keys(search).length > 0 &&
+        typeof page === "number" &&
+        Number.isSafeInteger(page) &&
+        page > 1
+    )
+        search.page = page;
     return search;
 }
 
@@ -115,7 +126,7 @@ const toFormValues = (search: RshogiGameBrowserSearch): SearchFormValues => ({
 });
 
 const hasSearchCondition = (search: RshogiGameBrowserSearch): boolean =>
-    Object.keys(search).length > 0;
+    Object.keys(search).some((key) => key !== "page");
 
 const dateStartMs = (value: string | undefined): number | undefined => {
     if (!value) return undefined;
@@ -170,7 +181,7 @@ interface RshogiCsaGameBrowserProps {
     /** 現在の絞り込み条件。 */
     search: RshogiGameBrowserSearch;
     /** 絞り込み条件の変更要求。呼び出し側が `search` に反映する。 */
-    onSearchChange: (search: RshogiGameBrowserSearch) => void;
+    onSearchChange: (search: RshogiGameBrowserSearch, options?: { replace?: boolean }) => void;
     /** 終局済みの対局を選んだとき。 */
     onSelectGame: (gameId: string) => void;
     /** 進行中の対局を選んだとき。省くと、進行中の対局の欄を出さない（終局済みの棋譜だけを選ぶ画面）。 */
@@ -205,6 +216,17 @@ export function RshogiCsaGameBrowser({
     );
     /** 終了日の範囲が逆のまま検索を押したか。押すまでは、入力の途中でメッセージを出さない。 */
     const [showDateRangeError, setShowDateRangeError] = useState(false);
+    const resultsRef = useRef<HTMLFieldSetElement>(null);
+    // ボタン操作に対応する取得結果だけでフォーカスする。
+    const pendingPageFocusRef = useRef<{ key: string; result: RshogiGameSearchPage | null } | null>(
+        null,
+    );
+    // 取得済みの結果に合わせて URL を直すときは再取得しない。
+    const skipSearchKeyRef = useRef<string | null>(null);
+    // ページ取得に失敗した際、表示中の結果と同じ条件にだけ戻す。
+    const displayedConditionsRef = useRef<string | null>(null);
+    // 接続先が変わった場合は前の接続先の結果を破棄する。
+    const searchBaseUrlRef = useRef(apiBaseUrl);
     const searchControllerRef = useRef<AbortController | null>(null);
     const loadMoreControllerRef = useRef<AbortController | null>(null);
     /** 新着順の一覧をどの接続先について取得済みか。 */
@@ -216,7 +238,29 @@ export function RshogiCsaGameBrowser({
     // 条件の中身が同じなら、呼び出し側がオブジェクトを作り直しても検索し直さない。
     const appliedSearch = normalizeRshogiGameBrowserSearch({ ...search });
     const searchKey = JSON.stringify(appliedSearch);
+    const { page: _page, ...appliedConditions } = appliedSearch;
+    const conditionsKey = JSON.stringify(appliedConditions);
     const isSearchMode = hasSearchCondition(appliedSearch);
+
+    // 要求した行き先の取得結果かどうかは参照の一致で見る。runSearch は setSearchPage に渡す値と
+    // 同じオブジェクトを pendingPageFocusRef に入れる。
+    useEffect(() => {
+        if (
+            !searchPage ||
+            searchKey !== pendingPageFocusRef.current?.key ||
+            searchPage !== pendingPageFocusRef.current.result ||
+            searchPage.page !== (appliedSearch.page ?? 1)
+        )
+            return;
+        pendingPageFocusRef.current = null;
+        resultsRef.current?.focus({ preventScroll: true });
+        resultsRef.current?.scrollIntoView({
+            behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+                ? "instant"
+                : "smooth",
+            block: "start",
+        });
+    }, [searchPage, searchKey, appliedSearch.page]);
 
     // 新着順の一覧。検索モードのあいだは使わないので取得しない (検索結果の画面に、裏で
     // 走った新着一覧の取得失敗が出ることも無くなる)。検索をやめたときに未取得なら取得する。
@@ -278,6 +322,8 @@ export function RshogiCsaGameBrowser({
         searchControllerRef.current = controller;
         setIsSearchLoading(true);
         setErrorMessage(null);
+        // 範囲外のページを補正して取得し直すあいだは、読み込み中のままにする。
+        let isRedirecting = false;
         try {
             const result = await fetchRshogiGameSearch({
                 ...toSearchOptions(conditions),
@@ -286,27 +332,79 @@ export function RshogiCsaGameBrowser({
                 pageSize: SEARCH_PAGE_SIZE,
                 signal: controller.signal,
             });
-            if (!controller.signal.aborted) setSearchPage(result);
+            if (controller.signal.aborted) return;
+            const lastPage = Math.max(1, Math.ceil(result.totalCount / result.pageSize));
+            const resolvedPage = result.totalCount > 0 && page > lastPage ? lastPage : result.page;
+            const destination = {
+                ...appliedConditions,
+                ...(resolvedPage > 1 ? { page: resolvedPage } : {}),
+            };
+            const destinationKey = JSON.stringify(destination);
+            if (result.totalCount > 0 && page > lastPage && result.page !== lastPage) {
+                if (pendingPageFocusRef.current?.key === searchKey)
+                    pendingPageFocusRef.current.key = destinationKey;
+                isRedirecting = true;
+                onSearchChange(destination, { replace: true });
+                return;
+            }
+            displayedConditionsRef.current = conditionsKey;
+            if (pendingPageFocusRef.current?.key === searchKey) {
+                pendingPageFocusRef.current = { key: destinationKey, result };
+            }
+            setSearchPage(result);
+            if (result.page !== page) {
+                skipSearchKeyRef.current = destinationKey;
+                onSearchChange(destination, { replace: true });
+            }
         } catch (error) {
             if (controller.signal.aborted) return;
+            pendingPageFocusRef.current = null;
             setErrorMessage(describeError(error, "棋譜検索に失敗しました"));
+            if (
+                searchPage &&
+                displayedConditionsRef.current === conditionsKey &&
+                searchPage.page !== page
+            ) {
+                const previous = {
+                    ...appliedConditions,
+                    ...(searchPage.page > 1 ? { page: searchPage.page } : {}),
+                };
+                skipSearchKeyRef.current = JSON.stringify(previous);
+                onSearchChange(previous, { replace: true });
+            }
         } finally {
-            if (!controller.signal.aborted) setIsSearchLoading(false);
+            if (!controller.signal.aborted && !isRedirecting) setIsSearchLoading(false);
         }
     };
 
-    // 絞り込み条件が変わったらフォームを合わせ、1 ページ目から検索し直す。
+    useEffect(() => {
+        const conditions = JSON.parse(conditionsKey) as RshogiGameBrowserSearch;
+        displayedConditionsRef.current = null;
+        setSearchPage(null);
+        setSearchForm(toFormValues(conditions));
+        // リンクやイベントタグから詳細条件が入ったとき、絞り込み内容を見えるようにする。
+        if (countDetailConditions(conditions) > 0) setIsDetailOpen(true);
+    }, [conditionsKey]);
+
     // biome-ignore lint/correctness/useExhaustiveDependencies: 条件は中身 (searchKey) で比較する。runSearch は毎レンダー作り直されるので依存に入れない。
     useEffect(() => {
         const conditions = normalizeRshogiGameBrowserSearch(
             JSON.parse(searchKey) as Record<string, unknown>,
         );
-        setSearchForm(toFormValues(conditions));
-        // リンクやイベントタグで詳細条件が入ったら、何で絞っているかが見えるように開く。
-        if (countDetailConditions(conditions) > 0) setIsDetailOpen(true);
-        setSearchPage(null);
+        if (searchBaseUrlRef.current !== apiBaseUrl) {
+            searchBaseUrlRef.current = apiBaseUrl;
+            displayedConditionsRef.current = null;
+            setSearchPage(null);
+        }
+        if (pendingPageFocusRef.current?.key !== searchKey) pendingPageFocusRef.current = null;
+        if (skipSearchKeyRef.current === searchKey) {
+            skipSearchKeyRef.current = null;
+            setIsSearchLoading(false);
+            return;
+        }
+        skipSearchKeyRef.current = null;
         if (hasSearchCondition(conditions)) {
-            void runSearch(conditions, 1);
+            void runSearch(conditions, conditions.page ?? 1);
         } else {
             setIsSearchLoading(false);
             // 検索をやめたら、検索のエラーを新着順の一覧に持ち越さない。
@@ -387,7 +485,9 @@ export function RshogiCsaGameBrowser({
 
     const handleSearchPage = (page: number): void => {
         if (!isSearchMode || isSearchLoading) return;
-        void runSearch(appliedSearch, page);
+        const destination = { ...appliedConditions, ...(page > 1 ? { page } : {}) };
+        pendingPageFocusRef.current = { key: JSON.stringify(destination), result: null };
+        onSearchChange(destination);
     };
 
     const displayedGames = isSearchMode ? (searchPage?.games ?? []) : games;
@@ -603,17 +703,26 @@ export function RshogiCsaGameBrowser({
 
                 {appliedEventMeta && <RshogiEventMetaLine meta={appliedEventMeta} />}
 
-                <RshogiCsaGameList
-                    games={displayedGames}
-                    onSelect={onSelectGame}
-                    onSelectEvent={handleSelectEvent}
-                    onLoadMore={isSearchMode ? undefined : () => void handleLoadMore()}
-                    isLoading={isSearchMode ? isSearchLoading : isLoading}
-                    hasMore={!isSearchMode && nextCursor !== undefined}
-                    emptyMessage={isSearchMode ? "検索条件に一致する棋譜はありません。" : undefined}
-                />
+                <fieldset
+                    ref={resultsRef}
+                    tabIndex={-1}
+                    aria-label={isSearchMode ? "検索結果" : "棋譜一覧"}
+                    className="min-w-0 outline-none"
+                >
+                    <RshogiCsaGameList
+                        games={displayedGames}
+                        onSelect={onSelectGame}
+                        onSelectEvent={handleSelectEvent}
+                        onLoadMore={isSearchMode ? undefined : () => void handleLoadMore()}
+                        isLoading={isSearchMode ? isSearchLoading : isLoading}
+                        hasMore={!isSearchMode && nextCursor !== undefined}
+                        emptyMessage={
+                            isSearchMode ? "検索条件に一致する棋譜はありません。" : undefined
+                        }
+                    />
+                </fieldset>
 
-                {isSearchMode && searchPage && (
+                {isSearchMode && searchPage && searchPage.totalCount > 0 && (
                     <nav
                         className="flex flex-wrap items-center justify-between gap-3"
                         aria-label="検索結果のページネーション"

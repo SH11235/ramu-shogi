@@ -1,6 +1,12 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+/** 取得結果の反映後に走る effect まで進める（「起きないこと」を確かめる前に呼ぶ）。 */
+const flushEffects = (): Promise<void> =>
+    act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+    });
 
 const fetchRshogiPlayerDetail = vi.fn();
 const navigate = vi.fn();
@@ -55,8 +61,11 @@ const detail = {
 const { default: RshogiPlayerDetailPage } = await import("./RshogiPlayerDetailPage");
 
 describe("RshogiPlayerDetailPage", () => {
+    afterEach(() => vi.unstubAllGlobals());
+
     beforeEach(() => {
         vi.clearAllMocks();
+        Element.prototype.scrollIntoView = vi.fn();
         routePlayerId = "p_one";
         vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ status: 404 }));
         fetchRshogiPlayerDetail.mockImplementation(
@@ -98,6 +107,32 @@ describe("RshogiPlayerDetailPage", () => {
         );
         expect(await screen.findByRole("button", { name: "game-2" })).toBeTruthy();
         expect(screen.getByText("2 / 2")).toBeTruthy();
+        const heading = screen.getByRole("heading", { name: "対局記録" });
+        await waitFor(() => {
+            expect(document.activeElement).toBe(heading);
+            expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
+                behavior: "smooth",
+                block: "start",
+            });
+        });
+        expect(heading.getAttribute("tabindex")).toBe("-1");
+        fireEvent.click(screen.getByRole("button", { name: "← 新しい対局" }));
+        expect(await screen.findByRole("button", { name: "game-1" })).toBeTruthy();
+        await waitFor(() => expect(document.activeElement).toBe(heading));
+    });
+
+    it("動きを減らす設定では即座にスクロールする", async () => {
+        vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true }));
+        render(<RshogiPlayerDetailPage />);
+        await screen.findByRole("button", { name: "game-1" });
+        fireEvent.click(screen.getByRole("button", { name: "古い対局 →" }));
+        await screen.findByRole("button", { name: "game-2" });
+        await waitFor(() =>
+            expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
+                behavior: "instant",
+                block: "start",
+            }),
+        );
     });
 
     it("次ページの取得失敗時は成功済みページを表示して再試行できる", async () => {
@@ -120,6 +155,31 @@ describe("RshogiPlayerDetailPage", () => {
         fetchRshogiPlayerDetail.mockRejectedValueOnce(new Error("player unavailable"));
         render(<RshogiPlayerDetailPage />);
         expect((await screen.findByRole("alert")).textContent).toContain("player unavailable");
+    });
+
+    it("ページ取得中に棋士を切り替えたときフォーカスを移さない", async () => {
+        const { rerender } = render(<RshogiPlayerDetailPage />);
+        await screen.findByRole("button", { name: "game-1" });
+        fetchRshogiPlayerDetail.mockImplementationOnce(() => new Promise(() => {}));
+        fireEvent.click(screen.getByRole("button", { name: "古い対局 →" }));
+        await waitFor(() =>
+            expect(fetchRshogiPlayerDetail).toHaveBeenLastCalledWith(
+                "p_one",
+                expect.objectContaining({ page: 2 }),
+            ),
+        );
+        routePlayerId = "p_two";
+        rerender(<RshogiPlayerDetailPage />);
+        await waitFor(() =>
+            expect(fetchRshogiPlayerDetail).toHaveBeenLastCalledWith(
+                "p_two",
+                expect.objectContaining({ page: 2 }),
+            ),
+        );
+        await screen.findByRole("button", { name: "game-2" });
+        await flushEffects();
+        expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
+        expect(document.activeElement).not.toBe(screen.getByRole("heading", { name: "対局記録" }));
     });
 
     it("公開実験がある場合は nnue-lab へのリンクを表示する", async () => {
