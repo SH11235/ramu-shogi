@@ -15,6 +15,9 @@ Web と Desktop の AI 選択では、共通の配布 manifest から次のモ�
 COCO は軽さを重視し、スマートフォンや気軽な対局におすすめです。
 RAMU は棋力を重視し、実戦や検討におすすめです。処理性能とメモリに余裕のある環境でお使いください。
 
+COCO は MIT License です。RAMU は ramu-shogi での利用に限って配布しており、再配布はできません
+（[配布 AI「RAMU」の利用条件](./nnue-model-terms.md)）。
+
 プリセットの `usageLabel` と `description` を AI 選択画面の案内に使います。
 アーキテクチャ名と層の次元は `format.architecture` と `format.l1Dimension` / `l2Dimension` / `l3Dimension` に保持し、
 「AI（評価関数）」画面にも表示します。ダウンロード後のモデルメタデータにも `format` を保存します。
