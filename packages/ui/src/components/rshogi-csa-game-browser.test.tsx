@@ -3,6 +3,12 @@ import { type ReactElement, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RshogiGameBrowserSearch } from "./rshogi-csa-game-browser";
 
+/** 取得結果の反映後に走る effect まで進める（「起きないこと」を確かめる前に呼ぶ）。 */
+const flushEffects = (): Promise<void> =>
+    act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
 const fetchRshogiGameList = vi.fn();
 const fetchRshogiGameSearch = vi.fn();
 const fetchRshogiGameEvents = vi.fn();
@@ -655,6 +661,7 @@ describe("RshogiCsaGameBrowser", () => {
                 ),
             );
             await screen.findByText("23件中 21-23件");
+            await flushEffects();
             expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
             expect(document.activeElement).not.toBe(
                 screen.getByRole("group", { name: "検索結果" }),
@@ -719,6 +726,7 @@ describe("RshogiCsaGameBrowser", () => {
                 { replace: true },
             );
             expect(fetchRshogiGameSearch).toHaveBeenCalledTimes(2);
+            await flushEffects();
             expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
         });
 
@@ -737,6 +745,7 @@ describe("RshogiCsaGameBrowser", () => {
                     { replace: true },
                 ),
             );
+            await flushEffects();
             expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
         });
 
@@ -760,6 +769,7 @@ describe("RshogiCsaGameBrowser", () => {
             await screen.findByText("23件中 1-20件");
             fireEvent.click(screen.getByRole("button", { name: "次へ" }));
             await waitFor(() => expect(fetchRshogiGameSearch).toHaveBeenCalledTimes(3));
+            await flushEffects();
             expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
             expect(document.activeElement).not.toBe(
                 screen.getByRole("group", { name: "検索結果" }),
@@ -812,6 +822,7 @@ describe("RshogiCsaGameBrowser", () => {
             });
             rerender(<RshogiCsaGameBrowser {...props} search={{ name: "RAMU", page: 2 }} />);
             await screen.findByText("23件中 21-23件");
+            await flushEffects();
             expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
             expect(document.activeElement).not.toBe(
                 screen.getByRole("group", { name: "検索結果" }),

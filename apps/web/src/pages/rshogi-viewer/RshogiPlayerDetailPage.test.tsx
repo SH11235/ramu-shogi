@@ -1,6 +1,12 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+/** 取得結果の反映後に走る effect まで進める（「起きないこと」を確かめる前に呼ぶ）。 */
+const flushEffects = (): Promise<void> =>
+    act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+    });
 
 const fetchRshogiPlayerDetail = vi.fn();
 const navigate = vi.fn();
@@ -171,6 +177,7 @@ describe("RshogiPlayerDetailPage", () => {
             ),
         );
         await screen.findByRole("button", { name: "game-2" });
+        await flushEffects();
         expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
         expect(document.activeElement).not.toBe(screen.getByRole("heading", { name: "対局記録" }));
     });
