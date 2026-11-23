@@ -85,7 +85,7 @@ export function BottomSheet({
                     "translate-x-0 translate-y-0",
                     heightClassName[height],
                     surfaceClassName,
-                    "duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out",
+                    "duration-200 data-[state=open]:animate-in data-[state=open]:motion-reduce:animate-none data-[state=closed]:animate-out data-[state=closed]:motion-reduce:animate-none motion-reduce:transition-none",
                     "data-[state=closed]:fade-out data-[state=open]:fade-in",
                     "data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
                 )}

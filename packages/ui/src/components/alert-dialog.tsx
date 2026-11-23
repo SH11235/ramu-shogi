@@ -15,7 +15,7 @@ const AlertDialogOverlay = forwardRef<
     return (
         <AlertDialogPrimitive.Overlay
             className={cn(
-                "fixed inset-0 z-overlay bg-overlay backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=open]:fade-in",
+                "fixed inset-0 z-overlay bg-overlay backdrop-blur-sm data-[state=open]:animate-in data-[state=open]:motion-reduce:animate-none data-[state=closed]:animate-out data-[state=closed]:motion-reduce:animate-none data-[state=closed]:fade-out data-[state=open]:fade-in",
                 className,
             )}
             ref={ref}
@@ -33,7 +33,7 @@ export const AlertDialogContent = forwardRef<
             <AlertDialogOverlay />
             <AlertDialogPrimitive.Content
                 className={cn(
-                    "fixed left-1/2 top-1/2 z-modal grid w-[min(420px,calc(100%-32px))] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl border border-border bg-card p-6 text-foreground shadow-modal duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=open]:fade-in data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
+                    "fixed left-1/2 top-1/2 z-modal grid w-[min(420px,calc(100%-32px))] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl border border-border bg-card p-6 text-foreground shadow-modal duration-200 data-[state=open]:animate-in data-[state=open]:motion-reduce:animate-none data-[state=closed]:animate-out data-[state=closed]:motion-reduce:animate-none data-[state=closed]:fade-out data-[state=open]:fade-in data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
                     className,
                 )}
                 ref={ref}
