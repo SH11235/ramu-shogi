@@ -125,6 +125,8 @@ node scripts/smoke-nnue.mjs /path/to/yo-progress-nn.bin progresskpabsq16 8 /path
 Rust 側にも外部モデルを使う ignored test があります。`NNUE_TEST_FILE`、必要なら
 `NNUE_TEST_ROUTING`（例: `{"bucketMode":"progresskpabs","progressBuckets":8}`）と
 `NNUE_TEST_PROGRESS_FILE` を設定し、`cargo test real_model_load_and_search -- --ignored --nocapture` で実行します。
+`NNUE_TEST_LAYER_STACK_IMPLEMENTATION` に `static` か `dynamic` を設定すると、LayerStacks のモデルが
+静的な実装と汎用の実装のどちらで読まれたかも検証します。
 
 ## 局面解析の協調停止・再開
 

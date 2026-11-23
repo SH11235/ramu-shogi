@@ -254,6 +254,11 @@ mod tests {
                 .unwrap();
                 rshogi_core::nnue::init_nnue_from_bytes(&normalized).unwrap();
                 apply_routing(routing).unwrap();
+                if let Ok(expected) = std::env::var("NNUE_TEST_LAYER_STACK_IMPLEMENTATION") {
+                    let implementation = rshogi_core::nnue::get_network()
+                        .and_then(|network| network.layer_stack_implementation());
+                    assert_eq!(implementation, Some(expected.as_str()));
+                }
                 rshogi_core::eval::disable_material();
                 let mut position = rshogi_core::position::Position::new();
                 position
