@@ -1,4 +1,4 @@
-import { redirect } from "@tanstack/react-router";
+import { notFound, redirect } from "@tanstack/react-router";
 import { dispatchAuthSessionSyncEvent } from "./hooks/useAuthSession";
 import { sanitizeReturnPath } from "./lib/loginReturn";
 import { RATE_LIMITED_MESSAGE } from "./lib/rateLimitMessage";
@@ -42,7 +42,7 @@ export function handleLoaderResponse(
     }
 
     if (response.status === 404 && options.notFoundMessage) {
-        throw new Error(options.notFoundMessage);
+        throw notFound({ data: options.notFoundMessage });
     }
 
     if (!response.ok) {

@@ -12,12 +12,13 @@ import {
     createRootRoute,
     createRoute,
     createRouter,
-    type ErrorComponentProps,
     lazyRouteComponent,
     redirect,
-    useNavigate,
 } from "@tanstack/react-router";
 import { AppProviders } from "./AppProviders";
+import { NotFoundPage } from "./components/NotFoundPage";
+import { PageContainer } from "./components/PageContainer";
+import { PageHeader } from "./components/PageHeader";
 import { handleLoaderResponse } from "./router-loader-utils";
 import { parseSearch, stringifySearch } from "./router-search";
 
@@ -113,6 +114,9 @@ const gameDetailRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/games/$gameId",
     component: lazyRouteComponent(() => import("./pages/games/GameDetailPage")),
+    notFoundComponent: () => (
+        <NotFoundPage title="棋譜が見つかりません" to="/games" linkLabel="棋譜一覧" />
+    ),
     loader: async ({ params: { gameId }, location }) => {
         if (!UUID_RE.test(gameId)) {
             throw redirect({
@@ -168,6 +172,9 @@ const publicGameRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/public/games/$publicId",
     component: lazyRouteComponent(() => import("./pages/games/PublicGamePage")),
+    notFoundComponent: () => (
+        <NotFoundPage title="棋譜が見つかりません" to="/public/games" linkLabel="公開棋譜一覧" />
+    ),
     loader: async ({ params: { publicId } }) => {
         const response = await fetch(`/api/public/games/${publicId}`, {
             credentials: "same-origin",
@@ -299,36 +306,22 @@ function DefaultErrorComponent({ error }: { error: unknown }) {
     // 非 Error の Promise rejection もありうる) ため、安全に文字列化する。
     const message = error instanceof Error ? error.message : String(error);
     return (
-        <div className="mx-auto flex max-w-[480px] flex-col gap-4 px-4 py-10">
-            <p className="text-destructive">
-                ページの読み込みに失敗しました。ネットワークを確認して再読み込みしてください。
-            </p>
-            <p className="text-xs text-muted-foreground">{message}</p>
-            <button
-                type="button"
-                onClick={() => window.location.reload()}
-                className="inline-flex min-h-10 items-center self-start text-sm text-muted-foreground hover:text-foreground"
-            >
-                再読み込み
-            </button>
-        </div>
-    );
-}
-
-function RoomErrorComponent({ error }: ErrorComponentProps) {
-    const message = error instanceof Error ? error.message : String(error);
-    const navigate = useNavigate();
-    return (
-        <div className="mx-auto flex max-w-[480px] flex-col gap-4 px-4 py-10">
-            <p className="text-destructive">{message}</p>
-            <button
-                type="button"
-                onClick={() => void navigate({ to: "/online", search: undefined })}
-                className="inline-flex min-h-10 items-center self-start text-sm text-muted-foreground hover:text-foreground"
-            >
-                ← オンライン対局に戻る
-            </button>
-        </div>
+        <>
+            <PageHeader items={[{ label: "ラム将棋", to: "/" }, { label: "読み込みエラー" }]} />
+            <PageContainer width="form">
+                <p className="text-destructive">
+                    ページの読み込みに失敗しました。ネットワークを確認して再読み込みしてください。
+                </p>
+                <p className="text-xs text-muted-foreground">{message}</p>
+                <button
+                    type="button"
+                    onClick={() => window.location.reload()}
+                    className="inline-flex min-h-10 items-center self-start text-sm text-muted-foreground hover:text-foreground"
+                >
+                    再読み込み
+                </button>
+            </PageContainer>
+        </>
     );
 }
 
@@ -345,7 +338,9 @@ const roomRoute = createRoute({
         return res.json() as Promise<RoomInfo>;
     },
     pendingComponent: DefaultPendingComponent,
-    errorComponent: RoomErrorComponent,
+    notFoundComponent: () => (
+        <NotFoundPage title="ルームが見つかりません" to="/online" linkLabel="オンライン対局" />
+    ),
     validateSearch: (search: Record<string, unknown>) => ({
         name: typeof search.name === "string" ? search.name : undefined,
         seat: typeof search.seat === "string" ? search.seat : undefined,
@@ -387,6 +382,7 @@ export const router = createRouter({
     stringifySearch,
     defaultPendingComponent: DefaultPendingComponent,
     defaultErrorComponent: DefaultErrorComponent,
+    defaultNotFoundComponent: () => <NotFoundPage />,
 });
 
 declare module "@tanstack/react-router" {
