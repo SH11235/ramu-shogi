@@ -128,7 +128,8 @@ function saveStatusText({
 }): string {
     if (blocked) return "";
     if (saveState === "saving") return "保存しています…";
-    if (dirty) return saveState === "failed" ? "保存できませんでした" : "入力が止まると保存します";
+    if (saveState === "failed") return "保存できませんでした";
+    if (dirty) return "入力が止まると保存します";
     if (saveState === "saved") return "保存しました";
     return "";
 }
@@ -149,6 +150,12 @@ export function StudyCommentBox({
 }: StudyCommentBoxProps): ReactElement {
     const textareaId = useId();
     const [saveState, setSaveState] = useState<SaveState>("idle");
+    /** 保存を試みるたびに増やす番号。前の保存の結果で、新しい保存の表示を上書きしないために使う。 */
+    const saveSeqRef = useRef(0);
+    /** 結果を待っている最新の保存（無ければ null）。「完了」は、これが済んでから閉じる。 */
+    const pendingSaveRef = useRef<Promise<boolean> | null>(null);
+    /** 「完了」を押して、保存の結果を待っている。 */
+    const [isClosing, setIsClosing] = useState(false);
     // 戻す書きかけ（保存済みのコメントと同じなら、戻さずに消すだけ）。最初に 1 回だけ決める。
     const [restored] = useState<{ text: string; base: string | null } | null>(() =>
         initialDraft && initialDraft.text !== value
@@ -273,14 +280,17 @@ export function StudyCommentBox({
         const outcome = callbacksRef.current.onChange(attempted);
         const reportSaved = (): void =>
             callbacksRef.current.onDraftChange?.({ type: "clear", savedText: attempted });
+        const seq = ++saveSeqRef.current;
         if (!(outcome instanceof Promise)) {
             reportSaved();
             setSaveState("saved");
             return;
         }
         setSaveState("saving");
+        pendingSaveRef.current = outcome;
         void outcome.then((saved) => {
-            setSaveState(saved ? "saved" : "failed");
+            if (pendingSaveRef.current === outcome) pendingSaveRef.current = null;
+            if (seq === saveSeqRef.current) setSaveState(saved ? "saved" : "failed");
             if (saved) {
                 // 保存できた内容を添えて知らせる（この間に書かれた新しい書きかけは、消されない）。
                 reportSaved();
@@ -360,11 +370,23 @@ export function StudyCommentBox({
         callbacksRef.current.onDraftChange?.({ type: "clear", savedText: null });
     };
 
-    /** 完了: 書きかけをすぐ保存し、保存できたら閉じる（保存できない理由は、欄に出したまま）。 */
+    /**
+     * 完了: 書きかけをすぐ保存し、保存できたら閉じる。保存できない理由は欄に出したまま、閉じない。
+     * 保存の結果を待つ保存では、成功を確かめてから閉じる（失敗に気づけないまま閉じないように）。
+     */
     const finish = (): void => {
         save();
         if (draftRef.current !== lastSavedRef.current) return;
-        onDone?.();
+        const pending = pendingSaveRef.current;
+        if (pending === null) {
+            onDone?.();
+            return;
+        }
+        setIsClosing(true);
+        void pending.then((saved) => {
+            setIsClosing(false);
+            if (saved && draftRef.current === lastSavedRef.current) onDone?.();
+        });
     };
 
     const remaining = STUDY_LIMITS.commentBytes - utf8Length(draft);
@@ -427,9 +449,7 @@ export function StudyCommentBox({
                 <span
                     className={cn(
                         "min-w-0 flex-1 truncate text-xs",
-                        saveState === "failed" && draft !== value
-                            ? "text-destructive"
-                            : "text-muted-foreground",
+                        saveState === "failed" ? "text-destructive" : "text-muted-foreground",
                     )}
                 >
                     {saveStatusText({
@@ -442,9 +462,10 @@ export function StudyCommentBox({
                     <button
                         type="button"
                         onClick={finish}
-                        className="min-h-10 shrink-0 rounded-md border border-wafuu-border bg-card px-4 text-sm font-medium text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-8"
+                        disabled={isClosing}
+                        className="min-h-10 shrink-0 rounded-md border border-wafuu-border bg-card px-4 text-sm font-medium text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60 md:min-h-8"
                     >
-                        完了
+                        {isClosing ? "保存しています…" : "完了"}
                     </button>
                 )}
             </div>

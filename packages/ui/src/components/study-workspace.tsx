@@ -23,7 +23,7 @@ import {
 } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useId, useRef, useState } from "react";
 import { useUsageTracker } from "../providers/UsageContext";
 import type { PlayFromPosition } from "./rshogi-play-from-position";
 import { KIFU_NAV_STEP_TEN } from "./shogi-match/components/KifuNavigationToolbar";
@@ -128,7 +128,6 @@ import { TooltipProvider } from "./tooltip";
 
 /** 「自動で読む」を入れているか（端末ごとに覚える）。 */
 const STUDY_AUTO_ANALYZE_STORAGE_KEY = "shogi:studyAutoAnalyze";
-const STUDY_COMMENT_TOGGLE_ID = "study-comment-toggle";
 
 export type { StudyCommentDraft };
 
@@ -292,6 +291,7 @@ export function StudyWorkspaceView({
     const mobileMeasure = useStudyMobileMeasure(isMobile);
     // コメント欄は普段は畳んでおき、盤の上のボタンで開く（開いたままにすれば、手を送っても出続ける）。
     const [isCommentOpen, setIsCommentOpen] = useState(false);
+    const commentToggleId = useId();
     // 対局時の評価値と解析の両方があるとき、評価値グラフでどちらを主の線にするか。
     const [graphPrimaryChoice, setGraphPrimaryChoice] = useState<StudyGraphSeries>("source");
     const sideColumnRef = useRef<HTMLDivElement | null>(null);
@@ -960,7 +960,7 @@ export function StudyWorkspaceView({
             // 対応が要る書きかけがある間は、閉じられない。
             disabled={commentNeedsAttention}
             onClick={() => setIsCommentOpen(!showsComment)}
-            id={STUDY_COMMENT_TOGGLE_ID}
+            id={commentToggleId}
             className="relative"
         >
             <CommentIcon />
@@ -1143,9 +1143,7 @@ export function StudyWorkspaceView({
             onDone={() => {
                 setIsCommentOpen(false);
                 // 閉じると入力欄ごと消えるので、開いたボタンへ戻す（キーボード操作の続きのため）。
-                requestAnimationFrame(() =>
-                    document.getElementById(STUDY_COMMENT_TOGGLE_ID)?.focus(),
-                );
+                requestAnimationFrame(() => document.getElementById(commentToggleId)?.focus());
             }}
         />
     );
