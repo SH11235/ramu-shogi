@@ -58,6 +58,7 @@ interface RshogiCsaViewerProps {
      * PC では左の対局情報の下に出す。スマホでは盤の下の評価値の行に `compact: true` で出す
      * （最初の画面で見えるように）。対局情報のシートの中にも出す。
      */
+    onGameLoaded?: (game: RshogiGame) => void;
     renderGameAction?: (game: RshogiGame, options: { compact: boolean }) => ReactNode;
     /**
      * 「この局面から対局」を押したときに、いま表示している局面（本譜の現在の手数まで。分岐を
@@ -336,6 +337,7 @@ export function RshogiCsaViewer({
     onRequestNnueFilePath,
     isDevMode,
     renderGameAction,
+    onGameLoaded,
     onPlayFromPosition,
 }: RshogiCsaViewerProps): ReactElement {
     const [state, setState] = useState<LoadState>({ status: "loading" });
@@ -344,6 +346,7 @@ export function RshogiCsaViewer({
     const [events, setEvents] = useState<RshogiGameEventSummary[]>([]);
     const shownPosition = useShownPosition();
     const resetShownPosition = useEffectEvent(shownPosition.reset);
+    const notifyGameLoaded = useEffectEvent((game: RshogiGame) => onGameLoaded?.(game));
 
     useEffect(() => {
         const controller = new AbortController();
@@ -369,6 +372,7 @@ export function RshogiCsaViewer({
                     });
                     return;
                 }
+                notifyGameLoaded(game);
                 setState({
                     status: "ready",
                     game,

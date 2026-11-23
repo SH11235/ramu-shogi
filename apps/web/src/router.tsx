@@ -12,6 +12,7 @@ import {
     createRootRoute,
     createRoute,
     createRouter,
+    Link,
     lazyRouteComponent,
     redirect,
 } from "@tanstack/react-router";
@@ -24,6 +25,7 @@ import { parseSearch, stringifySearch } from "./router-search";
 
 const rootRoute = createRootRoute({
     component: AppProviders,
+    errorComponent: RootErrorComponent,
 });
 
 const indexRoute = createRoute({
@@ -115,7 +117,10 @@ const gameDetailRoute = createRoute({
     path: "/games/$gameId",
     component: lazyRouteComponent(() => import("./pages/games/GameDetailPage")),
     notFoundComponent: () => (
-        <NotFoundPage title="棋譜が見つかりません" to="/games" linkLabel="棋譜一覧" />
+        <NotFoundPage
+            title="棋譜が見つかりません"
+            destination={{ to: "/games", label: "棋譜一覧" }}
+        />
     ),
     loader: async ({ params: { gameId }, location }) => {
         if (!UUID_RE.test(gameId)) {
@@ -130,7 +135,7 @@ const gameDetailRoute = createRoute({
 
         handleLoaderResponse(response, {
             errorMessage: "棋譜の取得に失敗しました",
-            notFoundMessage: "棋譜が見つかりません",
+            notFound: true,
             onUnauthorized: "redirect_to_auth",
             returnTo: location.href,
         });
@@ -173,7 +178,10 @@ const publicGameRoute = createRoute({
     path: "/public/games/$publicId",
     component: lazyRouteComponent(() => import("./pages/games/PublicGamePage")),
     notFoundComponent: () => (
-        <NotFoundPage title="棋譜が見つかりません" to="/public/games" linkLabel="公開棋譜一覧" />
+        <NotFoundPage
+            title="棋譜が見つかりません"
+            destination={{ to: "/public/games", label: "公開棋譜一覧" }}
+        />
     ),
     loader: async ({ params: { publicId } }) => {
         const response = await fetch(`/api/public/games/${publicId}`, {
@@ -182,7 +190,7 @@ const publicGameRoute = createRoute({
 
         handleLoaderResponse(response, {
             errorMessage: "棋譜の取得に失敗しました",
-            notFoundMessage: "棋譜が見つかりません",
+            notFound: true,
         });
 
         const payload = (await response.json()) as GetPublicGameResponse;
@@ -301,25 +309,52 @@ function DefaultPendingComponent() {
 // lazy route の chunk fetch が恒久的に失敗した場合 (stale deploy の reload を
 // 消化し切った後など) の共通フォールバック。未スタイルの既定 error 画面を出さず、
 // 再読み込み導線を持つ最小 UI を出す。
-function DefaultErrorComponent({ error }: { error: unknown }) {
-    // TanStack Router の error は Error インスタンスとは限らない (throw "string" や
-    // 非 Error の Promise rejection もありうる) ため、安全に文字列化する。
+function ErrorContent({
+    error,
+    showOnlineLink = false,
+}: {
+    error: unknown;
+    showOnlineLink?: boolean;
+}) {
     const message = error instanceof Error ? error.message : String(error);
+    return (
+        <>
+            <p className="text-destructive">
+                ページの読み込みに失敗しました。ネットワークを確認して再読み込みしてください。
+            </p>
+            <p className="text-xs text-muted-foreground">{message}</p>
+            <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="inline-flex min-h-10 items-center self-start text-sm text-muted-foreground hover:text-foreground"
+            >
+                再読み込み
+            </button>
+            {showOnlineLink && <Link to="/online">オンライン対局</Link>}
+        </>
+    );
+}
+
+function RootErrorComponent({ error }: { error: unknown }) {
+    return (
+        <div className="mx-auto flex max-w-[480px] flex-col gap-4 px-4 py-10">
+            <ErrorContent error={error} />
+        </div>
+    );
+}
+
+function DefaultErrorComponent({
+    error,
+    showOnlineLink = false,
+}: {
+    error: unknown;
+    showOnlineLink?: boolean;
+}) {
     return (
         <>
             <PageHeader items={[{ label: "ラム将棋", to: "/" }, { label: "読み込みエラー" }]} />
             <PageContainer width="form">
-                <p className="text-destructive">
-                    ページの読み込みに失敗しました。ネットワークを確認して再読み込みしてください。
-                </p>
-                <p className="text-xs text-muted-foreground">{message}</p>
-                <button
-                    type="button"
-                    onClick={() => window.location.reload()}
-                    className="inline-flex min-h-10 items-center self-start text-sm text-muted-foreground hover:text-foreground"
-                >
-                    再読み込み
-                </button>
+                <ErrorContent error={error} showOnlineLink={showOnlineLink} />
             </PageContainer>
         </>
     );
@@ -333,13 +368,17 @@ const roomRoute = createRoute({
         const res = await fetch(`/api/rooms/${roomId}`);
         handleLoaderResponse(res, {
             errorMessage: "ルーム情報の取得に失敗しました",
-            notFoundMessage: "ルームが見つかりません",
+            notFound: true,
         });
         return res.json() as Promise<RoomInfo>;
     },
     pendingComponent: DefaultPendingComponent,
+    errorComponent: ({ error }) => <DefaultErrorComponent error={error} showOnlineLink />,
     notFoundComponent: () => (
-        <NotFoundPage title="ルームが見つかりません" to="/online" linkLabel="オンライン対局" />
+        <NotFoundPage
+            title="ルームが見つかりません"
+            destination={{ to: "/online", label: "オンライン対局" }}
+        />
     ),
     validateSearch: (search: Record<string, unknown>) => ({
         name: typeof search.name === "string" ? search.name : undefined,

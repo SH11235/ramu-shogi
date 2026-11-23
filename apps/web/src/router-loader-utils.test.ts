@@ -75,16 +75,15 @@ describe("handleLoaderResponse", () => {
         }
     });
 
-    it("404 を notFoundMessage で throw する", () => {
+    it("404 を notFound で throw する", () => {
         try {
             handleLoaderResponse(
                 { ok: false, status: 404 },
-                { errorMessage: "failed", notFoundMessage: "棋譜が見つかりません" },
+                { errorMessage: "failed", notFound: true },
             );
             throw new Error("notFound が投げられなかった");
         } catch (error) {
             expect(isNotFound(error)).toBe(true);
-            expect(error).toMatchObject({ data: "棋譜が見つかりません" });
         }
     });
 
@@ -114,7 +113,7 @@ describe("handleLoaderResponse", () => {
         expect(() =>
             handleLoaderResponse(
                 { ok: false, status: 429 },
-                { errorMessage: "failed", notFoundMessage: "missing" },
+                { errorMessage: "failed", notFound: true },
             ),
         ).toThrow(RATE_LIMITED_MESSAGE);
     });

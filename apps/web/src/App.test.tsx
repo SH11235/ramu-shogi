@@ -11,7 +11,6 @@ interface CapturedShogiMatchProps {
 }
 
 const capturedProps: CapturedShogiMatchProps[] = [];
-let headerItems: { label: string }[] = [];
 let shouldBlock: (() => Promise<boolean>) | undefined;
 
 vi.mock("@shogi/ui", () => ({
@@ -30,12 +29,7 @@ vi.mock("@tanstack/react-router", () => ({
     Link: ({ children }: { children: React.ReactNode }) => <a href="/">{children}</a>,
 }));
 vi.mock("./components/HeaderNav", () => ({ HeaderNav: () => null }));
-vi.mock("./components/PageHeader", () => ({
-    PageHeader: ({ items }: { items: { label: string }[] }) => {
-        headerItems = items;
-        return null;
-    },
-}));
+vi.mock("./components/NavDrawer", () => ({ NavDrawer: () => null }));
 vi.mock("./hooks/useAccountNnue", () => ({
     useAccountNnue: () => undefined,
 }));
@@ -59,7 +53,7 @@ describe("/play (App): 引き継がれた局面", () => {
 
     it("対局画面のタイトルを指定する", () => {
         render(<App />);
-        expect(headerItems.at(-1)?.label).toBe("AI と対局");
+        expect(document.title).toBe("AI と対局 | ラム将棋");
     });
 
     it("引き継がれた局面があれば、その開始局面と手順を読み込んで開く", async () => {

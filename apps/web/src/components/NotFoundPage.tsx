@@ -6,15 +6,10 @@ import { PageHeader } from "./PageHeader";
 
 interface NotFoundPageProps {
     title?: string;
-    to?: "/games" | "/public/games" | "/online";
-    linkLabel?: string;
+    destination?: { to: "/games" | "/public/games" | "/online"; label: string };
 }
 
-export function NotFoundPage({
-    title = "ページが見つかりません",
-    to,
-    linkLabel,
-}: NotFoundPageProps) {
+export function NotFoundPage({ title = "ページが見つかりません", destination }: NotFoundPageProps) {
     useEffect(() => {
         const meta = document.createElement("meta");
         meta.name = "robots";
@@ -30,12 +25,12 @@ export function NotFoundPage({
                 <h1 className="text-xl font-bold">{title}</h1>
                 <p>URL が変わったか、削除された可能性があります。</p>
                 <div className="flex flex-wrap gap-2">
-                    {to && (
+                    {destination && (
                         <Button asChild>
-                            <Link to={to}>{linkLabel}</Link>
+                            <Link to={destination.to}>{destination.label}</Link>
                         </Button>
                     )}
-                    {!to && (
+                    {!destination && (
                         <>
                             <Button asChild>
                                 <Link to="/play">対局する</Link>

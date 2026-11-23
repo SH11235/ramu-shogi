@@ -65,6 +65,37 @@ describe("見つからないページ", () => {
         );
     });
 
+    it("root のエラー画面は provider なしで描画できる", () => {
+        const RootError = router.routeTree.options.errorComponent;
+        if (!RootError) throw new Error("root errorComponent がありません");
+        render(
+            <RootError
+                error={new Error("root failure")}
+                reset={() => {}}
+                info={{ componentStack: "" }}
+            />,
+        );
+        expect(screen.getByText("root failure")).toBeTruthy();
+        expect(screen.getByRole("button", { name: "再読み込み" })).toBeTruthy();
+        expect(screen.queryByRole("banner")).toBeNull();
+    });
+
+    it.each(["network", "server"])("ルームの %s エラーに戻り先を出す", async (failure) => {
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async () => {
+                if (failure === "network") throw new Error("network");
+                return new Response(null, { status: 500 });
+            }),
+        );
+        await show("/online/missing");
+        expect(await screen.findByRole("button", { name: "再読み込み" })).toBeTruthy();
+        expect(screen.getByRole("link", { name: "オンライン対局" }).getAttribute("href")).toBe(
+            "/online",
+        );
+        expect(screen.getByRole("banner")).toBeTruthy();
+    });
+
     it("通信エラーはヘッダーと再読み込みを出す", async () => {
         vi.stubGlobal(
             "fetch",

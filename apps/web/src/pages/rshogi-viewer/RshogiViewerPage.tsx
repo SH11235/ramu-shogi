@@ -1,7 +1,7 @@
 import type { EngineOption } from "@shogi/ui";
 import { RshogiCsaViewer } from "@shogi/ui";
 import { getRouteApi } from "@tanstack/react-router";
-import { type ReactElement, useEffect } from "react";
+import { type ReactElement, useState } from "react";
 import { HeaderNav } from "../../components/HeaderNav";
 import { OpenStudyButton } from "../../components/OpenStudyButton";
 import { PageHeader } from "../../components/PageHeader";
@@ -20,22 +20,14 @@ const engineOptions: EngineOption[] = [
 
 const routeApi = getRouteApi("/rshogi-viewer/$gameId");
 
-function GameTitle({ sente, gote }: { sente: string; gote: string }): null {
-    useEffect(() => {
-        if (!sente.trim() || !gote.trim()) return;
-        const previous = document.title;
-        const title = `${sente} 対 ${gote} | ラム将棋`;
-        document.title = title;
-        return () => {
-            if (document.title === title) document.title = previous;
-        };
-    }, [sente, gote]);
-    return null;
-}
-
 export default function RshogiViewerPage(): ReactElement {
     const { gameId } = routeApi.useParams();
+    return <GamePage key={gameId} gameId={gameId} />;
+}
+
+function GamePage({ gameId }: { gameId: string }): ReactElement {
     const playFromPosition = usePlayFromPosition();
+    const [title, setTitle] = useState("棋譜");
     const apiBaseUrl =
         (import.meta.env.VITE_RSHOGI_API_BASE as string | undefined)?.trim() || undefined;
 
@@ -45,12 +37,20 @@ export default function RshogiViewerPage(): ReactElement {
                 items={[
                     { label: "ラム将棋", to: "/" },
                     { label: "rshogi viewer", to: "/rshogi-viewer" },
-                    { label: "棋譜" },
+                    { label: title },
                 ]}
                 right={<HeaderNav />}
             />
             <RshogiCsaViewer
                 gameId={gameId}
+                onGameLoaded={(game) => {
+                    const { senteName, goteName } = game.meta;
+                    setTitle(
+                        senteName.trim() && goteName.trim()
+                            ? `${senteName} 対 ${goteName}`
+                            : "棋譜",
+                    );
+                }}
                 engineOptions={engineOptions}
                 manifestUrl={import.meta.env.VITE_NNUE_MANIFEST_URL as string}
                 apiBaseUrl={apiBaseUrl}
@@ -58,7 +58,6 @@ export default function RshogiViewerPage(): ReactElement {
                 // この画面から先へ進む操作は 2 つ。主が「研究ノートで開く」、従が「この局面から対局」。
                 renderGameAction={(game, { compact }) => (
                     <>
-                        <GameTitle sente={game.meta.senteName} gote={game.meta.goteName} />
                         <OpenStudyButton
                             open={() => openStudyFromRshogiGame(game)}
                             // スマホの盤の下の 1 行に収めるため、短い名前にする。

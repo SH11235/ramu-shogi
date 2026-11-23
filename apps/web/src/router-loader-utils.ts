@@ -7,7 +7,7 @@ type LoaderResponseStatus = "ok" | "needs_auth";
 
 interface HandleLoaderResponseOptions {
     errorMessage: string;
-    notFoundMessage?: string;
+    notFound?: boolean;
     onUnauthorized?: "return_needs_auth" | "throw" | "redirect_to_auth";
     unauthorizedMessage?: string;
     /**
@@ -41,8 +41,8 @@ export function handleLoaderResponse(
         throw new Error(RATE_LIMITED_MESSAGE);
     }
 
-    if (response.status === 404 && options.notFoundMessage) {
-        throw notFound({ data: options.notFoundMessage });
+    if (response.status === 404 && options.notFound) {
+        throw notFound();
     }
 
     if (!response.ok) {
