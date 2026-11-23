@@ -181,7 +181,7 @@ interface RshogiCsaGameBrowserProps {
     /** 現在の絞り込み条件。 */
     search: RshogiGameBrowserSearch;
     /** 絞り込み条件の変更要求。呼び出し側が `search` に反映する。 */
-    onSearchChange: (search: RshogiGameBrowserSearch) => void;
+    onSearchChange: (search: RshogiGameBrowserSearch, options?: { replace?: boolean }) => void;
     /** 終局済みの対局を選んだとき。 */
     onSelectGame: (gameId: string) => void;
     /** 進行中の対局を選んだとき。省くと、進行中の対局の欄を出さない（終局済みの棋譜だけを選ぶ画面）。 */
@@ -217,9 +217,15 @@ export function RshogiCsaGameBrowser({
     /** 終了日の範囲が逆のまま検索を押したか。押すまでは、入力の途中でメッセージを出さない。 */
     const [showDateRangeError, setShowDateRangeError] = useState(false);
     const resultsRef = useRef<HTMLFieldSetElement>(null);
-    const pendingPageFocusRef = useRef<string | null>(null);
+    // ボタン操作に対応する取得結果だけでフォーカスする。
+    const pendingPageFocusRef = useRef<{ key: string; result: RshogiGameSearchPage | null } | null>(
+        null,
+    );
+    // 取得済みの結果に合わせて URL を直すときは再取得しない。
     const skipSearchKeyRef = useRef<string | null>(null);
+    // ページ取得に失敗した際、表示中の結果と同じ条件にだけ戻す。
     const displayedConditionsRef = useRef<string | null>(null);
+    // 接続先が変わった場合は前の接続先の結果を破棄する。
     const searchBaseUrlRef = useRef(apiBaseUrl);
     const searchControllerRef = useRef<AbortController | null>(null);
     const loadMoreControllerRef = useRef<AbortController | null>(null);
@@ -239,7 +245,8 @@ export function RshogiCsaGameBrowser({
     useEffect(() => {
         if (
             !searchPage ||
-            searchKey !== pendingPageFocusRef.current ||
+            searchKey !== pendingPageFocusRef.current?.key ||
+            searchPage !== pendingPageFocusRef.current.result ||
             searchPage.page !== (appliedSearch.page ?? 1)
         )
             return;
@@ -330,18 +337,19 @@ export function RshogiCsaGameBrowser({
             };
             const destinationKey = JSON.stringify(destination);
             if (result.totalCount > 0 && page > lastPage && result.page !== lastPage) {
-                if (pendingPageFocusRef.current === searchKey)
-                    pendingPageFocusRef.current = destinationKey;
-                onSearchChange(destination);
+                if (pendingPageFocusRef.current?.key === searchKey)
+                    pendingPageFocusRef.current.key = destinationKey;
+                onSearchChange(destination, { replace: true });
                 return;
             }
             displayedConditionsRef.current = conditionsKey;
+            if (pendingPageFocusRef.current?.key === searchKey) {
+                pendingPageFocusRef.current = { key: destinationKey, result };
+            }
             setSearchPage(result);
             if (result.page !== page) {
-                if (pendingPageFocusRef.current === searchKey)
-                    pendingPageFocusRef.current = destinationKey;
                 skipSearchKeyRef.current = destinationKey;
-                onSearchChange(destination);
+                onSearchChange(destination, { replace: true });
             }
         } catch (error) {
             if (controller.signal.aborted) return;
@@ -357,7 +365,7 @@ export function RshogiCsaGameBrowser({
                     ...(searchPage.page > 1 ? { page: searchPage.page } : {}),
                 };
                 skipSearchKeyRef.current = JSON.stringify(previous);
-                onSearchChange(previous);
+                onSearchChange(previous, { replace: true });
             }
         } finally {
             if (!controller.signal.aborted) setIsSearchLoading(false);
@@ -383,7 +391,7 @@ export function RshogiCsaGameBrowser({
             displayedConditionsRef.current = null;
             setSearchPage(null);
         }
-        if (pendingPageFocusRef.current !== searchKey) pendingPageFocusRef.current = null;
+        if (pendingPageFocusRef.current?.key !== searchKey) pendingPageFocusRef.current = null;
         if (skipSearchKeyRef.current === searchKey) {
             skipSearchKeyRef.current = null;
             setIsSearchLoading(false);
@@ -473,7 +481,7 @@ export function RshogiCsaGameBrowser({
     const handleSearchPage = (page: number): void => {
         if (!isSearchMode || isSearchLoading) return;
         const destination = { ...appliedConditions, ...(page > 1 ? { page } : {}) };
-        pendingPageFocusRef.current = JSON.stringify(destination);
+        pendingPageFocusRef.current = { key: JSON.stringify(destination), result: null };
         onSearchChange(destination);
     };
 
@@ -693,8 +701,8 @@ export function RshogiCsaGameBrowser({
                 <fieldset
                     ref={resultsRef}
                     tabIndex={-1}
-                    aria-label="検索結果"
-                    className="outline-none"
+                    aria-label={isSearchMode ? "検索結果" : "棋譜一覧"}
+                    className="min-w-0 outline-none"
                 >
                     <RshogiCsaGameList
                         games={displayedGames}

@@ -121,6 +121,24 @@ describe("RshogiViewerListPage", () => {
         });
     });
 
+    it("範囲外のページの自動補正は履歴を置き換える", async () => {
+        currentSearch = { name: "RAMU", page: 999 };
+        fetchRshogiGameSearch.mockResolvedValueOnce({
+            games: [],
+            page: 999,
+            pageSize: 20,
+            totalCount: 23,
+        });
+        render(<RshogiViewerListPage />);
+        await waitFor(() =>
+            expect(navigate).toHaveBeenCalledWith({
+                to: "/rshogi-viewer",
+                search: { name: "RAMU", page: 2 },
+                replace: true,
+            }),
+        );
+    });
+
     it("イベントタグを押すと ?event=<名前> へ遷移する", async () => {
         render(<RshogiViewerListPage />);
 

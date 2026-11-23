@@ -39,11 +39,14 @@ export default function RshogiPlayerDetailPage(): ReactElement {
     // 破棄する (新詳細の取得が失敗しても旧 player の情報が残らないように)。
     const [renderedPlayerId, setRenderedPlayerId] = useState(playerId);
     if (renderedPlayerId !== playerId) {
-        pendingPageFocusRef.current = null;
         setRenderedPlayerId(playerId);
         setDetail(null);
         setNnueLabExperiment(null);
     }
+
+    useEffect(() => {
+        pendingPageFocusRef.current = null;
+    }, [playerId]);
 
     useEffect(() => {
         const controller = new AbortController();

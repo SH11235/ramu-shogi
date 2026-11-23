@@ -27,8 +27,15 @@ export default function RshogiViewerListPage(): ReactElement {
     const search = routeApi.useSearch();
     const apiBaseUrl = resolveApiBaseUrl();
 
-    const handleSearchChange = (next: RshogiGameBrowserSearch): void => {
-        void navigate({ to: "/rshogi-viewer", search: next });
+    const handleSearchChange = (
+        next: RshogiGameBrowserSearch,
+        options?: { replace?: boolean },
+    ): void => {
+        void navigate({
+            to: "/rshogi-viewer",
+            search: next,
+            ...(options?.replace ? { replace: true } : {}),
+        });
     };
 
     return (

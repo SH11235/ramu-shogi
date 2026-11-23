@@ -37,8 +37,9 @@ function Harness({ initial = {} }: { initial?: RshogiGameBrowserSearch }): React
         <RshogiCsaGameBrowser
             apiBaseUrl="https://example.test/rshogi"
             search={search}
-            onSearchChange={(next) => {
-                onSearchChange(next);
+            onSearchChange={(next, options) => {
+                if (options) onSearchChange(next, options);
+                else onSearchChange(next);
                 setSearch(next);
             }}
             onSelectGame={onSelectGame}
@@ -687,7 +688,12 @@ describe("RshogiCsaGameBrowser", () => {
             await screen.findByText("23件中 1-20件");
             fireEvent.click(screen.getByRole("button", { name: "次へ" }));
             await screen.findByRole("alert");
-            await waitFor(() => expect(onSearchChange).toHaveBeenLastCalledWith({ name: "RAMU" }));
+            await waitFor(() =>
+                expect(onSearchChange).toHaveBeenLastCalledWith(
+                    { name: "RAMU" },
+                    { replace: true },
+                ),
+            );
             expect(gameIds()).toEqual(["one"]);
             fireEvent.click(screen.getByRole("button", { name: "次へ" }));
             await screen.findByText("23件中 21-23件");
@@ -705,7 +711,14 @@ describe("RshogiCsaGameBrowser", () => {
                 });
             render(<Harness initial={{ name: "RAMU", page: 999 }} />);
             await screen.findByText("23件中 21-23件");
-            expect(onSearchChange).toHaveBeenLastCalledWith({ name: "RAMU", page: 2 });
+            await act(async () => {
+                await Promise.resolve();
+            });
+            expect(onSearchChange).toHaveBeenLastCalledWith(
+                { name: "RAMU", page: 2 },
+                { replace: true },
+            );
+            expect(fetchRshogiGameSearch).toHaveBeenCalledTimes(2);
             expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
         });
 
@@ -719,9 +732,43 @@ describe("RshogiCsaGameBrowser", () => {
             render(<Harness initial={{ name: "RAMU", page: 999 }} />);
             await screen.findByText("23件中 21-23件");
             await waitFor(() =>
-                expect(onSearchChange).toHaveBeenLastCalledWith({ name: "RAMU", page: 2 }),
+                expect(onSearchChange).toHaveBeenLastCalledWith(
+                    { name: "RAMU", page: 2 },
+                    { replace: true },
+                ),
             );
             expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
+        });
+
+        it("範囲外のページから再取得した結果が届くまでフォーカスしない", async () => {
+            let resolveLast: (value: unknown) => void = () => {};
+            fetchRshogiGameSearch
+                .mockResolvedValueOnce({
+                    games: [game("old")],
+                    page: 1,
+                    pageSize: 20,
+                    totalCount: 23,
+                })
+                .mockResolvedValueOnce({ games: [], page: 2, pageSize: 20, totalCount: 1 })
+                .mockImplementationOnce(
+                    () =>
+                        new Promise((resolve) => {
+                            resolveLast = resolve;
+                        }),
+                );
+            render(<Harness initial={{ name: "RAMU" }} />);
+            await screen.findByText("23件中 1-20件");
+            fireEvent.click(screen.getByRole("button", { name: "次へ" }));
+            await waitFor(() => expect(fetchRshogiGameSearch).toHaveBeenCalledTimes(3));
+            expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
+            expect(document.activeElement).not.toBe(
+                screen.getByRole("group", { name: "検索結果" }),
+            );
+            await act(async () => {
+                resolveLast({ games: [game("new")], page: 1, pageSize: 20, totalCount: 1 });
+            });
+            await waitFor(() => expect(Element.prototype.scrollIntoView).toHaveBeenCalledTimes(1));
+            expect(document.activeElement).toBe(screen.getByRole("group", { name: "検索結果" }));
         });
 
         it("履歴移動で中断したボタン操作は後の移動でフォーカスしない", async () => {
@@ -832,6 +879,7 @@ describe("RshogiCsaGameBrowser", () => {
 
         it("もっと読み込むで次のカーソルを取得して末尾に足す", async () => {
             render(<Harness />);
+            expect(screen.getByRole("group", { name: "棋譜一覧" })).toBeTruthy();
             fireEvent.click(await screen.findByText("もっと読み込む"));
 
             await waitFor(() =>
