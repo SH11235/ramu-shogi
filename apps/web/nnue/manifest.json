@@ -1,6 +1,6 @@
 {
     "version": 1,
-    "updatedAt": "2026-10-28T00:00:00Z",
+    "updatedAt": "2026-11-23T00:00:00Z",
     "presets": [
         {
             "presetKey": "coco",
@@ -27,24 +27,25 @@
             "presetKey": "ramu",
             "displayName": "RAMU",
             "usageLabel": "棋力重視",
-            "description": "棋力重視モデル。COCOより約300 nElo高い棋力。NPS は COCO より低めですが、実戦や検討におすすめです。",
-            "url": "https://ramu-shogi.sh11235.com/nnue/files/ramu-layerstacks1536-20260612.bin",
-            "size": 118313473,
-            "sha256": "89016fd8dd18f1a4c73b03d8bc011e09495ab62027930d7c3566a799efd530f4",
-            "license": "MIT License",
-            "releasedAt": "2026-10-11",
-            "recommendedFvScale": 24,
+            "description": "棋力重視モデル。NPS は COCO より低めですが、実戦や検討におすすめです。",
+            "url": "https://ramu-shogi.sh11235.com/nnue/files/ramu-layerstacks1536x16x64-20261101.bin",
+            "size": 116651869,
+            "sha256": "fc3a86ab393d054c915db41882ed4b09e8a1c46086ff3e0d8a6ee49ca78190de",
+            "license": "ramu-shogi での利用に限る（再配布不可）",
+            "licenseUrl": "https://github.com/SH11235/ramu-shogi/blob/main/docs/nnue-model-terms.md",
+            "releasedAt": "2026-11-23",
+            "recommendedFvScale": 14,
             "format": {
                 "architecture": "LayerStacks",
                 "l1Dimension": 1536,
                 "l2Dimension": 16,
-                "l3Dimension": 32,
+                "l3Dimension": 64,
                 "activation": "CReLU",
                 "versionHeader": "0x7AF32F21"
             },
             "layerStacks": {
-                "bucketMode": "progresskpabs",
-                "progressBuckets": 9
+                "bucketMode": "progresskpabsq16",
+                "progressBuckets": 8
             },
             "progressCoefficients": {
                 "url": "https://ramu-shogi.sh11235.com/nnue/files/progress-hao-full-cuda-e1.bin",

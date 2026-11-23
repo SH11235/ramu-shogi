@@ -10,10 +10,13 @@ Web と Desktop の AI 選択では、共通の配布 manifest から次のモ�
 | AI | モデル | FV_SCALE | LayerStacks 設定 |
 | --- | --- | --- | --- |
 | COCO | HalfKP 256x2-32-32 | 14 | 不要 |
-| RAMU | LayerStacks 1536x16x32（2026年6月版） | 24 | progresskpabs、9バケット、配布された進行度係数 |
+| RAMU | LayerStacks 1536x16x64（2026年11月版） | 14 | progresskpabsq16、8バケット、配布された進行度係数 |
 
 COCO は軽さを重視し、スマートフォンや気軽な対局におすすめです。
 RAMU は棋力を重視し、実戦や検討におすすめです。処理性能とメモリに余裕のある環境でお使いください。
+
+COCO は MIT License です。RAMU は ramu-shogi での利用に限って配布しており、再配布はできません
+（[配布 AI「RAMU」の利用条件](./nnue-model-terms.md)）。
 
 プリセットの `usageLabel` と `description` を AI 選択画面の案内に使います。
 アーキテクチャ名と層の次元は `format.architecture` と `format.l1Dimension` / `l2Dimension` / `l3Dimension` に保持し、
@@ -34,6 +37,11 @@ COCO はココの写真、RAMU と画像未設定の AI は従来のラム画像
 Web の WASM、Desktop の core と CSA クライアントは同じ rshogi Git revision を参照します。
 更新時は `packages/rust-core/crates/engine-wasm/Cargo.toml` と
 `apps/desktop/src-tauri/Cargo.toml` の3つの依存、および両 `Cargo.lock` を揃えてください。
+
+どちらの build も、任意の寸法を読む汎用の実装 (`edition-universal`) に加えて、
+配布の RAMU の構成 (LayerStacks 1536x16x64、HalfKA_hm、拡張なし) の静的な実装を含みます。
+この構成のモデルは静的な実装で読み、それ以外は汎用の実装で読みます。
+配布の RAMU の寸法を変えるときは、両 `Cargo.toml` の `layerstacks-<寸法>` も揃えて変えてください。
 
 ## LayerStacks の設定
 
