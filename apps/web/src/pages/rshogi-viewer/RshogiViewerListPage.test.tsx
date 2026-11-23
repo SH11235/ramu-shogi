@@ -159,6 +159,25 @@ describe("RshogiViewerListPage", () => {
         });
     });
 
+    it("URL に未知のキーや順の違う条件があっても、ページ送りと判定する", async () => {
+        currentSearch = { utm_source: "x", name: "RAMU", venue: "floodgate" };
+        fetchRshogiGameSearch.mockResolvedValueOnce({
+            games: [],
+            page: 1,
+            pageSize: 20,
+            totalCount: 23,
+        });
+        render(<RshogiViewerListPage />);
+
+        fireEvent.click(await screen.findByRole("button", { name: "次へ" }));
+
+        expect(navigate).toHaveBeenCalledWith({
+            to: "/rshogi-viewer",
+            search: { venue: "floodgate", name: "RAMU", page: 2 },
+            resetScroll: false,
+        });
+    });
+
     it("イベントタグを押すと ?event=<名前> へ遷移する", async () => {
         render(<RshogiViewerListPage />);
 

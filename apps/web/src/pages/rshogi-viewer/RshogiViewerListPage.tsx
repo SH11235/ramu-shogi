@@ -1,4 +1,5 @@
 import {
+    normalizeRshogiGameBrowserSearch,
     RshogiCsaGameBrowser,
     type RshogiGameBrowserSearch,
 } from "@shogi/ui/components/rshogi-csa-game-browser";
@@ -31,7 +32,10 @@ export default function RshogiViewerListPage(): ReactElement {
         next: RshogiGameBrowserSearch,
         options?: { replace?: boolean },
     ): void => {
-        const { page: _currentPage, ...currentConditions } = search;
+        // ルーターの search には未知のキーや不正な値が残り得るので、遷移先と同じ形に揃えてから比べる。
+        const { page: _currentPage, ...currentConditions } = normalizeRshogiGameBrowserSearch({
+            ...search,
+        });
         const { page: _nextPage, ...nextConditions } = next;
         const isPageOnlyChange =
             JSON.stringify(currentConditions) === JSON.stringify(nextConditions);
