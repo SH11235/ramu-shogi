@@ -242,6 +242,8 @@ export function RshogiCsaGameBrowser({
     const conditionsKey = JSON.stringify(appliedConditions);
     const isSearchMode = hasSearchCondition(appliedSearch);
 
+    // 要求した行き先の取得結果かどうかは参照の一致で見る。runSearch は setSearchPage に渡す値と
+    // 同じオブジェクトを pendingPageFocusRef に入れる。
     useEffect(() => {
         if (
             !searchPage ||
