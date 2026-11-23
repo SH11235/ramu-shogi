@@ -128,6 +128,7 @@ import { TooltipProvider } from "./tooltip";
 
 /** 「自動で読む」を入れているか（端末ごとに覚える）。 */
 const STUDY_AUTO_ANALYZE_STORAGE_KEY = "shogi:studyAutoAnalyze";
+const STUDY_COMMENT_TOGGLE_ID = "study-comment-toggle";
 
 export type { StudyCommentDraft };
 
@@ -959,6 +960,7 @@ export function StudyWorkspaceView({
             // 対応が要る書きかけがある間は、閉じられない。
             disabled={commentNeedsAttention}
             onClick={() => setIsCommentOpen(!showsComment)}
+            id={STUDY_COMMENT_TOGGLE_ID}
             className="relative"
         >
             <CommentIcon />
@@ -1138,6 +1140,13 @@ export function StudyWorkspaceView({
             onConflictChange={(conflicted) => comments.changeConflict(currentNodeId, conflicted)}
             disabled={editingDisabled}
             baseConfirmed={commentBaseConfirmed}
+            onDone={() => {
+                setIsCommentOpen(false);
+                // 閉じると入力欄ごと消えるので、開いたボタンへ戻す（キーボード操作の続きのため）。
+                requestAnimationFrame(() =>
+                    document.getElementById(STUDY_COMMENT_TOGGLE_ID)?.focus(),
+                );
+            }}
         />
     );
     const layerPicker = readOnly && doc.layers.length > 0 && (
