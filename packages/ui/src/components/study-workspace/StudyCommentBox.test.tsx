@@ -11,11 +11,11 @@ function renderWithPendingSave() {
             }),
     );
     const onDone = vi.fn();
-    render(<StudyCommentBox value="" onChange={onChange} onDone={onDone} />);
+    const view = render(<StudyCommentBox value="" onChange={onChange} onDone={onDone} />);
     fireEvent.change(screen.getByRole("textbox", { name: "コメント" }), {
         target: { value: "ここが分岐点" },
     });
-    return { onChange, onDone, settle: (saved: boolean) => settle(saved) };
+    return { onChange, onDone, settle: (saved: boolean) => settle(saved), unmount: view.unmount };
 }
 
 describe("StudyCommentBox の「完了」", () => {
@@ -40,5 +40,21 @@ describe("StudyCommentBox の「完了」", () => {
         expect(onDone).not.toHaveBeenCalled();
         expect(screen.getByText("保存できませんでした")).toBeTruthy();
         expect(screen.getByRole("button", { name: "完了" })).toBeTruthy();
+    });
+
+    it("保存を待っている間は書き換えられない", () => {
+        renderWithPendingSave();
+        fireEvent.click(screen.getByRole("button", { name: "完了" }));
+        expect(
+            (screen.getByRole("textbox", { name: "コメント" }) as HTMLTextAreaElement).readOnly,
+        ).toBe(true);
+    });
+
+    it("保存を待っている間に欄が消えたら、保存が済んでも閉じる処理をしない", async () => {
+        const { onDone, settle, unmount } = renderWithPendingSave();
+        fireEvent.click(screen.getByRole("button", { name: "完了" }));
+        unmount();
+        await act(async () => settle(true));
+        expect(onDone).not.toHaveBeenCalled();
     });
 });

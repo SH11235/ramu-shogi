@@ -154,8 +154,16 @@ export function StudyCommentBox({
     const saveSeqRef = useRef(0);
     /** 結果を待っている最新の保存（無ければ null）。「完了」は、これが済んでから閉じる。 */
     const pendingSaveRef = useRef<Promise<boolean> | null>(null);
-    /** 「完了」を押して、保存の結果を待っている。 */
+    /** 「完了」を押して、保存の結果を待っている（その間は入力を受け付けない）。 */
     const [isClosing, setIsClosing] = useState(false);
+    /** 欄が消えたあとに保存が済んでも、別の局面で開いている欄を閉じないために使う。 */
+    const mountedRef = useRef(true);
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => {
+            mountedRef.current = false;
+        };
+    }, []);
     // 戻す書きかけ（保存済みのコメントと同じなら、戻さずに消すだけ）。最初に 1 回だけ決める。
     const [restored] = useState<{ text: string; base: string | null } | null>(() =>
         initialDraft && initialDraft.text !== value
@@ -383,10 +391,20 @@ export function StudyCommentBox({
             return;
         }
         setIsClosing(true);
-        void pending.then((saved) => {
-            setIsClosing(false);
-            if (saved && draftRef.current === lastSavedRef.current) onDone?.();
-        });
+        // 待っている間に別の保存が始まっていたら、それも待つ（最後の保存まで確かめてから閉じる）。
+        const waitFor = (target: Promise<boolean>): void => {
+            void target.then((saved) => {
+                if (!mountedRef.current) return;
+                const next = pendingSaveRef.current;
+                if (saved && next !== null && next !== target) {
+                    waitFor(next);
+                    return;
+                }
+                setIsClosing(false);
+                if (saved && draftRef.current === lastSavedRef.current) onDone?.();
+            });
+        };
+        waitFor(pending);
     };
 
     const remaining = STUDY_LIMITS.commentBytes - utf8Length(draft);
@@ -492,6 +510,7 @@ export function StudyCommentBox({
                     reportDraft();
                 }}
                 onBlur={save}
+                readOnly={isClosing}
                 rows={2}
                 aria-invalid={isOver}
                 placeholder="この手について気づいたことを書けます（自動で保存されます）"
