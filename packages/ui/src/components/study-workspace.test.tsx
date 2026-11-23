@@ -1067,6 +1067,37 @@ describe("StudyWorkspaceView", () => {
         expect(screen.queryByRole("textbox", { name: "コメント" })).toBeNull();
     });
 
+    it("コメント欄の「完了」を押すと、入力が止まるのを待たずに保存して閉じ、開いたボタンへ戻る", async () => {
+        const onOps = vi.fn();
+        const { doc } = createTestStudy();
+        render(<Harness initialDoc={doc} onOps={onOps} />);
+        fireEvent.change(commentTextbox(), { target: { value: "ここが分岐点" } });
+        expect(screen.getByText("入力が止まると保存します")).toBeTruthy();
+
+        fireEvent.click(screen.getByRole("button", { name: "完了" }));
+        expect(onOps).toHaveBeenCalledWith([
+            expect.objectContaining({ type: "setComment", value: "ここが分岐点" }),
+        ]);
+        expect(screen.queryByRole("textbox", { name: "コメント" })).toBeNull();
+        await waitFor(() =>
+            expect(document.activeElement).toBe(
+                screen.getByRole("button", { name: /^コメントを開く/ }),
+            ),
+        );
+    });
+
+    it("長すぎて保存できないコメントでは、「完了」を押しても閉じない", () => {
+        const onOps = vi.fn();
+        const { doc } = createTestStudy();
+        render(<Harness initialDoc={doc} onOps={onOps} />);
+        fireEvent.change(commentTextbox(), { target: { value: "あ".repeat(2000) } });
+
+        fireEvent.click(screen.getByRole("button", { name: "完了" }));
+        expect(screen.getByRole("textbox", { name: "コメント" })).toBeTruthy();
+        expect(screen.getByRole("alert").textContent).toContain("コメントが長すぎます");
+        expect(onOps).not.toHaveBeenCalledWith([expect.objectContaining({ type: "setComment" })]);
+    });
+
     it("保存できていない書きかけがある手では、畳んでいてもコメント欄を開いて見せ、直している間も開いたままにする", () => {
         const { doc, ids } = createTestStudy();
         const tooLong = "あ".repeat(2000);

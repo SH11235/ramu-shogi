@@ -31,7 +31,7 @@
 import { STUDY_LIMITS } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { cardVariants } from "../card";
 
 /** 書きかけの変化（呼び出し側が、手ごとの書きかけの置き場所に反映する）。 */
@@ -80,8 +80,16 @@ interface StudyCommentBoxProps {
      * サーバーの最新の内容をまだ取り込めていない）は、書きかけを自動では保存しない。省略時は true。
      */
     baseConfirmed?: boolean;
+    /**
+     * 「完了」で欄を閉じる。渡したときだけ「完了」を出す。押すと書きかけをすぐ保存し、保存できた
+     * （または書きかけが無い）ときだけ呼ぶ。保存できない状態（長すぎる・ぶつかった など）では呼ばない。
+     */
+    onDone?: () => void;
     className?: string;
 }
+
+/** この欄で保存を試みた結果（入力中かどうかは、保存済みのコメントとの比較で決める）。 */
+type SaveState = "idle" | "saving" | "saved" | "failed";
 
 const COMMENT_SAVE_DELAY_MS = 700;
 /** 残りがこのバイト数を下回ったら、残りを表示する。 */
@@ -108,6 +116,24 @@ const CONFLICT_TEXT: Record<Conflict, string> = {
         "このコメントは別の画面で変更されました。書きかけがあります（自動では保存していません）。",
 };
 
+/** 欄の見出しの横に出す、保存の状態。保存できない理由を出している間は出さない。 */
+function saveStatusText({
+    saveState,
+    dirty,
+    blocked,
+}: {
+    saveState: SaveState;
+    dirty: boolean;
+    blocked: boolean;
+}): string {
+    if (blocked) return "";
+    if (saveState === "saving") return "保存しています…";
+    if (saveState === "failed") return "保存できませんでした";
+    if (dirty) return "入力が止まると保存します";
+    if (saveState === "saved") return "保存しました";
+    return "";
+}
+
 /**
  * コメント欄。別の局面へ移るときは `key` を変えて作り直すこと（書きかけは、そのとき保存する）。
  */
@@ -119,8 +145,25 @@ export function StudyCommentBox({
     onConflictChange,
     disabled = false,
     baseConfirmed = true,
+    onDone,
     className,
 }: StudyCommentBoxProps): ReactElement {
+    const textareaId = useId();
+    const [saveState, setSaveState] = useState<SaveState>("idle");
+    /** 保存を試みるたびに増やす番号。前の保存の結果で、新しい保存の表示を上書きしないために使う。 */
+    const saveSeqRef = useRef(0);
+    /** 結果を待っている最新の保存（無ければ null）。「完了」は、これが済んでから閉じる。 */
+    const pendingSaveRef = useRef<Promise<boolean> | null>(null);
+    /** 「完了」を押して、保存の結果を待っている（その間は入力を受け付けない）。 */
+    const [isClosing, setIsClosing] = useState(false);
+    /** 欄が消えたあとに保存が済んでも、別の局面で開いている欄を閉じないために使う。 */
+    const mountedRef = useRef(true);
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => {
+            mountedRef.current = false;
+        };
+    }, []);
     // 戻す書きかけ（保存済みのコメントと同じなら、戻さずに消すだけ）。最初に 1 回だけ決める。
     const [restored] = useState<{ text: string; base: string | null } | null>(() =>
         initialDraft && initialDraft.text !== value
@@ -245,11 +288,17 @@ export function StudyCommentBox({
         const outcome = callbacksRef.current.onChange(attempted);
         const reportSaved = (): void =>
             callbacksRef.current.onDraftChange?.({ type: "clear", savedText: attempted });
+        const seq = ++saveSeqRef.current;
         if (!(outcome instanceof Promise)) {
             reportSaved();
+            setSaveState("saved");
             return;
         }
+        setSaveState("saving");
+        pendingSaveRef.current = outcome;
         void outcome.then((saved) => {
+            if (pendingSaveRef.current === outcome) pendingSaveRef.current = null;
+            if (seq === saveSeqRef.current) setSaveState(saved ? "saved" : "failed");
             if (saved) {
                 // 保存できた内容を添えて知らせる（この間に書かれた新しい書きかけは、消されない）。
                 reportSaved();
@@ -329,6 +378,35 @@ export function StudyCommentBox({
         callbacksRef.current.onDraftChange?.({ type: "clear", savedText: null });
     };
 
+    /**
+     * 完了: 書きかけをすぐ保存し、保存できたら閉じる。保存できない理由は欄に出したまま、閉じない。
+     * 保存の結果を待つ保存では、成功を確かめてから閉じる（失敗に気づけないまま閉じないように）。
+     */
+    const finish = (): void => {
+        save();
+        if (draftRef.current !== lastSavedRef.current) return;
+        const pending = pendingSaveRef.current;
+        if (pending === null) {
+            onDone?.();
+            return;
+        }
+        setIsClosing(true);
+        // 待っている間に別の保存が始まっていたら、それも待つ（最後の保存まで確かめてから閉じる）。
+        const waitFor = (target: Promise<boolean>): void => {
+            void target.then((saved) => {
+                if (!mountedRef.current) return;
+                const next = pendingSaveRef.current;
+                if (saved && next !== null && next !== target) {
+                    waitFor(next);
+                    return;
+                }
+                setIsClosing(false);
+                if (saved && draftRef.current === lastSavedRef.current) onDone?.();
+            });
+        };
+        waitFor(pending);
+    };
+
     const remaining = STUDY_LIMITS.commentBytes - utf8Length(draft);
     const isOver = remaining < 0;
     // かな・漢字は 1 文字 3 バイトなので、目安の文字数はバイト数の 1/3。
@@ -381,38 +459,66 @@ export function StudyCommentBox({
                     </div>
                 </fieldset>
             )}
-            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                コメント
-                <textarea
-                    value={draft}
-                    onChange={(event) => {
-                        // 保存済みの内容から書き始めるとき、その内容を覚える。
-                        if (draftRef.current === lastSavedRef.current) {
-                            baseRef.current = lastSavedRef.current;
-                            forcedRef.current = false;
-                        }
-                        untouchedRestoreRef.current = false;
-                        draftRef.current = event.target.value;
-                        setDraft(event.target.value);
-                        if (!baseConfirmedRef.current) {
-                            setIsHeld(
-                                event.target.value !== lastSavedRef.current && !forcedRef.current,
-                            );
-                        }
-                        // 保存済みの内容に書き戻したら、ぶつかりは無くなる。
-                        if (event.target.value === lastSavedRef.current) setConflict(null);
-                        reportDraft();
-                    }}
-                    onBlur={save}
-                    rows={2}
-                    aria-invalid={isOver}
-                    placeholder="この手について気づいたことを書けます（自動で保存されます）"
+            <div className="flex min-h-10 items-center gap-2">
+                <label htmlFor={textareaId} className="text-xs text-muted-foreground">
+                    コメント
+                </label>
+                {/* 自動で保存されることを見せる（閉じてよいか分かるように）。保存できない理由は、別に出す。 */}
+                <span
                     className={cn(
-                        "w-full resize-y rounded-md border bg-background p-2 text-base text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus:ring-2 focus:ring-ring md:text-sm",
-                        isOver ? "border-destructive" : "border-border",
+                        "min-w-0 flex-1 truncate text-xs",
+                        saveState === "failed" ? "text-destructive" : "text-muted-foreground",
                     )}
-                />
-            </label>
+                >
+                    {saveStatusText({
+                        saveState,
+                        dirty: draft !== value,
+                        blocked: isOver || conflict !== null || isHeld,
+                    })}
+                </span>
+                {onDone && (
+                    <button
+                        type="button"
+                        onClick={finish}
+                        disabled={isClosing}
+                        className="min-h-10 shrink-0 rounded-md border border-wafuu-border bg-card px-4 text-sm font-medium text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60 md:min-h-8"
+                    >
+                        {isClosing ? "保存しています…" : "完了"}
+                    </button>
+                )}
+            </div>
+            <textarea
+                id={textareaId}
+                value={draft}
+                onChange={(event) => {
+                    // 保存済みの内容から書き始めるとき、その内容を覚える。
+                    if (draftRef.current === lastSavedRef.current) {
+                        baseRef.current = lastSavedRef.current;
+                        forcedRef.current = false;
+                    }
+                    untouchedRestoreRef.current = false;
+                    setSaveState("idle");
+                    draftRef.current = event.target.value;
+                    setDraft(event.target.value);
+                    if (!baseConfirmedRef.current) {
+                        setIsHeld(
+                            event.target.value !== lastSavedRef.current && !forcedRef.current,
+                        );
+                    }
+                    // 保存済みの内容に書き戻したら、ぶつかりは無くなる。
+                    if (event.target.value === lastSavedRef.current) setConflict(null);
+                    reportDraft();
+                }}
+                onBlur={save}
+                readOnly={isClosing}
+                rows={2}
+                aria-invalid={isOver}
+                placeholder="この手について気づいたことを書けます（自動で保存されます）"
+                className={cn(
+                    "w-full resize-y rounded-md border bg-background p-2 text-base text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus:ring-2 focus:ring-ring md:text-sm",
+                    isOver ? "border-destructive" : "border-border",
+                )}
+            />
             {isHeld && conflict === null && !isOver && (
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                     <p className="min-w-0 flex-1">
