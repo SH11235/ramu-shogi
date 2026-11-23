@@ -1,3 +1,4 @@
+import { isNotFound } from "@tanstack/react-router";
 import { describe, expect, it, vi } from "vitest";
 import { RATE_LIMITED_MESSAGE } from "./lib/rateLimitMessage";
 import { handleLoaderResponse } from "./router-loader-utils";
@@ -74,16 +75,16 @@ describe("handleLoaderResponse", () => {
         }
     });
 
-    it("404 を notFoundMessage で throw する", () => {
-        expect(() =>
+    it("404 を notFound で throw する", () => {
+        try {
             handleLoaderResponse(
                 { ok: false, status: 404 },
-                {
-                    errorMessage: "failed",
-                    notFoundMessage: "棋譜が見つかりません",
-                },
-            ),
-        ).toThrow("棋譜が見つかりません");
+                { errorMessage: "failed", notFound: true },
+            );
+            throw new Error("notFound が投げられなかった");
+        } catch (error) {
+            expect(isNotFound(error)).toBe(true);
+        }
     });
 
     it("その他の !ok を errorMessage で throw する", () => {
@@ -112,7 +113,7 @@ describe("handleLoaderResponse", () => {
         expect(() =>
             handleLoaderResponse(
                 { ok: false, status: 429 },
-                { errorMessage: "failed", notFoundMessage: "missing" },
+                { errorMessage: "failed", notFound: true },
             ),
         ).toThrow(RATE_LIMITED_MESSAGE);
     });

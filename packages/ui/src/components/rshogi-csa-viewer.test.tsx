@@ -54,6 +54,20 @@ const renderViewer = () =>
         <RshogiCsaViewer gameId={GAME_ID} engineOptions={[]} manifestUrl="/nnue-manifest.json" />,
     );
 
+it("棋譜の読み込み後に対局を通知する", async () => {
+    vi.mocked(fetchRshogiGame).mockResolvedValue(GAME);
+    const onGameLoaded = vi.fn();
+    render(
+        <RshogiCsaViewer
+            gameId={GAME_ID}
+            engineOptions={[]}
+            manifestUrl="/nnue-manifest.json"
+            onGameLoaded={onGameLoaded}
+        />,
+    );
+    await waitFor(() => expect(onGameLoaded).toHaveBeenCalledWith(GAME));
+});
+
 describe("RshogiCsaViewer: 詰みの表示", () => {
     it.each([
         ["P+53KI00KI\nP-51OU\n+\n+0052KI\n%TORYO", "詰み"],

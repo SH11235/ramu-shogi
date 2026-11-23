@@ -29,7 +29,7 @@ vi.mock("@tanstack/react-router", () => ({
     Link: ({ children }: { children: React.ReactNode }) => <a href="/">{children}</a>,
 }));
 vi.mock("./components/HeaderNav", () => ({ HeaderNav: () => null }));
-vi.mock("./components/PageHeader", () => ({ PageHeader: () => null }));
+vi.mock("./components/NavDrawer", () => ({ NavDrawer: () => null }));
 vi.mock("./hooks/useAccountNnue", () => ({
     useAccountNnue: () => undefined,
 }));
@@ -50,6 +50,11 @@ describe("/play (App): 引き継がれた局面", () => {
         capturedProps.length = 0;
     });
     afterEach(cleanup);
+
+    it("対局画面のタイトルを指定する", () => {
+        render(<App />);
+        expect(document.title).toBe("AI と対局 | ラム将棋");
+    });
 
     it("引き継がれた局面があれば、その開始局面と手順を読み込んで開く", async () => {
         savePlayHandoff({ sfen: "startpos", moves: ["7g7f", "3c3d"] });

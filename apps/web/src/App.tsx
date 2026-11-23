@@ -63,7 +63,10 @@ function App() {
 
     return (
         <>
-            <PageHeader items={[{ label: "ラム将棋" }]} right={<HeaderNav />} />
+            <PageHeader
+                items={[{ label: "ラム将棋", to: "/" }, { label: "AI と対局" }]}
+                right={<HeaderNav />}
+            />
             {/* 対局レイアウトは 3 カラム (サイドバー+盤+棋譜 ≈ 1260px) で幅が広い。
                 中央寄せ・横スクロールの管理は PCLayout 側 (overflow-x-auto + mx-auto
                 w-max) が担うため、ここでは max-width を課さず全幅で渡す。max-width で

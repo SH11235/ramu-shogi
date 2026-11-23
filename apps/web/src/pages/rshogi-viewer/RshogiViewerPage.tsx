@@ -1,7 +1,7 @@
 import type { EngineOption } from "@shogi/ui";
 import { RshogiCsaViewer } from "@shogi/ui";
 import { getRouteApi } from "@tanstack/react-router";
-import type { ReactElement } from "react";
+import { type ReactElement, useState } from "react";
 import { HeaderNav } from "../../components/HeaderNav";
 import { OpenStudyButton } from "../../components/OpenStudyButton";
 import { PageHeader } from "../../components/PageHeader";
@@ -22,7 +22,12 @@ const routeApi = getRouteApi("/rshogi-viewer/$gameId");
 
 export default function RshogiViewerPage(): ReactElement {
     const { gameId } = routeApi.useParams();
+    return <GamePage key={gameId} gameId={gameId} />;
+}
+
+function GamePage({ gameId }: { gameId: string }): ReactElement {
     const playFromPosition = usePlayFromPosition();
+    const [title, setTitle] = useState("棋譜");
     const apiBaseUrl =
         (import.meta.env.VITE_RSHOGI_API_BASE as string | undefined)?.trim() || undefined;
 
@@ -32,12 +37,20 @@ export default function RshogiViewerPage(): ReactElement {
                 items={[
                     { label: "ラム将棋", to: "/" },
                     { label: "rshogi viewer", to: "/rshogi-viewer" },
-                    { label: gameId },
+                    { label: title },
                 ]}
                 right={<HeaderNav />}
             />
             <RshogiCsaViewer
                 gameId={gameId}
+                onGameLoaded={(game) => {
+                    const { senteName, goteName } = game.meta;
+                    setTitle(
+                        senteName.trim() && goteName.trim()
+                            ? `${senteName} 対 ${goteName}`
+                            : "棋譜",
+                    );
+                }}
                 engineOptions={engineOptions}
                 manifestUrl={import.meta.env.VITE_NNUE_MANIFEST_URL as string}
                 apiBaseUrl={apiBaseUrl}

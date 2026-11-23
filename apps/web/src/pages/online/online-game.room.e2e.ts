@@ -849,8 +849,11 @@ test.describe("オンライン対局", () => {
     test("存在しないルームを開くと「ルームが見つかりません」と表示される", async ({ page }) => {
         await page.goto("/online/zzzzzz");
 
-        await expect(page.getByText("ルームが見つかりません")).toBeVisible();
-        await expect(page.getByRole("button", { name: "← オンライン対局に戻る" })).toBeVisible();
+        await expect(page.getByRole("heading", { name: "ルームが見つかりません" })).toBeVisible();
+        await expect(page.getByRole("link", { name: "オンライン対局" })).toHaveAttribute(
+            "href",
+            "/online",
+        );
     });
 
     test("存在しないルームへの WebSocket 接続は、参加時に ROOM_NOT_FOUND を返す", async ({
