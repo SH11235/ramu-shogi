@@ -11,6 +11,7 @@ describe("BottomSheet", () => {
         );
 
         const dialog = screen.getByRole("dialog", { name: "解析の設定" });
+        expect(dialog.className).toContain("data-[state=open]:motion-reduce:animate-none");
         const describedBy = dialog.getAttribute("aria-describedby");
         expect(describedBy).toBeTruthy();
         expect(document.getElementById(describedBy ?? "")?.textContent).toBe("設定の説明");

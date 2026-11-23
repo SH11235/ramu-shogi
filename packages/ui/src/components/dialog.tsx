@@ -16,7 +16,7 @@ const DialogOverlay = forwardRef<
         <DialogPrimitive.Overlay
             style={style}
             className={cn(
-                "fixed inset-0 z-overlay bg-overlay backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=open]:fade-in",
+                "fixed inset-0 z-overlay bg-overlay backdrop-blur-sm data-[state=open]:animate-in data-[state=open]:motion-reduce:animate-none data-[state=closed]:animate-out data-[state=closed]:motion-reduce:animate-none data-[state=closed]:fade-out data-[state=open]:fade-in",
                 className,
             )}
             ref={ref}
@@ -48,7 +48,7 @@ export const DialogContent = forwardRef<
                 {...(hasDescription ? {} : { "aria-describedby": undefined })}
                 style={style}
                 className={cn(
-                    "fixed left-1/2 top-1/2 z-modal w-[min(960px,calc(100%-24px))] -translate-x-1/2 -translate-y-1/2 overflow-auto rounded-xl border border-border bg-card p-6 text-foreground shadow-modal max-h-[85vh] gap-4 duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=open]:fade-in data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
+                    "fixed left-1/2 top-1/2 z-modal w-[min(960px,calc(100%-24px))] -translate-x-1/2 -translate-y-1/2 overflow-auto rounded-xl border border-border bg-card p-6 text-foreground shadow-modal max-h-[85vh] gap-4 duration-200 data-[state=open]:animate-in data-[state=open]:motion-reduce:animate-none data-[state=closed]:animate-out data-[state=closed]:motion-reduce:animate-none data-[state=closed]:fade-out data-[state=open]:fade-in data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
                     className,
                 )}
                 ref={ref}
