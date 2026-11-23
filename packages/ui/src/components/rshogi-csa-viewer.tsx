@@ -58,8 +58,9 @@ interface RshogiCsaViewerProps {
      * PC では左の対局情報の下に出す。スマホでは盤の下の評価値の行に `compact: true` で出す
      * （最初の画面で見えるように）。対局情報のシートの中にも出す。
      */
-    onGameLoaded?: (game: RshogiGame) => void;
     renderGameAction?: (game: RshogiGame, options: { compact: boolean }) => ReactNode;
+    /** 棋譜の読み込みに成功したときに 1 回呼ぶ（ページの題名を対局者名にするのに使う）。 */
+    onGameLoaded?: (game: RshogiGame) => void;
     /**
      * 「この局面から対局」を押したときに、いま表示している局面（本譜の現在の手数まで。分岐を
      * 見ていればその分岐の手順まで）を受け取る。対局ページへ引き継いで開く。

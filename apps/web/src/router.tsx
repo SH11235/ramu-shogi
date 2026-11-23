@@ -330,11 +330,19 @@ function ErrorContent({
             >
                 再読み込み
             </button>
-            {showOnlineLink && <Link to="/online">オンライン対局</Link>}
+            {showOnlineLink && (
+                <Link
+                    to="/online"
+                    className="inline-flex min-h-10 items-center self-start text-sm text-muted-foreground hover:text-foreground"
+                >
+                    オンライン対局
+                </Link>
+            )}
         </>
     );
 }
 
+// root のエラーは AppProviders の外で描かれるので、provider に依存するヘッダーを出さない。
 function RootErrorComponent({ error }: { error: unknown }) {
     return (
         <div className="mx-auto flex max-w-[480px] flex-col gap-4 px-4 py-10">
