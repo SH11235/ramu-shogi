@@ -28,7 +28,7 @@ export default function RshogiPlayerDetailPage(): ReactElement {
     const apiBaseUrl = resolveRshogiApiBaseUrl();
     const nnueLabBaseUrl = resolveNnueLabBaseUrl();
     const archiveRef = useRef<HTMLHeadingElement>(null);
-    const pendingPageFocusRef = useRef<number | null>(null);
+    const pendingPageFocusRef = useRef<{ playerId: string; page: number } | null>(null);
     const [detail, setDetail] = useState<RshogiPlayerDetail | null>(null);
     const [nnueLabExperiment, setNnueLabExperiment] = useState<NnueLabExperiment | null>(null);
     const [pageRequest, setPageRequest] = useState({ page: 1, attempt: 0 });
@@ -39,6 +39,7 @@ export default function RshogiPlayerDetailPage(): ReactElement {
     // 破棄する (新詳細の取得が失敗しても旧 player の情報が残らないように)。
     const [renderedPlayerId, setRenderedPlayerId] = useState(playerId);
     if (renderedPlayerId !== playerId) {
+        pendingPageFocusRef.current = null;
         setRenderedPlayerId(playerId);
         setDetail(null);
         setNnueLabExperiment(null);
@@ -108,7 +109,12 @@ export default function RshogiPlayerDetailPage(): ReactElement {
     const totalPages = detail ? Math.max(1, Math.ceil(detail.totalCount / detail.pageSize)) : 1;
     const displayedPage = detail?.page ?? pageRequest.page;
     useEffect(() => {
-        if (!detail || detail.page !== pendingPageFocusRef.current) return;
+        if (
+            !detail ||
+            pendingPageFocusRef.current?.playerId !== playerId ||
+            detail.page !== pendingPageFocusRef.current.page
+        )
+            return;
         pendingPageFocusRef.current = null;
         archiveRef.current?.focus({ preventScroll: true });
         archiveRef.current?.scrollIntoView({
@@ -117,10 +123,10 @@ export default function RshogiPlayerDetailPage(): ReactElement {
                 : "smooth",
             block: "start",
         });
-    }, [detail]);
+    }, [detail, playerId]);
 
     const requestPage = (nextPage: number): void => {
-        pendingPageFocusRef.current = nextPage;
+        pendingPageFocusRef.current = { playerId, page: nextPage };
         setPageRequest((current) => ({ page: nextPage, attempt: current.attempt + 1 }));
     };
 
@@ -247,7 +253,7 @@ export default function RshogiPlayerDetailPage(): ReactElement {
                                     <h2
                                         ref={archiveRef}
                                         tabIndex={-1}
-                                        className="scroll-mt-16 font-serif text-xl font-bold text-wafuu-sumi"
+                                        className="outline-none font-serif text-xl font-bold text-wafuu-sumi"
                                     >
                                         対局記録
                                     </h2>
