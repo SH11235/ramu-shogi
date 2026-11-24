@@ -176,6 +176,11 @@ interface StudyCandidatesPanelProps {
     };
     /** 別の局面で動いている解析・詰み探索（無ければ undefined）。 */
     elsewhere?: StudyElsewhereActivity;
+    /**
+     * 読む操作（自動で読む・深く解析など）を候補手の下に置く。狭い画面では、答え（候補手）を
+     * 欄の上に出すため。
+     */
+    controlsLast?: boolean;
     className?: string;
 }
 
@@ -470,6 +475,7 @@ export function StudyCandidatesPanel({
     onAddPvAsVariation,
     mate,
     elsewhere,
+    controlsLast = false,
     className,
 }: StudyCandidatesPanelProps): ReactElement {
     const autoAnalyzeId = useId();
@@ -487,15 +493,8 @@ export function StudyCandidatesPanel({
         ? `${deeperResult ? "深く解析・" : ""}${resultNote(mainResult)}`
         : null;
 
-    return (
-        <section
-            aria-label="候補手"
-            className={cn(
-                cardVariants({ variant: "wafuu", elevation: "raised" }),
-                "flex flex-col gap-3 p-3",
-                className,
-            )}
-        >
+    const controls = (
+        <>
             {/* 入れたままにする設定なので、押すと始まる操作ボタンの列とは段を分ける。 */}
             {autoAnalyze && (
                 <div className="flex items-center gap-3 rounded-lg border border-wafuu-border bg-wafuu-washi px-3 py-2">
@@ -536,8 +535,6 @@ export function StudyCandidatesPanel({
                 </div>
             )}
             <div className="flex flex-col gap-2">
-                {/* 欄の名前は見出しとして画面に出さない（PC は欄の並び、スマートフォンはタブで分かる）。 */}
-                <h2 className="sr-only">候補手</h2>
                 <div className="flex flex-wrap items-center gap-1.5">
                     {/* 深く解析・止める・続けて読むは同じ枠で入れ替え、枠の幅をいちばん長い文言に合わせる
                         （切り替わるたびに隣のボタンが動かないように）。深さ・残りの時間は途中の候補の枠に出す。 */}
@@ -635,7 +632,21 @@ export function StudyCandidatesPanel({
                     onAddPvAsVariation={onAddPvAsVariation}
                 />
             )}
+        </>
+    );
 
+    return (
+        <section
+            aria-label="候補手"
+            className={cn(
+                cardVariants({ variant: "wafuu", elevation: "raised" }),
+                "flex flex-col gap-3 p-3",
+                className,
+            )}
+        >
+            {/* 欄の名前は見出しとして画面に出さない（PC は欄の並び、スマートフォンはタブで分かる）。 */}
+            <h2 className="sr-only">候補手</h2>
+            {!controlsLast && controls}
             {/* 読んでいる途中の候補。満足したら「止める」で、その時点の結果を残せる。 */}
             {live && (
                 <div className="flex flex-col gap-1 rounded-lg bg-wafuu-washi px-2 py-2">
@@ -841,6 +852,9 @@ export function StudyCandidatesPanel({
                         </button>
                     )}
                 </div>
+            )}
+            {controlsLast && (
+                <div className="flex flex-col gap-3 border-t border-border pt-3">{controls}</div>
             )}
         </section>
     );

@@ -29,7 +29,6 @@ import type { PlayFromPosition } from "./rshogi-play-from-position";
 import { KIFU_NAV_STEP_TEN } from "./shogi-match/components/KifuNavigationToolbar";
 import { MatchNnueDownloadDialog } from "./shogi-match/components/MatchNnueDownloadDialog";
 import { type HandInfo, MobileBoardSection } from "./shogi-match/components/MobileBoardSection";
-import { MobileKifuBar } from "./shogi-match/components/MobileKifuBar";
 import { PCBoardContent } from "./shogi-match/components/PCBoardContent";
 import { PvPreviewDialog } from "./shogi-match/components/PvPreviewDialog";
 import { TOOLTIP_DELAY_DURATION_MS } from "./shogi-match/constants";
@@ -77,6 +76,8 @@ import { type StudyKifuFormat, StudyMoreMenu } from "./study-workspace/StudyMore
 import { StudyMoveList } from "./study-workspace/StudyMoveList";
 import { StudyNavBar } from "./study-workspace/StudyNavBar";
 import { StudyNotice } from "./study-workspace/StudyNotice";
+import { StudyPositionBand } from "./study-workspace/StudyPositionBand";
+import { buildStudyReviewItems, StudyReviewList } from "./study-workspace/StudyReviewList";
 import {
     StudySaveIndicator,
     StudySaveNotice,
@@ -287,7 +288,7 @@ export function StudyWorkspaceView({
     const displaySettings = { ...DEFAULT_DISPLAY_SETTINGS, ...storedDisplaySettings };
 
     const [flipBoard, setFlipBoard] = useState(false);
-    const [mobileTab, setMobileTab] = useState<StudyMobileTab>("board");
+    const [mobileTab, setMobileTab] = useState<StudyMobileTab>("candidates");
     const mobileMeasure = useStudyMobileMeasure(isMobile);
     // コメント欄は普段は畳んでおき、盤の上のボタンで開く（開いたままにすれば、手を送っても出続ける）。
     const [isCommentOpen, setIsCommentOpen] = useState(false);
@@ -401,6 +402,13 @@ export function StudyWorkspaceView({
     const hasResults = insights.analyzedCount > 0;
     const needsFullAnalysis =
         analysis.mode !== "full" && insights.analyzedCount * 2 < insights.totalCount;
+    const reviewItems = buildStudyReviewItems({
+        doc,
+        tree,
+        line,
+        highlights: insights.highlights,
+        displayLayerId,
+    });
     const graph = buildStudyEvalGraph({
         doc,
         tree,
@@ -1104,6 +1112,7 @@ export function StudyWorkspaceView({
                     : { enabled: autoAnalyze, onChange: changeAutoAnalyze, reading: autoReading }
             }
             collapsePreviousWhileReading={isMobile}
+            controlsLast={isMobile}
             onStartDeepAfterPass={editingDisabled ? undefined : () => void startDeepAfterPass()}
             revision={insights.revision}
             canContinueDeep={analysis.continuableDeepNodeId === currentNodeId}
@@ -1347,21 +1356,23 @@ export function StudyWorkspaceView({
                             showsComment={showsComment}
                             // 変化に入ったあと、どの表示からでも本譜へ戻れるようにする。
                             onBackToMainLine={nav.onMainLine ? null : nav.backToMainLine}
-                            // 手を横に流す棋譜（いまの手を中央に。前後の流れが 1 行で見え、押すとその手へ
-                            // 移る）。指し手の表記を省略せずに出せる。
-                            moveStrip={
-                                <MobileKifuBar
-                                    tone="wafuu"
-                                    moves={line.slice(1).map((nodeId, index) => ({
-                                        ply: index + 1,
-                                        displayText: studyMoveLabel(tree, nodeId),
-                                        mark: highlightKinds.get(nodeId),
-                                    }))}
-                                    currentPly={currentIndex}
-                                    onPlySelect={nav.navigateToPly}
+                            positionBand={
+                                <StudyPositionBand
+                                    node={currentNode}
+                                    ply={currentIndex}
+                                    moveLabel={studyMoveLabel(tree, currentNodeId)}
+                                    kind={highlightKinds.get(currentNodeId)}
                                 />
                             }
                             graphPanel={graphPanel}
+                            reviewList={
+                                <StudyReviewList
+                                    items={reviewItems}
+                                    currentNodeId={currentNodeId}
+                                    hasResults={hasResults}
+                                    onSelect={(nodeId) => navigateTo(nodeId)}
+                                />
+                            }
                             moveList={moveList}
                             candidatesPanel={candidatesPanel}
                         />

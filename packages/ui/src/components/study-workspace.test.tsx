@@ -2822,34 +2822,44 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         vi.restoreAllMocks();
     });
 
-    it("画面の上のタブで、盤を大きく見る表示と一覧の表示を切り替える", () => {
+    it("最初は候補手を開き、画面の上のタブで棋譜・グラフに切り替える", () => {
         render(<Harness initialDoc={createTestStudy().doc} />);
         const tab = (name: string) => screen.getByRole("tab", { name });
-        // 最初は盤を大きく見る表示（グラフを出し、一覧は出さない）。
-        expect(tab("盤").getAttribute("aria-selected")).toBe("true");
-        expect(screen.getByRole("region", { name: "評価値グラフ" })).toBeTruthy();
-        expect(screen.queryByRole("region", { name: "棋譜と変化" })).toBeNull();
-
-        fireEvent.click(tab("棋譜"));
-        expect(tab("棋譜").getAttribute("aria-selected")).toBe("true");
-        expect(screen.getByRole("region", { name: "棋譜と変化" })).toBeTruthy();
+        expect(screen.getAllByRole("tab").map((item) => item.textContent)).toEqual([
+            "候補手",
+            "棋譜",
+            "グラフ",
+        ]);
+        expect(tab("候補手").getAttribute("aria-selected")).toBe("true");
+        expect(screen.getByRole("region", { name: "候補手" })).toBeTruthy();
         expect(screen.queryByRole("region", { name: "評価値グラフ" })).toBeNull();
 
-        fireEvent.click(tab("盤"));
+        fireEvent.click(tab("棋譜"));
+        expect(screen.getByRole("region", { name: "棋譜と変化" })).toBeTruthy();
+        expect(screen.queryByRole("region", { name: "候補手" })).toBeNull();
+
+        fireEvent.click(tab("グラフ"));
+        expect(screen.getByRole("region", { name: "評価値グラフ" })).toBeTruthy();
+        expect(screen.getByRole("region", { name: "見直す手" })).toBeTruthy();
         expect(screen.queryByRole("region", { name: "棋譜と変化" })).toBeNull();
     });
 
-    it("盤の下の横に流す棋譜で手を押すと、その手へ移る", () => {
-        render(<Harness initialDoc={createTestStudy().doc} />);
-        const position = () =>
-            within(screen.getByRole("navigation", { name: "局面の移動" })).getByRole("status");
+    it("グラフのタブの見直す手を押すとその手へ移り、どのタブでも局面の帯に手と判定が出る", () => {
+        render(
+            <Harness
+                initialDoc={createTestStudy([cp(0), cp(50), cp(1500), cp(1500), cp(1500)]).doc}
+            />,
+        );
+        const band = () => screen.getByRole("status", { name: "いまの局面" });
+        expect(band().textContent).toContain("開始局面");
 
-        const firstMove = screen
-            .getAllByRole("button")
-            .find((button) => /^1[☗☖]/.test(button.textContent ?? ""));
-        if (!firstMove) throw new Error("横に流す棋譜に 1 手目がありません");
-        fireEvent.click(firstMove);
-        expect(position().textContent?.replace(/\s/g, "")).toMatch(/^1\//);
+        fireEvent.click(screen.getByRole("tab", { name: "グラフ" }));
+        const review = screen.getByRole("region", { name: "見直す手" });
+        fireEvent.click(within(review).getByRole("button", { name: /悪手/ }));
+        expect(band().textContent).toMatch(/2手目.*3四歩.*悪手/);
+
+        fireEvent.click(screen.getByRole("tab", { name: "棋譜" }));
+        expect(band().textContent).toMatch(/2手目.*3四歩.*悪手/);
     });
 
     it("ログイン切れでロック中も盤から既存の手へ進める", async () => {
@@ -2871,7 +2881,7 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         expect(onOps).not.toHaveBeenCalled();
     });
 
-    it("解析中は、盤の表示のグラフの見出しで進み具合を見て止められ、候補手のタブで読んでいると分かる", () => {
+    it("解析中は、グラフのタブの見出しで進み具合を見て止められ、候補手のタブで読んでいると分かる", () => {
         const analysis = createAnalysis({ mode: "full", progress: { completed: 2, total: 5 } });
         render(
             <Harness
@@ -2879,10 +2889,11 @@ describe("StudyWorkspaceView: スマートフォン", () => {
                 analysis={analysis}
             />,
         );
+        fireEvent.click(screen.getByRole("tab", { name: "グラフ" }));
         expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
-            "盤",
-            "棋譜",
             "候補手（読んでいます）",
+            "棋譜",
+            "グラフ",
         ]);
         const graph = screen.getByRole("region", { name: "評価値グラフ" });
         expect(graph.textContent).toContain("解析中 2 / 5");
