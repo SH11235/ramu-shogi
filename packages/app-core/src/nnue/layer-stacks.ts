@@ -41,9 +41,7 @@ export function validateLayerStacks(config: LayerStacksConfig): void {
         config.bucketMode === "progresskpabsq16" &&
         ![2, 4, 8, 16].includes(config.progressBuckets ?? 0)
     ) {
-        throw new Error(
-            "YaneuraOu / BulletOu の進行度バケット数は 2、4、8、16 のいずれかを指定してください",
-        );
+        throw new Error("Q16 進行度のバケット数は 2、4、8、16 のいずれかを指定してください");
     }
     if ((config.progressBuckets ?? 0) > 1 && !config.progressCoeffBase64) {
         throw new Error("進行度バケット数が 2 以上の場合は進行度係数ファイルが必要です");

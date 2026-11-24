@@ -5,6 +5,24 @@ import { NnueFvScaleInputDialog } from "./NnueFvScaleInputDialog";
 
 afterEach(cleanup);
 describe("LayerStacks model settings", () => {
+    it("names rshogi progresskpabsq16 under the Q16 option, apart from the f32 option", () => {
+        render(
+            <NnueFvScaleInputDialog
+                editing
+                fileName="model"
+                initialFvScale={16}
+                onConfirm={vi.fn()}
+                onCancel={() => {}}
+            />,
+        );
+        const mode = screen.getByLabelText("LayerStacks の振り分け方式") as HTMLSelectElement;
+        const labelOf = (value: string) =>
+            Array.from(mode.options).find((option) => option.value === value)?.textContent ?? "";
+        expect(labelOf("progresskpabsq16")).toContain("rshogi / tatara progresskpabsq16");
+        expect(labelOf("progresskpabsq16")).toContain("Q16");
+        expect(labelOf("progresskpabs")).toContain("f32");
+        expect(labelOf("progresskpabs")).not.toContain("progresskpabsq16");
+    });
     it("offers Q16 progressN with only compatible bucket counts", () => {
         render(
             <NnueFvScaleInputDialog

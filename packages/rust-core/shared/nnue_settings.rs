@@ -73,12 +73,12 @@ impl LayerStacksOptions {
             }
             (LayerStackBucketMode::ProgressKPAbsQ16, encoded) => {
                 if !matches!(self.progress_buckets, Some(2 | 4 | 8 | 16)) {
-                    return Err("YaneuraOu/BulletOu progress requires 2, 4, 8 or 16 buckets".into());
+                    return Err("progresskpabsq16 requires 2, 4, 8 or 16 buckets".into());
                 }
                 let bytes = decode_progress_coefficients(
                     encoded
                         .as_deref()
-                        .ok_or("YaneuraOu/BulletOu progress requires a coefficient file")?,
+                        .ok_or("progresskpabsq16 requires a progress coefficient file")?,
                 )?;
                 q16_weights = Some(load_progress_coeff_kpabs_q16_from_bytes(&bytes)?);
                 None
