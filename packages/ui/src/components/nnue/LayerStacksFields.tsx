@@ -44,13 +44,14 @@ export function LayerStacksFields({
             >
                 <option value="">未設定（HalfKP 等では不要）</option>
                 <option value="kingrank9">KingRank9 / k3k3（9 バケット）</option>
-                <option value="progresskpabs">tatara / rshogi progresskpabs（進行度）</option>
+                <option value="progresskpabs">f32 進行度（rshogi / tatara progresskpabs）</option>
                 <option value="progresskpabsq16">
-                    YaneuraOu / BulletOu progressN（Q16 進行度）
+                    Q16 進行度（rshogi / tatara progresskpabsq16、YaneuraOu / BulletOu progressN）
                 </option>
             </NativeSelect>
             <p className="text-xs text-muted-foreground">
-                LayerStacks はモデル配布元が指定する方式を選択してください。
+                LayerStacks はモデル配布元が指定する方式を選択してください。rshogi / tatara の
+                progresskpabsq16 は「Q16 進行度」です。
             </p>
             {(value?.bucketMode === "progresskpabs" ||
                 value?.bucketMode === "progresskpabsq16") && (

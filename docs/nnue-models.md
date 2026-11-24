@@ -51,13 +51,20 @@ LayerStacks 系のモデルは、モデル作者が指定する FV_SCALE と振�
 
 - **KingRank9 / k3k3**: 両玉の段を3区分ずつに分けた9バケット。
   rshogi の KingRank9 と YaneuraOu の k3k3 は同じ方式です。進行度係数は不要です。
-- **progresskpabs（tatara / rshogi）**: 学習時の進行度バケット数（1〜16、モデルの格納数以下）と、
+- **f32 進行度（rshogi / tatara の progresskpabs）**: rshogi / tatara の `progresskpabs`
+  （f32 の係数と閾値で振り分ける方式）で学習したモデル向けです。
+  学習時の進行度バケット数（1〜16、モデルの格納数以下）と、
   学習時に使った進行度係数ファイルを指定します。バケット数1だけは係数不要です。
   旧形式の格納9バケットを `floor(p × 8)` で学習したモデルでは8を指定します。
-- **progressN Q16（YaneuraOu / BulletOu）**: 単独 progress2 / progress4 / progress8 /
-  progress16 のモデルと、同じ checkpoint の `progress.bin` を指定します。
+- **Q16 進行度（rshogi / tatara の progresskpabsq16、YaneuraOu / BulletOu の progressN）**:
+  rshogi / tatara の `progresskpabsq16` で学習したモデルと、単独 progress2 / progress4 /
+  progress8 / progress16 のモデル向けです。学習時の進行度バケット数と、
+  学習時に使った進行度係数ファイル（YaneuraOu / BulletOu では同じ checkpoint の `progress.bin`）を
+  指定します。このアプリで指定できるバケット数は 2・4・8・16 です。
 
-境界付近の振り分けを学習時と揃えるため、モデルの配布元に対応する方式を選択してください。
+rshogi / tatara のモデルでも、`progresskpabs` と `progresskpabsq16` は別の方式です。
+f32 版で Q16 のモデルを読むと（逆も同じ）境界付近の局面で振り分けがずれ、評価値が学習時と変わります。
+モデルの配布元が指定する方式名に合わせて選択してください。
 
 進行度係数ファイルは 1,003,104 bytes（81 × 1548 個の little-endian f64）です。
 サイズと値を検証したうえでモデルとともに端末内に保存され、再起動後も同じ設定が使われます。
@@ -68,7 +75,7 @@ Desktop はアプリを再起動してください。
 ## YaneuraOu SFNN
 
 通常の 8bit `SFNNWithoutPsqt`（version `0x7AF32F16`）を直接インポートできます。
-モデル設定は k3k3 なら **KingRank9**、単独 progressN なら **progressN Q16** を選択し、
+モデル設定は k3k3 なら **KingRank9**、単独 progressN なら **Q16 進行度** を選択し、
 通常の SFNN では **FV_SCALE=28** を指定します。
 
 対応する特徴量は HalfKP、HalfKA1、HalfKA2、HalfKA_hm1、HalfKA_hm2 です。
