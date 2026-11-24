@@ -4,6 +4,7 @@ import type { ReactElement } from "react";
 import { cardVariants } from "../card";
 import { STUDY_KIND_BADGE } from "./StudyPositionBand";
 import {
+    pickStudyDeeperResult,
     pickStudyPositionResult,
     studyBestCandidate,
     studyFirstMoveLabel,
@@ -43,9 +44,12 @@ export function buildStudyReviewItems({
         const ply = line.indexOf(highlight.nodeId);
         if (ply < 0 || (highlight.kind === null && !highlight.hasComment)) continue;
         const parent = highlight.parentId === null ? undefined : tree.nodes.get(highlight.parentId);
+        // 深く読んだ結果で判定した手には、その結果の最善手を添える（判定と最善手の出典をそろえる）。
         const parentResult =
             highlight.kind !== null && parent
-                ? pickStudyPositionResult(doc, parent.id, displayLayerId)
+                ? ((highlight.judgedByDeeper
+                      ? pickStudyDeeperResult(doc, parent.id, displayLayerId)
+                      : null) ?? pickStudyPositionResult(doc, parent.id, displayLayerId))
                 : null;
         const best = parentResult ? studyBestCandidate(parentResult.result) : null;
         const bestLabel =
@@ -72,11 +76,14 @@ export function StudyReviewList({
     items,
     currentNodeId,
     hasResults,
+    unanalyzedCount,
     onSelect,
 }: {
     items: readonly StudyReviewItem[];
     currentNodeId: string;
     hasResults: boolean;
+    /** 表示中の解析で、まだ読み終えていない局面の数。 */
+    unanalyzedCount: number;
     onSelect: (nodeId: string) => void;
 }): ReactElement {
     return (
@@ -87,9 +94,11 @@ export function StudyReviewList({
             <h2 className="sr-only">見直す手</h2>
             {items.length === 0 ? (
                 <p className="px-1 py-2 text-xs text-muted-foreground">
-                    {hasResults
-                        ? "悪手・疑問手・コメントのある手はありません。"
-                        : "全体を解析すると、悪手・疑問手がここに並びます。"}
+                    {!hasResults
+                        ? "全体を解析すると、悪手・疑問手がここに並びます。"
+                        : unanalyzedCount > 0
+                          ? `解析した手には、悪手・疑問手・コメントのある手はありません（まだ解析していない局面が ${unanalyzedCount} あります）。`
+                          : "悪手・疑問手・コメントのある手はありません。"}
                 </p>
             ) : (
                 <ol className="flex flex-col">

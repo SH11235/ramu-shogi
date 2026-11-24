@@ -287,12 +287,14 @@ export function StudyMobileLayout({
                 </div>
                 <div className="shrink-0">{positionBand}</div>
                 {tab === "graph" ? (
-                    <div className="flex min-h-0 flex-1 flex-col gap-1.5">
+                    // グラフ（見出し・余白込みで描ける最低の高さ）と一覧の 1 行が入らない低い画面では、
+                    // 縮めて重ねずに表示の場所ごと縦に送る。
+                    <div className="flex min-h-[9.5rem] flex-1 flex-col gap-1.5">
                         {/* 一覧は中身の高さ（多ければ半分まで）にして中で送り、残りをグラフに回す。 */}
-                        <div ref={measure.observeGraphSlot} className="min-h-0 flex-1">
+                        <div ref={measure.observeGraphSlot} className="min-h-[6.5rem] flex-1">
                             {graphPanel}
                         </div>
-                        <div className="max-h-[50%] shrink-0 overflow-y-auto overscroll-contain">
+                        <div className="max-h-[50%] min-h-10 overflow-y-auto overscroll-contain">
                             {reviewList}
                         </div>
                     </div>

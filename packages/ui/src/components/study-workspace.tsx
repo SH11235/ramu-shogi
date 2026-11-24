@@ -1370,6 +1370,7 @@ export function StudyWorkspaceView({
                                     items={reviewItems}
                                     currentNodeId={currentNodeId}
                                     hasResults={hasResults}
+                                    unanalyzedCount={unanalyzedCount}
                                     onSelect={(nodeId) => navigateTo(nodeId)}
                                 />
                             }

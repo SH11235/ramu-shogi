@@ -1,8 +1,22 @@
-import { applyStudyOps, computeStudyHighlights } from "@shogi/app-core";
+import {
+    applyStudyOps,
+    buildStudyLayerSpec,
+    computeStudyHighlights,
+    studyLayerId,
+} from "@shogi/app-core";
 import { describe, expect, it } from "vitest";
 import { buildStudyReviewItems } from "./StudyReviewList";
 import { cp, createTestStudy, putScoreOp, TEST_LAYER_ID } from "./study-test-support";
-import { buildStudyStructureTree } from "./studyView";
+import { buildStudyStructureTree, studyDeeperLayerIds } from "./studyView";
+
+const DEEP_SPEC = buildStudyLayerSpec({
+    engine: { kind: "wasm", name: "rshogi", version: "0.8.1" },
+    appVersion: "0.0.0",
+    nnue: { sha256: "a".repeat(64), fvScale: 24 },
+    limits: { timeMs: 10_000, depth: 64 },
+    multiPv: 1,
+});
+const DEEP_LAYER_ID = studyLayerId(DEEP_SPEC);
 
 describe("buildStudyReviewItems", () => {
     it("悪手には 1 手前の局面の最善手を添え、コメントだけの手も手順の順に並べる", () => {
@@ -43,5 +57,26 @@ describe("buildStudyReviewItems", () => {
         });
 
         expect(items.find((item) => item.ply === 2)?.bestLabel).toBeNull();
+    });
+
+    it("深く読んだ結果で判定した悪手には、深く読んだ結果の最善手を添える", () => {
+        const base = createTestStudy([cp(0), cp(50), cp(1500), cp(1500), cp(1500)]);
+        const doc = applyStudyOps(base.doc, [
+            putScoreOp(base.ids[1], cp(50), { pv: ["8c8d"], depth: 20 }),
+            { type: "ensureLayer", spec: DEEP_SPEC, display: { label: "RAMU・10 秒" } },
+            putScoreOp(base.ids[1], cp(50), { layerId: DEEP_LAYER_ID, pv: ["4c4d"], depth: 30 }),
+            putScoreOp(base.ids[2], cp(1500), { layerId: DEEP_LAYER_ID, depth: 30 }),
+        ]);
+        const items = buildStudyReviewItems({
+            doc,
+            tree: buildStudyStructureTree(doc).tree,
+            line: base.ids,
+            highlights: computeStudyHighlights(doc, TEST_LAYER_ID, {
+                deeperLayerIds: studyDeeperLayerIds(doc, TEST_LAYER_ID),
+            }),
+            displayLayerId: TEST_LAYER_ID,
+        });
+
+        expect(items.find((item) => item.ply === 2)?.bestLabel).toContain("4四歩");
     });
 });
