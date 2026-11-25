@@ -588,6 +588,10 @@ export function StudyCandidatesPanel({
         >
             {/* 欄の名前は見出しとして画面に出さない（PC は欄の並び、スマートフォンはタブで分かる）。 */}
             <h2 className="sr-only">候補手</h2>
+            {/* スイッチを帯に置くときは、読み終えたことをここに出す（帯には入り切らない）。 */}
+            {autoSwitchElsewhere && autoFinished && (
+                <p className="px-1 text-xs text-muted-foreground">{STUDY_AUTO_ANALYZE_FINISHED}</p>
+            )}
             {!controlsLast && controls}
             {/* 読んでいる途中の候補。満足したら「止める」で、その時点の結果を残せる。 */}
             {live && (

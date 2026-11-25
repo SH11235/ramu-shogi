@@ -59,7 +59,7 @@ describe("buildStudyReviewItems", () => {
         expect(items.find((item) => item.ply === 2)?.bestLabel).toBeNull();
     });
 
-    it("深く読んだ結果で判定した悪手には、深く読んだ結果の最善手を添える", () => {
+    it("深く読んだ結果で判定した悪手にも、候補手の欄の「この手の代わりに」と同じ表示中の解析の最善手を添える", () => {
         const base = createTestStudy([cp(0), cp(50), cp(1500), cp(1500), cp(1500)]);
         const doc = applyStudyOps(base.doc, [
             putScoreOp(base.ids[1], cp(50), { pv: ["8c8d"], depth: 20 }),
@@ -77,6 +77,6 @@ describe("buildStudyReviewItems", () => {
             displayLayerId: TEST_LAYER_ID,
         });
 
-        expect(items.find((item) => item.ply === 2)?.bestLabel).toContain("4四歩");
+        expect(items.find((item) => item.ply === 2)?.bestLabel).toContain("8四歩");
     });
 });

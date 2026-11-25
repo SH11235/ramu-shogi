@@ -47,8 +47,11 @@ export function StudyPositionBand({
     const side = studyScoreSide(score);
     return (
         <div className="flex h-10 items-center rounded-lg border border-wafuu-border bg-wafuu-washi-warm text-sm">
+            {/* 評価値は読んでいる間に何度も変わるので、読み上げの領域にはしない（帯全体が繰り返し
+                読み上げられてしまう）。 */}
             <output
                 aria-label="いまの局面"
+                aria-live="off"
                 className="flex min-w-0 flex-1 items-center gap-1.5 pl-2.5 pr-2"
             >
                 <span className="shrink-0 tabular-nums text-muted-foreground">
@@ -100,9 +103,6 @@ export function StudyPositionBand({
                 >
                     <RamRunningIcon dotSize={1} className={cn(!reading && "invisible")} />
                     <span className="text-xs font-medium text-wafuu-sumi">自動で読む</span>
-                    <span id={statusId} className="sr-only">
-                        {autoAnalyze.status ?? ""}
-                    </span>
                     <Switch
                         id={switchId}
                         aria-describedby={statusId}
@@ -110,6 +110,12 @@ export function StudyPositionBand({
                         onCheckedChange={autoAnalyze.onChange}
                     />
                 </label>
+            )}
+            {/* スイッチの名前（「自動で読む」）に混ざらないよう、状態の説明は label の外に置く。 */}
+            {autoAnalyze && (
+                <span id={statusId} className="sr-only">
+                    {autoAnalyze.status ?? ""}
+                </span>
             )}
         </div>
     );

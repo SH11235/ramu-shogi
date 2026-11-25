@@ -2863,9 +2863,9 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         );
         const band = () =>
             screen.getByRole("status", { name: "いまの局面" }).parentElement as HTMLElement;
-        // 候補手の欄にはスイッチを出さない（帯の 1 つだけ）。
+        // 候補手の欄にはスイッチを出さない（帯の 1 つだけ）。名前は読んでいる間も「自動で読む」のまま。
         expect(screen.getAllByRole("switch", { name: /自動で読む/ })).toHaveLength(1);
-        within(band()).getByRole("switch", { name: /自動で読む/ });
+        within(band()).getByRole("switch", { name: "自動で読む" });
         // 読み始めの浅い値では、保存済みの値を替えない。
         expect(band().textContent).toContain("+120");
 
@@ -2876,6 +2876,53 @@ describe("StudyWorkspaceView: スマートフォン", () => {
             />,
         );
         expect(band().textContent).toContain("-300");
+    });
+
+    it("自動で読むで読み終えたら、候補手の欄に読み終えたことを出す", async () => {
+        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+        const { doc } = createTestStudy();
+        const reading = createAnalysis({
+            mode: "deep",
+            live: {
+                nodeId: doc.tree.rootId,
+                depth: 18,
+                startedAt: null,
+                budgetMs: 30_000,
+                preview: null,
+            },
+        });
+        const { rerender } = render(<Harness initialDoc={doc} analysis={reading} />);
+        await act(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+        rerender(
+            <Harness
+                initialDoc={doc}
+                analysis={{ ...reading, mode: null, live: null, continuableDeepNodeId: null }}
+            />,
+        );
+        const candidates = screen.getByRole("region", { name: "候補手" });
+        expect(
+            await within(candidates).findByText("この局面は読み終えました。局面を移ると読みます"),
+        ).toBeTruthy();
+    });
+
+    it("パスして解析の読みは、帯ではなく候補手のタブで知らせる", () => {
+        localStorage.setItem("shogi:studyAutoAnalyze", "false");
+        const { doc } = createTestStudy();
+        const analysis = createAnalysis({
+            mode: "deep",
+            live: {
+                nodeId: doc.tree.rootId,
+                depth: 12,
+                startedAt: null,
+                budgetMs: 30_000,
+                preview: null,
+            },
+        });
+        render(<Harness initialDoc={doc} analysis={analysis} />);
+        fireEvent.click(screen.getByRole("tab", { name: /棋譜/ }));
+        expect(screen.getAllByRole("tab")[0].textContent).toBe("候補手（読んでいます）");
     });
 
     it("ログイン切れでロック中も盤から既存の手へ進める", async () => {

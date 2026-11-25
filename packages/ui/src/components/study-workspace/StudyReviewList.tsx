@@ -4,7 +4,6 @@ import type { ReactElement } from "react";
 import { cardVariants } from "../card";
 import { STUDY_KIND_BADGE } from "./StudyPositionBand";
 import {
-    pickStudyDeeperResult,
     pickStudyPositionResult,
     studyBestCandidate,
     studyFirstMoveLabel,
@@ -44,12 +43,11 @@ export function buildStudyReviewItems({
         const ply = line.indexOf(highlight.nodeId);
         if (ply < 0 || (highlight.kind === null && !highlight.hasComment)) continue;
         const parent = highlight.parentId === null ? undefined : tree.nodes.get(highlight.parentId);
-        // 深く読んだ結果で判定した手には、その結果の最善手を添える（判定と最善手の出典をそろえる）。
+        // 候補手の欄の「この手の代わりに」と同じく、表示中の解析の最善手を添える（一覧と欄で別の手を
+        // 案内しないように）。
         const parentResult =
             highlight.kind !== null && parent
-                ? ((highlight.judgedByDeeper
-                      ? pickStudyDeeperResult(doc, parent.id, displayLayerId)
-                      : null) ?? pickStudyPositionResult(doc, parent.id, displayLayerId))
+                ? pickStudyPositionResult(doc, parent.id, displayLayerId)
                 : null;
         const best = parentResult ? studyBestCandidate(parentResult.result) : null;
         const bestLabel =

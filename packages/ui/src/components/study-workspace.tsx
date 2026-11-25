@@ -17,6 +17,7 @@ import {
     type Player,
     type PositionState,
     type Square,
+    type StudyAnalysisResult,
     type StudyDocument,
     type StudyOp,
     studyScoreToKifuEval,
@@ -1098,12 +1099,20 @@ export function StudyWorkspaceView({
     const liveHere = analysis.live?.nodeId === currentNodeId ? analysis.live : undefined;
     // 帯の評価値は、保存済みのいちばん深い読みと、それより深くなった読んでいる途中の値のうち深いほう
     // （読み直しの始めの浅い値で、保存済みの深い値を上書きして見せない）。
-    const savedResult = (insights.deeperResult ?? insights.positionResult)?.result ?? null;
+    const savedResult = [
+        insights.deeperResult?.result,
+        insights.positionResult?.result,
+    ].reduce<StudyAnalysisResult | null>(
+        (best, result) => (result && (!best || result.depth > best.depth) ? result : best),
+        null,
+    );
     const bandResult =
         liveHere?.preview && (savedResult === null || liveHere.preview.depth > savedResult.depth)
             ? liveHere.preview
             : savedResult;
     const bandScore = bandResult ? (studyBestCandidate(bandResult)?.score ?? null) : null;
+    // 帯にラムを出すのは自動で読む読みだけ（パスして解析の読みは、止める操作のある候補手のタブで知らせる）。
+    const bandShowsReading = autoAnalyze && liveHere !== undefined;
     const candidatesPanel = (
         <StudyCandidatesPanel
             node={currentNode}
@@ -1347,7 +1356,7 @@ export function StudyWorkspaceView({
                             moreMenu={moreMenu}
                             // この局面の読みは帯にラムが出るので、タブには帯に出ない読み（全体の解析・
                             // 詰み探索・別の局面の読み）だけを知らせる。
-                            isReading={isReading && liveHere === undefined}
+                            isReading={isReading && !bandShowsReading}
                             saveStrip={
                                 readOnly ? (
                                     layerPicker
@@ -1373,7 +1382,7 @@ export function StudyWorkspaceView({
                                     moveLabel={studyMoveLabel(tree, currentNodeId)}
                                     kind={highlightKinds.get(currentNodeId)}
                                     score={bandScore}
-                                    reading={liveHere !== undefined}
+                                    reading={bandShowsReading}
                                     autoAnalyze={
                                         editingDisabled
                                             ? undefined
