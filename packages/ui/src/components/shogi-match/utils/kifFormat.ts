@@ -142,7 +142,7 @@ export function toEngineSearchSummary(
         nps: numberOrUndefined(stats.nps),
         timeMs: numberOrUndefined(stats.timeMs),
         scoreCp: scoreCp === undefined ? undefined : sign * scoreCp,
-        scoreMate: scoreMate === undefined ? undefined : sign * scoreMate,
+        scoreMate: normalizeEngineMateScore(scoreMate, sign),
         pv: Array.isArray(stats.pv) ? stats.pv : undefined,
         threads: numberOrUndefined(stats.threads),
     };
@@ -425,35 +425,28 @@ function squareToSimple(sq: string): string {
     return `${file}${RANK_KANJI[rank]}`;
 }
 
-/**
- * 評価値を表示用文字列にフォーマット
- *
- * 評価値は先手視点に正規化されていることを前提とする:
- * - evalMate > 0: 先手の勝ち（先手が詰ませる）
- * - evalMate < 0: 後手の勝ち（後手が詰ませる）
- * - evalCp > 0: 先手有利
- * - evalCp < 0: 後手有利
- *
- * @param evalCp 評価値（センチポーン、先手視点）
- * @param evalMate 詰み手数（先手視点）
- * @param _ply 手数（後方互換性のため残すが使用しない）
- * @returns フォーマットされた文字列（例: "+5.0", "+詰3", "-詰5", "+詰", "-詰"）
- */
-export function formatEval(evalCp?: number, evalMate?: number, _ply?: number): string {
-    if (evalMate !== undefined && evalMate !== null) {
-        // 先手視点に正規化済みなので、符号だけで判定
-        // 符号式: +詰N（先手勝ち）、-詰N（後手勝ち）
-        // 手数不明の詰みは N を表示しない。
-        if (isMateWithoutPly(evalMate)) {
-            return evalMate > 0 ? "+詰" : "-詰";
-        }
-        if (evalMate > 0) {
-            return `+詰${evalMate}`;
-        }
-        return `-詰${Math.abs(evalMate)}`;
-    }
+export function formatMateScore(scoreMate?: number | null): string {
+    if (scoreMate === MATE_WITHOUT_PLY) return "mate +";
+    if (scoreMate === -MATE_WITHOUT_PLY) return "mate -";
+    if (Object.is(scoreMate, -0)) return "mate -0";
+    return Number.isInteger(scoreMate) ? `mate ${scoreMate}` : "";
+}
 
-    if (evalCp === undefined || evalCp === null) {
+export function normalizeEngineMateScore(scoreMate: number | undefined, sign: 1 | -1) {
+    if (scoreMate === undefined) return undefined;
+    // mate 0 は、探索開始時の手番側がすでに詰んでいることを表す。
+    return (scoreMate === 0 ? -0 : scoreMate) * sign;
+}
+
+export function mateScoreSide(scoreMate: number): Player {
+    return scoreMate < 0 || Object.is(scoreMate, -0) ? "gote" : "sente";
+}
+
+/** 評価値を表示用に整形する（例: "+50", "mate 3", "mate -5"）。 */
+export function formatEval(evalCp?: number, evalMate?: number, _ply?: number): string {
+    const mateScore = formatMateScore(evalMate);
+    if (mateScore) return mateScore;
+    if (evalCp == null || !Number.isFinite(evalCp)) {
         return "";
     }
 
@@ -466,13 +459,11 @@ export function formatEval(evalCp?: number, evalMate?: number, _ply?: number): s
  * 評価値のツールチップ用の詳細情報を生成
  *
  * 評価値は先手視点に正規化されていることを前提とする:
- * - evalMate > 0: 先手の勝ち
- * - evalMate < 0: 後手の勝ち
  * - evalCp > 0: 先手有利
  * - evalCp < 0: 後手有利
  *
  * @param evalCp 評価値（センチポーン、先手視点）
- * @param evalMate 詰み手数（先手視点）
+ * @param evalMate 通常探索の mate スコア（先手視点）
  * @param _ply 手数（後方互換性のため残すが使用しない）
  * @param depth 探索深さ
  * @returns ツールチップ用の情報オブジェクト
@@ -492,21 +483,13 @@ export function getEvalTooltipInfo(
     /** 有利な側（"sente" | "gote" | null） */
     advantage: "sente" | "gote" | null;
 } {
-    // 詰みの場合（先手視点に正規化済み）
-    if (evalMate !== undefined && evalMate !== null) {
-        // 符号だけで判定: > 0 なら先手勝ち、< 0 なら後手勝ち
-        const winningSide = evalMate > 0 ? "sente" : "gote";
-        const winnerMark = winningSide === "sente" ? "☗" : "☖";
-        const winnerName = winningSide === "sente" ? "先手" : "後手";
-        const detail = isMateWithoutPly(evalMate)
-            ? "手数不明の詰み"
-            : `${Math.abs(evalMate)}手詰み`;
-
+    const mateScore = formatMateScore(evalMate);
+    if (evalMate != null && mateScore) {
         return {
-            description: `${winnerMark}${winnerName}の勝ち`,
-            detail,
+            description: mateScore,
+            detail: "",
             depthText: depth !== undefined ? `深さ${depth}` : null,
-            advantage: winningSide,
+            advantage: mateScoreSide(evalMate),
         };
     }
 
@@ -567,7 +550,7 @@ export function evalToY(
 
     // 詰みの場合は上端または下端に固定
     if (evalMate !== undefined && evalMate !== null) {
-        return evalMate > 0 ? 4 : height - 4; // 少しマージンを取る
+        return mateScoreSide(evalMate) === "sente" ? 4 : height - 4; // 少しマージンを取る
     }
 
     if (evalCp === undefined || evalCp === null) {
@@ -849,8 +832,8 @@ function formatEvalComment(evalCp?: number, evalMate?: number, depth?: number): 
 
     let evalStr: string;
     if (evalMate !== undefined && evalMate !== null) {
-        if (isMateWithoutPly(evalMate)) {
-            evalStr = evalMate > 0 ? "詰み" : "被詰み";
+        if (isMateWithoutPly(evalMate) || evalMate === 0) {
+            evalStr = mateScoreSide(evalMate) === "sente" ? "詰み" : "被詰み";
         } else if (evalMate > 0) {
             evalStr = `詰${evalMate}手`;
         } else {

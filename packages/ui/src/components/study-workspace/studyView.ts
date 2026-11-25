@@ -131,7 +131,7 @@ export function studyLineSourceEvalHistory(
     });
 }
 
-/** 評価値を画面の表記にする（例: `+1.2`、`-詰5`）。欠測は空文字。 */
+/** 評価値を画面の表記にする（例: `+120`、`mate -5`）。欠測は空文字。 */
 export function formatStudyScore(score: StudyScore | null | undefined): string {
     const evalData = studyScoreToKifuEval(score ?? null);
     if (!evalData) return "";

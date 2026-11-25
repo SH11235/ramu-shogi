@@ -19,7 +19,7 @@ import { useNavigation } from "../contexts/NavigationContext";
 import { useCurrentPositionAiHints } from "../hooks/useCurrentPositionAiHints";
 import { hintPositionKey } from "../hooks/usePlayHintSearch";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
-import { convertPvToDisplay } from "../utils/kifFormat";
+import { convertPvToDisplay, formatMateScore, mateScoreSide } from "../utils/kifFormat";
 import { formatNodeCount } from "../utils/searchLimits";
 import { PLAY_OUTLINE_BUTTON } from "./playStyles";
 
@@ -239,10 +239,12 @@ export function describeEval(
     viewer: Player,
 ): { text: string; tone: "good" | "bad" | "even" } {
     const sign = viewer === "sente" ? 1 : -1;
-    if (move.evalMate !== undefined && move.evalMate !== null) {
-        return move.evalMate * sign > 0
-            ? { text: "詰みがあります", tone: "good" }
-            : { text: "詰まされそうです", tone: "bad" };
+    const mateScore = formatMateScore(move.evalMate);
+    if (move.evalMate != null && mateScore) {
+        return {
+            text: mateScore,
+            tone: mateScoreSide(move.evalMate) === viewer ? "good" : "bad",
+        };
     }
     if (move.evalCp === undefined || move.evalCp === null) return { text: "", tone: "even" };
     const value = move.evalCp * sign;

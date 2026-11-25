@@ -2,6 +2,7 @@ import type { NnueSelection } from "@shogi/app-core";
 import type { ReactElement } from "react";
 import { useNnueContextOptional } from "../../../providers/NnueContext";
 import { NativeSelect } from "../../native-select";
+import { formatEval, formatMateScore, mateScoreSide } from "../utils/kifFormat";
 
 export interface AiHintMove {
     usi: string;
@@ -13,7 +14,7 @@ export interface AiHintMove {
     depth?: number;
     /** 評価値（先手から見た値） */
     evalCp?: number;
-    /** 詰みの手数（先手から見て、正 = 先手の勝ち） */
+    /** 通常探索の mate スコア（先手から見た値） */
     evalMate?: number;
 }
 
@@ -21,6 +22,24 @@ export interface AiHintSummary {
     percent: number;
     senteLabel: string;
     goteLabel: string;
+}
+
+export function summarizeAiHintEval(evalCp?: number, evalMate?: number): AiHintSummary {
+    const mateScore = formatMateScore(evalMate);
+    if (evalMate != null && mateScore) {
+        const side = mateScoreSide(evalMate);
+        return {
+            percent: side === "sente" ? 100 : 0,
+            senteLabel: side === "sente" ? `▲ ${mateScore}` : "▲",
+            goteLabel: side === "gote" ? `△ ${mateScore}` : "△",
+        };
+    }
+    const score = evalCp ?? 0;
+    return {
+        percent: Math.min(100, Math.max(0, 50 + (score / 2000) * 50)),
+        senteLabel: score > 0 ? `▲ ${formatEval(score)}` : "▲",
+        goteLabel: score < 0 ? `△ ${formatEval(Math.abs(score))}` : "△",
+    };
 }
 
 interface AiHintPanelProps {
@@ -124,7 +143,9 @@ export function AiHintPanel({
                             <div key={move.usi} className="flex items-center gap-2 text-xs">
                                 <span className="w-4 text-muted-foreground">{index + 1}.</span>
                                 <span className="flex-1 text-foreground">{move.displayText}</span>
-                                <span className={getScoreClassName(move.scoreTone)}>
+                                <span
+                                    className={`whitespace-nowrap ${getScoreClassName(move.scoreTone)}`}
+                                >
                                     {move.scoreText}
                                 </span>
                                 {onPreviewPv && move.pv?.length && (

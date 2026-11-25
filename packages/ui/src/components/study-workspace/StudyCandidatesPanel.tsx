@@ -374,13 +374,13 @@ function CandidateRow({
                 {candidate.rank}
             </span>
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <div className="flex items-baseline gap-2">
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                     <span className="truncate text-sm font-medium text-wafuu-sumi">
                         {firstLabel ?? "（読み筋なし）"}
                     </span>
                     <span
                         className={cn(
-                            "shrink-0 font-mono text-sm tabular-nums",
+                            "shrink-0 whitespace-nowrap font-mono text-sm tabular-nums",
                             sideClass(studyScoreSide(candidate.score)),
                         )}
                     >

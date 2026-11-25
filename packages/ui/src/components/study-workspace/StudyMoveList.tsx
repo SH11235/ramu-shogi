@@ -58,11 +58,11 @@ interface StudyMoveListProps {
  * 指し手に押し出されて切れるので、印だけの列を持つ（印のある手が無ければ列を作らない）。
  */
 const ROW_GRIDS = {
-    plain: "grid grid-cols-[1.75rem_minmax(0,1fr)_2.5rem] items-baseline gap-x-1",
-    source: "grid grid-cols-[1.75rem_minmax(0,1fr)_2.5rem_2.5rem] items-baseline gap-x-1",
-    marks: "grid grid-cols-[1.75rem_1.25rem_minmax(0,1fr)_2.5rem] items-baseline gap-x-1",
+    plain: "grid grid-cols-[1.75rem_minmax(0,1fr)_3.75rem] items-baseline gap-x-1",
+    source: "grid grid-cols-[1.75rem_minmax(0,1fr)_3.75rem_3.75rem] items-baseline gap-x-1",
+    marks: "grid grid-cols-[1.75rem_1.25rem_minmax(0,1fr)_3.75rem] items-baseline gap-x-1",
     marksSource:
-        "grid grid-cols-[1.75rem_1.25rem_minmax(0,1fr)_2.5rem_2.5rem] items-baseline gap-x-1",
+        "grid grid-cols-[1.75rem_1.25rem_minmax(0,1fr)_3.75rem_3.75rem] items-baseline gap-x-1",
 } as const;
 
 const sideClass = (side: "sente" | "gote" | null): string =>
@@ -297,7 +297,7 @@ export function StudyMoveList({
                                 </span>
                                 <span
                                     className={cn(
-                                        "text-right font-mono text-xs tabular-nums",
+                                        "whitespace-nowrap text-right font-mono text-xs tabular-nums",
                                         sideClass(mover),
                                     )}
                                 >
@@ -308,7 +308,7 @@ export function StudyMoveList({
                                 {hasSource && (
                                     <span
                                         className={cn(
-                                            "text-right font-mono text-xs tabular-nums opacity-70",
+                                            "whitespace-nowrap text-right font-mono text-xs tabular-nums opacity-70",
                                             sideClass(mover),
                                         )}
                                     >

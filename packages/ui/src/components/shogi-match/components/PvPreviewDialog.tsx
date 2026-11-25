@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { StaticBoardView } from "../../static-board-view";
 import type { SquareNotation } from "../types";
 import type { PvDisplayMove } from "../utils/kifFormat";
-import { convertPvToDisplay, MATE_WITHOUT_PLY } from "../utils/kifFormat";
+import { convertPvToDisplay, formatEval } from "../utils/kifFormat";
 
 interface PvPreviewDialogProps {
     /** 閉じるコールバック */
@@ -190,13 +190,7 @@ export function PvPreviewDialog({
         }
     }, [positions.length]);
 
-    const evalText = (() => {
-        if (evalMate === MATE_WITHOUT_PLY) return "mate +";
-        if (evalMate === -MATE_WITHOUT_PLY) return "mate -";
-        if (evalMate !== undefined && Number.isInteger(evalMate)) return `mate ${evalMate}`;
-        if (evalCp === undefined || !Number.isFinite(evalCp)) return null;
-        return `${evalCp >= 0 ? "+" : ""}${evalCp}`;
-    })();
+    const evalText = formatEval(evalCp, evalMate);
 
     return (
         <Dialog defaultOpen onOpenChange={(isOpen) => !isOpen && onClose()}>

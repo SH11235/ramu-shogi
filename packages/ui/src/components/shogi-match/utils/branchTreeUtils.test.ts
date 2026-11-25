@@ -43,6 +43,11 @@ describe("normalizeEvalToSentePerspective", () => {
 });
 
 describe("normalizeEvalToSentePerspective: 後手番から始まる棋譜", () => {
+    it("終局局面の mate 0 は手番側の負けとして符号を付ける", () => {
+        expect(normalizeEvalToSentePerspective({ scoreMate: 0 }, 0, "sente").evalMate).toBe(-0);
+        expect(normalizeEvalToSentePerspective({ scoreMate: 0 }, 0, "gote").evalMate).toBe(0);
+    });
+
     it("局面の手番を渡すと、手数の偶奇ではなく手番で符号を決める", () => {
         // 後手番開始の 1 手目 (後手が指した後 = 先手番)。エンジン値は先手視点なので反転しない。
         expect(normalizeEvalToSentePerspective({ scoreCp: 120 }, 1, "sente")).toEqual({

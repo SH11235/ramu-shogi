@@ -97,6 +97,21 @@ describe("useOnlineAnalysis pass rights", () => {
 });
 
 describe("useOnlineAnalysis lifecycle", () => {
+    it("mate スコアと読み筋を同じ候補として保持する", async () => {
+        const engine = mockEngine();
+        createClient.mockReturnValue(engine);
+        const { result } = renderHook(() => useOnlineAnalysis(12, 1000));
+        await act(async () => {
+            await result.current.startAnalysis("startpos", []);
+        });
+
+        act(() => engine.emit({ type: "info", scoreMate: 3, pv: ["7g7f", "3c3d", "2g2f"] }));
+
+        expect(result.current.topMoves).toEqual([
+            { usi: "7g7f", mate: 3, pv: ["7g7f", "3c3d", "2g2f"] },
+        ]);
+    });
+
     it("StrictModeのmountでは初期化せず、完了後のunmountで購読とclientを解放する", async () => {
         const engine = mockEngine();
         createClient.mockReturnValue(engine);

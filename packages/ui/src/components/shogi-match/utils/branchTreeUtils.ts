@@ -14,7 +14,7 @@ import {
     type Player,
     type Square,
 } from "@shogi/app-core";
-import { formatMoveSimple } from "./kifFormat";
+import { formatMoveSimple, normalizeEngineMateScore } from "./kifFormat";
 
 /**
  * 評価値データ（エンジン出力形式）
@@ -62,10 +62,11 @@ export function normalizeEvalToSentePerspective(
     const needsSignFlip = !evalData.normalized;
     const isSenteMove = sideToMove !== undefined ? sideToMove === "gote" : ply % 2 !== 0;
     const sign = needsSignFlip && isSenteMove ? -1 : 1;
+    const scoreMate = evalData.scoreMate ?? undefined;
 
     return {
         evalCp: evalData.scoreCp != null ? evalData.scoreCp * sign : undefined,
-        evalMate: evalData.scoreMate != null ? evalData.scoreMate * sign : undefined,
+        evalMate: needsSignFlip ? normalizeEngineMateScore(scoreMate, sign) : scoreMate,
     };
 }
 

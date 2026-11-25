@@ -77,7 +77,6 @@ describe("kifuEvalToStudyScore", () => {
         expect(kifuEvalToStudyScore(undefined, "sente")).toBeNull();
         expect(kifuEvalToStudyScore({}, "sente")).toBeNull();
         expect(kifuEvalToStudyScore({ scoreCp: Number.NaN }, "sente")).toBeNull();
-        expect(kifuEvalToStudyScore({ scoreMate: 0, normalized: true }, "sente")).toBeNull();
         expect(kifuEvalToStudyScore({ scoreCp: 0 }, "gote")).toEqual({ kind: "cp", value: 0 });
     });
 });
@@ -104,6 +103,8 @@ describe("studyScoreToKifuEval", () => {
             { kind: "cp", value: 321 },
             { kind: "mate", winner: "sente", plies: 11 },
             { kind: "mate", winner: "gote", plies: null },
+            { kind: "mate", winner: "sente", plies: 0 },
+            { kind: "mate", winner: "gote", plies: 0 },
         ] as const;
         for (const score of scores) {
             for (const side of ["sente", "gote"] as const) {
@@ -135,6 +136,7 @@ describe("既存 API の評価値との変換", () => {
             value: 250,
         });
         expect(legacyEvalToStudyScore({ evalCp: null, evalMate: null })).toBeNull();
+        expect(legacyEvalToStudyScore({ evalMate: 0 })).toBeNull();
     });
 
     it("保存用の値を既存 API の表現に戻す", () => {

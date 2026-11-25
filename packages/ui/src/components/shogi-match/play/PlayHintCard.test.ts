@@ -22,13 +22,13 @@ describe("describeEval（ヒントの評価値を、手番の人から見た言�
         expect(describeEval({ evalCp: -3000 }, "sente").text).toBe("敗勢");
     });
 
-    it("詰みは評価値より優先して、どちらの詰みかを書く", () => {
+    it("mate はどちらの手番でも同じスコアを表示する", () => {
         expect(describeEval({ evalMate: 5, evalCp: 100 }, "sente")).toEqual({
-            text: "詰みがあります",
+            text: "mate 5",
             tone: "good",
         });
         expect(describeEval({ evalMate: 5 }, "gote")).toEqual({
-            text: "詰まされそうです",
+            text: "mate 5",
             tone: "bad",
         });
     });

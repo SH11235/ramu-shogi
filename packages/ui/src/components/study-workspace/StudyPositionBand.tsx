@@ -52,9 +52,9 @@ export function StudyPositionBand({
             <output
                 aria-label="いまの局面"
                 aria-live="off"
-                className="flex min-w-0 flex-1 items-center gap-1.5 pl-2.5 pr-2"
+                className="flex min-w-0 flex-1 items-center gap-1.5 pl-2.5 pr-2 max-[359px]:gap-1 max-[359px]:pl-2"
             >
-                <span className="shrink-0 tabular-nums text-muted-foreground">
+                <span className="shrink-0 tabular-nums text-muted-foreground max-[359px]:text-xs">
                     {ply === 0 ? "開始局面" : `${ply}手目`}
                 </span>
                 {/* 移動元（「(83)」）は省く（盤で直前の手は分かり、狭い画面で手そのものを切らさないため）。 */}
@@ -63,7 +63,7 @@ export function StudyPositionBand({
                         {moveLabel.replace(/\(\d\d\)$/, "")}
                     </span>
                 )}
-                <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                <span className="ml-auto flex shrink-0 items-center gap-1.5 max-[359px]:gap-1">
                     {/* 棋譜の欄と同じ 1 文字の印にする（狭い画面で手の表記を切らさないため）。 */}
                     {kind && (
                         <span
@@ -80,7 +80,7 @@ export function StudyPositionBand({
                     )}
                     <span
                         className={cn(
-                            "min-w-[5ch] text-right font-mono tabular-nums",
+                            "min-w-[5ch] whitespace-nowrap text-right font-mono tabular-nums max-[359px]:text-xs",
                             scoreText === ""
                                 ? "text-muted-foreground"
                                 : side === "sente"
@@ -99,9 +99,12 @@ export function StudyPositionBand({
                 // いる間も透明にして幅を取る。
                 <label
                     htmlFor={switchId}
-                    className="flex h-full shrink-0 cursor-pointer items-center gap-1.5 border-l border-wafuu-border pl-2 pr-2.5"
+                    className="flex h-full shrink-0 cursor-pointer items-center gap-1.5 border-l border-wafuu-border pl-2 pr-2.5 max-[359px]:gap-1 max-[359px]:px-1.5"
                 >
-                    <RamRunningIcon dotSize={1} className={cn(!reading && "invisible")} />
+                    <RamRunningIcon
+                        dotSize={1}
+                        className={cn("max-[359px]:hidden", !reading && "invisible")}
+                    />
                     <span className="text-xs font-medium text-wafuu-sumi">自動で読む</span>
                     <Switch
                         id={switchId}

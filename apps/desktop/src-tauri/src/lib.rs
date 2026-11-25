@@ -301,15 +301,18 @@ fn emit_event(window: &Window, event: EngineEvent) {
     }
 }
 
+fn mate_score(value: Value) -> Option<i32> {
+    (value.is_mate_score() && value.raw().unsigned_abs() < Value::INFINITE.raw() as u32).then(
+        || {
+            let plies = value.mate_ply();
+            if value.is_loss() { -plies } else { plies }
+        },
+    )
+}
+
 fn info_event(info: &SearchInfo) -> EngineEvent {
-    let (score_cp, score_mate) =
-        if info.score.is_mate_score() && info.score.raw().abs() < Value::INFINITE.raw() {
-            let mate = info.score.mate_ply();
-            let signed = if info.score.is_loss() { -mate } else { mate };
-            (None, Some(signed))
-        } else {
-            (Some(info.score.raw()), None)
-        };
+    let score_mate = mate_score(info.score);
+    let score_cp = score_mate.is_none().then(|| info.score.raw());
 
     let pv = if info.pv.is_empty() {
         None

@@ -8,6 +8,7 @@
  * resume 経路では `resumeState.lastSfen` を盤面表示の起点として使用する。
  */
 
+import { formatEval } from "@shogi/ui";
 import { Button } from "@shogi/ui/components/button";
 import { Spinner } from "@shogi/ui/components/spinner";
 import type { ReactElement } from "react";
@@ -285,12 +286,7 @@ function ErrorView({
 // ─── Display Components ───
 
 function SearchInfoDisplay({ info }: { info: CsaSearchInfo }): ReactElement {
-    const score =
-        info.score_mate != null
-            ? `詰み ${info.score_mate > 0 ? "+" : ""}${info.score_mate}手`
-            : info.score_cp != null
-              ? `${info.score_cp > 0 ? "+" : ""}${info.score_cp}`
-              : "-";
+    const score = formatEval(info.score_cp ?? undefined, info.score_mate ?? undefined) || "-";
 
     return (
         <div className="bg-muted/20 rounded-lg p-3 text-xs space-y-1">

@@ -2,6 +2,7 @@ import type { Player } from "@shogi/app-core";
 import type { EngineInfoEvent } from "@shogi/engine-client";
 import type { ReactElement } from "react";
 import { useState } from "react";
+import { formatEval, toEngineSearchSummary } from "../utils/kifFormat";
 import { BottomSheet } from "./BottomSheet";
 
 interface SearchInfoPanelProps {
@@ -18,18 +19,13 @@ const formatCount = (value: number | undefined): string => {
     return String(value);
 };
 
-const formatScore = (info: EngineInfoEvent): string => {
-    if (info.scoreMate !== undefined) return `詰 ${info.scoreMate}`;
-    if (info.scoreCp !== undefined) return `${info.scoreCp >= 0 ? "+" : ""}${info.scoreCp}`;
-    return "-";
-};
-
 export function SearchInfoPanel({
     side,
     info,
     isMobile = false,
 }: SearchInfoPanelProps): ReactElement {
     const [detailsOpen, setDetailsOpen] = useState(false);
+    const { scoreCp, scoreMate } = toEngineSearchSummary(info, side);
     const depth =
         info.depth === undefined
             ? "-"
@@ -41,7 +37,7 @@ export function SearchInfoPanel({
             <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono tabular-nums">
                 <span>{side === "sente" ? "▲" : "△"} 思考中</span>
                 <span>深さ {depth}</span>
-                <span>評価 {formatScore(info)}</span>
+                <span>評価 {formatEval(scoreCp, scoreMate) || "-"}</span>
                 <span>nodes {formatCount(info.nodes)}</span>
                 <span>NPS {formatCount(info.nps)}</span>
                 <span>

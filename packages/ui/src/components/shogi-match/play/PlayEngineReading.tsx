@@ -25,6 +25,7 @@ import {
     convertPvToDisplay,
     formatEval,
     getEvalTooltipInfo,
+    mateScoreSide,
     toEngineSearchSummary,
 } from "../utils/kifFormat";
 import { formatNodeCount } from "../utils/searchLimits";
@@ -118,13 +119,14 @@ function ReadingDetail({
     reading: Reading;
     reveal: boolean;
 }): ReactElement {
-    const hasEval = reading.scoreCp !== undefined || reading.scoreMate !== undefined;
+    const evalText = formatEval(reading.scoreCp, reading.scoreMate);
+    const evalDescription = getEvalTooltipInfo(reading.scoreCp, reading.scoreMate).description;
     const pv = reveal ? pvText(reading) : "";
     const label = "w-14 shrink-0 text-xs text-wafuu-sumi-light";
     return (
         <div className="flex flex-col gap-2.5 text-sm text-wafuu-sumi">
             {title && <p className="font-semibold">{title}</p>}
-            {reveal && hasEval && (
+            {reveal && evalText && (
                 <div className="flex items-baseline gap-3">
                     <span className={label}>評価値</span>
                     <span
@@ -133,11 +135,11 @@ function ReadingDetail({
                             evalColor(reading.side),
                         )}
                     >
-                        {formatEval(reading.scoreCp, reading.scoreMate)}
+                        {evalText}
                     </span>
-                    <span className="text-xs text-wafuu-sumi-light">
-                        {getEvalTooltipInfo(reading.scoreCp, reading.scoreMate).description}
-                    </span>
+                    {evalDescription !== evalText && (
+                        <span className="text-xs text-wafuu-sumi-light">{evalDescription}</span>
+                    )}
                 </div>
             )}
             {reveal && (
@@ -393,7 +395,9 @@ export function PlayGameReadingSummary({ className }: { className?: string }): R
         if (!search) return [];
         const value =
             search.scoreMate !== undefined
-                ? Math.sign(search.scoreMate) * GRAPH_LIMIT
+                ? mateScoreSide(search.scoreMate) === "sente"
+                    ? GRAPH_LIMIT
+                    : -GRAPH_LIMIT
                 : search.scoreCp !== undefined
                   ? Math.max(-GRAPH_LIMIT, Math.min(GRAPH_LIMIT, search.scoreCp))
                   : null;

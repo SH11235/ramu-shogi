@@ -1,4 +1,5 @@
 import type { EngineControllerEvent } from "@shogi/app-controller";
+import { formatMateScore } from "../utils/kifFormat";
 
 export function formatEngineEventLog(log: EngineControllerEvent): string {
     const labelBase = log.side ? (log.side === "sente" ? "S" : "G") : "Analysis";
@@ -12,7 +13,9 @@ export function formatEngineEventLog(log: EngineControllerEvent): string {
         const parts: string[] = [`[${label}] info`];
         if (event.depth !== undefined) parts.push(`depth ${event.depth}`);
         if (event.seldepth !== undefined) parts.push(`seldepth ${event.seldepth}`);
-        if (event.scoreCp !== undefined) parts.push(`score cp ${event.scoreCp}`);
+        const mate = formatMateScore(event.scoreMate);
+        if (mate) parts.push(`score ${mate}`);
+        else if (event.scoreCp !== undefined) parts.push(`score cp ${event.scoreCp}`);
         if (event.nodes !== undefined) parts.push(`nodes ${event.nodes}`);
         if (event.nps !== undefined) parts.push(`nps ${event.nps}`);
         if (event.pv && event.pv.length > 0) parts.push(`pv ${event.pv.join(" ")}`);

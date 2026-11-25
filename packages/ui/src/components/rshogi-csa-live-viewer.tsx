@@ -51,7 +51,7 @@ import {
 import { ShogiMatch } from "./shogi-match";
 import type { ReviewMoveEval } from "./shogi-match/hooks/useKifuImportExport";
 import type { EngineOption } from "./shogi-match/types";
-import { MATE_WITHOUT_PLY } from "./shogi-match/utils/kifFormat";
+import { formatEval, MATE_WITHOUT_PLY } from "./shogi-match/utils/kifFormat";
 import { csaAnnotationsToMoveData } from "./shogi-match/utils/kifuImport";
 
 interface RshogiCsaLiveViewerProps {
@@ -189,12 +189,10 @@ const MATE_EVAL_SENTINEL = CSA_MATE_EVAL_THRESHOLD;
 
 /**
  * 評価値 (その手番自身の視点に直した値。`+` = その手番が有利) を表示文字列にする。
- * ±100000 の詰みセンチネルは数値でなく詰み表記にする。
  */
 export function formatOwnEval(ownCp: number): string {
-    if (ownCp >= MATE_EVAL_SENTINEL) return "詰み";
-    if (ownCp <= -MATE_EVAL_SENTINEL) return "詰まされ";
-    return ownCp >= 0 ? `+${ownCp}` : String(ownCp);
+    const { evalCp, evalMate } = wireEvalToReviewEval(ownCp);
+    return formatEval(evalCp, evalMate);
 }
 
 /** 各手番エンジンの最新自己 eval (wire=先手視点) と最新 PV を保持する部分状態。 */
@@ -249,7 +247,7 @@ export function summarizeMoveDetails(
     return { ...evalState, lastMoveElapsedSec: last?.elapsedSec };
 }
 
-/** wire eval (先手視点) の詰みセンチネル ±100000 を手数不明の mate に変換する。 */
+/** CSA のセンチネル ±100000 を手数不明の mate に変換する。 */
 function wireEvalToReviewEval(
     evalCp: number | undefined,
 ): Pick<ReviewMoveEval, "evalCp" | "evalMate"> {

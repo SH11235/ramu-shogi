@@ -63,7 +63,10 @@ async fn run_csa_session_task(
         }
     });
 
-    let sink = TauriEventSink::new(tx.clone());
+    let sink = TauriEventSink::new(
+        tx.clone(),
+        config.engine.engine_type == CsaEngineType::Builtin,
+    );
     let result = run_csa_session(
         config,
         engine_path,

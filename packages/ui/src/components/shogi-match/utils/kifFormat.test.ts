@@ -223,59 +223,25 @@ describe("formatEval", () => {
         expect(formatEval(0)).toBe("+0");
     });
 
-    it("先手勝ちの詰みをフォーマットする（evalMate > 0）", () => {
-        // 先手視点に正規化済み: evalMate > 0 = 先手の勝ち
-        // 符号式: +詰N
-        expect(formatEval(undefined, 3)).toBe("+詰3");
-        expect(formatEval(undefined, 1)).toBe("+詰1");
-        // ply は無視される（後方互換性のため引数は残るが使用しない）
-        expect(formatEval(undefined, 3, 1)).toBe("+詰3");
-        expect(formatEval(undefined, 3, 2)).toBe("+詰3");
-    });
-
-    it("後手勝ちの詰みをフォーマットする（evalMate < 0）", () => {
-        // 先手視点に正規化済み: evalMate < 0 = 後手の勝ち
-        // 符号式: -詰N
-        expect(formatEval(undefined, -3)).toBe("-詰3");
-        expect(formatEval(undefined, -1)).toBe("-詰1");
-        // ply は無視される
-        expect(formatEval(undefined, -3, 1)).toBe("-詰3");
-        expect(formatEval(undefined, -3, 2)).toBe("-詰3");
-    });
-
-    it("手数不明の詰みは手数を捏造せずにフォーマットする", () => {
-        expect(formatEval(undefined, MATE_WITHOUT_PLY)).toBe("+詰");
-        expect(formatEval(undefined, -MATE_WITHOUT_PLY)).toBe("-詰");
-        expect(getEvalTooltipInfo(undefined, MATE_WITHOUT_PLY)).toMatchObject({
-            description: "☗先手の勝ち",
-            detail: "手数不明の詰み",
-            advantage: "sente",
-        });
-        expect(getEvalTooltipInfo(undefined, -MATE_WITHOUT_PLY)).toMatchObject({
-            description: "☖後手の勝ち",
-            detail: "手数不明の詰み",
-            advantage: "gote",
+    it.each([
+        [7, "mate 7", "sente"],
+        [-11, "mate -11", "gote"],
+        [0, "mate 0", "sente"],
+        [-0, "mate -0", "gote"],
+        [MATE_WITHOUT_PLY, "mate +", "sente"],
+        [-MATE_WITHOUT_PLY, "mate -", "gote"],
+    ] as const)("mate %s は評価値とツールチップで同じ表記にする", (score, text, advantage) => {
+        expect(formatEval(100, score, 2)).toBe(text);
+        expect(getEvalTooltipInfo(100, score, 2, 20)).toEqual({
+            description: text,
+            detail: "",
+            advantage,
+            depthText: "深さ20",
         });
     });
 
-    it("詰みが評価値より優先される", () => {
-        expect(formatEval(100, 5)).toBe("+詰5");
-        expect(formatEval(-100, -3)).toBe("-詰3");
-    });
-
-    it("実 mate は従来どおり手数付きで表示する", () => {
-        expect(formatEval(undefined, 7)).toBe("+詰7");
-        expect(formatEval(undefined, -11)).toBe("-詰11");
-        expect(getEvalTooltipInfo(undefined, 7)).toMatchObject({
-            description: "☗先手の勝ち",
-            detail: "7手詰み",
-            advantage: "sente",
-        });
-        expect(getEvalTooltipInfo(undefined, -11)).toMatchObject({
-            description: "☖後手の勝ち",
-            detail: "11手詰み",
-            advantage: "gote",
-        });
+    it("無効な mate 値は cp にフォールバックする", () => {
+        expect(formatEval(50, Number.NaN)).toBe("+50");
     });
 
     it("undefined の場合は空文字を返す", () => {
