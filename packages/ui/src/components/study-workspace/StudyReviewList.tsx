@@ -2,13 +2,23 @@ import type { KifuTree, StudyDocument, StudyHighlight, StudyHighlightKind } from
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
 import { cardVariants } from "../card";
-import { STUDY_KIND_BADGE } from "./StudyPositionBand";
 import {
     pickStudyPositionResult,
     studyBestCandidate,
     studyFirstMoveLabel,
     studyMoveLabel,
 } from "./studyView";
+
+const STUDY_KIND_BADGE: Record<StudyHighlightKind, { label: string; className: string }> = {
+    blunder: {
+        label: "悪手",
+        className: "border-study-blunder-border bg-study-blunder-bg text-study-blunder",
+    },
+    dubious: {
+        label: "疑問手",
+        className: "border-study-dubious-border bg-study-dubious-bg text-study-dubious",
+    },
+};
 
 export interface StudyReviewItem {
     nodeId: string;

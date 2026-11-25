@@ -1100,10 +1100,9 @@ export function StudyWorkspaceView({
         />
     );
     const liveHere = analysis.live?.nodeId === currentNodeId ? analysis.live : undefined;
-    // 帯の評価値は、保存済みのいちばん深い読みと、それより深くなった読んでいる途中の値のうち深いほう
-    // （読み直しの始めの浅い値で、保存済みの深い値を上書きして見せない）。
-    // 直近に読んだ結果（`deeperResult`）が、前に保存したより深い結果より浅いこともあるので、同じ AI で
-    // 深く読んだ結果のうち最も深いものも比べる。
+    // 帯の最善手・評価値は、この局面を読んでいる間はその途中の値（読みに連れて動かす。浅い間は深さで
+    // 分かる）、読んでいなければ保存済みのいちばん深い読み。直近に読んだ結果（`deeperResult`）が、
+    // 前に保存したより深い結果より浅いこともあるので、同じ AI で深く読んだ結果のうち最も深いものも比べる。
     const savedResult = [
         insights.deeperResult?.result,
         insights.positionResult?.result,
@@ -1112,11 +1111,8 @@ export function StudyWorkspaceView({
         (best, result) => (result && (!best || result.depth > best.depth) ? result : best),
         null,
     );
-    const bandResult =
-        liveHere?.preview && (savedResult === null || liveHere.preview.depth > savedResult.depth)
-            ? liveHere.preview
-            : savedResult;
-    const bandScore = bandResult ? (studyBestCandidate(bandResult)?.score ?? null) : null;
+    const bandResult = liveHere?.preview ?? savedResult;
+    const bandBest = bandResult ? studyBestCandidate(bandResult) : null;
     // 帯にラムを出すのは自動で読む読みだけ（パスして解析の読みは、止める操作のある候補手のタブで知らせる）。
     const bandShowsReading = autoAnalyze && liveHere !== undefined;
     const candidatesPanel = (
@@ -1384,10 +1380,13 @@ export function StudyWorkspaceView({
                             onBackToMainLine={nav.onMainLine ? null : nav.backToMainLine}
                             positionBand={
                                 <StudyPositionBand
-                                    ply={currentIndex}
-                                    moveLabel={studyMoveLabel(tree, currentNodeId)}
-                                    kind={highlightKinds.get(currentNodeId)}
-                                    score={bandScore}
+                                    bestMove={
+                                        bandBest
+                                            ? studyFirstMoveLabel(currentNode, bandBest.pv)
+                                            : null
+                                    }
+                                    score={bandBest?.score ?? null}
+                                    depth={bandBest ? (bandResult?.depth ?? null) : null}
                                     reading={bandShowsReading}
                                     autoAnalyze={
                                         editingDisabled
