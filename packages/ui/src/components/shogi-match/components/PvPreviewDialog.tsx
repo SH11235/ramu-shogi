@@ -26,7 +26,7 @@ interface PvPreviewDialogProps {
     ply: number;
     /** 評価値（センチポーン） */
     evalCp?: number;
-    /** 詰み手数 */
+    /** 通常探索の mate スコア */
     evalMate?: number;
     /** マス内座標表示形式 */
     squareNotation?: SquareNotation;
@@ -190,19 +190,13 @@ export function PvPreviewDialog({
         }
     }, [positions.length]);
 
-    // 評価値の表示フォーマット
-    const evalText = (() => {
-        if (evalMate === MATE_WITHOUT_PLY) return "先手が詰ませる";
-        if (evalMate === -MATE_WITHOUT_PLY) return "後手が詰ませる";
-        if (evalMate !== undefined && Number.isInteger(evalMate)) {
-            return evalMate > 0 ? `詰み${evalMate}手` : `被詰み${Math.abs(evalMate)}手`;
-        }
-        if (evalCp !== undefined && Number.isFinite(evalCp)) {
-            const sign = evalCp >= 0 ? "+" : "";
-            return `${sign}${evalCp}`;
-        }
-        return null;
-    })();
+    const hasMateScore =
+        evalMate !== undefined &&
+        (Number.isInteger(evalMate) || Math.abs(evalMate) === MATE_WITHOUT_PLY);
+    const evalText =
+        !hasMateScore && evalCp !== undefined && Number.isFinite(evalCp)
+            ? `${evalCp >= 0 ? "+" : ""}${evalCp}`
+            : null;
 
     return (
         <Dialog defaultOpen onOpenChange={(isOpen) => !isOpen && onClose()}>
