@@ -197,11 +197,6 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         supportsPassRights = true,
         materialFallback = false,
     } = options;
-    const supportsPassRightsRef = useRef(supportsPassRights);
-    useEffect(() => {
-        supportsPassRightsRef.current = supportsPassRights;
-    }, [supportsPassRights]);
-
     const [isRunning, setIsRunning] = useState(false);
     const [progress, setProgress] = useState<BatchAnalysisProgress | null>(null);
 
@@ -224,6 +219,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
          */
         runId: number;
         finishedRunId?: number;
+        releaseWorkersAfterRun: boolean;
         /** ワーカーの初期化・作り直し・破棄を順番に行うための列（同時に走らせない）。 */
         initChain: Promise<void>;
         initialized: boolean;
@@ -244,6 +240,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         total: 0,
         inProgress: new Set(),
         runId: 0,
+        releaseWorkersAfterRun: false,
         initChain: Promise.resolve(),
         initialized: false,
         currentNnueId: undefined,
@@ -256,12 +253,11 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         onProgress,
         onResult,
         onComplete,
-        onError,
         onPositionAnalyzed,
     });
     useEffect(() => {
-        callbacksRef.current = { onProgress, onResult, onComplete, onError, onPositionAnalyzed };
-    }, [onProgress, onResult, onComplete, onError, onPositionAnalyzed]);
+        callbacksRef.current = { onProgress, onResult, onComplete, onPositionAnalyzed };
+    }, [onProgress, onResult, onComplete, onPositionAnalyzed]);
 
     // 進行中の探索の結果をまとめて通知する（1 回の探索につき 1 回だけ）
     const finishRun = (worker: EngineWorker, completion: "completed" | "aborted") => {
@@ -338,7 +334,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
             if (!studyLineFitsPassLimit(job.sfen, job.moves)) {
                 throw new Error("パスが多すぎる手順は解析できません");
             }
-            if (!supportsPassRightsRef.current && job.moves.some((move) => isStudyPassMove(move))) {
+            if (!supportsPassRights && job.moves.some((move) => isStudyPassMove(move))) {
                 throw new Error("この解析エンジンは、パスを含む局面を解析できません");
             }
             // パスを含む手順は、パス権を有効にしないと読み込めない（回数の決め方は
@@ -417,7 +413,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
                 }
 
                 if (event.type === "error") {
-                    callbacksRef.current.onError?.(job.ply, new Error(event.message));
+                    onError?.(job.ply, new Error(event.message));
                     if (worker.run === run) worker.run = null;
                     finished = true;
                     worker.handle = null;
@@ -461,10 +457,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
             if (!isCurrent() || worker.currentPly === null) return;
             worker.subscription?.();
             worker.subscription = null;
-            callbacksRef.current.onError?.(
-                job.ply,
-                error instanceof Error ? error : new Error(String(error)),
-            );
+            onError?.(job.ply, error instanceof Error ? error : new Error(String(error)));
             worker.run = null;
             worker.handle = null;
             worker.currentPly = null;
@@ -568,7 +561,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         // 初期化に成功したワーカーが1つもない場合はエラー
         if (workers.length === 0) {
             if (state.runId === runId) {
-                callbacksRef.current.onError?.(
+                onError?.(
                     0,
                     new Error("No workers could be initialized", { cause: lastInitError }),
                 );
@@ -611,6 +604,8 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         // 変わったことを見て自分で止まる。
         state.runId += 1;
         const runId = state.runId;
+        const releasePreviousWorkers = state.releaseWorkersAfterRun;
+        state.releaseWorkersAfterRun = releaseWorkersAfterRun;
         const isCurrent = () => state.runId === runId;
 
         // 状態をリセット（レイヤーは start の時点のものをジョブごとに持たせる）
@@ -632,6 +627,10 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
             const handle = worker.handle;
             worker.handle = null;
             if (handle) void enqueueStop(worker, handle);
+        }
+
+        if (releasePreviousWorkers) {
+            state.initChain = state.initChain.then(disposeWorkers, disposeWorkers);
         }
 
         // start()で渡されたnnueIdを優先、なければoptions.nnueIdを使用
@@ -726,7 +725,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
             if (handle) await enqueueStop(worker, handle);
         });
 
-        if (dispose || releaseWorkersAfterRun) {
+        if (dispose || state.releaseWorkersAfterRun) {
             state.initChain = state.initChain.then(disposeWorkers, disposeWorkers);
             stopPromises.push(state.initChain);
         }

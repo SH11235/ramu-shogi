@@ -614,17 +614,13 @@ fn apply_engine_option(
                 inner.options.num_threads = v.max(1);
             }
         }
-        "FV_SCALE" => {
-            if value_as_i32(value).is_some() {
-                set_fv_scale_override(parse_fv_scale(value)?);
-                inner.clear_search_cache();
-            }
+        "FV_SCALE" if value_as_i32(value).is_some() => {
+            set_fv_scale_override(parse_fv_scale(value)?);
+            inner.clear_search_cache();
         }
-        "MaterialLevel" => {
-            if value_as_i32(value).is_some() {
-                rshogi_core::eval::set_material_level(parse_material_level(value)?);
-                inner.clear_search_cache();
-            }
+        "MaterialLevel" if value_as_i32(value).is_some() => {
+            rshogi_core::eval::set_material_level(parse_material_level(value)?);
+            inner.clear_search_cache();
         }
         _ => {
             // Unknown options are ignored for now.
