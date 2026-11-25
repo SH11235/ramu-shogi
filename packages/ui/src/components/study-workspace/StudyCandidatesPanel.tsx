@@ -27,7 +27,7 @@ import { RamRunningIcon } from "../ram-running-icon";
 import { convertPvToDisplay } from "../shogi-match/utils/kifFormat";
 import { Switch } from "../switch";
 import { StudyIconButton } from "./StudyIconButton";
-import { AddBranchIcon, ClockPlusIcon, PlayIcon } from "./StudyIcons";
+import { AddBranchIcon, PlayIcon } from "./StudyIcons";
 import {
     COMPACT_BUTTON_CLASS,
     StudyMateControl,
@@ -131,7 +131,6 @@ interface StudyCandidatesPanelProps {
     isPreparing: boolean;
     /** この局面を深く解析している途中経過。別の局面を解析中・解析していなければ undefined。 */
     live: StudyLiveSearch | undefined;
-    onStartDeep?: () => void;
     /**
      * 「自動で読む」。`reading` はスイッチの行に出す状態（読んでいる局面など）で、無ければ null。
      * 渡さなければ出さない（編集できないとき）。
@@ -141,6 +140,8 @@ interface StudyCandidatesPanelProps {
         onChange: (enabled: boolean) => void;
         reading: string | null;
     };
+    /** 「自動で読む」のスイッチを欄の外（局面の帯）に置くので、ここには出さない。 */
+    autoSwitchElsewhere?: boolean;
     /** 読んでいる途中は、前回の読みを 1 行にたたむ（画面の狭いスマートフォン）。 */
     collapsePreviousWhileReading?: boolean;
     /**
@@ -153,9 +154,6 @@ interface StudyCandidatesPanelProps {
      * （悪手でも疑問手でもないなら null）。
      */
     revision?: { from: StudyHighlightKind | null; to: StudyHighlightKind | null } | null;
-    /** この局面で止めた「深く解析」を、続きから読める。 */
-    canContinueDeep?: boolean;
-    onContinueDeep?: () => void;
     onCancel: () => void;
     onPreviewPv: (request: StudyPvRequest) => void;
     onAddPvAsVariation?: (request: StudyPvRequest) => void;
@@ -463,13 +461,11 @@ export function StudyCandidatesPanel({
     analysisMode,
     isPreparing,
     live,
-    onStartDeep,
     autoAnalyze,
+    autoSwitchElsewhere = false,
     collapsePreviousWhileReading = false,
     onStartDeepAfterPass,
     revision = null,
-    canContinueDeep = false,
-    onContinueDeep,
     onCancel,
     onPreviewPv,
     onAddPvAsVariation,
@@ -496,7 +492,7 @@ export function StudyCandidatesPanel({
     const controls = (
         <>
             {/* 入れたままにする設定なので、押すと始まる操作ボタンの列とは段を分ける。 */}
-            {autoAnalyze && (
+            {autoAnalyze && !autoSwitchElsewhere && (
                 <div className="flex items-center gap-3 rounded-lg border border-wafuu-border bg-wafuu-washi px-3 py-2">
                     <div className="flex min-w-0 flex-1 items-center gap-2">
                         <label
@@ -536,60 +532,6 @@ export function StudyCandidatesPanel({
             )}
             <div className="flex flex-col gap-2">
                 <div className="flex flex-wrap items-center gap-1.5">
-                    {/* 深く解析・止める・続けて読むは同じ枠で入れ替え、枠の幅をいちばん長い文言に合わせる
-                        （切り替わるたびに隣のボタンが動かないように）。深さ・残りの時間は途中の候補の枠に出す。 */}
-                    {/* 自動で読む間は同じことをしているので出さない。 */}
-                    {onStartDeep && (
-                        <div className="grid" hidden={autoOn}>
-                            <span
-                                aria-hidden="true"
-                                className={cn(
-                                    COMPACT_BUTTON_CLASS,
-                                    "invisible col-start-1 row-start-1 flex items-center border border-transparent font-medium",
-                                )}
-                            >
-                                <ClockPlusIcon />
-                                続けて読む
-                            </span>
-                            <div className="col-start-1 row-start-1 flex">
-                                {isDeepHere ? (
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        className={cn(COMPACT_BUTTON_CLASS, "w-full")}
-                                        onClick={onCancel}
-                                    >
-                                        止める
-                                    </Button>
-                                ) : canContinueDeep && onContinueDeep ? (
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        className={cn(COMPACT_BUTTON_CLASS, "w-full")}
-                                        onClick={onContinueDeep}
-                                        disabled={isPreparing || analysisMode !== null}
-                                    >
-                                        <ClockPlusIcon />
-                                        続けて読む
-                                    </Button>
-                                ) : (
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        className={cn(COMPACT_BUTTON_CLASS, "w-full")}
-                                        aria-label="この局面を深く解析"
-                                        onClick={onStartDeep}
-                                        disabled={startDisabled}
-                                    >
-                                        深く解析
-                                    </Button>
-                                )}
-                            </div>
-                        </div>
-                    )}
                     {onStartDeepAfterPass && (
                         <Button
                             type="button"
@@ -650,9 +592,10 @@ export function StudyCandidatesPanel({
             {/* 読んでいる途中の候補。満足したら「止める」で、その時点の結果を残せる。 */}
             {live && (
                 <div className="flex flex-col gap-1 rounded-lg bg-wafuu-washi px-2 py-2">
-                    {/* 自動で読む間はラムをスイッチの行に出す（同じ読みに 2 つ動かさない）。 */}
+                    {/* 自動で読む間はラムをスイッチの行に、スイッチを帯に置くときは帯に出す（同じ読みに 2 つ
+                        動かさない）。 */}
                     <div className="flex min-h-7 items-center gap-1.5 px-1">
-                        {!autoOn && <RamRunningIcon />}
+                        {!autoOn && !autoSwitchElsewhere && <RamRunningIcon />}
                         {/* 深さ・秒数は 1 秒ごとに変わるので、読み上げの領域にはしない（読み続ける間ずっと
                             読み上げられてしまう）。読んでいることは、ボタン・スイッチの状態で伝わる。 */}
                         <p className="text-xs text-muted-foreground">
@@ -669,6 +612,18 @@ export function StudyCandidatesPanel({
                                 </span>
                             )}
                         </p>
+                        {/* 自動で読むでない読み（パスして解析）は、ここで止める。自動で読む間はスイッチで止める。 */}
+                        {!autoOn && (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className={cn(COMPACT_BUTTON_CLASS, "ml-auto")}
+                                onClick={onCancel}
+                            >
+                                止める
+                            </Button>
+                        )}
                     </div>
                     {/* 保存は「区切りまで読み切った」「深い」の順で勝つ方を残すので、読み直しても黙って
                         前の結果が残ったように見えないよう、いつ置き換わるかを添える。 */}

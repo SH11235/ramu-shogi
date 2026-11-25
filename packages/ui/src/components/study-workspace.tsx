@@ -102,6 +102,7 @@ import {
     chooseStudyDisplayLayer,
     countStudyLayerResults,
     type StudyStructureTree,
+    studyBestCandidate,
     studyFirstMoveLabel,
     studyMoveLabel,
     studyOriginLabel,
@@ -1094,6 +1095,15 @@ export function StudyWorkspaceView({
             className={isMobile ? "min-h-0 flex-1" : isWide ? "max-h-full" : "max-h-[26rem]"}
         />
     );
+    const liveHere = analysis.live?.nodeId === currentNodeId ? analysis.live : undefined;
+    // 帯の評価値は、保存済みのいちばん深い読みと、それより深くなった読んでいる途中の値のうち深いほう
+    // （読み直しの始めの浅い値で、保存済みの深い値を上書きして見せない）。
+    const savedResult = (insights.deeperResult ?? insights.positionResult)?.result ?? null;
+    const bandResult =
+        liveHere?.preview && (savedResult === null || liveHere.preview.depth > savedResult.depth)
+            ? liveHere.preview
+            : savedResult;
+    const bandScore = bandResult ? (studyBestCandidate(bandResult)?.score ?? null) : null;
     const candidatesPanel = (
         <StudyCandidatesPanel
             node={currentNode}
@@ -1104,19 +1114,18 @@ export function StudyWorkspaceView({
             source={storedNode?.source ?? null}
             analysisMode={analysis.mode}
             isPreparing={analysis.isPreparing}
-            live={analysis.live?.nodeId === currentNodeId ? analysis.live : undefined}
-            onStartDeep={readOnly ? undefined : startDeep}
+            live={liveHere}
             autoAnalyze={
                 editingDisabled
                     ? undefined
                     : { enabled: autoAnalyze, onChange: changeAutoAnalyze, reading: autoReading }
             }
+            // スマートフォンではスイッチを局面の帯に置く（どの表示からでも止められるように）。
+            autoSwitchElsewhere={isMobile}
             collapsePreviousWhileReading={isMobile}
             controlsLast={isMobile}
             onStartDeepAfterPass={editingDisabled ? undefined : () => void startDeepAfterPass()}
             revision={insights.revision}
-            canContinueDeep={analysis.continuableDeepNodeId === currentNodeId}
-            onContinueDeep={continueDeep}
             onCancel={cancelAnalysis}
             onPreviewPv={previewPv}
             onAddPvAsVariation={readOnly ? undefined : editing.addPvAsVariation}
@@ -1336,7 +1345,9 @@ export function StudyWorkspaceView({
                             measure={mobileMeasure}
                             locked={locked}
                             moreMenu={moreMenu}
-                            isReading={isReading}
+                            // この局面の読みは帯にラムが出るので、タブには帯に出ない読み（全体の解析・
+                            // 詰み探索・別の局面の読み）だけを知らせる。
+                            isReading={isReading && liveHere === undefined}
                             saveStrip={
                                 readOnly ? (
                                     layerPicker
@@ -1358,10 +1369,20 @@ export function StudyWorkspaceView({
                             onBackToMainLine={nav.onMainLine ? null : nav.backToMainLine}
                             positionBand={
                                 <StudyPositionBand
-                                    node={currentNode}
                                     ply={currentIndex}
                                     moveLabel={studyMoveLabel(tree, currentNodeId)}
                                     kind={highlightKinds.get(currentNodeId)}
+                                    score={bandScore}
+                                    reading={liveHere !== undefined}
+                                    autoAnalyze={
+                                        editingDisabled
+                                            ? undefined
+                                            : {
+                                                  enabled: autoAnalyze,
+                                                  onChange: changeAutoAnalyze,
+                                                  status: autoReading,
+                                              }
+                                    }
                                 />
                             }
                             graphPanel={graphPanel}

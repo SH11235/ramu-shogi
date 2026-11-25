@@ -258,10 +258,9 @@ describe("StudyWorkspaceView", () => {
         const graph = screen.getByRole("region", { name: "評価値グラフ" });
         fireEvent.click(within(graph).getByRole("button", { name: "止める" }));
         expect(analysis.cancel).toHaveBeenCalledTimes(1);
-        // 解析中は「この局面を深く解析」を押せない。
+        // 解析中は「パスして解析」を押せない。
         expect(
-            (screen.getByRole("button", { name: "この局面を深く解析" }) as HTMLButtonElement)
-                .disabled,
+            (screen.getByRole("button", { name: "パスして解析" }) as HTMLButtonElement).disabled,
         ).toBe(true);
     });
 
@@ -386,22 +385,26 @@ describe("StudyWorkspaceView", () => {
     it("候補手の欄には解析と詰み探索のボタンだけを並べ、調べる前に詰みの見出しを出さない", () => {
         render(<Harness initialDoc={createTestStudy().doc} mate={createMate()} />);
         const candidates = screen.getByRole("region", { name: "候補手" });
-        within(candidates).getByRole("button", { name: "この局面を深く解析" });
+        // 局面を深く読むのは「自動で読む」のスイッチだけにし、1 回だけ読むボタンは出さない。
+        within(candidates).getByRole("switch", { name: /自動で読む/ });
+        expect(
+            within(candidates).queryByRole("button", { name: /深く解析|続けて読む/ }),
+        ).toBeNull();
+        within(candidates).getByRole("button", { name: "パスして解析" });
         within(candidates).getByRole("button", { name: "詰みを読む" });
         expect(within(candidates).queryByText(/詰めろ/)).toBeNull();
     });
 
-    it("詰み探索の間は全体の解析を始められず、深く解析を押すと詰み探索を止めて解析する", () => {
+    it("詰み探索の間は全体の解析を始められず、自動で読むを入れると詰み探索を止めて読む", async () => {
         const { doc, ids } = createTestStudy();
         const analysis = createAnalysis();
         const mate = createMate({ runningNodeId: ids[3] });
         render(<Harness initialDoc={doc} analysis={analysis} mate={mate} />);
         const full = within(graphRegion()).getByRole("button", { name: "全体を解析" });
         expect((full as HTMLButtonElement).disabled).toBe(true);
-        const candidates = screen.getByRole("region", { name: "候補手" });
-        fireEvent.click(within(candidates).getByRole("button", { name: "この局面を深く解析" }));
+        fireEvent.click(screen.getByRole("switch", { name: /自動で読む/ }));
+        await waitFor(() => expect(analysis.startDeep).toHaveBeenCalledWith(doc.tree.rootId));
         expect(mate.stop).toHaveBeenCalled();
-        expect(analysis.startDeep).toHaveBeenCalledWith(doc.tree.rootId);
     });
 
     it("詰めろの結果には、この局面に至った手を添える（開始局面では添えない）", () => {
@@ -1254,14 +1257,14 @@ describe("StudyWorkspaceView", () => {
         expect(screen.getByText("読み筋を変化として追加しました（2 手）")).toBeTruthy();
     });
 
-    it("「この局面を深く解析」は、いま見ている局面を解析する", () => {
+    it("自動で読むは、いま見ている局面を読む", async () => {
         const { doc, ids } = createTestStudy();
         const analysis = createAnalysis();
         render(<Harness initialDoc={doc} analysis={analysis} />);
 
         fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
-        fireEvent.click(screen.getByRole("button", { name: "この局面を深く解析" }));
-        expect(analysis.startDeep).toHaveBeenCalledWith(ids[1]);
+        fireEvent.click(screen.getByRole("switch", { name: /自動で読む/ }));
+        await waitFor(() => expect(analysis.startDeep).toHaveBeenCalledWith(ids[1]));
     });
 
     it("「パスして解析」は、パスを変化として足してその局面へ移り、そこを深く解析する", async () => {
@@ -1475,37 +1478,6 @@ describe("StudyWorkspaceView", () => {
         expect(panel.querySelector('[aria-hidden="true"].h-7')).toBeNull();
     });
 
-    it("別の局面を深く解析している間に深く解析を押すと、この局面に切り替える", () => {
-        const { doc, ids } = createTestStudy();
-        const analysis = createAnalysis({
-            mode: "deep",
-            live: {
-                nodeId: ids[3],
-                depth: 12,
-                startedAt: Date.now(),
-                budgetMs: 30_000,
-                preview: null,
-            },
-        });
-        render(<Harness initialDoc={doc} analysis={analysis} />);
-        const panel = screen.getByRole("region", { name: "候補手" });
-        fireEvent.click(within(panel).getByRole("button", { name: "この局面を深く解析" }));
-        expect(analysis.startDeep).toHaveBeenCalledWith(doc.tree.rootId);
-    });
-
-    it("深く解析を止めた局面では「続けて読む」を出し、ほかの局面では出さない", () => {
-        const { doc, ids } = createTestStudy();
-        const analysis = createAnalysis({ continuableDeepNodeId: ids[1] });
-        render(<Harness initialDoc={doc} analysis={analysis} />);
-
-        expect(screen.queryByRole("button", { name: "続けて読む" })).toBeNull();
-        fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
-        expect(screen.queryByRole("button", { name: "この局面を深く解析" })).toBeNull();
-        fireEvent.click(screen.getByRole("button", { name: "続けて読む" }));
-        expect(analysis.continueDeep).toHaveBeenCalledTimes(1);
-        expect(analysis.startDeep).not.toHaveBeenCalled();
-    });
-
     it("悪手の局面では、「この手の代わりに」の候補手が先に出る", () => {
         const { doc, ids } = createTestStudy([cp(30), cp(40), cp(20), cp(-900), cp(-880)]);
         // 3 手目（☗2六歩）の 1 手前の局面の最善は ☗6六歩、という結果にする。
@@ -1637,21 +1609,21 @@ describe("StudyWorkspaceView", () => {
             expect(shallow.textContent).toContain("☗6六歩(67)");
         });
 
-        it("いま「この局面を深く解析」で得た結果は、その局面の候補手の一覧になる", () => {
+        it("自動で読んで得た結果は、その局面の候補手の一覧になる", async () => {
             const { doc } = createTwoLayerStudy();
             const analysis = createAnalysis();
             render(
                 <Harness initialDoc={doc} analysis={analysis} initialDisplayLayerId={FAST_ID} />,
             );
             fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
-            fireEvent.click(screen.getByRole("button", { name: "この局面を深く解析" }));
+            fireEvent.click(screen.getByRole("switch", { name: /自動で読む/ }));
 
             const candidates = screen.getByRole("region", { name: "候補手" });
-            expect(candidates.textContent).toContain("深く解析・RAMU・1 秒");
+            await waitFor(() => expect(candidates.textContent).toContain("深く解析・RAMU・1 秒"));
             expect(within(candidates).getByText(/全体の解析（深さ/)).toBeTruthy();
         });
 
-        it("別の AI で深く解析した結果も、押した局面では必ず出す", () => {
+        it("別の AI で深く解析した結果も、自動で読んだ局面では必ず出す", async () => {
             const { doc, ids } = createTestStudy([cp(30), cp(40), cp(20), cp(-900), cp(-880)]);
             const OTHER_SPEC = buildStudyLayerSpec({
                 engine: { kind: "wasm", name: "rshogi", version: "0.8.1" },
@@ -1672,10 +1644,14 @@ describe("StudyWorkspaceView", () => {
             render(<Harness initialDoc={withOther} deepLayerId={otherId} />);
 
             const candidates = screen.getByRole("region", { name: "候補手" });
-            // 押す前は、別の AI の結果は出さない。
+            // 読む前は、別の AI の結果は出さない。
             expect(candidates.textContent).not.toContain("深く解析・");
-            fireEvent.click(screen.getByRole("button", { name: "この局面を深く解析" }));
-            expect(candidates.textContent).toContain("深く解析・簡易AI（駒得）・10 秒・深さ 30");
+            fireEvent.click(screen.getByRole("switch", { name: /自動で読む/ }));
+            await waitFor(() =>
+                expect(candidates.textContent).toContain(
+                    "深く解析・簡易AI（駒得）・10 秒・深さ 30",
+                ),
+            );
             expect(candidates.textContent).toContain("☗2六歩(27)");
         });
     });
@@ -2164,11 +2140,11 @@ describe("StudyWorkspaceView", () => {
             fireEvent.blur(title);
             // 再送の操作も出さない。
             expect(screen.queryByRole("button", { name: "もう一度保存する" })).toBeNull();
-            // 「残りを解析」は出さない。深く解析・コメントは、操作できない領域（inert）の中にある。
+            // 「残りを解析」は出さない。コメントは、操作できない領域（inert）の中にある。
             expect(screen.queryByRole("button", { name: /局面を解析/ })).toBeNull();
-            expect(
-                screen.getByRole("button", { name: "この局面を深く解析" }).closest("[inert]"),
-            ).toBeTruthy();
+            // 読む操作（自動で読む・パスして解析）は出さない。
+            expect(screen.queryByRole("switch", { name: /自動で読む/ })).toBeNull();
+            expect(screen.queryByRole("button", { name: "パスして解析" })).toBeNull();
             expect(commentTextbox().closest("[inert]")).toBeTruthy();
             // キーボードでも動かない。
             const before = currentMove();
@@ -2856,10 +2832,50 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         fireEvent.click(screen.getByRole("tab", { name: "グラフ" }));
         const review = screen.getByRole("region", { name: "見直す手" });
         fireEvent.click(within(review).getByRole("button", { name: /悪手/ }));
-        expect(band().textContent).toMatch(/2手目.*3四歩.*悪手/);
+        expect(band().textContent).toMatch(/2手目.*3四歩/);
+        within(band()).getByRole("img", { name: "悪手" });
 
         fireEvent.click(screen.getByRole("tab", { name: "棋譜" }));
-        expect(band().textContent).toMatch(/2手目.*3四歩.*悪手/);
+        expect(band().textContent).toMatch(/2手目.*3四歩/);
+        within(band()).getByRole("img", { name: "悪手" });
+    });
+
+    it("自動で読むのスイッチは局面の帯にあり、帯の値は保存済みの読みより深くなってから読んでいる値に替える", () => {
+        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+        const { doc } = createTestStudy([cp(120), cp(0), cp(0), cp(0), cp(0)]);
+        const live = (depth: number) => ({
+            nodeId: doc.tree.rootId,
+            depth,
+            startedAt: null,
+            budgetMs: 30_000,
+            preview: {
+                runId: "preview",
+                completion: "aborted" as const,
+                depth,
+                nodes: 1_000,
+                timeMs: 1_000,
+                execution: { threads: null, hashMb: null, parallelWorkers: null },
+                candidates: [{ rank: 1, score: cp(-300), depth, seldepth: null, pv: ["7g7f"] }],
+            },
+        });
+        const view = render(
+            <Harness initialDoc={doc} analysis={createAnalysis({ mode: "deep", live: live(5) })} />,
+        );
+        const band = () =>
+            screen.getByRole("status", { name: "いまの局面" }).parentElement as HTMLElement;
+        // 候補手の欄にはスイッチを出さない（帯の 1 つだけ）。
+        expect(screen.getAllByRole("switch", { name: /自動で読む/ })).toHaveLength(1);
+        within(band()).getByRole("switch", { name: /自動で読む/ });
+        // 読み始めの浅い値では、保存済みの値を替えない。
+        expect(band().textContent).toContain("+120");
+
+        view.rerender(
+            <Harness
+                initialDoc={doc}
+                analysis={createAnalysis({ mode: "deep", live: live(40) })}
+            />,
+        );
+        expect(band().textContent).toContain("-300");
     });
 
     it("ログイン切れでロック中も盤から既存の手へ進める", async () => {

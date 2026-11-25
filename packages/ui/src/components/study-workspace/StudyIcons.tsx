@@ -83,16 +83,6 @@ export function MoreIcon({ className }: IconProps): ReactElement {
     );
 }
 
-/** 読み足す（時計 + 足す）。 */
-export function ClockPlusIcon({ className }: IconProps): ReactElement {
-    return (
-        <StrokeIcon className={className}>
-            <path d="M20.9 13.5A9 9 0 1 0 13.5 20.9" />
-            <path d="M12 7v5l2.5 2.5M16 19h6M19 16v6" />
-        </StrokeIcon>
-    );
-}
-
 /** 変化（枝分かれ）。 */
 export function BranchIcon({ className }: IconProps): ReactElement {
     return (
