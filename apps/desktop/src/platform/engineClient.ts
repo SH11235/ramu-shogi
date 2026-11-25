@@ -1,6 +1,10 @@
-import type { EngineSpeedEnvironment } from "@shogi/app-controller";
+import type { EngineOption, EngineSpeedEnvironment } from "@shogi/app-controller";
 import { withNpsRecording } from "@shogi/app-controller";
-import { createTauriEngineClient, createTauriNnueStorage } from "@shogi/engine-tauri";
+import {
+    createTauriBatchEngineClient,
+    createTauriEngineClient,
+    createTauriNnueStorage,
+} from "@shogi/engine-tauri";
 
 // Tauri版のストレージは同期的に初期化可能
 export const nnueStorage = createTauriNnueStorage();
@@ -22,11 +26,24 @@ const createRawClient = () =>
         debug: true,
     });
 
-export const createEngineClient = () =>
-    withNpsRecording(createRawClient(), {
+const recordSpeed = (client: ReturnType<typeof createRawClient>) =>
+    withNpsRecording(client, {
         environment: desktopEngineSpeedEnvironment,
         resolveContentHash,
     });
+
+export const createEngineClient = () => recordSpeed(createRawClient());
+
+const createBatchClient = () => recordSpeed(createTauriBatchEngineClient());
+
+export const builtinEngineOption = (maxParallel: number): EngineOption => ({
+    id: "native",
+    label: "内蔵エンジン",
+    createClient: createEngineClient,
+    kind: "internal",
+    maxParallel: 1,
+    batch: { createClient: createBatchClient, maxParallel },
+});
 
 // 計測はしない。アプリ全体で 1 つのエンジンを共有していて、評価関数は起動中に 1 回しか
 // 読み込めないので、計測で別の評価関数を読むと対局・解析でその AI しか使えなくなる。

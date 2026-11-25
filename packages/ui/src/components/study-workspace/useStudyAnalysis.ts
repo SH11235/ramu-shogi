@@ -15,7 +15,6 @@ import {
     type NnueSelection,
     type PresetConfig,
     type ResolvedNnue,
-    resolveWorkerCount,
     STUDY_LIMITS,
     type StudyAnalysisCompletion,
     type StudyAnalysisResult,
@@ -43,7 +42,7 @@ import {
 } from "../shogi-match/types";
 import { sidesWithoutKing } from "../shogi-match/utils/boardUtils";
 import { collectTreeAnalysisJobs } from "../shogi-match/utils/branchTreeUtils";
-import { resolveThreadCount } from "../shogi-match/utils/threadOptions";
+import { resolveBatchWorkerCount, resolveThreadCount } from "../shogi-match/utils/threadOptions";
 import { countStudyUnanalyzed, studyPathTo } from "./studyView";
 import { useStudyDeepSearch } from "./useStudyDeepSearch";
 
@@ -111,6 +110,7 @@ export interface StudyAnalysisSettingsForm {
      * Desktop の内蔵エンジンは 1。
      */
     maxParallel: number | null;
+    nativeBatchParallelism?: number;
     /** いま選んでいるエンジンが、1 局面の探索に使えるスレッド数の上限（分からなければ null）。 */
     maxThreads: number | null;
     onEngineIdChange: (engineId: string) => void;
@@ -318,6 +318,7 @@ export function useStudyAnalysis({
 
     const pool = useEnginePool({
         createClient:
+            engineOption?.batch?.createClient ??
             engineOption?.createClient ??
             (() => {
                 throw new Error("解析に使えるエンジンがありません");
@@ -326,15 +327,16 @@ export function useStudyAnalysis({
         // 外部の USI エンジンは、変則ルールのパスを解釈できない。
         supportsPassRights: engineOption?.kind !== "external",
         materialFallback: engineOption?.kind !== "external",
-        // エンジンが同時に動かせる数に収める（Desktop の内蔵エンジンは 1 つだけ）。
         threadsPerWorker: Math.min(
             Math.max(1, settings.batchAnalysisThreads),
             engineOption?.maxThreads ?? Number.POSITIVE_INFINITY,
         ),
-        workerCount: Math.min(
-            resolveWorkerCount(settings.parallelWorkers),
-            engineOption?.maxParallel ?? Number.POSITIVE_INFINITY,
+        workerCount: resolveBatchWorkerCount(
+            settings.parallelWorkers,
+            engineOption?.batch?.maxParallel,
+            engineOption?.maxParallel,
         ),
+        releaseWorkersAfterRun: engineOption?.batch !== undefined,
         nnueId: isExternalEngine ? undefined : analysisNnueId,
         onPositionAnalyzed: handlePositionAnalyzed,
         onResult: (_ply: number, event: EngineInfoEvent, nodeId?: string) => {
@@ -892,7 +894,8 @@ export function useStudyAnalysis({
                         option.kind === "external" ? ("external" as const) : ("internal" as const),
                 })),
                 engineId: engineOption?.id ?? "",
-                maxParallel: engineOption?.maxParallel ?? null,
+                maxParallel: engineOption?.batch?.maxParallel ?? engineOption?.maxParallel ?? null,
+                nativeBatchParallelism: engineOption?.batch?.maxParallel,
                 maxThreads: engineOption?.maxThreads ?? null,
                 onEngineIdChange: setAnalysisEngineId,
             },

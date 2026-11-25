@@ -351,3 +351,162 @@ describe("useEnginePool: 中止とやり直し", () => {
         expect(result.current.isRunning).toBe(false);
     });
 });
+
+describe("native batch worker lifetime", () => {
+    it("releases workers from a cancelled initialization before starting again", async () => {
+        const engine = controlledEngine();
+        const { result } = renderHook(() =>
+            useEnginePool({
+                createClient: engine.createClient,
+                workerCount: 8,
+                releaseWorkersAfterRun: true,
+            }),
+        );
+
+        const gate = createGate();
+        engine.holdInit = gate;
+        act(() => result.current.start([job("a", ["7g7f"]), job("b", ["2g2f"])]));
+        await waitFor(() => expect(engine.clients[0]?.init).toHaveBeenCalledTimes(1));
+
+        await act(async () => {
+            const cancelled = result.current.cancel();
+            result.current.start([job("c", ["2g2f"])]);
+            gate.open();
+            await cancelled;
+        });
+        await waitFor(() => expect(engine.searches).toEqual([["2g2f"]]));
+        await waitFor(() => expect(engine.clients[1]?.dispose).toHaveBeenCalledTimes(1));
+        expect(engine.clients).toHaveLength(2);
+        expect(engine.clients[0]?.dispose).toHaveBeenCalledTimes(1);
+    });
+
+    it("disposes the active native workers when cancelled after switching engines", async () => {
+        const engine = controlledEngine();
+        const { result, rerender } = renderHook(
+            ({ native }) =>
+                useEnginePool({
+                    createClient: engine.createClient,
+                    workerCount: 1,
+                    releaseWorkersAfterRun: native,
+                }),
+            { initialProps: { native: true } },
+        );
+        const gate = createGate();
+        engine.holdLoad = gate;
+        act(() => result.current.start([job("a", ["7g7f"])]));
+        await waitFor(() => expect(engine.clients[0]?.loadPosition).toHaveBeenCalledTimes(1));
+
+        rerender({ native: false });
+        await act(async () => {
+            const cancelled = result.current.cancel();
+            gate.open();
+            await cancelled;
+        });
+        expect(engine.searches).toEqual([]);
+        expect(engine.clients[0]?.dispose).toHaveBeenCalledTimes(1);
+    });
+
+    it("disposes replaced native workers when the replacement is cancelled before initialization", async () => {
+        const engine = controlledEngine();
+        const { result, rerender } = renderHook(
+            ({ native }) =>
+                useEnginePool({
+                    createClient: engine.createClient,
+                    clientKey: native ? "native" : "external",
+                    workerCount: 1,
+                    releaseWorkersAfterRun: native,
+                }),
+            { initialProps: { native: true } },
+        );
+        const gate = createGate();
+        engine.holdLoad = gate;
+        act(() => result.current.start([job("a", ["7g7f"])]));
+        await waitFor(() => expect(engine.clients[0]?.loadPosition).toHaveBeenCalledTimes(1));
+
+        rerender({ native: false });
+        await act(async () => {
+            result.current.start([job("b", ["2g2f"])]);
+            const cancelled = result.current.cancel();
+            gate.open();
+            await cancelled;
+        });
+        await waitFor(() => expect(engine.clients[0]?.dispose).toHaveBeenCalledTimes(1));
+        expect(engine.clients).toHaveLength(1);
+        expect(engine.searches).toEqual([]);
+    });
+
+    it("keeps the original engine's pass support for queued jobs", async () => {
+        const engine = controlledEngine();
+        const originalError = vi.fn();
+        const newError = vi.fn();
+        const { result, rerender } = renderHook(
+            ({ native }) =>
+                useEnginePool({
+                    createClient: engine.createClient,
+                    workerCount: 1,
+                    releaseWorkersAfterRun: native,
+                    supportsPassRights: native,
+                    onError: native ? originalError : newError,
+                }),
+            { initialProps: { native: true } },
+        );
+        const gate = createGate();
+        engine.holdLoad = gate;
+        act(() => result.current.start([job("a", ["7g7f"]), job("b", ["pass"])]));
+        await waitFor(() => expect(engine.clients[0]?.loadPosition).toHaveBeenCalledTimes(1));
+
+        rerender({ native: false });
+        gate.open();
+        await waitFor(() =>
+            expect(engine.clients[0]?.loadPosition).toHaveBeenLastCalledWith("startpos", ["pass"], {
+                passRights: { sente: 2, gote: 1 },
+            }),
+        );
+        await waitFor(() => expect(engine.clients[0]?.dispose).toHaveBeenCalledTimes(1));
+        expect(originalError).not.toHaveBeenCalled();
+        expect(newError).not.toHaveBeenCalled();
+    });
+
+    it.each([true, false])(
+        "reports an IPC string rejection to the original run after an engine switch (native first: %s)",
+        async (initialNative) => {
+            const engine = controlledEngine();
+            const originalError = vi.fn();
+            const newError = vi.fn();
+            const gate = createGate();
+            const createClient = () => {
+                const client = engine.createClient();
+                vi.mocked(client.loadPosition).mockImplementationOnce(async () => {
+                    await gate.wait;
+                    return Promise.reject("native position rejected");
+                });
+                return client;
+            };
+            const { result, rerender } = renderHook(
+                ({ native }) =>
+                    useEnginePool({
+                        createClient,
+                        workerCount: 1,
+                        releaseWorkersAfterRun: native,
+                        onError: native === initialNative ? originalError : newError,
+                    }),
+                { initialProps: { native: initialNative } },
+            );
+            act(() => result.current.start([job("a", ["7g7f"])]));
+            await waitFor(() => expect(engine.clients[0]?.loadPosition).toHaveBeenCalledTimes(1));
+
+            rerender({ native: !initialNative });
+            gate.open();
+            await waitFor(() =>
+                expect(originalError).toHaveBeenCalledWith(
+                    1,
+                    new Error("native position rejected"),
+                ),
+            );
+            expect(newError).not.toHaveBeenCalled();
+            if (initialNative) {
+                await waitFor(() => expect(engine.clients[0]?.dispose).toHaveBeenCalledTimes(1));
+            }
+        },
+    );
+});

@@ -1,3 +1,4 @@
+mod batch_engine;
 mod csa_builtin_engine;
 mod csa_engine;
 mod csa_game;
@@ -30,14 +31,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use rshogi_core::movegen::{
-    MoveList, generate_legal_allowing_missing_kings, generate_legal_with_pass,
-};
+use rshogi_core::movegen::{MoveList, generate_legal_allowing_missing_kings};
 use rshogi_core::nnue::set_fv_scale_override;
 use rshogi_core::position::{Position, SFEN_HIRATE};
 use rshogi_core::search::{
-    DEFAULT_MAX_MOVES_TO_DRAW, LimitsType, Search, SearchInfo, SearchResult, SkillOptions,
-    TimeOptions,
+    DEFAULT_EVAL_HASH_SIZE_MB, DEFAULT_MAX_MOVES_TO_DRAW, LimitsType, Search, SearchInfo,
+    SearchResult, SkillOptions, TimeOptions,
 };
 use rshogi_core::types::json::{BoardStateJson, ReplayResultJson};
 use rshogi_core::types::{Color, Move, PieceType, Value};
@@ -117,7 +116,6 @@ impl Default for EngineOptions {
 
 impl EngineOptions {
     fn apply_to_search(&self, search: &mut Search) {
-        search.resize_tt(self.tt_size_mb);
         search.set_num_threads(self.num_threads);
         search.set_time_options(self.time_options);
         search.set_skill_options(self.skill_options);
@@ -177,6 +175,7 @@ struct SearchTaskResult {
 struct ActiveSearch {
     handle: thread::JoinHandle<SearchTaskResult>,
     stop_flag: Arc<AtomicBool>,
+    evaluation_finished: Arc<AtomicBool>,
 }
 
 /// CSA Builtin engine driver から共有する内蔵 search instance のラッパー。
@@ -187,11 +186,13 @@ struct ActiveSearch {
 #[doc(hidden)]
 pub struct EngineState {
     pub(crate) inner: Mutex<EngineStateInner>,
+    batch: Mutex<batch_engine::BatchEngines>,
 }
 
 #[doc(hidden)]
 pub struct EngineStateInner {
     options: EngineOptions,
+    eval_hash_size_mb: usize,
     pub(crate) position: Position,
     pub(crate) search: Option<Search>,
     active_search: Option<ActiveSearch>,
@@ -201,12 +202,16 @@ pub struct EngineStateInner {
 
 impl EngineStateInner {
     fn new() -> Self {
-        let options = EngineOptions::default();
-        let mut search = Search::new(options.tt_size_mb);
+        Self::with_options(EngineOptions::default(), DEFAULT_EVAL_HASH_SIZE_MB)
+    }
+
+    fn with_options(options: EngineOptions, eval_hash_size_mb: usize) -> Self {
+        let mut search = Search::new_with_eval_hash(options.tt_size_mb, eval_hash_size_mb);
         options.apply_to_search(&mut search);
 
         Self {
             options,
+            eval_hash_size_mb,
             position: Position::new(),
             search: Some(search),
             active_search: None,
@@ -215,7 +220,8 @@ impl EngineStateInner {
     }
 
     pub(crate) fn create_search(&self) -> Search {
-        let mut search = Search::new(self.options.tt_size_mb);
+        let mut search =
+            Search::new_with_eval_hash(self.options.tt_size_mb, self.eval_hash_size_mb);
         self.options.apply_to_search(&mut search);
         search
     }
@@ -231,15 +237,37 @@ impl EngineStateInner {
     }
 
     fn restore_search(&mut self, result: thread::Result<SearchTaskResult>) {
-        let mut search = match result {
+        let search = match result {
             Ok(task) => task.search,
             Err(err) => {
                 eprintln!("Engine search thread panicked: {err:?}");
                 self.create_search()
             }
         };
-        self.options.apply_to_search(&mut search);
         self.search = Some(search);
+    }
+
+    fn update_search_options(&mut self, previous_tt_size_mb: usize) {
+        if let Some(search) = self.search.as_mut() {
+            if self.options.tt_size_mb != previous_tt_size_mb {
+                search.resize_tt(self.options.tt_size_mb);
+            }
+            self.options.apply_to_search(search);
+        }
+    }
+
+    fn clear_search_cache(&mut self) {
+        if let Some(search) = self.search.as_mut() {
+            search.clear_tt();
+            search.clear_eval_hash();
+        }
+    }
+
+    fn stop_and_reclaim(&mut self) {
+        self.reclaim_finished();
+        if let Some(active) = self.stop_active_search() {
+            self.restore_search(active.handle.join());
+        }
     }
 
     fn stop_active_search(&mut self) -> Option<ActiveSearch> {
@@ -256,6 +284,7 @@ impl EngineState {
     fn new() -> Self {
         Self {
             inner: Mutex::new(EngineStateInner::new()),
+            batch: Mutex::default(),
         }
     }
 }
@@ -263,24 +292,6 @@ impl EngineState {
 impl Default for EngineState {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-struct EngineEventEmitter {
-    window: Window,
-}
-
-impl EngineEventEmitter {
-    fn new(window: Window) -> Self {
-        Self { window }
-    }
-
-    fn emit_info(&mut self, info: &SearchInfo) {
-        emit_event(&self.window, info_event(info));
-    }
-
-    fn emit_bestmove(&self, result: &SearchResult) {
-        emit_event(&self.window, bestmove_event(result));
     }
 }
 
@@ -336,70 +347,60 @@ fn bestmove_event(result: &SearchResult) -> EngineEvent {
 }
 
 fn spawn_search(
-    window: Window,
-    mut search: Search,
+    search: Search,
     mut position: Position,
     limits: LimitsType,
+    emit: impl Fn(EngineEvent) + Send + 'static,
 ) -> Result<ActiveSearch, String> {
-    eprintln!(
-        "spawn_search: limits (depth={}, nodes={}, byoyomi={:?}, movetime={}, ponder={})",
-        limits.depth, limits.nodes, limits.byoyomi, limits.movetime, limits.ponder
-    );
-    eprintln!("spawn_search: position SFEN = {}", position.to_sfen());
-
-    // Generate legal moves to debug
-    let mut legal_moves = MoveList::new();
-    generate_legal_with_pass(&position, &mut legal_moves);
-    eprintln!("spawn_search: legal moves count = {}", legal_moves.len());
-    if !legal_moves.is_empty() {
-        eprintln!("spawn_search: first few legal moves:");
-        for (i, m) in legal_moves.iter().take(5).enumerate() {
-            eprintln!("  {}: {}", i, m.to_usi());
-        }
-    }
-
     let stop_flag = search.stop_flag();
-    // 前の探索を止めるために立てた停止フラグが残っていると、新しい探索が始まってすぐ打ち切られる。
-    // 探索が bestmove を返した直後（スレッドが終わりきる前）に次の探索を頼まれると、前の探索は
-    // 「実行中」として止められ、フラグが立ったままになる（連続して解析するときに起きる）。
     search.reset_flags();
 
+    let evaluation_finished = Arc::new(AtomicBool::new(false));
+    let finished = Arc::clone(&evaluation_finished);
     let handle = thread::Builder::new()
         .name("engine-search".into())
         .stack_size(SEARCH_STACK_SIZE)
         .spawn(move || {
-            eprintln!(
-                "search thread: calling search.go() with limits (depth={}, nodes={}, byoyomi={:?}, movetime={})",
-                limits.depth, limits.nodes, limits.byoyomi, limits.movetime
-            );
-            let mut emitter = EngineEventEmitter::new(window);
-            let result = search.go(
-                &mut position,
-                limits,
-                Some(|info: &SearchInfo| emitter.emit_info(info)),
-            );
-            eprintln!(
-                "engine_search: finished bestmove={} ponder={} depth={} nodes={} score={}",
-                if result.best_move == Move::NONE {
-                    "resign".to_string()
-                } else {
-                    result.best_move.to_usi()
-                },
-                if result.ponder_move == Move::NONE {
-                    "-".to_string()
-                } else {
-                    result.ponder_move.to_usi()
-                },
-                result.depth,
-                result.nodes,
-                result.score.raw()
-            );
-            emitter.emit_bestmove(&result);
-            SearchTaskResult { search }
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let mut search = search;
+                // 局面の読み込み時と探索時で評価設定が異なると、盤面の利きが未更新のことがある。
+                position.pause_board_effects(false);
+                let result = search.go(
+                    &mut position,
+                    limits,
+                    Some(|info: &SearchInfo| emit(info_event(info))),
+                );
+                (search, result)
+            }));
+            finished.store(true, Ordering::Release);
+            match result {
+                Ok((search, result)) => {
+                    emit(bestmove_event(&result));
+                    SearchTaskResult { search }
+                }
+                Err(panic) => {
+                    emit(EngineEvent::Error {
+                        message: "Engine search panicked".to_string(),
+                    });
+                    std::panic::resume_unwind(panic);
+                }
+            }
         })
         .map_err(|e| format!("Failed to spawn search thread: {e}"))?;
 
-    Ok(ActiveSearch { handle, stop_flag })
+    Ok(ActiveSearch {
+        handle,
+        stop_flag,
+        evaluation_finished,
+    })
+}
+
+fn validate_search_position(position: &Position) -> Result<(), String> {
+    let has_king = |color| !position.pieces(color, PieceType::King).is_empty();
+    if has_king(Color::Black) && has_king(Color::White) {
+        return Ok(());
+    }
+    Err("cannot search a position without both kings".to_string())
 }
 
 /// パス権設定
@@ -525,11 +526,27 @@ fn value_as_bool(v: &serde_json::Value) -> Option<bool> {
     }
 }
 
+fn parse_fv_scale(value: &serde_json::Value) -> Result<i32, String> {
+    value_as_i32(value)
+        .filter(|scale| (1..=100).contains(scale))
+        .ok_or_else(|| format!("FV_SCALE must be between 1 and 100, got {value}"))
+}
+
+fn parse_material_level(
+    value: &serde_json::Value,
+) -> Result<rshogi_core::eval::MaterialLevel, String> {
+    value_as_i32(value)
+        .and_then(|level| u8::try_from(level).ok())
+        .and_then(rshogi_core::eval::MaterialLevel::from_value)
+        .ok_or_else(|| format!("Invalid MaterialLevel value {value}"))
+}
+
 fn apply_engine_option(
     inner: &mut EngineStateInner,
     name: &str,
     value: &serde_json::Value,
 ) -> Result<(), String> {
+    let previous_tt_size_mb = inner.options.tt_size_mb;
     match name {
         "USI_Hash" | "Hash" => {
             let size_mb =
@@ -597,65 +614,33 @@ fn apply_engine_option(
                 inner.options.num_threads = v.max(1);
             }
         }
-        "FV_SCALE" => {
-            if let Some(v) = value_as_i32(value) {
-                if !(1..=100).contains(&v) {
-                    return Err(format!("FV_SCALE must be between 1 and 100, got {v}"));
-                }
-                set_fv_scale_override(v);
-            }
+        "FV_SCALE" if value_as_i32(value).is_some() => {
+            set_fv_scale_override(parse_fv_scale(value)?);
+            inner.clear_search_cache();
         }
-        "MaterialLevel" => {
-            // 評価関数（NNUE）を読み込まずに探索するときの、駒得の評価（簡易 AI）。
-            // NNUE を読み込むと無効になる（`engine_load_nnue` が `disable_material` を呼ぶ）。
-            if let Some(v) = value_as_i32(value) {
-                let level = u8::try_from(v)
-                    .ok()
-                    .and_then(rshogi_core::eval::MaterialLevel::from_value)
-                    .ok_or_else(|| format!("Invalid MaterialLevel value {v}"))?;
-                rshogi_core::eval::set_material_level(level);
-            }
+        "MaterialLevel" if value_as_i32(value).is_some() => {
+            rshogi_core::eval::set_material_level(parse_material_level(value)?);
+            inner.clear_search_cache();
         }
         _ => {
             // Unknown options are ignored for now.
         }
     }
 
-    let options = inner.options.clone();
-    if let Some(search) = inner.search.as_mut() {
-        options.apply_to_search(search);
-    }
+    inner.update_search_options(previous_tt_size_mb);
 
     Ok(())
 }
 
-fn stop_active_search(state: &State<'_, Arc<EngineState>>) -> Result<(), String> {
-    let active = {
-        let mut inner = state
-            .inner
-            .lock()
-            .map_err(|e| format!("Failed to acquire engine state lock: {e}"))?;
-        inner.reclaim_finished();
-        inner.stop_active_search()
-    };
-
-    if let Some(active) = active {
-        let join_result = active.handle.join();
-        let mut inner = state
-            .inner
-            .lock()
-            .map_err(|e| format!("Failed to acquire engine state lock: {e}"))?;
-        inner.restore_search(join_result);
-    }
-
-    Ok(())
+fn lock_engine<T>(mutex: &Mutex<T>) -> Result<std::sync::MutexGuard<'_, T>, String> {
+    mutex
+        .lock()
+        .map_err(|e| format!("Failed to acquire engine state lock: {e}"))
 }
 
-/// CSA対局中でないことを確認するヘルパー
-fn check_engine_available(lock: &State<'_, Arc<engine_lock::EngineLock>>) -> Result<(), String> {
-    if lock.is_locked() {
-        return Err("CSA対局中のためエンジンは使用できません".to_string());
-    }
+fn stop_active_search(state: &EngineState) -> Result<(), String> {
+    let mut inner = lock_engine(&state.inner)?;
+    inner.stop_and_reclaim();
     Ok(())
 }
 
@@ -680,7 +665,8 @@ fn engine_init(
     state: State<'_, Arc<EngineState>>,
     opts: Option<serde_json::Value>,
 ) -> Result<(), String> {
-    check_engine_available(&lock)?;
+    let _admission = lock.available()?;
+    lock_engine(&state.batch)?.require_idle()?;
     stop_active_search(&state)?;
 
     let parsed_opts: Option<InitOptions> = if let Some(opts) = opts {
@@ -698,6 +684,7 @@ fn engine_init(
         .map_err(|e| format!("Failed to acquire engine state lock: {e}"))?;
 
     inner.reclaim_finished();
+    let previous_tt_size_mb = inner.options.tt_size_mb;
     if let Some(opts) = parsed_opts.as_ref() {
         inner.options.update_from_init(opts);
     }
@@ -709,12 +696,10 @@ fn engine_init(
 
     if inner.search.is_none() {
         inner.search = Some(inner.create_search());
+    } else {
+        inner.update_search_options(previous_tt_size_mb);
     }
-    let options = inner.options.clone();
-    if let Some(search) = inner.search.as_mut() {
-        options.apply_to_search(search);
-        search.clear_tt();
-    }
+    inner.clear_search_cache();
 
     let mut position = Position::new();
     position
@@ -733,7 +718,7 @@ fn engine_position(
     moves: Option<Vec<String>>,
     pass_rights: Option<PassRightsInput>,
 ) -> Result<(), String> {
-    check_engine_available(&lock)?;
+    let _admission = lock.available()?;
     eprintln!(
         "engine_position: sfen={}, moves={:?}, passRights={:?}",
         sfen, moves, pass_rights
@@ -759,7 +744,8 @@ fn engine_option(
     name: String,
     value: serde_json::Value,
 ) -> Result<(), String> {
-    check_engine_available(&lock)?;
+    let _admission = lock.available()?;
+    lock_engine(&state.batch)?.require_idle()?;
     stop_active_search(&state)?;
 
     let mut inner = state
@@ -777,7 +763,8 @@ fn engine_search(
     state: State<'_, Arc<EngineState>>,
     params: serde_json::Value,
 ) -> Result<(), String> {
-    check_engine_available(&lock)?;
+    let _admission = lock.available()?;
+    lock_engine(&state.batch)?.require_idle()?;
     stop_active_search(&state)?;
 
     eprintln!("engine_search: received params = {}", params);
@@ -805,11 +792,7 @@ fn engine_search(
             .lock()
             .map_err(|e| format!("Failed to acquire engine state lock: {e}"))?;
         inner.reclaim_finished();
-        // 通常の探索は両方の玉がある局面だけを扱う (玉の無い側の既定の升を玉とみなした指し手で panic する)。
-        // 置換表を手放す前に断る
-        let has_king = |color| !inner.position.pieces(color, PieceType::King).is_empty();
-        if !(has_king(Color::Black) && has_king(Color::White)) {
-            let message = "cannot search a position without both kings".to_string();
+        if let Err(message) = validate_search_position(&inner.position) {
             emit_event(
                 &window,
                 EngineEvent::Error {
@@ -843,7 +826,10 @@ fn engine_search(
             score_mate: None,
         },
     );
-    let active_search = match spawn_search(window.clone(), search, position, limits) {
+    let event_window = window.clone();
+    let active_search = match spawn_search(search, position, limits, move |event| {
+        emit_event(&event_window, event);
+    }) {
         Ok(active) => active,
         Err(err) => {
             emit_event(
@@ -876,7 +862,7 @@ fn engine_stop(
     state: State<'_, Arc<EngineState>>,
 ) -> Result<(), String> {
     // フロントエンドからの直接停止を禁止。CSA セッション内部は stop_active_search() を直接呼ぶ。
-    check_engine_available(&lock)?;
+    let _admission = lock.available()?;
     eprintln!("engine_stop: requested");
     stop_active_search(&state)
 }
@@ -909,22 +895,30 @@ struct ThreadInfoResponse {
 }
 
 #[tauri::command]
-fn engine_thread_info(state: State<'_, Arc<EngineState>>) -> Result<ThreadInfoResponse, String> {
-    let inner = state
-        .inner
-        .lock()
-        .map_err(|e| format!("Failed to acquire engine state lock: {e}"))?;
+fn engine_thread_info(
+    state: State<'_, Arc<EngineState>>,
+    worker_id: Option<String>,
+) -> Result<ThreadInfoResponse, String> {
+    let active_threads = if let Some(worker_id) = worker_id {
+        lock_engine(&state.batch)?.worker_threads(&worker_id)?
+    } else {
+        lock_engine(&state.inner)?.options.num_threads
+    };
 
-    let hardware_concurrency = std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(1);
+    let hardware_concurrency = available_logical_cpus();
 
     Ok(ThreadInfoResponse {
-        active_threads: inner.options.num_threads,
+        active_threads,
         max_threads: hardware_concurrency,
         threaded_available: true,
         hardware_concurrency,
     })
+}
+
+fn available_logical_cpus() -> usize {
+    std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1)
 }
 
 fn get_initial_board_impl() -> Result<BoardStateJson, String> {
@@ -1646,36 +1640,41 @@ fn engine_load_nnue(
     state: State<'_, Arc<EngineState>>,
     args: EngineLoadNnueArgs,
 ) -> Result<(), String> {
-    use rshogi_core::nnue::{init_nnue, is_nnue_initialized};
-
-    let _engine_guard = lock.acquire(engine_lock::EngineTarget::Builtin)?;
+    let _admission = lock.available()?;
+    lock_engine(&state.batch)?.require_idle()?;
     stop_active_search(&state)?;
-    let mut inner = state
-        .inner
-        .lock()
-        .map_err(|e| format!("Failed to acquire engine state lock: {e}"))?;
+    let mut inner = lock_engine(&state.inner)?;
+    load_nnue_model(&app, &mut inner.loaded_nnue, &args)?;
+    restore_nnue_eval();
+    inner.clear_search_cache();
+    Ok(())
+}
+
+fn load_nnue_model(
+    app: &AppHandle,
+    loaded_nnue: &mut Option<String>,
+    args: &EngineLoadNnueArgs,
+) -> Result<(), String> {
+    use rshogi_core::nnue::{init_nnue, is_nnue_initialized};
 
     let normalized_id = validate_nnue_id(&args.nnue_id)?;
     let nnue_key = loaded_nnue_key(&normalized_id, args.layer_stacks.as_ref());
 
-    // 読み込み済みのとき。同じ NNUE の読み込み直し（別の画面・別のクライアントが使い始めた）は
-    // 成功として扱い、駒得の評価へ切り替わっていれば NNUE へ戻す。別の NNUE への切り替えはできない。
     if is_nnue_initialized() {
-        if inner.loaded_nnue.as_deref() == Some(nnue_key.as_str()) {
-            rshogi_core::eval::disable_material();
+        if loaded_nnue.as_deref() == Some(nnue_key.as_str()) {
             return Ok(());
         }
         return Err("NNUE is already loaded. Restart the app to change NNUE.".to_string());
     }
 
     // ID からパスを取得
-    let nnue_path = nnue_path_with_id(&app, &normalized_id, "nnue");
+    let nnue_path = nnue_path_with_id(app, &normalized_id, "nnue");
 
     if !nnue_path.exists() {
         return Err(format!("NNUE not found: {normalized_id}"));
     }
 
-    ensure_path_within_dir(&get_nnue_dir(&app), &nnue_path)?;
+    ensure_path_within_dir(&get_nnue_dir(app), &nnue_path)?;
 
     let mut file =
         std::fs::File::open(&nnue_path).map_err(|e| format!("Failed to open NNUE: {e}"))?;
@@ -1697,8 +1696,7 @@ fn engine_load_nnue(
         routing
     };
     nnue_settings::apply_routing(routing)?;
-    rshogi_core::eval::disable_material();
-    inner.loaded_nnue = Some(nnue_key);
+    *loaded_nnue = Some(nnue_key);
     Ok(())
 }
 
@@ -1968,6 +1966,13 @@ pub fn run() {
             engine_legal_moves,
             engine_thread_info,
             engine_load_nnue,
+            batch_engine::engine_batch_init,
+            batch_engine::engine_batch_position,
+            batch_engine::engine_batch_option,
+            batch_engine::engine_batch_load_nnue,
+            batch_engine::engine_batch_search,
+            batch_engine::engine_batch_stop,
+            batch_engine::engine_batch_dispose,
             get_initial_board,
             parse_sfen_to_board,
             board_to_sfen,
@@ -2012,6 +2017,10 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app_handle, event| {
             if let tauri::RunEvent::Exit = event {
+                let engine = app_handle.state::<Arc<EngineState>>();
+                if let Ok(mut batch) = lock_engine(&engine.batch) {
+                    batch.dispose();
+                }
                 let manager = app_handle.state::<usi_engine::UsiEngineManager>();
                 tauri::async_runtime::block_on(manager.quit_all());
             }

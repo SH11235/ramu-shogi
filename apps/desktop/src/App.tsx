@@ -7,6 +7,7 @@ import {
     createUsiEngineClient,
     detect_nnue_format,
     getLegalMoves,
+    getNativeBatchParallelism,
     is_nnue_compatible,
 } from "@shogi/engine-tauri";
 import type { EngineOption, PlayFromPosition } from "@shogi/ui";
@@ -27,18 +28,9 @@ import { RshogiViewerLiveView } from "./components/rshogi-viewer/RshogiViewerLiv
 import { RshogiViewerView } from "./components/rshogi-viewer/RshogiViewerView";
 import { StudiesView } from "./components/studies/StudiesView";
 import { StudyView } from "./components/studies/StudyView";
-import { createEngineClient, nnueStorage } from "./platform/engineClient";
+import { builtinEngineOption, createEngineClient, nnueStorage } from "./platform/engineClient";
 import { requestNnueFilePath } from "./platform/nnueFilePicker";
 import { getDesktopStudySync } from "./studies/desktopStudySync";
-
-const INTERNAL_ENGINE_OPTION: EngineOption = {
-    id: "native",
-    label: "内蔵エンジン",
-    createClient: createEngineClient,
-    kind: "internal",
-    // ネイティブのエンジンはアプリに 1 つだけなので、局面の並列解析はできない。
-    maxParallel: 1,
-};
 
 const panelEngine = createEngineClient();
 
@@ -54,14 +46,17 @@ const validateNnueHeader = async (header: Uint8Array, fileSize: number) => ({
     isCompatible: await is_nnue_compatible(header, fileSize),
 });
 
-function buildEngineOptions(registrations: EngineRegistration[]): EngineOption[] {
+function buildEngineOptions(
+    registrations: EngineRegistration[],
+    native: EngineOption,
+): EngineOption[] {
     const external: EngineOption[] = registrations.map((reg) => ({
         id: reg.id,
         label: reg.displayName,
         createClient: () => createUsiEngineClient({ registrationId: reg.id }),
         kind: "external" as const,
     }));
-    return [INTERNAL_ENGINE_OPTION, ...external];
+    return [native, ...external];
 }
 
 interface EngineSettingsTarget {
@@ -166,8 +161,11 @@ function App() {
         moves?: string[];
     }>({ label: "現在局面", sfen: "startpos", moves: [] });
 
-    const [engineOptions, setEngineOptions] = useState<EngineOption[]>([INTERNAL_ENGINE_OPTION]);
+    const [engineOptions, setEngineOptions] = useState<EngineOption[]>(() => [
+        builtinEngineOption(1),
+    ]);
     const [registrations, setRegistrations] = useState<EngineRegistration[]>([]);
+    const native = engineOptions[0];
     const [isEngineManagerOpen, setIsEngineManagerOpen] = useState(false);
     const [engineSettingsTarget, setEngineSettingsTarget] = useState<EngineSettingsTarget | null>(
         null,
@@ -175,13 +173,21 @@ function App() {
 
     const [storeError, setStoreError] = useState<string | null>(null);
 
+    useEffect(() => {
+        void getNativeBatchParallelism().then(
+            (count) =>
+                setEngineOptions((options) => [builtinEngineOption(count), ...options.slice(1)]),
+            (error) => console.warn("Failed to read native CPU count:", error),
+        );
+    }, []);
+
     // Load registered engines on mount
     useEffect(() => {
         registryService
             .list()
             .then((list) => {
                 setRegistrations(list);
-                setEngineOptions(buildEngineOptions(list));
+                setEngineOptions((options) => buildEngineOptions(list, options[0]));
             })
             .catch((e) => {
                 console.error("Failed to load engine registrations:", e);
@@ -193,7 +199,7 @@ function App() {
 
     const handleEnginesChange = (engines: EngineRegistration[]) => {
         setRegistrations(engines);
-        setEngineOptions(buildEngineOptions(engines));
+        setEngineOptions((options) => buildEngineOptions(engines, options[0]));
     };
 
     const [sessionNotReadyMessage, setSessionNotReadyMessage] = useState<string | null>(null);
@@ -272,6 +278,7 @@ function App() {
             <NnueProvider storage={nnueStorage} validateNnueHeader={validateNnueHeader}>
                 <main className="mx-auto flex max-w-[1100px] flex-col gap-3 p-4 md:px-5">
                     <RshogiViewerView
+                        engineOption={native}
                         gameId={rshogiViewerGameId}
                         onBackToList={handleBackToRshogiList}
                         onBackToLocal={() => setAppMode("local")}
@@ -327,6 +334,7 @@ function App() {
             <NnueProvider storage={nnueStorage} validateNnueHeader={validateNnueHeader}>
                 <main className="mx-auto flex max-w-[1100px] flex-col gap-3 p-4 md:px-5">
                     <RshogiViewerLiveView
+                        engineOption={native}
                         gameId={rshogiViewerGameId}
                         onBackToList={handleBackToRshogiList}
                         onBackToLocal={() => setAppMode("local")}

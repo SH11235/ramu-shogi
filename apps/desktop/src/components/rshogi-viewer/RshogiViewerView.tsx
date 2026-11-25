@@ -1,4 +1,4 @@
-import { createTauriEngineClient, getLegalMoves } from "@shogi/engine-tauri";
+import { getLegalMoves } from "@shogi/engine-tauri";
 import type { EngineOption, PlayFromPosition } from "@shogi/ui";
 import { RshogiCsaViewer } from "@shogi/ui";
 import { Button } from "@shogi/ui/components/button";
@@ -9,25 +9,10 @@ type ViewerGame = Parameters<
     NonNullable<ComponentProps<typeof RshogiCsaViewer>["renderGameAction"]>
 >[0];
 
-const ENGINE_OPTIONS: EngineOption[] = [
-    {
-        id: "native",
-        label: "内蔵エンジン",
-        createClient: () =>
-            createTauriEngineClient({
-                stopMode: "terminate",
-                useMockOnError: false,
-                debug: true,
-            }),
-        kind: "internal",
-        // ネイティブのエンジンはアプリに 1 つだけなので、局面の並列解析はできない。
-        maxParallel: 1,
-    },
-];
-
 const nnueManifestUrl = import.meta.env.VITE_NNUE_MANIFEST_URL as string;
 
 interface Props {
+    engineOption: EngineOption;
     gameId: string;
     onBackToList: () => void;
     onBackToLocal: () => void;
@@ -38,6 +23,7 @@ interface Props {
 }
 
 export function RshogiViewerView({
+    engineOption,
     gameId,
     onBackToList,
     onBackToLocal,
@@ -61,7 +47,7 @@ export function RshogiViewerView({
             </div>
             <RshogiCsaViewer
                 gameId={gameId}
-                engineOptions={ENGINE_OPTIONS}
+                engineOptions={[engineOption]}
                 manifestUrl={nnueManifestUrl}
                 apiBaseUrl={apiBaseUrl}
                 // この画面から先へ進む操作は 2 つ。主が「研究ノートで開く」、従が「この局面から対局」。

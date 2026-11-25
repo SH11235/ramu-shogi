@@ -17,6 +17,7 @@ import { useMatchState } from "../contexts/MatchStateContext";
 import { useNavigation } from "../contexts/NavigationContext";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
 import { ANALYSIS_TIME_OPTIONS, PARALLEL_WORKER_OPTIONS } from "../utils/threadOptions";
+import { BatchParallelismSelect } from "./BatchParallelismSelect";
 import { CurrentPositionAiHintPanel } from "./CurrentPositionAiHintPanel";
 import { EvalPanel } from "./EvalPanel";
 import { KIFU_NAV_STEP_TEN } from "./KifuNavigationToolbar";
@@ -35,6 +36,7 @@ export function PCKifuSection(): ReactElement {
     // 分析関連は Context から取得
     const {
         analysisSettings,
+        nativeBatchParallelism,
         onAnalysisSettingsChange,
         analysisNnueSelection,
         onAnalysisNnueSelectionChange,
@@ -186,6 +188,7 @@ export function PCKifuSection(): ReactElement {
                         onStartBatchAnalysis={readOnly ? undefined : handleStartBatchAnalysis}
                         onCancelBatchAnalysis={handleCancelBatchAnalysis}
                         analysisSettings={analysisSettings}
+                        nativeBatchParallelism={nativeBatchParallelism}
                         onAnalysisSettingsChange={onAnalysisSettingsChange}
                         analysisNnueSelection={analysisNnueSelection}
                         onAnalysisNnueSelectionChange={onAnalysisNnueSelectionChange}
@@ -219,29 +222,42 @@ export function PCKifuSection(): ReactElement {
                         </span>
                         <div className="flex flex-col gap-1">
                             <span className="text-xs text-muted-foreground">並列数</span>
-                            <div className="flex gap-1 flex-wrap">
-                                {PARALLEL_WORKER_OPTIONS.map((opt) => (
-                                    <button
-                                        key={opt.value}
-                                        type="button"
-                                        onClick={() =>
-                                            onAnalysisSettingsChange({
-                                                ...analysisSettings,
-                                                parallelWorkers: opt.value,
-                                            })
-                                        }
-                                        className={`px-2 py-1 rounded text-xs transition-colors ${
-                                            analysisSettings.parallelWorkers === opt.value
-                                                ? "bg-wafuu-kincha text-white"
-                                                : "bg-wafuu-washi text-wafuu-sumi hover:bg-wafuu-border"
-                                        }`}
-                                    >
-                                        {opt.value === 0
-                                            ? `自動(${resolveWorkerCount(0)})`
-                                            : opt.label}
-                                    </button>
-                                ))}
-                            </div>
+                            {nativeBatchParallelism !== undefined ? (
+                                <BatchParallelismSelect
+                                    limit={nativeBatchParallelism}
+                                    value={analysisSettings.parallelWorkers}
+                                    onChange={(parallelWorkers) =>
+                                        onAnalysisSettingsChange({
+                                            ...analysisSettings,
+                                            parallelWorkers,
+                                        })
+                                    }
+                                />
+                            ) : (
+                                <div className="flex gap-1 flex-wrap">
+                                    {PARALLEL_WORKER_OPTIONS.map((opt) => (
+                                        <button
+                                            key={opt.value}
+                                            type="button"
+                                            onClick={() =>
+                                                onAnalysisSettingsChange({
+                                                    ...analysisSettings,
+                                                    parallelWorkers: opt.value,
+                                                })
+                                            }
+                                            className={`px-2 py-1 rounded text-xs transition-colors ${
+                                                analysisSettings.parallelWorkers === opt.value
+                                                    ? "bg-wafuu-kincha text-white"
+                                                    : "bg-wafuu-washi text-wafuu-sumi hover:bg-wafuu-border"
+                                            }`}
+                                        >
+                                            {opt.value === 0
+                                                ? `自動(${resolveWorkerCount(0)})`
+                                                : opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                         <div className="flex flex-col gap-1">
                             <span className="text-xs text-muted-foreground">解析時間</span>

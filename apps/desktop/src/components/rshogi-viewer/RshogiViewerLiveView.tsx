@@ -1,28 +1,13 @@
-import { createTauriEngineClient, getLegalMoves } from "@shogi/engine-tauri";
+import { getLegalMoves } from "@shogi/engine-tauri";
 import type { EngineOption, PlayFromPosition } from "@shogi/ui";
 import { RshogiCsaLiveViewer } from "@shogi/ui";
 import { Button } from "@shogi/ui/components/button";
 import type { ReactElement } from "react";
 
-const ENGINE_OPTIONS: EngineOption[] = [
-    {
-        id: "native",
-        label: "内蔵エンジン",
-        createClient: () =>
-            createTauriEngineClient({
-                stopMode: "terminate",
-                useMockOnError: false,
-                debug: true,
-            }),
-        kind: "internal",
-        // ネイティブのエンジンはアプリに 1 つだけなので、局面の並列解析はできない。
-        maxParallel: 1,
-    },
-];
-
 const nnueManifestUrl = import.meta.env.VITE_NNUE_MANIFEST_URL as string;
 
 interface Props {
+    engineOption: EngineOption;
     gameId: string;
     onBackToList: () => void;
     onBackToLocal: () => void;
@@ -37,6 +22,7 @@ interface Props {
  * gameId は呼出側 (`App.tsx`) で保持し、戻るボタンで一覧 / ローカル対局へ遷移する。
  */
 export function RshogiViewerLiveView({
+    engineOption,
     gameId,
     onBackToList,
     onBackToLocal,
@@ -59,7 +45,7 @@ export function RshogiViewerLiveView({
             </div>
             <RshogiCsaLiveViewer
                 gameId={gameId}
-                engineOptions={ENGINE_OPTIONS}
+                engineOptions={[engineOption]}
                 manifestUrl={nnueManifestUrl}
                 apiBaseUrl={apiBaseUrl}
                 onPlayFromPosition={onPlayFromPosition}

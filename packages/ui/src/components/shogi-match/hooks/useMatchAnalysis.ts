@@ -1,7 +1,8 @@
 import type { NnueSelection } from "@shogi/app-core";
-import { detectParallelism, resolveWorkerCount } from "@shogi/app-core";
+import { detectParallelism } from "@shogi/app-core";
 import type { EngineInfoEvent } from "@shogi/engine-client";
 import type { EngineOption, EngineThreadSettings, PassRightsSettings } from "../types";
+import { resolveBatchWorkerCount } from "../utils/threadOptions";
 import { useBatchAnalysis } from "./useBatchAnalysis";
 import { useEnginePool } from "./useEnginePool";
 import type { UseKifuNavigationResult } from "./useKifuNavigation";
@@ -67,6 +68,7 @@ export function useMatchAnalysis({
         engineOptions.find((option) => option.id === analysisEngineId) ?? engineOptions[0];
     const enginePool = useEnginePool({
         createClient:
+            analysisEngineOption?.batch?.createClient ??
             analysisEngineOption?.createClient ??
             (() => {
                 throw new Error("No engine available");
@@ -75,11 +77,12 @@ export function useMatchAnalysis({
         // 外部の USI エンジンは、変則ルールのパスを解釈できない。
         supportsPassRights: analysisEngineOption?.kind !== "external",
         materialFallback: analysisEngineOption?.kind !== "external",
-        // エンジンが同時に動かせる数に収める（Desktop の内蔵エンジンは 1 つだけ）。
-        workerCount: Math.min(
-            resolveWorkerCount(analysisSettings.parallelWorkers),
-            analysisEngineOption?.maxParallel ?? Number.POSITIVE_INFINITY,
+        workerCount: resolveBatchWorkerCount(
+            analysisSettings.parallelWorkers,
+            analysisEngineOption?.batch?.maxParallel,
+            analysisEngineOption?.maxParallel,
         ),
+        releaseWorkersAfterRun: analysisEngineOption?.batch !== undefined,
         onProgress: (progress) => {
             setBatchAnalysis({
                 isRunning: true,
@@ -101,6 +104,9 @@ export function useMatchAnalysis({
             setBatchAnalysis(null);
         },
         onError: (ply, error) => {
+            if (analysisEngineOption?.batch) {
+                setMessage({ text: String(error.cause ?? error.message), type: "error" });
+            }
             console.error(`解析エラー (ply=${ply}):`, error);
         },
         nnueId: analysisNnueId,

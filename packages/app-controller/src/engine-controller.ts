@@ -33,12 +33,10 @@ export type EngineOption = {
     label: string;
     createClient: () => EngineClient;
     kind?: "internal" | "external";
-    /**
-     * 同時に動かせるクライアントの数の上限（省略時は制限なし）。
-     * Desktop の内蔵エンジンは、アプリに 1 つしか無いネイティブのエンジンを全クライアントが
-     * 共有するので 1。複数の局面を並列に解析すると、互いの局面を上書きしてしまう。
-     */
+    /** 通常のクライアントを同時に動かせる数。Desktop の内蔵エンジンでは 1。 */
     maxParallel?: number;
+    /** 内蔵エンジンが一括解析に使う独立ワーカーと、端末の論理 CPU 数。 */
+    batch?: { createClient: () => EngineClient; maxParallel: number };
     /**
      * 1 クライアントが使えるスレッド数の上限（省略時は端末のコア数まで）。
      * Web の wasm エンジンは線形メモリ（2 GiB）の都合で 8 まで。超えた分は黙って丸められる。
