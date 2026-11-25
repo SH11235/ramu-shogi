@@ -99,6 +99,11 @@ interface Session {
      */
     nodesBefore: number;
     segmentNodes: number;
+    /** 読んだ時間も、局面数と同じく区切りをまたいで通算する。 */
+    timeBefore: number;
+    segmentTimeMs: number;
+    /** 止めるよう頼まれた（止め終わるのを待っている）。 */
+    stopping: boolean;
 }
 
 const progressKeyOf = (result: StudyAnalysisResult): string => {
@@ -113,6 +118,7 @@ export function useStudyDeepSearch(options: Options): {
     resume: () => Promise<boolean>;
     stop: () => Promise<void>;
     release: () => Promise<void>;
+    isReading: (request: StudyDeepRequest) => boolean;
 } {
     const [state, setState] = useState<StudyDeepState>(IDLE);
     const controllerRef = useRef<{
@@ -166,6 +172,9 @@ export function useStudyDeepSearch(options: Options): {
             if (info.nodes !== undefined && Number.isFinite(info.nodes)) {
                 session.segmentNodes = Math.max(session.segmentNodes, Math.trunc(info.nodes));
             }
+            if (info.timeMs !== undefined && Number.isFinite(info.timeMs)) {
+                session.segmentTimeMs = Math.max(session.segmentTimeMs, Math.trunc(info.timeMs));
+            }
             const depth = info.depth ?? null;
             const now = Date.now();
             const collected =
@@ -175,6 +184,7 @@ export function useStudyDeepSearch(options: Options): {
             const preview = collected && {
                 ...collected,
                 nodes: session.nodesBefore + session.segmentNodes,
+                timeMs: session.timeBefore + session.segmentTimeMs,
             };
             if (preview) {
                 session.previewAt = now;
@@ -208,6 +218,8 @@ export function useStudyDeepSearch(options: Options): {
             const result = session.collector.finish(completion);
             session.nodesBefore = finished.totalNodes;
             session.segmentNodes = 0;
+            session.timeBefore = finished.totalTimeMs;
+            session.segmentTimeMs = 0;
             if (!result) return;
             options.onResult(session.request, {
                 ...result,
@@ -297,6 +309,9 @@ export function useStudyDeepSearch(options: Options): {
             progressKey: null,
             nodesBefore: 0,
             segmentNodes: 0,
+            timeBefore: 0,
+            segmentTimeMs: 0,
+            stopping: false,
         };
         setState({ ...IDLE, phase: "preparing", nodeId: request.nodeId });
         await controller.select({
@@ -319,6 +334,7 @@ export function useStudyDeepSearch(options: Options): {
         const controller = controllerRef.current?.controller;
         // 続きから読めるかは、画面の状態ではなく解析の部品の状態で確かめる。
         if (!controller || !sessionRef.current || !controller.getState().canResume) return false;
+        sessionRef.current.stopping = false;
         setState((prev) => ({ ...prev, phase: "preparing", canContinue: false }));
         await controller.start(budget());
         return true;
@@ -327,10 +343,15 @@ export function useStudyDeepSearch(options: Options): {
     const stop = async (): Promise<void> => {
         const controller = controllerRef.current?.controller;
         if (!controller) return;
+        if (sessionRef.current) sessionRef.current.stopping = true;
         // 準備中に止めたら、準備が終わっても始めない。
         setState((prev) => (prev.phase === "preparing" ? { ...prev, phase: "paused" } : prev));
         await controller.pause();
     };
 
-    return { state, start, resume, stop, release };
+    /** `request` の読みを続けている（止めるよう頼まれていない）か。 */
+    const isReading = (request: StudyDeepRequest): boolean =>
+        sessionRef.current?.request === request && !sessionRef.current.stopping;
+
+    return { state, start, resume, stop, release, isReading };
 }

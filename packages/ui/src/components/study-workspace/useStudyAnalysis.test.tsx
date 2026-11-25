@@ -184,6 +184,8 @@ function useHarness(
     engineOptions: EngineOption[],
     options: {
         rejectAnalysis?: boolean;
+        /** この局面の解析結果だけ保存できなかったことにする。 */
+        rejectAnalysisOf?: string;
         onOps?: (ops: StudyOp[], applyOptions?: StudyApplyOpsOptions) => void;
         locked?: boolean;
         onMessage?: (message: { text: string } | null) => void;
@@ -204,6 +206,13 @@ function useHarness(
             options.onOps?.(next, applyOptions);
             // 解析結果が保存できなかった（上限を超えた）場合の模擬。
             if (options.rejectAnalysis && next.some((op) => op.type === "putAnalysis")) {
+                return Promise.resolve(false);
+            }
+            if (
+                next.some(
+                    (op) => op.type === "putAnalysis" && op.nodeId === options.rejectAnalysisOf,
+                )
+            ) {
                 return Promise.resolve(false);
             }
             setOps((previous) => [...previous, ...next]);
@@ -500,12 +509,48 @@ describe("useStudyAnalysis", () => {
                 await result.current.controller.continueDeep();
             });
             await waitFor(() => expect(result.current.controller.mode).toBe("deep"));
+            const timeBefore = saved()?.timeMs ?? 0;
             now += 3_000;
             act(() => {
-                engine.emitInfo({ depth: 10, scoreCp: 80, multipv: 1, pv: ["2g2f"], nodes: 10 });
+                engine.emitInfo({
+                    depth: 10,
+                    scoreCp: 80,
+                    multipv: 1,
+                    pv: ["2g2f"],
+                    nodes: 10,
+                    timeMs: 500,
+                });
             });
             await waitFor(() => expect(saved()?.depth).toBe(10));
             expect(saved()?.nodes).toBe(before + 10);
+            // 読んだ時間も前の区切りまでの通算に足す。
+            expect(saved()?.timeMs).toBe(timeBefore + 500);
+        } finally {
+            clock.mockRestore();
+        }
+    });
+
+    it("移る前の局面の結果を保存できなくても、移った先の局面の読みは止めない", async () => {
+        const { doc, ids } = createTestStudy();
+        const engine = createResumableEngineOption();
+        let now = 1_000_000;
+        const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+        try {
+            const { result } = renderHook(() =>
+                useHarness(doc, [engine.option], { rejectAnalysisOf: ids[2] }),
+            );
+            await act(async () => {
+                await result.current.controller.startDeep(ids[2]);
+            });
+            await waitFor(() => expect(result.current.controller.mode).toBe("deep"));
+            // 前の局面の途中の結果の保存が失敗する前に、別の局面へ移る。
+            now += 3_000;
+            await act(async () => {
+                engine.emitInfo({ depth: 5, scoreCp: 300, multipv: 1, pv: ["2g2f"] });
+                await result.current.controller.startDeep(ids[3]);
+            });
+            await waitFor(() => expect(result.current.controller.live?.nodeId).toBe(ids[3]));
+            expect(result.current.controller.mode).toBe("deep");
         } finally {
             clock.mockRestore();
         }

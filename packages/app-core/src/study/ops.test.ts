@@ -320,7 +320,7 @@ describe("レイヤーと解析結果", () => {
         ).toThrow(StudyOpError);
     });
 
-    it("採用優先度: 深さ > ノード数 > runId。到着順に依存しない", () => {
+    it("採用優先度: 深さ > ノード数 > 時間 > runId。到着順に依存しない", () => {
         const { doc, layerId, nodeId } = withLayer();
         const cases: Array<[StudyAnalysisResult, StudyAnalysisResult]> = [
             // [優先される側, 負ける側]
@@ -328,6 +328,8 @@ describe("レイヤーと解析結果", () => {
             // 同じ深さなら、後から読んだ（局面数の多い）結果が勝つ。
             [result({ nodes: 2000 }), result({ nodes: 1000 })],
             [result({ nodes: 0 }), result({ nodes: null })],
+            // 同じ読みで局面数も並べば、読んだ時間の長い方。
+            [result({ timeMs: 30_000 }), result({ timeMs: 28_500 })],
             [result({ runId: "b" }), result({ runId: "a" })],
         ];
         for (const [winner, loser] of cases) {
@@ -345,6 +347,35 @@ describe("レイヤーと解析結果", () => {
             }
         }
         expect(compareStudyAnalysisPriority(result(), result())).toBe(0);
+    });
+
+    it("同じ読みで深さ・局面数・時間が並んでも、候補が違えば到着順によらず同じ方が残る", () => {
+        const { doc, layerId, nodeId } = withLayer();
+        const first = result({ completion: "aborted" });
+        const second = result({
+            candidates: [
+                ...first.candidates,
+                {
+                    rank: 2,
+                    score: { kind: "cp", value: 80 },
+                    depth: 15,
+                    seldepth: 20,
+                    pv: ["2g2f"],
+                },
+            ],
+        });
+        const outcomes = [
+            [first, second],
+            [second, first],
+        ].map(
+            (order) =>
+                applyStudyOps(
+                    doc,
+                    order.map((item) => ({ type: "putAnalysis", layerId, nodeId, result: item })),
+                ).layers[0].results[nodeId],
+        );
+        expect(outcomes[0]).toEqual(outcomes[1]);
+        expect(outcomes[0].completion).toBe("completed");
     });
 
     it("途中で止めた深い読みは読み切った浅い読みに勝ち、読み切ったことは引き継ぐ（到着順に依存しない）", () => {

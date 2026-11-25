@@ -289,8 +289,11 @@ export function useStudyAnalysis({
     const lockedRef = useRef(locked);
     lockedRef.current = locked;
 
-    /** ためてある解析結果を文書へ反映する。保存できなかったら解析を止める。 */
-    const flushResults = (): void => {
+    /**
+     * ためてある解析結果を文書へ反映する。保存できなかったら、`stopOnFailure` が true を返すとき
+     * （既定は常に）解析を止める。
+     */
+    const flushResults = (stopOnFailure: () => boolean = () => true): void => {
         const buffer = bufferRef.current;
         if (buffer.timer !== null) {
             clearTimeout(buffer.timer);
@@ -303,7 +306,7 @@ export function useStudyAnalysis({
         if (outcome instanceof Promise) {
             void outcome.then((saved) => {
                 // 保存できなかった理由は呼び出し側が画面に出す。ここでは黙って続けないよう止める。
-                if (!saved && mountedRef.current) void cancelRef.current();
+                if (!saved && mountedRef.current && stopOnFailure()) void cancelRef.current();
             });
         }
     };
@@ -399,14 +402,12 @@ export function useStudyAnalysis({
                 ply: latestRef.current.tree.nodes.get(request.nodeId)?.ply ?? 0,
                 result,
             });
-            // 止めるたびの結果なので、まとめずにすぐ反映する。
-            flushResults();
+            // 止めるたびの結果なので、まとめずにすぐ反映する。保存できなかったときに止めるのは、まだ
+            // この読みを続けているときだけ（止めて別の局面へ移る途中なら、移った先の読みを止めない）。
+            flushResults(() => deep.isReading(request));
             latestRef.current.onFlush?.();
         },
         onProgress: (request, result) => {
-            // 保存できなかったときに止めるのは、この読みだけ（その間に別の局面へ移っていたら、移った先の
-            // 読みを止めない）。
-            const generation = generationRef.current;
             const outcome = latestRef.current.onApplyOps(
                 [
                     {
@@ -425,7 +426,7 @@ export function useStudyAnalysis({
             );
             if (outcome instanceof Promise) {
                 void outcome.then((saved) => {
-                    if (!saved && mountedRef.current && generationRef.current === generation) {
+                    if (!saved && mountedRef.current && deep.isReading(request)) {
                         void cancelRef.current();
                     }
                 });
@@ -821,7 +822,9 @@ export function useStudyAnalysis({
             await deep.stop();
             // 止めた探索は、そこまでの結果が「中断」として `onPositionAnalyzed` に届く。
             await pool.cancel();
-            flushResults();
+            // 止めている途中なので、保存できなくても止め直さない（止め直すと、このあとに始める読みを
+            // 取り消してしまう）。
+            flushResults(() => false);
             if (!mountedRef.current) return;
             setMode(null);
             setLive(null);

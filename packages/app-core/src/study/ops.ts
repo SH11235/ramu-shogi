@@ -13,6 +13,7 @@ import { studyChildNodeId, studyLayerId } from "./ids";
 import {
     STUDY_LIMITS,
     type StudyAnalysisResult,
+    type StudyCandidate,
     type StudyDocument,
     type StudyLayer,
     type StudyNode,
@@ -58,7 +59,8 @@ export function sanitizeStudyPv(
 /**
  * 同じレイヤー・同じノードの解析結果のどちらの読みを残すかを比べる。
  *
- * 1. `depth` が深い方  2. `nodes` が多い方（null は最小扱い）  3. `runId` の辞書順で大きい方
+ * 1. `depth` が深い方  2. `nodes` が多い方  3. `timeMs` が長い方（2・3 とも null は最小扱い）
+ * 4. `runId` の辞書順で大きい方  5. 候補の中身（決まった書き方の文字列の辞書順で大きい方）
  *
  * 読んでいる途中の結果も保存するので、途中で止めた深い読みが読み切った浅い読みに負けないよう、
  * 読み切ったか（`completion`）では比べない（`mergeStudyAnalysisResults` で別に引き継ぐ）。
@@ -67,16 +69,40 @@ export function sanitizeStudyPv(
  * @returns a が優先なら正、b が優先なら負、同じなら 0
  */
 export function compareStudyAnalysisPriority(
-    a: Pick<StudyAnalysisResult, "depth" | "nodes" | "runId">,
-    b: Pick<StudyAnalysisResult, "depth" | "nodes" | "runId">,
+    a: Pick<StudyAnalysisResult, "depth" | "nodes" | "timeMs" | "runId" | "candidates">,
+    b: Pick<StudyAnalysisResult, "depth" | "nodes" | "timeMs" | "runId" | "candidates">,
 ): number {
     if (a.depth !== b.depth) return a.depth - b.depth;
     const nodesA = a.nodes ?? -1;
     const nodesB = b.nodes ?? -1;
     if (nodesA !== nodesB) return nodesA - nodesB;
-    if (a.runId === b.runId) return 0;
-    return a.runId > b.runId ? 1 : -1;
+    // 同じ読みの途中の結果と区切りの結果は局面数が並ぶことがあるので、読んだ時間の長い方を残す。
+    const timeA = a.timeMs ?? -1;
+    const timeB = b.timeMs ?? -1;
+    if (timeA !== timeB) return timeA - timeB;
+    if (a.runId !== b.runId) return a.runId > b.runId ? 1 : -1;
+    // 同じ読みの途中の結果と区切りの結果は、ここまで並んでも候補が違うことがある（MultiPV の 2 位だけ
+    // 入れ替わった、など）。どちらの順で届いても同じ方を残すよう、中身でも決める。サーバーと同じ書き方。
+    const keyA = candidatesKey(a.candidates);
+    const keyB = candidatesKey(b.candidates);
+    if (keyA === keyB) return 0;
+    return keyA > keyB ? 1 : -1;
 }
+
+const candidatesKey = (candidates: readonly StudyCandidate[]): string =>
+    JSON.stringify(
+        candidates.map(({ rank, score, depth, seldepth, pv }) => [
+            rank,
+            score === null
+                ? null
+                : score.kind === "cp"
+                  ? [score.value]
+                  : [score.winner, score.plies],
+            depth,
+            seldepth,
+            pv,
+        ]),
+    );
 
 /**
  * 同じレイヤー・同じノードに届いた結果を 1 つにまとめる。読みは `compareStudyAnalysisPriority` で
