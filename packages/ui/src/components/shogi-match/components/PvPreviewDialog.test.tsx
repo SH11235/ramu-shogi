@@ -29,12 +29,14 @@ describe("PvPreviewDialog の持ち駒", () => {
 
 describe("読み筋の評価値", () => {
     it.each([
-        [Number.POSITIVE_INFINITY, "先手が詰ませる"],
-        [Number.NEGATIVE_INFINITY, "後手が詰ませる"],
-        [5, "詰み5手"],
-        [-3, "被詰み3手"],
-        [Number.NaN, "+25"],
-    ] as const)("詰み評価 %s を %s と表示する", (evalMate, expected) => {
+        [Number.POSITIVE_INFINITY, ""],
+        [Number.NEGATIVE_INFINITY, ""],
+        [5, ""],
+        [-3, ""],
+        [0, ""],
+        [Number.NaN, "[+25]"],
+        [undefined, "[+25]"],
+    ] as const)("mate スコア %s に対する見出しの評価表示は %j", (evalMate, expected) => {
         render(
             <PvPreviewDialog
                 onClose={() => {}}
@@ -47,7 +49,7 @@ describe("読み筋の評価値", () => {
             />,
         );
         expect(screen.getByRole("heading").textContent).toBe(
-            `開始局面からの読み筋（1手）[${expected}]`,
+            `開始局面からの読み筋（1手）${expected}`,
         );
     });
 });
