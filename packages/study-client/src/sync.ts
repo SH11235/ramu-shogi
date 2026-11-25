@@ -1669,9 +1669,6 @@ export function createStudySync(options: StudySyncOptions): StudySync {
                 // 予約した変更まで、その早い時刻に送ってしまう）。
                 clearTimer(entry);
                 await runSync(studyId, false);
-                // 送っている間の書き込みも続けて送り終えていれば、その予約も要らない（送り残しがあるとき
-                // の再送の予約は残す）。
-                if (entry.pendingCount === 0) clearTimer(entry);
                 return;
             }
             await Promise.allSettled([...localWrites]);

@@ -330,6 +330,8 @@ describe("レイヤーと解析結果", () => {
             [result({ nodes: 0 }), result({ nodes: null })],
             // 同じ読みで局面数も並べば、読んだ時間の長い方。
             [result({ timeMs: 30_000 }), result({ timeMs: 28_500 })],
+            // 時間は runId より先に比べる（null は最小扱い）。
+            [result({ timeMs: 0, runId: "a" }), result({ timeMs: null, runId: "b" })],
             [result({ runId: "b" }), result({ runId: "a" })],
         ];
         for (const [winner, loser] of cases) {
@@ -351,7 +353,7 @@ describe("レイヤーと解析結果", () => {
 
     it("同じ読みで深さ・局面数・時間が並んでも、候補が違えば到着順によらず同じ方が残る", () => {
         const { doc, layerId, nodeId } = withLayer();
-        const first = result({ completion: "aborted" });
+        const first = result();
         const second = result({
             candidates: [
                 ...first.candidates,
@@ -375,7 +377,20 @@ describe("レイヤーと解析結果", () => {
                 ).layers[0].results[nodeId],
         );
         expect(outcomes[0]).toEqual(outcomes[1]);
-        expect(outcomes[0].completion).toBe("completed");
+        // 端末の資源だけ違っても、到着順によらず同じ方が残る。
+        const one = result({ execution: { threads: 1, hashMb: null, parallelWorkers: 4 } });
+        const two = result({ execution: { threads: 2, hashMb: null, parallelWorkers: 4 } });
+        const kept = [
+            [one, two],
+            [two, one],
+        ].map(
+            (order) =>
+                applyStudyOps(
+                    doc,
+                    order.map((item) => ({ type: "putAnalysis", layerId, nodeId, result: item })),
+                ).layers[0].results[nodeId],
+        );
+        expect(kept[0]).toEqual(kept[1]);
     });
 
     it("途中で止めた深い読みは読み切った浅い読みに勝ち、読み切ったことは引き継ぐ（到着順に依存しない）", () => {

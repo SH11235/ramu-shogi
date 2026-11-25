@@ -287,29 +287,6 @@ describe.each(STORES)("同期エンジン（保存層: $name）", ({ create }) =
             expect(harness.postOpsCalls()).toHaveLength(2);
         });
 
-        it("flush で送っている間の書き込みも送り終えたら、その送信予約は残さない", async () => {
-            const harness = await createSyncedHarness();
-            await harness.sync.applyOps(TEST_STUDY_ID, [comment("一")]);
-            const flushing = harness.sync.flush(TEST_STUDY_ID);
-            // 送信が始まってから書き込む。
-            for (let i = 0; i < 20 && harness.postOpsCalls().length === 0; i++) {
-                await Promise.resolve();
-            }
-            const writing = harness.sync.applyOps(TEST_STUDY_ID, [comment("二")]);
-            await writing;
-            await flushing;
-            await harness.advance(0);
-            const sent = harness.postOpsCalls().length;
-            expect(harness.sync.getStatus(TEST_STUDY_ID).pendingCount).toBe(0);
-            await harness.sync.applyOps(TEST_STUDY_ID, analysisOps(firstId, 120), {
-                flushDelayMs: 30_000,
-            });
-            await harness.advance(10_000);
-            expect(harness.postOpsCalls()).toHaveLength(sent);
-            await harness.advance(20_000);
-            expect(harness.postOpsCalls()).toHaveLength(sent + 1);
-        });
-
         it("何も変えない操作は送信待ちに入れない", async () => {
             const harness = await createSyncedHarness();
             await harness.sync.applyOps(TEST_STUDY_ID, [

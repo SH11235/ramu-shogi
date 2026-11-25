@@ -349,9 +349,11 @@ export function useStudyDeepSearch(options: Options): {
         await controller.pause();
     };
 
-    /** `request` の読みを続けている（止めるよう頼まれていない）か。 */
+    /** `request` の読みを続けている（読んでいる最中で、止めるよう頼まれていない）か。 */
     const isReading = (request: StudyDeepRequest): boolean =>
-        sessionRef.current?.request === request && !sessionRef.current.stopping;
+        sessionRef.current?.request === request &&
+        !sessionRef.current.stopping &&
+        controllerRef.current?.controller.getState().phase === "running";
 
     return { state, start, resume, stop, release, isReading };
 }

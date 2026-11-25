@@ -404,10 +404,12 @@ export function useStudyAnalysis({
             });
             // 止めるたびの結果なので、まとめずにすぐ反映する。保存できなかったときに止めるのは、まだ
             // この読みを続けているときだけ（止めて別の局面へ移る途中なら、移った先の読みを止めない）。
-            flushResults(() => deep.isReading(request));
+            const generation = generationRef.current;
+            flushResults(() => generationRef.current === generation && deep.isReading(request));
             latestRef.current.onFlush?.();
         },
         onProgress: (request, result) => {
+            const generation = generationRef.current;
             const outcome = latestRef.current.onApplyOps(
                 [
                     {
@@ -426,7 +428,14 @@ export function useStudyAnalysis({
             );
             if (outcome instanceof Promise) {
                 void outcome.then((saved) => {
-                    if (!saved && mountedRef.current && deep.isReading(request)) {
+                    // 止めるのは、この読みをまだ続けているときだけ（別の局面の読みを始めていたら、
+                    // 世代が進んでいる）。
+                    if (
+                        !saved &&
+                        mountedRef.current &&
+                        generationRef.current === generation &&
+                        deep.isReading(request)
+                    ) {
                         void cancelRef.current();
                     }
                 });
