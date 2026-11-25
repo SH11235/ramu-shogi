@@ -320,17 +320,18 @@ describe("レイヤーと解析結果", () => {
         ).toThrow(StudyOpError);
     });
 
-    it("採用優先度: 完了 > 深さ > ノード数 > runId。到着順に依存しない", () => {
+    it("採用優先度: 深さ > ノード数 > 時間 > runId。到着順に依存しない", () => {
         const { doc, layerId, nodeId } = withLayer();
         const cases: Array<[StudyAnalysisResult, StudyAnalysisResult]> = [
             // [優先される側, 負ける側]
-            [
-                result({ completion: "completed", depth: 5 }),
-                result({ completion: "aborted", depth: 30 }),
-            ],
             [result({ depth: 16, nodes: 1 }), result({ depth: 15, nodes: 999_999 })],
+            // 同じ深さなら、後から読んだ（局面数の多い）結果が勝つ。
             [result({ nodes: 2000 }), result({ nodes: 1000 })],
             [result({ nodes: 0 }), result({ nodes: null })],
+            // 同じ読みで局面数も並べば、読んだ時間の長い方。
+            [result({ timeMs: 30_000 }), result({ timeMs: 28_500 })],
+            // 時間は runId より先に比べる（null は最小扱い）。
+            [result({ timeMs: 0, runId: "a" }), result({ timeMs: null, runId: "b" })],
             [result({ runId: "b" }), result({ runId: "a" })],
         ];
         for (const [winner, loser] of cases) {
@@ -348,6 +349,82 @@ describe("レイヤーと解析結果", () => {
             }
         }
         expect(compareStudyAnalysisPriority(result(), result())).toBe(0);
+    });
+
+    it("同じ読みで深さ・局面数・時間が並んでも、候補が違えば到着順によらず同じ方が残る", () => {
+        const { doc, layerId, nodeId } = withLayer();
+        const first = result();
+        const second = result({
+            candidates: [
+                ...first.candidates,
+                {
+                    rank: 2,
+                    score: { kind: "cp", value: 80 },
+                    depth: 15,
+                    seldepth: 20,
+                    pv: ["2g2f"],
+                },
+            ],
+        });
+        const outcomes = [
+            [first, second],
+            [second, first],
+        ].map(
+            (order) =>
+                applyStudyOps(
+                    doc,
+                    order.map((item) => ({ type: "putAnalysis", layerId, nodeId, result: item })),
+                ).layers[0].results[nodeId],
+        );
+        expect(outcomes[0]).toEqual(outcomes[1]);
+        // 端末の資源だけ違っても、到着順によらず同じ方が残る。
+        const one = result({ execution: { threads: 1, hashMb: null, parallelWorkers: 4 } });
+        const two = result({ execution: { threads: 2, hashMb: null, parallelWorkers: 4 } });
+        const kept = [
+            [one, two],
+            [two, one],
+        ].map(
+            (order) =>
+                applyStudyOps(
+                    doc,
+                    order.map((item) => ({ type: "putAnalysis", layerId, nodeId, result: item })),
+                ).layers[0].results[nodeId],
+        );
+        expect(kept[0]).toEqual(kept[1]);
+    });
+
+    it("途中で止めた深い読みは読み切った浅い読みに勝ち、読み切ったことは引き継ぐ（到着順に依存しない）", () => {
+        const { doc, layerId, nodeId } = withLayer();
+        const deepAborted = result({ completion: "aborted", depth: 30, nodes: 5000 });
+        const shallowCompleted = result({ completion: "completed", depth: 5, runId: "b" });
+        for (const order of [
+            [deepAborted, shallowCompleted],
+            [shallowCompleted, deepAborted],
+        ]) {
+            const next = applyStudyOps(
+                doc,
+                order.map((item) => ({ type: "putAnalysis", layerId, nodeId, result: item })),
+            );
+            expect(next.layers[0].results[nodeId]).toEqual({
+                ...deepAborted,
+                completion: "completed",
+            });
+        }
+        // 読み切った結果に、同じ内容の途中の結果が届いても変わらない（文書を作り直さない）。
+        const stored = applyStudyOp(doc, {
+            type: "putAnalysis",
+            layerId,
+            nodeId,
+            result: result(),
+        });
+        expect(
+            applyStudyOp(stored, {
+                type: "putAnalysis",
+                layerId,
+                nodeId,
+                result: result({ completion: "aborted" }),
+            }),
+        ).toBe(stored);
     });
 
     it("deleteLayer はレイヤーと結果を消す", () => {
