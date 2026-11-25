@@ -42,6 +42,7 @@ Web の WASM、Desktop の core と CSA クライアントは同じ rshogi Git r
 配布の RAMU の構成 (LayerStacks 1536-15-64、HalfKA_hm、拡張なし) の静的な実装を含みます。
 この構成のモデルは静的な実装で読み、それ以外は汎用の実装で読みます。
 配布の RAMU の寸法を変えるときは、両 `Cargo.toml` の `layerstacks-<寸法>` も揃えて変えてください。
+この feature 名は rshogi の数え方で、2 つ目の数を出力に足す近道込みで書きます (表示の 1536-15-64 は `layerstacks-1536x16x64`)。
 
 ## LayerStacks の設定
 

@@ -5,8 +5,8 @@ import type { NnueFormat } from "@shogi/app-core";
  *
  * `x2` は両視点の出力をそのまま連結して次の層に渡す形だけに付ける。LayerStacks と Pairwise は
  * 視点ごとに半分同士を掛けてから連結するので、次の層への入力は L1 のままで `x2` を付けない。
- * LayerStacks の 2 つ目の数は出力に足す近道を除いた本数で書く。rshogi の header は近道込みの
- * 8 の倍数 (16 など)、YaneuraOu の SFNN header は近道を除いた 8n-1 (15 など) を持つ。
+ * LayerStacks の l2Dimension は出力に足す近道 1 本を含む fc_0 の出力幅 (rshogi・YaneuraOu の
+ * 読み込みとも) なので、近道を除いた本数で書く。
  * 名前の末尾に L1 の次元が付いている形式（HalfKP256 など）は、次元の並びと重なるので名前から外す。
  */
 export function formatLabel(format: Partial<NnueFormat> | undefined): string | null {
@@ -17,12 +17,19 @@ export function formatLabel(format: Partial<NnueFormat> | undefined): string | n
     const name = architecture.endsWith(String(l1))
         ? architecture.slice(0, -String(l1).length)
         : architecture;
-    if (architecture.includes("LayerStacks")) {
-        const hidden = l2 % 8 === 0 ? l2 - 1 : l2;
-        return `${name} ${l1}-${hidden}-${l3}`;
+    if (isLayerStacks(architecture)) {
+        return `${name} ${l1}-${l2 - 1}-${l3}`;
     }
-    const concatenated = !format?.activation?.startsWith("Pairwise");
+    const concatenated = !format?.activation?.includes("Pairwise");
     return `${name} ${l1}${concatenated ? "x2" : ""}-${l2}-${l3}`;
+}
+
+/** rshogi は利きバケット付きの LayerStacks を `HalfKaHmMergedEffectBucket<FT>` という名前で返す。 */
+function isLayerStacks(architecture: string): boolean {
+    return (
+        architecture.includes("LayerStacks") ||
+        architecture.startsWith("HalfKaHmMergedEffectBucket")
+    );
 }
 
 function isDimension(value: number | undefined): value is number {
