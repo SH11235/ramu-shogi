@@ -5,30 +5,7 @@
  * decode 層が呼ばれないため、ここでは「decode 後」の TS 型 (camelCase + epoch_ms) で直接定義する。
  */
 
-import type { RshogiGame, RshogiGameSummary, RshogiLiveGameSummary } from "./client";
-
-/** 一覧 API の `result_kind` (wire) リテラル。 */
-export type RshogiResultKindWire = "WIN_BLACK" | "WIN_WHITE" | "DRAW" | "ABORT";
-
-/**
- * 一覧 API の `end_reason` (wire) リテラル。サーバ実装
- * (rshogi-csa-server-workers games_index.rs::classify_result) と一致させる。
- */
-export type RshogiEndReasonWire =
-    | "RESIGN"
-    | "TIME_UP"
-    | "ILLEGAL"
-    | "JISHOGI"
-    | "OUTE_SENNICHITE"
-    | "SENNICHITE"
-    | "MAX_MOVES"
-    | "ABNORMAL";
-
-/** 一覧 API の `clock.kind` (wire) リテラル。 */
-export type RshogiClockKindWire = "fischer" | "countdown" | "countdown_msec" | "stopwatch";
-
-/** 一覧 API の `source` (wire) リテラル。 */
-export type RshogiGameSourceWire = "kifu" | "floodgate" | "wdoor" | "upload";
+import type { RshogiGame, RshogiGameSummary, RshogiLiveGameSummary } from "./observation";
 
 const SAMPLE_1_CSA = [
     "V2.2",

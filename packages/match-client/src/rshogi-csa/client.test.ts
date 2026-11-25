@@ -14,6 +14,35 @@ import {
 } from "./client";
 import { MOCK_RSHOGI_GAME_LIST } from "./fixtures";
 
+describe("observation source selection", () => {
+    it("uses samples for a whitespace-only base URL across all operations", async () => {
+        const fetchImpl = vi.fn<typeof fetch>();
+        const options = { baseUrl: " \t\n ", fetchImpl };
+        const gameId = listMockRshogiGameIds()[0];
+        const { playerId } = (await fetchRshogiPlayerList()).players[0];
+        await expect(fetchRshogiGame(gameId, options)).resolves.toEqual(
+            await fetchRshogiGame(gameId),
+        );
+        await expect(fetchRshogiGameList(options)).resolves.toEqual(await fetchRshogiGameList());
+        await expect(fetchRshogiGameEvents(options)).resolves.toEqual(
+            await fetchRshogiGameEvents(),
+        );
+        await expect(fetchRshogiGameSearch(options)).resolves.toEqual(
+            await fetchRshogiGameSearch(),
+        );
+        await expect(fetchRshogiPlayerList(options)).resolves.toEqual(
+            await fetchRshogiPlayerList(),
+        );
+        await expect(fetchRshogiPlayerDetail(playerId, options)).resolves.toEqual(
+            await fetchRshogiPlayerDetail(playerId),
+        );
+        await expect(fetchRshogiLiveGameList(options)).resolves.toEqual(
+            await fetchRshogiLiveGameList(),
+        );
+        expect(fetchImpl).not.toHaveBeenCalled();
+    });
+});
+
 describe("rshogi player API (mock fallback)", () => {
     it("builds a ranked player list and paginated detail from fixtures", async () => {
         const list = await fetchRshogiPlayerList();
@@ -847,11 +876,15 @@ describe("fetchRshogiGame (real baseUrl)", () => {
         ) as unknown as typeof fetch;
 
         await expect(
-            fetchRshogiGame("boom", {
+            fetchRshogiGame(listMockRshogiGameIds()[0], {
                 baseUrl: "https://rshogi.example.com",
                 fetchImpl,
             }),
-        ).rejects.toBeInstanceOf(RshogiGameFetchError);
+        ).rejects.toMatchObject({
+            name: "RshogiGameFetchError",
+            status: 500,
+            message: "rshogi API returned 500 Server Error",
+        });
     });
 });
 
