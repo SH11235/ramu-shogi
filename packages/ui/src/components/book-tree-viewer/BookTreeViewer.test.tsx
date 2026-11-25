@@ -98,7 +98,7 @@ describe("BookTreeViewer", () => {
         const headers = moves()
             .getAllByRole("columnheader")
             .map((header) => header.textContent);
-        expect(headers).toEqual(["手", "評価値（先手基準）", "採択数"]);
+        expect(headers).toEqual(["手", "評価値", "採択数"]);
     });
     it("評価値は手番によらず先手から見た値で出す", async () => {
         render(<BookTreeViewer fetchLegalMoves={async () => []} />);
@@ -113,7 +113,6 @@ describe("BookTreeViewer", () => {
         expect(value(/3四歩/)).toBe("+20");
         fireEvent.click(screen.getByRole("button", { name: "反転" }));
         expect(value(/3四歩/)).toBe("+20");
-        expect(screen.getByText("評価値は先手基準")).toBeTruthy();
         expect(tree().getByRole("button", { name: /3四歩.*評価値 \+20/ })).toBeTruthy();
         const node = tree().getByRole("button", { name: /^☖8四歩\(83\)/ });
         expect(node.getAttribute("aria-label")).toContain("評価値 -30");

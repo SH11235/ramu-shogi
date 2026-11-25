@@ -440,7 +440,6 @@ export function BookTreeViewer({
             {fullscreen && (
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                     <h2 className="shrink-0 whitespace-nowrap font-display text-base">定跡の木</h2>
-                    <span className="text-xs text-wafuu-sumi-light">評価値は先手基準</span>
                     <output className="min-w-0 flex-1 truncate text-sm lg:flex-none">
                         {node && node.parent !== null
                             ? `${ply}手目 ${moveLabel(tree, node)}`
@@ -600,7 +599,6 @@ export function BookTreeViewer({
                 )}
                 {status && (
                     <div className="ml-auto flex items-center gap-2">
-                        <span className="text-xs text-wafuu-sumi-light">評価値は先手基準</span>
                         {progress !== null && (
                             <div
                                 role="progressbar"
