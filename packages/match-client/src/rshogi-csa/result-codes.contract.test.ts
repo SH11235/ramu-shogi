@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { RshogiEndReasonWire, RshogiResultKindWire } from "./fixtures";
+import type { RshogiResultKindWire } from "./http-observation";
 import { decodeResultCode } from "./live";
+import type { RshogiKnownEndReason } from "./observation";
 import contract from "./result-codes.json";
 
 /**
@@ -30,7 +31,7 @@ const EXPECTED_END_REASONS = [
     "SENNICHITE",
     "MAX_MOVES",
     "ABNORMAL",
-] as const satisfies readonly RshogiEndReasonWire[];
+] as const satisfies readonly RshogiKnownEndReason[];
 
 const EXPECTED_RESULT_KINDS = [
     "WIN_BLACK",
@@ -42,7 +43,7 @@ const EXPECTED_RESULT_KINDS = [
 // 逆方向(union 側に列挙漏れが無いこと)をコンパイル時保証。列挙から漏れた union
 // メンバがあると `Exclude<...>` が never にならず、代入が型エラーになる。
 type EndReasonExhaustive =
-    Exclude<RshogiEndReasonWire, (typeof EXPECTED_END_REASONS)[number]> extends never
+    Exclude<RshogiKnownEndReason, (typeof EXPECTED_END_REASONS)[number]> extends never
         ? true
         : false;
 const endReasonExhaustive: EndReasonExhaustive = true;
@@ -67,7 +68,7 @@ describe("result-codes contract", () => {
         }
     });
 
-    it("マニフェストの end_reason 集合が RshogiEndReasonWire と双方向一致する", () => {
+    it("マニフェストの end_reason 集合が RshogiKnownEndReason と双方向一致する", () => {
         expect(new Set(contract.variants.map((v) => v.end_reason))).toEqual(
             new Set(EXPECTED_END_REASONS),
         );
