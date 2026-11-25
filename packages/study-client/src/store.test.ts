@@ -56,7 +56,12 @@ describe.each(implementations)("保存層（$name）", ({ create }) => {
             expect(snapshot).toEqual({ study: null, pending: [] });
             return { study: stored(), appendOps: [comment("a"), comment("b")], result: "created" };
         });
-        expect(result).toBe("created");
+        expect(result).toEqual({
+            result: "created",
+            study: stored(),
+            pendingCount: 2,
+            changed: true,
+        });
 
         const snapshot = await store.read(TEST_STUDY_ID);
         expect(snapshot.study).toEqual(stored());
@@ -75,6 +80,47 @@ describe.each(implementations)("保存層（$name）", ({ create }) => {
         const snapshot = await store.read(TEST_STUDY_ID);
         expect(snapshot.study?.updatedAt).toBe(1000);
         expect(snapshot.pending).toEqual([]);
+    });
+
+    it("コミット結果には mutate が同期的に返した文書と結果を使う", async () => {
+        const store = create();
+        const commit = await store.transact(TEST_STUDY_ID, () => {
+            const write = { study: stored(), result: "created" };
+            queueMicrotask(() => {
+                write.study.updatedAt = 2000;
+                write.study.doc.title = "書き換え";
+                write.result = "changed";
+            });
+            return write;
+        });
+        expect(commit).toEqual({
+            result: "created",
+            study: stored(),
+            pendingCount: 0,
+            changed: true,
+        });
+        expect((await store.read(TEST_STUDY_ID)).study).toEqual(commit.study);
+    });
+
+    it("操作の追加後に元の配列が空になっても changed を返す", async () => {
+        const store = create();
+        await store.transact(TEST_STUDY_ID, () => ({ study: stored(), result: undefined }));
+        const commit = await store.transact(TEST_STUDY_ID, () => {
+            const appendOps = [comment("a")];
+            queueMicrotask(() => {
+                appendOps.length = 0;
+            });
+            return { appendOps, result: undefined };
+        });
+        expect(commit).toEqual({
+            result: undefined,
+            study: stored(),
+            pendingCount: 1,
+            changed: true,
+        });
+        expect((await store.read(TEST_STUDY_ID)).pending.map((item) => item.op)).toEqual([
+            comment("a"),
+        ]);
     });
 
     it("保存できない値（複製できない値）を含む書き込みは、全体が失敗する", async () => {
@@ -105,7 +151,7 @@ describe.each(implementations)("保存層（$name）", ({ create }) => {
             result: undefined,
         }));
         const before = (await store.read(TEST_STUDY_ID)).pending;
-        await store.transact(TEST_STUDY_ID, (snapshot) => ({
+        const commit = await store.transact(TEST_STUDY_ID, (snapshot) => ({
             removeOpsUpTo: snapshot.pending[1].seq,
             appendOps: [comment("4")],
             result: undefined,
@@ -113,6 +159,18 @@ describe.each(implementations)("保存層（$name）", ({ create }) => {
         const after = (await store.read(TEST_STUDY_ID)).pending;
         expect(after.map((item) => item.op)).toEqual([comment("3"), comment("4")]);
         expect(after[1].seq).toBeGreaterThan(before[2].seq);
+        expect(commit).toEqual({
+            result: undefined,
+            study: stored(),
+            pendingCount: after.length,
+            changed: true,
+        });
+
+        const noOp = await store.transact(TEST_STUDY_ID, () => ({
+            appendOps: [],
+            result: "unchanged",
+        }));
+        expect(noOp).toEqual({ ...commit, result: "unchanged", changed: false });
     });
 
     it("送信待ちはノートごとに分かれる", async () => {
@@ -138,7 +196,12 @@ describe.each(implementations)("保存層（$name）", ({ create }) => {
             appendOps: [comment("a")],
             result: undefined,
         }));
-        await store.transact(TEST_STUDY_ID, () => ({ study: null, result: undefined }));
+        const commit = await store.transact(TEST_STUDY_ID, () => ({
+            study: null,
+            appendOps: [comment("ignored")],
+            result: undefined,
+        }));
+        expect(commit).toEqual({ result: undefined, study: null, pendingCount: 0, changed: true });
         expect(await store.read(TEST_STUDY_ID)).toEqual({ study: null, pending: [] });
         expect(await store.list()).toEqual([]);
     });

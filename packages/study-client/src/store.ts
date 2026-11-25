@@ -128,6 +128,14 @@ export interface StudyStoreWrite<T> {
     result: T;
 }
 
+interface StudyStoreCommit<T> {
+    result: T;
+    study: StoredStudy | null;
+    pendingCount: number;
+    /** ノートの置換・削除、送信待ちの削除指定、または操作の追加があったか。 */
+    changed: boolean;
+}
+
 /**
  * ノートごとの表示の状態（同期しない、このブラウザだけのもの）。
  * リロードしても表示中のレイヤーと見ていた局面が戻るようにするために保存する。
@@ -159,12 +167,14 @@ export interface StudyStore {
     read(studyId: string): Promise<StudyStoreSnapshot>;
     /**
      * 1 つのトランザクションで読み、`mutate` が返した内容を書く。
+     * スナップショットは読み取り専用として扱い、変更は返り値で指定する。
      * `mutate` は同期関数で、例外を投げると何も書かずに失敗する。
+     * コミット後の状態と `mutate` が指定した結果を返す。
      */
     transact<T>(
         studyId: string,
         mutate: (snapshot: StudyStoreSnapshot) => StudyStoreWrite<T>,
-    ): Promise<T>;
+    ): Promise<StudyStoreCommit<T>>;
     /** 一覧（更新が新しい順）。 */
     list(): Promise<StoredStudySummary[]>;
     /** 元棋譜のキーが一致するノートの ID（更新が新しい順）。 */
@@ -233,13 +243,13 @@ export function createMemoryStudyStore(): StudyStore {
             // 書き込む値を先に複製する（複製できない値なら、何も書かずに失敗させる）。
             const study = write.study === undefined ? undefined : clone(write.study);
             const appended = clone(write.appendOps ?? []);
-
             if (study === null) {
                 studies.delete(studyId);
                 pending.delete(studyId);
                 viewStates.delete(studyId);
-                return write.result;
+                return { result: write.result, study, pendingCount: 0, changed: true };
             }
+            const committedStudy = clone(study ?? studies.get(studyId) ?? null);
             if (study !== undefined) studies.set(studyId, study);
             let queue = pending.get(studyId) ?? [];
             if (write.removeOpsUpTo !== undefined) {
@@ -251,7 +261,13 @@ export function createMemoryStudyStore(): StudyStore {
             }
             if (queue.length > 0) pending.set(studyId, queue);
             else pending.delete(studyId);
-            return write.result;
+            return {
+                result: write.result,
+                study: committedStudy,
+                pendingCount: queue.length,
+                changed:
+                    study !== undefined || write.removeOpsUpTo !== undefined || appended.length > 0,
+            };
         },
         async list() {
             return [...studies.values()]

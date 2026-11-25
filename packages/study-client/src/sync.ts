@@ -546,33 +546,9 @@ export function createStudySync(options: StudySyncOptions): StudySync {
         studyId: string,
         fn: (snapshot: StudyStoreSnapshot) => StudyStoreWrite<T>,
     ): Promise<T> => {
-        let after: { study: StoredStudy | null; pendingCount: number; wrote: boolean } | null =
-            null;
-        const result = await store.transact(studyId, (snapshot) => {
-            const write = fn(snapshot);
-            const study = write.study === undefined ? snapshot.study : write.study;
-            const removeUpTo = write.removeOpsUpTo;
-            const remaining =
-                removeUpTo === undefined
-                    ? snapshot.pending.length
-                    : snapshot.pending.filter((item) => item.seq > removeUpTo).length;
-            const appended = write.appendOps?.length ?? 0;
-            after = {
-                study,
-                pendingCount: study ? remaining + appended : 0,
-                wrote: write.study !== undefined || removeUpTo !== undefined || appended > 0,
-            };
-            return write;
-        });
-        const written = after as {
-            study: StoredStudy | null;
-            pendingCount: number;
-            wrote: boolean;
-        } | null;
-        if (written) {
-            observe(studyId, written.study, written.pendingCount);
-            if (written.wrote) channel?.post({ type: "changed", studyId });
-        }
+        const { result, study, pendingCount, changed } = await store.transact(studyId, fn);
+        observe(studyId, study, pendingCount);
+        if (changed) channel?.post({ type: "changed", studyId });
         return result;
     };
 
