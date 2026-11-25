@@ -6,16 +6,17 @@ import { MobileNavigation } from "../shogi-match/components/MobileNavigation";
 import { fitMobileBoard, mobileCommentMaxHeight } from "./studyMobileBoardFit";
 
 /**
- * スマートフォンの表示の切り替え。盤と局面の移動はどの表示でも同じ位置に置き、その下の欄だけを
- * 替える（表示を替えても操作の位置が動かないように）。切り替えは画面の上（ブラウザの下端の操作に
- * 隠れない位置）に、名前の付いたタブで出す。
+ * スマートフォンの表示の切り替え。盤・局面の移動・局面の帯はどの表示でも同じ位置に置き、その下の
+ * 欄だけを替える（表示を替えても操作の位置が動かないように）。欄は答える問いで分ける: この局面で
+ * 何を指すか（候補手）、手順と変化（棋譜）、一局のどこを見直すか（グラフ）。切り替えは画面の上
+ * （ブラウザの下端の操作に隠れない位置）に、名前の付いたタブで出す。
  */
-export type StudyMobileTab = "board" | "moves" | "candidates";
+export type StudyMobileTab = "candidates" | "moves" | "graph";
 
 const MOBILE_TABS: { id: StudyMobileTab; label: string }[] = [
-    { id: "board", label: "盤" },
-    { id: "moves", label: "棋譜" },
     { id: "candidates", label: "候補手" },
+    { id: "moves", label: "棋譜" },
+    { id: "graph", label: "グラフ" },
 ];
 
 /** 要素の大きさを測り続ける callback ref を作る。 */
@@ -45,7 +46,7 @@ export function useStudyMobileMeasure(isMobile: boolean) {
         window.addEventListener("resize", update);
         return () => window.removeEventListener("resize", update);
     }, [isMobile]);
-    // 表示の場所と、盤の表示でグラフに使える場所の大きさ（グラフの場所は盤の表示のときだけ
+    // 表示の場所と、グラフの表示でグラフに使える場所の大きさ（グラフの場所はグラフの表示のときだけ
     // あるので、付いた要素をそのつど測る）。
     const [panel, setPanel] = useState<{ width: number; height: number } | null>(null);
     const [graphSlotHeight, setGraphSlotHeight] = useState<number | null>(null);
@@ -90,8 +91,9 @@ export function StudyMobileLayout({
     commentBox,
     showsComment,
     onBackToMainLine,
-    moveStrip,
+    positionBand,
     graphPanel,
+    reviewList,
     moveList,
     candidatesPanel,
 }: {
@@ -124,8 +126,11 @@ export function StudyMobileLayout({
     showsComment: boolean;
     /** 変化を見ているときの「本譜に戻る」。本譜にいる間は null。 */
     onBackToMainLine: (() => void) | null;
-    moveStrip: ReactNode;
+    /** いまの局面の手・評価値・悪手かどうか。どの表示でも局面の移動の下に出す。 */
+    positionBand: ReactNode;
     graphPanel: ReactNode;
+    /** グラフの下に並べる、見直す手の一覧。 */
+    reviewList: ReactNode;
     moveList: ReactNode;
     candidatesPanel: ReactNode;
 }): ReactElement {
@@ -280,12 +285,17 @@ export function StudyMobileLayout({
                         {commentBox}
                     </div>
                 </div>
-                {tab === "board" ? (
-                    <div className="flex min-h-0 flex-1 flex-col gap-1.5">
-                        <div className="shrink-0">{moveStrip}</div>
-                        {/* グラフは残りの高さいっぱいに広げる（盤の下に空きを作らない）。 */}
-                        <div ref={measure.observeGraphSlot} className="min-h-0 flex-1">
+                <div className="shrink-0">{positionBand}</div>
+                {tab === "graph" ? (
+                    // グラフ（見出し・余白込みで描ける最低の高さ）と一覧の 1 行が入らない低い画面では、
+                    // 縮めて重ねずに表示の場所ごと縦に送る。
+                    <div className="flex min-h-[9.5rem] flex-1 flex-col gap-1.5">
+                        {/* 一覧は中身の高さ（多ければ半分まで）にして中で送り、残りをグラフに回す。 */}
+                        <div ref={measure.observeGraphSlot} className="min-h-[6.5rem] flex-1">
                             {graphPanel}
+                        </div>
+                        <div className="max-h-[50%] min-h-10 overflow-y-auto overscroll-contain">
+                            {reviewList}
                         </div>
                     </div>
                 ) : (
