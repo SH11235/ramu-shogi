@@ -69,6 +69,8 @@ interface Options {
     /** 1 回の読みの上限（ミリ秒）。続けて読むたびに、この分だけ読み足す。 */
     budgetMs: number;
     onResult: (request: StudyDeepRequest, result: StudyAnalysisResult) => void;
+    /** 読んでいる途中の結果。最善手・評価値・深さが前に渡したときから変わったときだけ渡す。 */
+    onProgress: (request: StudyDeepRequest, result: StudyAnalysisResult) => void;
     onError: (message: string) => void;
 }
 
@@ -88,7 +90,14 @@ interface Session {
     collector: StudyAnalysisCollector;
     /** 途中の候補を最後に画面へ写した時刻。 */
     previewAt: number;
+    /** 最後に `onProgress` へ渡した結果の最善手・評価値・深さ（変わったときだけ渡すため）。 */
+    progressKey: string | null;
 }
+
+const progressKeyOf = (result: StudyAnalysisResult): string => {
+    const best = result.candidates[0];
+    return JSON.stringify([result.depth, best?.pv[0] ?? null, best?.score ?? null]);
+};
 
 export function useStudyDeepSearch(options: Options): {
     state: StudyDeepState;
@@ -153,7 +162,14 @@ export function useStudyDeepSearch(options: Options): {
                 now - session.previewAt >= PREVIEW_INTERVAL_MS
                     ? session.collector.finish("aborted")
                     : null;
-            if (preview) session.previewAt = now;
+            if (preview) {
+                session.previewAt = now;
+                const key = progressKeyOf(preview);
+                if (key !== session.progressKey) {
+                    session.progressKey = key;
+                    options.onProgress(session.request, preview);
+                }
+            }
             if (depth !== null || preview) {
                 setState((prev) =>
                     (depth === null || prev.depth === depth) && !preview
@@ -262,6 +278,7 @@ export function useStudyDeepSearch(options: Options): {
                 execution: { threads: request.setup.threads, parallelWorkers: 1 },
             }),
             previewAt: Date.now(),
+            progressKey: null,
         };
         setState({ ...IDLE, phase: "preparing", nodeId: request.nodeId });
         await controller.select({

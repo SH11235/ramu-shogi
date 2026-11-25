@@ -71,6 +71,18 @@ const RESULT_FLUSH_INTERVAL_MS = 400;
 // biome-ignore lint/suspicious/noConfusingVoidType: 何も返さないコールバック（`() => void`）もそのまま渡せるようにする
 export type StudyApplyOpsResult = void | Promise<boolean>;
 
+/** 操作を渡すときの指定。 */
+export interface StudyApplyOpsOptions {
+    /** サーバーへ送るまで待つ時間（ミリ秒）。省略すると保存層の既定の間引き。 */
+    syncDelayMs?: number;
+}
+
+/**
+ * 読んでいる途中の結果をサーバーへ送るまで待つ時間。途中の結果は数秒ごとに手元へ保存するが、
+ * そのたびに送ると読んでいる間ずっと送信が続くので、まとめて送る（局面を移る・止めると、すぐ送る）。
+ */
+const READING_SYNC_DELAY_MS = 30_000;
+
 /** 内蔵エンジンの識別情報（解析レイヤーの条件に入る）。 */
 export interface StudyEngineIdentity {
     kind: StudyLayerSpecInput["engine"]["kind"];
@@ -158,7 +170,7 @@ interface UseStudyAnalysisOptions {
     manifestUrl: string;
     engine: StudyEngineIdentity;
     defaultNnuePresetKey?: string;
-    onApplyOps: (ops: StudyOp[]) => StudyApplyOpsResult;
+    onApplyOps: (ops: StudyOp[], options?: StudyApplyOpsOptions) => StudyApplyOpsResult;
     /** 解析の区切り（完了・中止）。送信待ちをすぐ流すのに使う。 */
     onFlush?: () => void;
     /** 解析を始めたレイヤー（画面はこのレイヤーを表示に切り替える）。 */
@@ -390,6 +402,29 @@ export function useStudyAnalysis({
             // 止めるたびの結果なので、まとめずにすぐ反映する。
             flushResults();
             latestRef.current.onFlush?.();
+        },
+        onProgress: (request, result) => {
+            const outcome = latestRef.current.onApplyOps(
+                [
+                    {
+                        type: "ensureLayer",
+                        spec: request.layer.spec,
+                        display: request.layer.display,
+                    },
+                    {
+                        type: "putAnalysis",
+                        layerId: request.layer.layerId,
+                        nodeId: request.nodeId,
+                        result,
+                    },
+                ],
+                { syncDelayMs: READING_SYNC_DELAY_MS },
+            );
+            if (outcome instanceof Promise) {
+                void outcome.then((saved) => {
+                    if (!saved && mountedRef.current) void cancelRef.current();
+                });
+            }
         },
         onError: (message) => {
             console.error("[study] 深く解析できませんでした:", message);

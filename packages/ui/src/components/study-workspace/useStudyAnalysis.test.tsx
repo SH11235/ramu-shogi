@@ -16,7 +16,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { EngineOption } from "../shogi-match/types";
 import { createTestStudy } from "./study-test-support";
 import { buildStudyViewTree } from "./studyView";
-import { STUDY_DEEP_TIME_MS, useStudyAnalysis } from "./useStudyAnalysis";
+import {
+    STUDY_DEEP_TIME_MS,
+    type StudyApplyOpsOptions,
+    useStudyAnalysis,
+} from "./useStudyAnalysis";
 
 /** 探索のたびに評価値つきの info を 1 回流してから bestmove を返すエンジン。 */
 /** `cancelMs` は探索を止め終わるまでの時間（止めている途中に次の操作を挟むのに使う）。 */
@@ -91,16 +95,20 @@ function createResumableEngineOption(): {
     searches: () => number;
     /** いまの読みを、上限に届いたことにして終える。 */
     finishRun: (elapsedMs: number) => void;
+    /** いまの読みの info を流す（同じ深さで最善手が入れ替わる、など）。 */
+    emitInfo: (info: Omit<EngineInfoEvent, "type">) => void;
 } {
     let starts = 0;
     let resumes = 0;
     let searches = 0;
     let depth = 0;
     let totalTimeMs = 0;
+    let emit: ((info: EngineInfoEvent) => void) | null = null;
     let end: ((reason: AnalysisFinished["reason"], elapsedMs: number) => AnalysisFinished) | null =
         null;
     const run = (sessionId: string, onInfo: (info: EngineInfoEvent) => void) => {
         depth += 5;
+        emit = onInfo;
         onInfo({ type: "info", depth, scoreCp: 100 + depth, multipv: 1, pv: ["8c8d"] });
         let resolve: (finished: AnalysisFinished) => void = () => {};
         const finished = new Promise<AnalysisFinished>((done) => {
@@ -166,6 +174,7 @@ function createResumableEngineOption(): {
         finishRun: (elapsedMs) => {
             end?.("budgetReached", elapsedMs);
         },
+        emitInfo: (info) => emit?.({ type: "info", ...info }),
     };
 }
 
@@ -175,7 +184,7 @@ function useHarness(
     engineOptions: EngineOption[],
     options: {
         rejectAnalysis?: boolean;
-        onOps?: (ops: StudyOp[]) => void;
+        onOps?: (ops: StudyOp[], applyOptions?: StudyApplyOpsOptions) => void;
         locked?: boolean;
         onMessage?: (message: { text: string } | null) => void;
     } = {},
@@ -191,8 +200,8 @@ function useHarness(
         engineOptions,
         manifestUrl: "",
         engine: { kind: "wasm", name: "rshogi", version: "0.8.1", appVersion: "1.2.3" },
-        onApplyOps: (next) => {
-            options.onOps?.(next);
+        onApplyOps: (next, applyOptions) => {
+            options.onOps?.(next, applyOptions);
             // 解析結果が保存できなかった（上限を超えた）場合の模擬。
             if (options.rejectAnalysis && next.some((op) => op.type === "putAnalysis")) {
                 return Promise.resolve(false);
@@ -430,6 +439,48 @@ describe("useStudyAnalysis", () => {
         expect(result.current.controller.continuableDeepNodeId).toBe(ids[2]);
         expect(engine.starts()).toBe(1);
         expect(engine.searches()).toBe(0);
+    });
+
+    it("読んでいる途中も、最善手・評価値・深さが変わるたびに結果を残し、サーバーへはまとめて送る", async () => {
+        const { doc, ids } = createTestStudy();
+        const engine = createResumableEngineOption();
+        const saves: Array<StudyApplyOpsOptions | undefined> = [];
+        let now = 1_000_000;
+        const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+        try {
+            const { result } = renderHook(() =>
+                useHarness(doc, [engine.option], {
+                    onOps: (ops, applyOptions) => {
+                        if (ops.some((op) => op.type === "putAnalysis")) saves.push(applyOptions);
+                    },
+                }),
+            );
+            await act(async () => {
+                await result.current.controller.startDeep(ids[2]);
+            });
+            await waitFor(() => expect(result.current.controller.mode).toBe("deep"));
+            const saved = () => result.current.doc.layers[0]?.results[ids[2]];
+
+            // 同じ深さのまま最善手が入れ替わっても、残す。
+            now += 3_000;
+            act(() => {
+                engine.emitInfo({ depth: 5, scoreCp: 300, multipv: 1, pv: ["2g2f"] });
+            });
+            await waitFor(() => expect(saved()?.candidates[0].pv).toEqual(["2g2f"]));
+            expect(saved()?.completion).toBe("aborted");
+            expect(saves).toEqual([{ syncDelayMs: 30_000 }]);
+            const flushes = result.current.flushCount;
+
+            // 何も変わらなければ残さない。
+            now += 3_000;
+            act(() => {
+                engine.emitInfo({ depth: 5, scoreCp: 300, multipv: 1, pv: ["2g2f"] });
+            });
+            expect(saves).toHaveLength(1);
+            expect(result.current.flushCount).toBe(flushes);
+        } finally {
+            clock.mockRestore();
+        }
     });
 
     it("別の局面を深く解析している途中に深く解析すると、前の読みを結果に残して切り替える", async () => {

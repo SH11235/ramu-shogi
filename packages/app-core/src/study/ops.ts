@@ -56,10 +56,13 @@ export function sanitizeStudyPv(
 }
 
 /**
- * 同じレイヤー・同じノードの解析結果の採用優先度（設計書 5.6）を比べる。
+ * 同じレイヤー・同じノードの解析結果の採用優先度を比べる。
  *
- * 1. `completed` を `aborted` より優先  2. `depth` が深い方
- * 3. `nodes` が多い方（null は最小扱い）  4. `runId` の辞書順で大きい方
+ * 1. `depth` が深い方  2. `nodes` が多い方（null は最小扱い）  3. `completed` を `aborted` より優先
+ * 4. `runId` の辞書順で大きい方
+ *
+ * 読んでいる途中の結果も保存するので、途中で止めた深い読みが、読み切った浅い読みに負けないよう
+ * 深さを先に比べる。同じ深さでも最善手は入れ替わるので、次に読んだ局面数（後の読みほど多い）で比べる。
  *
  * @returns a が優先なら正、b が優先なら負、同じなら 0
  */
@@ -67,14 +70,14 @@ export function compareStudyAnalysisPriority(
     a: Pick<StudyAnalysisResult, "completion" | "depth" | "nodes" | "runId">,
     b: Pick<StudyAnalysisResult, "completion" | "depth" | "nodes" | "runId">,
 ): number {
-    const completionRank = (value: StudyAnalysisResult["completion"]): number =>
-        value === "completed" ? 1 : 0;
-    const byCompletion = completionRank(a.completion) - completionRank(b.completion);
-    if (byCompletion !== 0) return byCompletion;
     if (a.depth !== b.depth) return a.depth - b.depth;
     const nodesA = a.nodes ?? -1;
     const nodesB = b.nodes ?? -1;
     if (nodesA !== nodesB) return nodesA - nodesB;
+    const completionRank = (value: StudyAnalysisResult["completion"]): number =>
+        value === "completed" ? 1 : 0;
+    const byCompletion = completionRank(a.completion) - completionRank(b.completion);
+    if (byCompletion !== 0) return byCompletion;
     if (a.runId === b.runId) return 0;
     return a.runId > b.runId ? 1 : -1;
 }

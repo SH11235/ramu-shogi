@@ -212,7 +212,12 @@ export interface StudySync {
      * 上限超過は `StudyLimitError`（`limit` に上限の名前。例: `commentBytes`）、
      * 形として成り立たない入力は `StudyOpError`（どちらも `@shogi/app-core`）。
      */
-    applyOps(studyId: string, ops: readonly StudyOp[]): Promise<StudyDocument>;
+    applyOps(
+        studyId: string,
+        ops: readonly StudyOp[],
+        /** `flushDelayMs`: この変更をサーバーへ送るまで待つ時間。省略すると送信の間引きの既定。 */
+        options?: { flushDelayMs?: number },
+    ): Promise<StudyDocument>;
     /** 送信待ちをすぐ送る（解析の区切りなど）。省略時は全ノート。送信の試行が終わると解決する。 */
     flush(studyId?: string): Promise<void>;
     /** 上限超過・拒否で止まっている送信を、もう一度試す。 */
@@ -1623,7 +1628,7 @@ export function createStudySync(options: StudySyncOptions): StudySync {
             return study && isVisible(study) ? study : null;
         },
 
-        applyOps(studyId, ops) {
+        applyOps(studyId, ops, options) {
             return enqueueWrite(studyId, async () => {
                 const { doc, changed } = await mutate(studyId, (snapshot) => {
                     if (!snapshot.study || snapshot.study.deleting || !isVisible(snapshot.study)) {
@@ -1649,7 +1654,7 @@ export function createStudySync(options: StudySyncOptions): StudySync {
                 });
                 if (changed) {
                     emit({ type: "document", studyId, origin: "local" });
-                    schedule(studyId, flushDelayMs);
+                    schedule(studyId, options?.flushDelayMs ?? flushDelayMs);
                 }
                 return doc;
             });

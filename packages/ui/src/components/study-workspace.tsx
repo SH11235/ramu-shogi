@@ -114,6 +114,7 @@ import {
 } from "./study-workspace/studyView";
 import {
     type StudyAnalysisController,
+    type StudyApplyOpsOptions,
     type StudyApplyOpsResult,
     type StudyEngineIdentity,
     useStudyAnalysis,
@@ -145,7 +146,7 @@ interface StudyWorkspaceCommonProps {
      * 編集の操作。呼び出し側が文書に適用し、保存層へ流す。保存できなかったとき `false` で
      * 解決する Promise を返すと、実行中の解析を止める。
      */
-    onApplyOps: (ops: StudyOp[]) => StudyApplyOpsResult;
+    onApplyOps: (ops: StudyOp[], options?: StudyApplyOpsOptions) => StudyApplyOpsResult;
     saveStatus: StudyWorkspaceSaveStatus;
     /** 止まっている送信をもう一度試す。 */
     onRetrySave?: () => void;

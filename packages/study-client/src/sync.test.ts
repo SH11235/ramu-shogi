@@ -253,6 +253,21 @@ describe.each(STORES)("同期エンジン（保存層: $name）", ({ create }) =
             expect(harness.postOpsCalls()).toHaveLength(1);
         });
 
+        it("送るまでの待ちを延ばした変更は、その時間まで送らない（読んでいる途中の解析結果）", async () => {
+            const harness = await createSyncedHarness();
+            await harness.sync.applyOps(TEST_STUDY_ID, analysisOps(firstId, 120), {
+                flushDelayMs: 30_000,
+            });
+            await harness.sync.applyOps(TEST_STUDY_ID, analysisOps(firstId, 150), {
+                flushDelayMs: 30_000,
+            });
+            await harness.advance(29_999);
+            expect(harness.postOpsCalls()).toEqual([]);
+            await harness.advance(1);
+            expect(harness.postOpsCalls()).toHaveLength(1);
+            expect(serverDoc(harness).layers).toEqual((await localDoc(harness)).layers);
+        });
+
         it("何も変えない操作は送信待ちに入れない", async () => {
             const harness = await createSyncedHarness();
             await harness.sync.applyOps(TEST_STUDY_ID, [
