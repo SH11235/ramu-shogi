@@ -1,7 +1,6 @@
 import type {
     LayerStacksConfig,
     NnueDownloadProgress,
-    NnueFormat,
     NnueMeta,
     PresetConfig,
     PresetWithStatus,
@@ -27,6 +26,7 @@ import { NnueErrorAlert } from "../nnue/NnueErrorAlert";
 import { NnueFvScaleInputDialog } from "../nnue/NnueFvScaleInputDialog";
 import { Progress } from "../progress";
 import { MatchNnueDownloadDialog } from "../shogi-match/components/MatchNnueDownloadDialog";
+import { formatLabel } from "./formatLabel";
 import { NnueSpeedTable, useNnueSpeedBenchmark } from "./NnueSpeed";
 import type { NnueAccountFile, NnueAccountStore, NnueSpeedSupport } from "./types";
 
@@ -79,21 +79,6 @@ function formatSize(bytes: number): string {
     if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
     if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
     return `${Math.round(bytes / (1024 * 1024))} MB`;
-}
-
-/**
- * 形式を「LayerStacks 1536-16-32」「HalfKP 256-32-32」のように書く。名前の末尾に L1 の次元が
- * 付いている形式（HalfKP256 など）は、次元の並びと重なるので名前から外す。
- */
-function formatLabel(format: Partial<NnueFormat> | undefined): string | null {
-    const architecture = format?.architecture?.trim();
-    if (!architecture || architecture.toLowerCase() === "unknown") return null;
-    const dims = [format?.l1Dimension, format?.l2Dimension, format?.l3Dimension];
-    if (!dims.every((dim) => typeof dim === "number" && dim > 0)) return architecture;
-    const name = architecture.endsWith(String(dims[0]))
-        ? architecture.slice(0, -String(dims[0]).length)
-        : architecture;
-    return `${name} ${dims.join("-")}`;
 }
 
 function needsModelSettings(meta: NnueMeta): boolean {
