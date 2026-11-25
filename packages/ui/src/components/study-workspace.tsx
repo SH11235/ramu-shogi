@@ -102,6 +102,7 @@ import {
     buildStudyStructureTree,
     chooseStudyDisplayLayer,
     countStudyLayerResults,
+    pickStudyDeeperResult,
     type StudyStructureTree,
     studyBestCandidate,
     studyFirstMoveLabel,
@@ -683,6 +684,8 @@ export function StudyWorkspaceView({
         if (mode !== null || analysis.isPreparing || !autoAnalyze) return;
         if (autoStartedNodeRef.current !== currentNodeId) return;
         if (analysis.continuableDeepNodeId === currentNodeId) return;
+        // 読めずに止まったとき（失敗の知らせを出している）は、読み終えたことにしない。
+        if (message?.type === "error") return;
         setAutoFinishedNodeId(currentNodeId);
     });
     useEffect(() => {
@@ -1099,9 +1102,12 @@ export function StudyWorkspaceView({
     const liveHere = analysis.live?.nodeId === currentNodeId ? analysis.live : undefined;
     // 帯の評価値は、保存済みのいちばん深い読みと、それより深くなった読んでいる途中の値のうち深いほう
     // （読み直しの始めの浅い値で、保存済みの深い値を上書きして見せない）。
+    // 直近に読んだ結果（`deeperResult`）が、前に保存したより深い結果より浅いこともあるので、同じ AI で
+    // 深く読んだ結果のうち最も深いものも比べる。
     const savedResult = [
         insights.deeperResult?.result,
         insights.positionResult?.result,
+        pickStudyDeeperResult(doc, currentNodeId, displayLayerId)?.result,
     ].reduce<StudyAnalysisResult | null>(
         (best, result) => (result && (!best || result.depth > best.depth) ? result : best),
         null,
