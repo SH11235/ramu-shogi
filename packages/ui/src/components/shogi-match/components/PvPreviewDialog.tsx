@@ -190,13 +190,13 @@ export function PvPreviewDialog({
         }
     }, [positions.length]);
 
-    const hasMateScore =
-        evalMate !== undefined &&
-        (Number.isInteger(evalMate) || Math.abs(evalMate) === MATE_WITHOUT_PLY);
-    const evalText =
-        !hasMateScore && evalCp !== undefined && Number.isFinite(evalCp)
-            ? `${evalCp >= 0 ? "+" : ""}${evalCp}`
-            : null;
+    const evalText = (() => {
+        if (evalMate === MATE_WITHOUT_PLY) return "mate +";
+        if (evalMate === -MATE_WITHOUT_PLY) return "mate -";
+        if (evalMate !== undefined && Number.isInteger(evalMate)) return `mate ${evalMate}`;
+        if (evalCp === undefined || !Number.isFinite(evalCp)) return null;
+        return `${evalCp >= 0 ? "+" : ""}${evalCp}`;
+    })();
 
     return (
         <Dialog defaultOpen onOpenChange={(isOpen) => !isOpen && onClose()}>
@@ -208,12 +208,9 @@ export function PvPreviewDialog({
             >
                 <DialogHeader className="flex min-h-8 flex-row items-center justify-between pr-8">
                     <DialogTitle className="text-sm font-medium">
-                        {ply === 0 ? "開始局面からの読み筋" : `${ply}手目の読み筋`}
-                        <span className="text-muted-foreground font-normal">
-                            （{validPv.length}手）
-                        </span>
+                        {ply === 0 ? "開始局面からの読み筋" : `${ply}手目を指した後の読み筋`}
                         {evalText && (
-                            <span className="ml-2 text-xs font-normal text-muted-foreground">
+                            <span className="ml-2 whitespace-nowrap text-xs font-normal text-muted-foreground">
                                 [{evalText}]
                             </span>
                         )}
