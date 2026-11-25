@@ -1896,7 +1896,7 @@ describe("StudyWorkspaceView", () => {
         );
         view.unmount();
 
-        // 1 局面ずつしか解析できないエンジン（Desktop の内蔵エンジン）では、欄ごと出さない。
+        // 1 局面ずつしか解析できないエンジンでは、欄ごと出さない。
         const single = createAnalysis({ form: { ...base.form, maxParallel: 1 } });
         render(<Harness initialDoc={createTestStudy().doc} analysis={single} />);
         fireEvent.click(screen.getByRole("button", { name: /^解析の設定/ }));
@@ -1905,6 +1905,23 @@ describe("StudyWorkspaceView", () => {
                 name: /同時に解析する局面の数/,
             }),
         ).toBeNull();
+    });
+
+    it("Desktop の一括解析で論理 CPU 数まで任意の局面数を選べる", () => {
+        const base = createAnalysis();
+        const analysis = createAnalysis({
+            form: { ...base.form, maxParallel: 11, nativeBatchParallelism: 11 },
+        });
+        render(<Harness initialDoc={createTestStudy().doc} analysis={analysis} />);
+        fireEvent.click(screen.getByRole("button", { name: /^解析の設定/ }));
+        const select = screen.getByRole("combobox", { name: "同時に解析する局面の数" });
+        expect(within(select).getByRole("option", { name: "自動（5）" })).toBeDefined();
+        expect(within(select).getByRole("option", { name: "11" })).toBeDefined();
+        expect(within(select).queryByRole("option", { name: "12" })).toBeNull();
+        fireEvent.change(select, { target: { value: "7" } });
+        expect(analysis.form.onSettingsChange).toHaveBeenLastCalledWith(
+            expect.objectContaining({ parallelWorkers: 7 }),
+        );
     });
 
     it("「残りを解析」は、表示中の設定の未解析分を、その設定で解析する", () => {

@@ -22,6 +22,7 @@ const AnalysisContext = createContext<AnalysisContextValue | null>(null);
 interface AnalysisProviderProps {
     // 分析設定
     analysisSettings: AnalysisSettings;
+    nativeBatchParallelism?: number;
     onAnalysisSettingsChange: (settings: AnalysisSettings) => void;
 
     // 分析用NNUE
@@ -53,6 +54,7 @@ interface AnalysisProviderProps {
  */
 export function AnalysisProvider({
     analysisSettings,
+    nativeBatchParallelism,
     onAnalysisSettingsChange,
     analysisNnueSelection,
     onAnalysisNnueSelectionChange,
@@ -73,6 +75,7 @@ export function AnalysisProvider({
 }: AnalysisProviderProps): ReactNode {
     const value: AnalysisContextValue = {
         analysisSettings,
+        nativeBatchParallelism,
         onAnalysisSettingsChange,
         analysisNnueSelection,
         onAnalysisNnueSelectionChange,

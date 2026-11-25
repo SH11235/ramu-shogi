@@ -32,6 +32,7 @@ export interface BatchAnalysisState {
 export interface AnalysisContextValue {
     // 分析設定
     analysisSettings: AnalysisSettings;
+    nativeBatchParallelism?: number;
     onAnalysisSettingsChange: (settings: AnalysisSettings) => void;
 
     // 分析用NNUE

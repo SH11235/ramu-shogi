@@ -12,6 +12,7 @@ import {
     toOptionValue,
 } from "../utils/nnueSelectionUtils";
 import { ANALYSIS_TIME_OPTIONS, PARALLEL_WORKER_OPTIONS } from "../utils/threadOptions";
+import { BatchParallelismSelect } from "./BatchParallelismSelect";
 
 /** 解析対象の選択肢 */
 type AnalysisTarget = "mainOnly" | "includeBranches";
@@ -22,6 +23,7 @@ type AnalysisTarget = "mainOnly" | "includeBranches";
 export function BatchAnalysisDropdown({
     movesWithoutPv,
     analysisSettings,
+    nativeBatchParallelism,
     onAnalysisSettingsChange,
     onStartBatchAnalysis,
     onStartTreeBatchAnalysis,
@@ -35,6 +37,7 @@ export function BatchAnalysisDropdown({
 }: {
     movesWithoutPv: number;
     analysisSettings: AnalysisSettings;
+    nativeBatchParallelism?: number;
     onAnalysisSettingsChange: (settings: AnalysisSettings) => void;
     onStartBatchAnalysis: () => void;
     onStartTreeBatchAnalysis?: (options?: { mainLineOnly?: boolean }) => void;
@@ -168,22 +171,32 @@ export function BatchAnalysisDropdown({
                     {/* 並列数設定 */}
                     <div className="space-y-1.5">
                         <div className="text-xs font-medium text-foreground">並列数</div>
-                        <div className="flex gap-1 flex-wrap">
-                            {PARALLEL_WORKER_OPTIONS.map((opt) => (
-                                <button
-                                    key={opt.value}
-                                    type="button"
-                                    onClick={() => handleParallelWorkersChange(opt.value)}
-                                    className={`px-2 py-1 rounded text-xs transition-colors ${
-                                        analysisSettings.parallelWorkers === opt.value
-                                            ? "bg-primary text-primary-foreground"
-                                            : "bg-muted text-muted-foreground hover:bg-muted/80"
-                                    }`}
-                                >
-                                    {opt.value === 0 ? `自動(${resolveWorkerCount(0)})` : opt.label}
-                                </button>
-                            ))}
-                        </div>
+                        {nativeBatchParallelism !== undefined ? (
+                            <BatchParallelismSelect
+                                limit={nativeBatchParallelism}
+                                value={analysisSettings.parallelWorkers}
+                                onChange={handleParallelWorkersChange}
+                            />
+                        ) : (
+                            <div className="flex gap-1 flex-wrap">
+                                {PARALLEL_WORKER_OPTIONS.map((opt) => (
+                                    <button
+                                        key={opt.value}
+                                        type="button"
+                                        onClick={() => handleParallelWorkersChange(opt.value)}
+                                        className={`px-2 py-1 rounded text-xs transition-colors ${
+                                            analysisSettings.parallelWorkers === opt.value
+                                                ? "bg-primary text-primary-foreground"
+                                                : "bg-muted text-muted-foreground hover:bg-muted/80"
+                                        }`}
+                                    >
+                                        {opt.value === 0
+                                            ? `自動(${resolveWorkerCount(0)})`
+                                            : opt.label}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     {/* 解析時間設定 */}

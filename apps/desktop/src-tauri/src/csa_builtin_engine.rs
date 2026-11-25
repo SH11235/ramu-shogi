@@ -161,6 +161,7 @@ impl BuiltinEngineDriver {
                 .inner
                 .lock()
                 .map_err(|e| anyhow!("engine state lock poisoned: {e}"))?;
+            crate::validate_search_position(&inner.position).map_err(anyhow::Error::msg)?;
             let search = inner
                 .search
                 .as_ref()
@@ -383,9 +384,7 @@ impl UsiEngineDriver for BuiltinEngineDriver {
             .inner
             .lock()
             .map_err(|e| anyhow!("engine state lock poisoned: {e}"))?;
-        if let Some(search) = inner.search.as_mut() {
-            search.clear_tt();
-        }
+        inner.clear_search_cache();
         Ok(())
     }
 

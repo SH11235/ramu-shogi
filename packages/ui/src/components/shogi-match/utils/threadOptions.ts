@@ -1,4 +1,4 @@
-import { detectParallelism } from "@shogi/app-core";
+import { detectParallelism, resolveWorkerCount } from "@shogi/app-core";
 import type { EngineOption } from "../types";
 
 type ThreadSelectOption = { value: number; label: string };
@@ -10,6 +10,18 @@ export const PARALLEL_WORKER_OPTIONS: ThreadSelectOption[] = [
     { value: 3, label: "3" },
     { value: 4, label: "4" },
 ];
+
+export function resolveBatchWorkerCount(
+    setting: number,
+    nativeLimit?: number,
+    maxParallel?: number,
+): number {
+    if (nativeLimit === undefined) {
+        return Math.min(resolveWorkerCount(setting), maxParallel ?? Infinity);
+    }
+    if (setting === 0) return Math.max(1, Math.floor(nativeLimit / 2));
+    return Number.isFinite(setting) ? Math.max(1, Math.min(nativeLimit, Math.trunc(setting))) : 1;
+}
 
 export const ANALYSIS_TIME_OPTIONS: ThreadSelectOption[] = [
     { value: 500, label: "0.5秒" },

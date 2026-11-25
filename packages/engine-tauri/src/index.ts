@@ -10,7 +10,7 @@ import type {
     ThreadInfo,
 } from "@shogi/engine-client";
 import { createMockEngineClient } from "@shogi/engine-client";
-import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { Channel, invoke as tauriInvoke } from "@tauri-apps/api/core";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { listen as tauriListen } from "@tauri-apps/api/event";
 import { normalizeEngineEvent } from "./engine-event";
@@ -74,6 +74,19 @@ interface TauriEngineClientOptions extends EngineInitOptions {
 const DEFAULT_EVENT_NAME = "engine://event";
 
 export function createTauriEngineClient(options: TauriEngineClientOptions = {}): EngineClient {
+    return createTauriClient(options);
+}
+
+export function createTauriBatchEngineClient(): EngineClient {
+    return createTauriClient({ useMockOnError: false }, crypto.randomUUID());
+}
+
+export async function getNativeBatchParallelism(): Promise<number> {
+    const { hardwareConcurrency } = await tauriInvoke<ThreadInfo>("engine_thread_info");
+    return hardwareConcurrency;
+}
+
+function createTauriClient(options: TauriEngineClientOptions, workerId?: string): EngineClient {
     const {
         ipc: ipcOverrides,
         useMockOnError = true,
@@ -90,6 +103,16 @@ export function createTauriEngineClient(options: TauriEngineClientOptions = {}):
         listen: ipcOverrides?.listen ?? tauriListen,
     };
 
+    const invoke = <T>(operation: string, args?: Record<string, unknown>) => {
+        if (workerId === undefined) {
+            return args === undefined
+                ? ipc.invoke<T>(`engine_${operation}`)
+                : ipc.invoke<T>(`engine_${operation}`, args);
+        }
+        return ipc.invoke<T>(`engine_batch_${operation}`, { workerId, ...args });
+    };
+    let activeBatchSearch: string | null = null;
+
     let usingMock = false;
     let unlisten: UnlistenFn | null = null;
     let cachedThreadInfo: ThreadInfo | null = null;
@@ -105,12 +128,9 @@ export function createTauriEngineClient(options: TauriEngineClientOptions = {}):
 
     const fetchThreadInfo = async (): Promise<ThreadInfo> => {
         try {
-            const response = await ipc.invoke<{
-                activeThreads: number;
-                maxThreads: number;
-                threadedAvailable: boolean;
-                hardwareConcurrency: number;
-            }>("engine_thread_info");
+            const response = await (workerId === undefined
+                ? ipc.invoke<ThreadInfo>("engine_thread_info")
+                : ipc.invoke<ThreadInfo>("engine_thread_info", { workerId }));
             return {
                 activeThreads: response.activeThreads,
                 maxThreads: response.maxThreads,
@@ -162,7 +182,7 @@ export function createTauriEngineClient(options: TauriEngineClientOptions = {}):
     };
 
     const ensureEventSubscription = async () => {
-        if (usingMock || unlisten) return;
+        if (workerId !== undefined || usingMock || unlisten) return;
         try {
             if (debug) {
                 console.info("[engine-tauri] subscribing to", eventName);
@@ -202,7 +222,7 @@ export function createTauriEngineClient(options: TauriEngineClientOptions = {}):
                 initOpts ?? (Object.keys(initDefaults).length > 0 ? initDefaults : undefined);
             return runOrMock(
                 async () => {
-                    await ipc.invoke("engine_init", { opts: mergedInitOpts });
+                    await invoke("init", { opts: mergedInitOpts });
                     await ensureEventSubscription();
                     // Fetch and cache thread info after init
                     cachedThreadInfo = await fetchThreadInfo();
@@ -213,7 +233,7 @@ export function createTauriEngineClient(options: TauriEngineClientOptions = {}):
         async loadPosition(sfen, moves, options?: LoadPositionOptions) {
             return runOrMock(
                 () =>
-                    ipc.invoke("engine_position", {
+                    invoke("position", {
                         sfen,
                         moves,
                         // Tauri は、JS 側の camelCase の名前を Rust 側の `pass_rights` に対応づける。
@@ -226,8 +246,31 @@ export function createTauriEngineClient(options: TauriEngineClientOptions = {}):
             if (usingMock) return mock.search(params);
 
             try {
+                if (workerId !== undefined) {
+                    const searchId = crypto.randomUUID();
+                    activeBatchSearch = searchId;
+                    const events = new Channel<EngineEvent>((event) => {
+                        if (activeBatchSearch !== searchId) return;
+                        if (event.type === "bestmove" || event.type === "error") {
+                            activeBatchSearch = null;
+                        }
+                        emit(normalizeEngineEvent(event));
+                    });
+                    try {
+                        await invoke("search", { params, searchId, events });
+                    } catch (error) {
+                        if (activeBatchSearch === searchId) activeBatchSearch = null;
+                        throw error;
+                    }
+                    return {
+                        cancel: async () => {
+                            if (activeBatchSearch === searchId) activeBatchSearch = null;
+                            await invoke("stop", { searchId });
+                        },
+                    };
+                }
                 await ensureEventSubscription();
-                await ipc.invoke("engine_search", { params });
+                await invoke("search", { params });
                 return {
                     cancel: async () => {
                         await ipc.invoke("engine_stop").catch(() => undefined);
@@ -239,15 +282,16 @@ export function createTauriEngineClient(options: TauriEngineClientOptions = {}):
             }
         },
         async stop() {
+            activeBatchSearch = null;
             return runOrMock(
-                () => ipc.invoke("engine_stop"),
+                () => invoke("stop"),
                 () => mock.stop(),
             );
         },
         async setOption(name, value) {
             return runOrMock(
                 async () => {
-                    await ipc.invoke("engine_option", { name, value });
+                    await invoke("option", { name, value });
                     // Update cache if Threads option was changed
                     if (name === "Threads") {
                         cachedThreadInfo = await fetchThreadInfo();
@@ -278,9 +322,11 @@ export function createTauriEngineClient(options: TauriEngineClientOptions = {}):
             };
         },
         async dispose() {
+            activeBatchSearch = null;
             await runOrMock(
                 async () => {
-                    await ipc.invoke("engine_stop").catch(() => undefined);
+                    if (workerId !== undefined) await invoke("dispose");
+                    else await invoke("stop").catch(() => undefined);
                     if (unlisten) {
                         try {
                             unlisten();
@@ -311,7 +357,8 @@ export function createTauriEngineClient(options: TauriEngineClientOptions = {}):
 
             // 進行中の検索を停止
             try {
-                await ipc.invoke("engine_stop");
+                activeBatchSearch = null;
+                await invoke(workerId === undefined ? "stop" : "dispose");
             } catch {
                 // ignore stop errors during reset
             }
@@ -334,7 +381,7 @@ export function createTauriEngineClient(options: TauriEngineClientOptions = {}):
         async loadNnue(nnueId: string, layerStacks?: LayerStacksOptions): Promise<void> {
             return runOrMock(
                 async () => {
-                    await ipc.invoke("engine_load_nnue", { args: { nnueId, layerStacks } });
+                    await invoke("load_nnue", { args: { nnueId, layerStacks } });
                 },
                 async () => {
                     // モックではNNUEロードは no-op

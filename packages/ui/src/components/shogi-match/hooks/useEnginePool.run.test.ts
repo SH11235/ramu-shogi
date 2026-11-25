@@ -351,3 +351,56 @@ describe("useEnginePool: 中止とやり直し", () => {
         expect(result.current.isRunning).toBe(false);
     });
 });
+
+describe("native batch worker lifetime", () => {
+    it("releases workers from a cancelled initialization before starting again", async () => {
+        const engine = controlledEngine();
+        const { result } = renderHook(() =>
+            useEnginePool({
+                createClient: engine.createClient,
+                workerCount: 8,
+                releaseWorkersAfterRun: true,
+            }),
+        );
+
+        const gate = createGate();
+        engine.holdInit = gate;
+        act(() => result.current.start([job("a", ["7g7f"]), job("b", ["2g2f"])]));
+        await waitFor(() => expect(engine.clients[0]?.init).toHaveBeenCalledTimes(1));
+
+        await act(async () => {
+            const cancelled = result.current.cancel();
+            result.current.start([job("c", ["2g2f"])]);
+            gate.open();
+            await cancelled;
+        });
+        await waitFor(() => expect(engine.searches).toEqual([["2g2f"]]));
+        await waitFor(() => expect(engine.clients[1]?.dispose).toHaveBeenCalledTimes(1));
+        expect(engine.clients).toHaveLength(2);
+        expect(engine.clients[0]?.dispose).toHaveBeenCalledTimes(1);
+    });
+
+    it("reports a native IPC string rejection with its message", async () => {
+        const engine = controlledEngine();
+        const onError = vi.fn();
+        const { result } = renderHook(() =>
+            useEnginePool({
+                createClient: () => {
+                    const client = engine.createClient();
+                    vi.mocked(client.loadPosition).mockRejectedValueOnce(
+                        "native position rejected",
+                    );
+                    return client;
+                },
+                workerCount: 1,
+                releaseWorkersAfterRun: true,
+                onError,
+            }),
+        );
+        act(() => result.current.start([job("a", ["7g7f"])]));
+        await waitFor(() =>
+            expect(onError).toHaveBeenCalledWith(1, new Error("native position rejected")),
+        );
+        await waitFor(() => expect(engine.clients[0]?.dispose).toHaveBeenCalledTimes(1));
+    });
+});

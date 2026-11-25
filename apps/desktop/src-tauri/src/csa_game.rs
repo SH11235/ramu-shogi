@@ -22,7 +22,7 @@ use crate::csa_engine::resolve_engine_path;
 use crate::csa_session::run_csa_session;
 use crate::csa_sink::TauriEventSink;
 use crate::csa_types::{CsaConfig, CsaEngineType, CsaSessionEvent};
-use crate::engine_lock::{EngineLock, EngineTarget};
+use crate::engine_lock::{EngineLock, EngineLockGuard};
 
 /// CSA セッションイベントの Tauri チャネル名
 const CSA_SESSION_EVENT: &str = "csa://session";
@@ -50,30 +50,10 @@ async fn run_csa_session_task(
     config: CsaConfig,
     engine_path: PathBuf,
     app: AppHandle,
-    engine_lock: Arc<EngineLock>,
+    lock_guard: EngineLockGuard,
     engine_state: Arc<EngineState>,
     shutdown: Arc<AtomicBool>,
 ) {
-    let target = match config.engine.engine_type {
-        CsaEngineType::External => EngineTarget::External {
-            registration_id: config.engine.registration_id.clone().unwrap_or_default(),
-        },
-        CsaEngineType::Builtin => EngineTarget::Builtin,
-    };
-    let lock_guard = match engine_lock.acquire(target) {
-        Ok(guard) => guard,
-        Err(message) => {
-            let _ = app.emit(
-                CSA_SESSION_EVENT,
-                &CsaSessionEvent::Error {
-                    kind: "engine_lock",
-                    message,
-                },
-            );
-            return;
-        }
-    };
-
     let (tx, mut rx) = mpsc::unbounded_channel::<CsaSessionEvent>();
 
     let app_clone = app.clone();
@@ -141,37 +121,24 @@ pub async fn csa_start(
         CsaEngineType::Builtin => PathBuf::from("<builtin>"),
     };
 
-    {
-        let handle_guard = manager
-            .session_handle
-            .lock()
-            .map_err(|e| format!("内部エラー: {e}"))?;
-        if handle_guard.is_some() {
-            return Err("CSA 対局セッションが既に実行中です".to_string());
-        }
+    let mut handle_guard = manager
+        .session_handle
+        .lock()
+        .map_err(|e| format!("内部エラー: {e}"))?;
+    if handle_guard.is_some() {
+        return Err("CSA 対局セッションが既に実行中です".to_string());
     }
 
-    // Builtin engine は in-process Search を利用するため、UI 検索が active なら
-    // 先に停止して JoinHandle を回収し、search instance を inner.search に戻す
-    // (CSA Builtin が `inner.search.take()` できる状態にする)。External engine は
-    // EngineState を触らないため不要。
+    let lock_guard = engine_lock.acquire()?;
+    crate::lock_engine(&engine_state.batch)?.require_idle()?;
     if config.engine.engine_type == CsaEngineType::Builtin {
-        let active = {
-            let mut inner = engine_state.inner.lock().unwrap_or_else(|e| e.into_inner());
-            inner.stop_active_search()
-        };
-        if let Some(active) = active {
-            let join_result = active.handle.join();
-            let mut inner = engine_state.inner.lock().unwrap_or_else(|e| e.into_inner());
-            inner.restore_search(join_result);
-        }
+        crate::stop_active_search(&engine_state)?;
     }
 
     // shutdown フラグを reset (前回 run の残留値を消す)
     manager.shutdown.store(false, Ordering::SeqCst);
     let shutdown = Arc::clone(&manager.shutdown);
 
-    let engine_lock_clone = Arc::clone(&engine_lock);
     let engine_state_clone = Arc::clone(&engine_state);
     let manager_clone = Arc::clone(&manager);
 
@@ -180,7 +147,7 @@ pub async fn csa_start(
             config,
             engine_path_buf,
             app,
-            engine_lock_clone,
+            lock_guard,
             engine_state_clone,
             shutdown,
         )
@@ -190,13 +157,7 @@ pub async fn csa_start(
         }
     });
 
-    {
-        let mut handle_guard = manager
-            .session_handle
-            .lock()
-            .map_err(|e| format!("内部エラー: {e}"))?;
-        *handle_guard = Some(handle);
-    }
+    *handle_guard = Some(handle);
 
     Ok(())
 }

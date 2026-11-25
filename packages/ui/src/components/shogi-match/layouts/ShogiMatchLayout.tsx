@@ -113,6 +113,10 @@ export function ShogiMatchLayout({
         setIsPassRightsSettingsOpen,
     } = matchSettings;
 
+    const analysisEngine =
+        engineOptions?.find((engine) => engine.id === analysisEngineId) ?? engineOptions?.[0];
+    const nativeBatchParallelism = analysisEngine?.batch?.maxParallel;
+
     // グループ化されたpropsを展開: 盤面状態
     const {
         position,
@@ -385,6 +389,7 @@ export function ShogiMatchLayout({
                 >
                     <AnalysisProvider
                         analysisSettings={analysisSettings}
+                        nativeBatchParallelism={nativeBatchParallelism}
                         onAnalysisSettingsChange={setAnalysisSettings}
                         analysisNnueSelection={analysisNnueSelection}
                         onAnalysisNnueSelectionChange={setAnalysisNnueSelection}
@@ -526,6 +531,7 @@ export function ShogiMatchLayout({
                 >
                     <AnalysisProvider
                         analysisSettings={analysisSettings}
+                        nativeBatchParallelism={nativeBatchParallelism}
                         onAnalysisSettingsChange={setAnalysisSettings}
                         analysisNnueSelection={analysisNnueSelection}
                         onAnalysisNnueSelectionChange={setAnalysisNnueSelection}

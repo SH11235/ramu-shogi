@@ -56,6 +56,7 @@ interface UseEnginePoolOptions {
     clientKey?: string;
     /** ワーカー数 */
     workerCount: number;
+    releaseWorkersAfterRun?: boolean;
     /**
      * 1 つのワーカー（1 局面の探索）に使うスレッド数（既定は 1）。端末全体では
      * `workerCount × threadsPerWorker` のスレッドを使う。
@@ -185,6 +186,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         createClient,
         clientKey,
         workerCount,
+        releaseWorkersAfterRun = false,
         threadsPerWorker = 1,
         onProgress,
         onResult,
@@ -214,13 +216,14 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         multiPv: number;
         completed: number;
         total: number;
-        inProgress: Set<number>;
+        inProgress: Set<QueuedJob>;
         /**
          * 実行の世代。start() と cancel() のたびに進む。
          * 初期化・局面読込・探索開始・結果通知の各段階で、自分の世代がまだ現在のものかを確かめる
          * （中止した・次の解析が始まったあとに、古い実行の続きが動かないように）。
          */
         runId: number;
+        finishedRunId?: number;
         /** ワーカーの初期化・作り直し・破棄を順番に行うための列（同時に走らせない）。 */
         initChain: Promise<void>;
         initialized: boolean;
@@ -281,10 +284,21 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         const newProgress: BatchAnalysisProgress = {
             completed: state.completed,
             total: state.total,
-            inProgress: Array.from(state.inProgress),
+            inProgress: [...new Set(Array.from(state.inProgress, (job) => job.ply))],
         };
         setProgress(newProgress);
         callbacksRef.current.onProgress?.(newProgress);
+    };
+
+    const completeRun = (runId: number) => {
+        const state = stateRef.current;
+        if (state.finishedRunId === runId) return;
+        state.finishedRunId = runId;
+        if (releaseWorkersAfterRun) {
+            state.initChain = state.initChain.then(disposeWorkers, disposeWorkers);
+        }
+        setIsRunning(false);
+        callbacksRef.current.onComplete?.();
     };
 
     // 次のジョブを取得して実行する。ワーカーごとの列に積み、前の操作（前の実行の探索の開始待ちと
@@ -308,16 +322,13 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         if (!job) {
             // ジョブがない場合、全ワーカーがアイドルかチェック
             const allIdle = state.workers.every((w) => w.currentPly === null);
-            if (allIdle && state.completed === state.total) {
-                setIsRunning(false);
-                callbacksRef.current.onComplete?.();
-            }
+            if (allIdle && state.completed === state.total) completeRun(runId);
             return;
         }
 
         // ジョブを実行
         worker.currentPly = job.ply;
-        state.inProgress.add(job.ply);
+        state.inProgress.add(job);
         updateProgress();
 
         try {
@@ -370,7 +381,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
             // イベントを購読
             const unsubscribe = worker.client.subscribe((event) => {
                 // 古い実行のイベントは、結果にも進捗にも使わない
-                if (!isCurrent()) return;
+                if (!isCurrent() || finished) return;
 
                 if (event.type === "info") {
                     if (run && worker.run === run) run.collector.push(event);
@@ -397,7 +408,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
                     finished = true;
                     worker.handle = null;
                     worker.currentPly = null;
-                    state.inProgress.delete(job.ply);
+                    state.inProgress.delete(job);
                     state.completed++;
                     updateProgress();
 
@@ -411,7 +422,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
                     finished = true;
                     worker.handle = null;
                     worker.currentPly = null;
-                    state.inProgress.delete(job.ply);
+                    state.inProgress.delete(job);
                     state.completed++;
                     updateProgress();
 
@@ -447,12 +458,17 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
             if (!finished) worker.handle = handle;
         } catch (error) {
             // 古い実行の失敗は、現在の実行の進捗に数えない
-            if (!isCurrent()) return;
-            callbacksRef.current.onError?.(job.ply, error as Error);
+            if (!isCurrent() || worker.currentPly === null) return;
+            worker.subscription?.();
+            worker.subscription = null;
+            callbacksRef.current.onError?.(
+                job.ply,
+                error instanceof Error ? error : new Error(String(error)),
+            );
             worker.run = null;
             worker.handle = null;
             worker.currentPly = null;
-            state.inProgress.delete(job.ply);
+            state.inProgress.delete(job);
             state.completed++;
             updateProgress();
 
@@ -485,6 +501,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         await Promise.all(
             workers.map(async (worker) => {
                 try {
+                    await worker.chain;
                     await worker.client.dispose();
                 } catch {
                     // 無視
@@ -504,7 +521,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         for (let i = 0; i < params.workerCount; i++) {
             // 初期化の途中で中止された・次の実行が始まったら、残りは作らない
             // （ここまでに作ったワーカーは、次の実行が条件に合えばそのまま使う）。
-            if (state.runId !== runId && workers.length > 0) break;
+            if (state.runId !== runId) break;
             let client: EngineClient | undefined;
             try {
                 client = params.createClient();
@@ -558,6 +575,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
                 // アンマウント後は状態を更新しない
                 if (mountedRef.current) {
                     setIsRunning(false);
+                    if (releaseWorkersAfterRun) callbacksRef.current.onComplete?.();
                 }
             }
             return;
@@ -622,7 +640,9 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
             fvScale: startOptions?.fvScale,
             layerStacks: startOptions?.layerStacks,
             clientKey,
-            workerCount: startOptions?.workerCount ?? workerCount,
+            workerCount: releaseWorkersAfterRun
+                ? Math.min(startOptions?.workerCount ?? workerCount, jobs.length)
+                : (startOptions?.workerCount ?? workerCount),
             threadsPerWorker: Math.max(
                 1,
                 Math.trunc(startOptions?.threadsPerWorker ?? threadsPerWorker),
@@ -639,6 +659,10 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         // 終わってから、この実行の条件で確かめ直す。
         const prepare = async () => {
             if (!isCurrent()) return;
+            if (releaseWorkersAfterRun && jobs.length === 0) {
+                completeRun(runId);
+                return;
+            }
             // NNUE・FV_SCALE・エンジン・並列数が変わった場合は再初期化
             const shouldReinitialize =
                 state.initialized &&
@@ -653,6 +677,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
                 await disposeWorkers();
             }
 
+            if (!isCurrent()) return;
             await initializeWorkers(params, runId);
             if (!isCurrent()) return;
 
@@ -678,11 +703,11 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
     };
 
     // 一括解析をキャンセルする
-    const cancel = async () => {
+    const cancelRun = async (dispose: boolean) => {
         const state = stateRef.current;
         // 世代を進める。待機中（初期化・局面読込・探索開始）の処理は、戻ってきたときに
         // 世代が変わっているのを見て止まる。
-        state.runId += 1;
+        const runId = ++state.runId;
         state.jobQueue = [];
 
         // 全ワーカーを停止
@@ -701,8 +726,12 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
             if (handle) await enqueueStop(worker, handle);
         });
 
+        if (dispose || releaseWorkersAfterRun) {
+            state.initChain = state.initChain.then(disposeWorkers, disposeWorkers);
+            stopPromises.push(state.initChain);
+        }
         await Promise.all(stopPromises);
-
+        if (state.runId !== runId) return;
         state.inProgress.clear();
 
         // アンマウント後は状態を更新しない
@@ -712,15 +741,8 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         }
     };
 
-    // プールを破棄する
-    const dispose = async () => {
-        await cancel();
-
-        // 進行中の初期化が終わってから破棄する（初期化の途中で作られたワーカーを残さない）
-        const state = stateRef.current;
-        state.initChain = state.initChain.then(disposeWorkers, disposeWorkers);
-        await state.initChain;
-    };
+    const cancel = () => cancelRun(false);
+    const dispose = () => cancelRun(true);
 
     const disposeEvent = useEffectEvent(dispose);
 

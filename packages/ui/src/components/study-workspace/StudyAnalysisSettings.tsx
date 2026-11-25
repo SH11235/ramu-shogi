@@ -13,6 +13,7 @@ import { Button } from "../button";
 import { ChoiceGroup } from "../choice-group";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../dialog";
 import { NativeSelect } from "../native-select";
+import { BatchParallelismSelect } from "../shogi-match/components/BatchParallelismSelect";
 import { BottomSheet } from "../shogi-match/components/BottomSheet";
 import {
     buildNnueOptions,
@@ -199,29 +200,39 @@ function SettingsBody({
                         size="sm"
                     />
                 </fieldset>
-                {/* 1 局面ずつしか解析できないエンジン（Desktop の内蔵エンジン）では、選ぶものが無い。 */}
-                {form.maxParallel !== 1 && (
+                {(form.nativeBatchParallelism !== undefined || form.maxParallel !== 1) && (
                     <fieldset className="flex flex-col gap-1">
                         <legend className="pb-1 text-xs text-muted-foreground">
                             同時に解析する局面の数（多いほど速く終わり、端末の負荷は上がります）
                         </legend>
-                        <ChoiceGroup
-                            options={PARALLEL_WORKER_OPTIONS.filter(
-                                (option) =>
-                                    form.maxParallel === null || option.value <= form.maxParallel,
-                            ).map((option) => ({
-                                value: option.value,
-                                label:
-                                    option.value === 0
-                                        ? `自動（${Math.min(resolveWorkerCount(0), form.maxParallel ?? Number.POSITIVE_INFINITY)}）`
-                                        : option.label,
-                            }))}
-                            value={shownParallelWorkers}
-                            onChange={(parallelWorkers) =>
-                                form.onSettingsChange({ ...form.settings, parallelWorkers })
-                            }
-                            size="sm"
-                        />
+                        {form.nativeBatchParallelism !== undefined ? (
+                            <BatchParallelismSelect
+                                limit={form.nativeBatchParallelism}
+                                value={form.settings.parallelWorkers}
+                                onChange={(parallelWorkers) =>
+                                    form.onSettingsChange({ ...form.settings, parallelWorkers })
+                                }
+                            />
+                        ) : (
+                            <ChoiceGroup
+                                options={PARALLEL_WORKER_OPTIONS.filter(
+                                    (option) =>
+                                        form.maxParallel === null ||
+                                        option.value <= form.maxParallel,
+                                ).map((option) => ({
+                                    value: option.value,
+                                    label:
+                                        option.value === 0
+                                            ? `自動（${Math.min(resolveWorkerCount(0), form.maxParallel ?? Number.POSITIVE_INFINITY)}）`
+                                            : option.label,
+                                }))}
+                                value={shownParallelWorkers}
+                                onChange={(parallelWorkers) =>
+                                    form.onSettingsChange({ ...form.settings, parallelWorkers })
+                                }
+                                size="sm"
+                            />
+                        )}
                     </fieldset>
                 )}
                 <fieldset className="flex flex-col gap-2">

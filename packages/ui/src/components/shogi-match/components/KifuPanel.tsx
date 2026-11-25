@@ -125,6 +125,7 @@ interface KifuPanelProps {
     onCancelBatchAnalysis?: () => void;
     /** 解析設定 */
     analysisSettings?: AnalysisSettings;
+    nativeBatchParallelism?: number;
     /** 解析設定変更コールバック */
     onAnalysisSettingsChange?: (settings: AnalysisSettings) => void;
     /** 分析用 NNUE 選択 */
@@ -184,6 +185,7 @@ export function KifuPanel({
     onStartTreeBatchAnalysis,
     onCancelBatchAnalysis,
     analysisSettings,
+    nativeBatchParallelism,
     onAnalysisSettingsChange,
     analysisNnueSelection,
     onAnalysisNnueSelectionChange,
@@ -297,6 +299,7 @@ export function KifuPanel({
                             <BatchAnalysisDropdown
                                 movesWithoutPv={movesWithoutPv}
                                 analysisSettings={analysisSettings}
+                                nativeBatchParallelism={nativeBatchParallelism}
                                 onAnalysisSettingsChange={onAnalysisSettingsChange}
                                 onStartBatchAnalysis={onStartBatchAnalysis}
                                 onStartTreeBatchAnalysis={onStartTreeBatchAnalysis}
