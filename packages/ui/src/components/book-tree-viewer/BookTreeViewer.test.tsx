@@ -98,7 +98,7 @@ describe("BookTreeViewer", () => {
         const headers = moves()
             .getAllByRole("columnheader")
             .map((header) => header.textContent);
-        expect(headers).toEqual(["手", "評価値", "採択数"]);
+        expect(headers).toEqual(["手", "評価値（先手基準）", "採択数"]);
     });
     it("評価値は手番によらず先手から見た値で出す", async () => {
         render(<BookTreeViewer fetchLegalMoves={async () => []} />);
@@ -110,7 +110,11 @@ describe("BookTreeViewer", () => {
         const value = (name: RegExp) =>
             moves().getByRole("button", { name }).closest("tr")?.children[1].textContent;
         expect(value(/8四歩/)).toBe("-30");
-        expect(value(/3四歩/)).toBe("20");
+        expect(value(/3四歩/)).toBe("+20");
+        fireEvent.click(screen.getByRole("button", { name: "反転" }));
+        expect(value(/3四歩/)).toBe("+20");
+        expect(screen.getByText("評価値は先手基準")).toBeTruthy();
+        expect(tree().getByRole("button", { name: /3四歩.*評価値 \+20/ })).toBeTruthy();
         const node = tree().getByRole("button", { name: /^☖8四歩\(83\)/ });
         expect(node.getAttribute("aria-label")).toContain("評価値 -30");
     });
@@ -205,7 +209,7 @@ sfen ${key("7g7f")}
         open();
         fireEvent.click(panel().getByRole("button", { name: "出口" }));
         fireEvent.click(panel().getByRole("button", { name: "後手よし順" }));
-        expect(items()).toEqual(["2 ☖8四歩(83)-40", "1 ☗2六歩(27)10", "2 ☖3四歩(33)20"]);
+        expect(items()).toEqual(["2 ☖8四歩(83)-40", "1 ☗2六歩(27)+10", "2 ☖3四歩(33)+20"]);
 
         fireEvent.change(panel().getByLabelText("局面（SFEN）"), {
             target: { value: "position startpos moves 7g7f 3c3d" },

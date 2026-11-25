@@ -98,9 +98,6 @@ vi.mock("./shogi-match/components/BottomSheet", () => ({
     BottomSheet: ({ children, open }: { children: React.ReactNode; open: boolean }) =>
         open ? <div data-testid="bottom-sheet">{children}</div> : null,
 }));
-vi.mock("./shogi-match/components/KifuNavigationToolbar", () => ({
-    KifuNavigationToolbar: () => null,
-}));
 vi.mock("./shogi-match/utils/positionUtils", () => ({ boardToGrid: vi.fn(() => []) }));
 vi.mock("./shogi-match/hooks/useMediaQuery", () => ({
     useIsMobile: () => mockUseIsMobile(),
@@ -943,6 +940,31 @@ describe("OnlineGameView", () => {
     });
 
     describe("指し手の記録", () => {
+        it("自分の手番に終局しても棋譜の手を選ぶと盤の最終手が切り替わる", async () => {
+            await act(async () => {
+                render(
+                    <OnlineGameView
+                        client={makeMockClient()}
+                        snapshot={makeFinishedSnapshot({ result: RESIGN_RESULT })}
+                        seat="w"
+                        roomId="test-room"
+                    />,
+                );
+            });
+            fireEvent.click(screen.getByRole("button", { name: "盤面を見る" }));
+            const board = screen.getByTestId("shogi-board");
+            expect(board.dataset.lastMove).toBe("2b");
+            fireEvent.click(screen.getByRole("button", { name: "1手戻る" }));
+            expect(screen.getByText("2/3手")).toBeTruthy();
+            expect(board.dataset.lastMove).toBe("3d");
+            fireEvent.click(screen.getByRole("button", { name: "最初へ戻る" }));
+            expect(board.dataset.lastMove).toBe("");
+            fireEvent.click(screen.getByRole("button", { name: /^1\./ }));
+            expect(board.dataset.lastMove).toBe("7f");
+            fireEvent.click(screen.getByRole("button", { name: /^3\./ }));
+            expect(board.dataset.lastMove).toBe("2b");
+        });
+
         it("snapshot の指し手から棋譜パネルと KIF の出力を復元する", async () => {
             const writeText = vi.fn().mockResolvedValue(undefined);
             vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });

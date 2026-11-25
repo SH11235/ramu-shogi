@@ -7,7 +7,7 @@ import {
 import { cn } from "@shogi/design-system";
 import { type ReactElement, type ReactNode, useEffect, useRef, useState } from "react";
 import { ChoiceGroup } from "../choice-group";
-import { bookValue, moveLabel, valueClass } from "./bookLabels";
+import { bookValue, formatBookValue, moveLabel, valueClass } from "./bookLabels";
 
 /** 一覧に一度に出す数（大きな定跡で分かれ目や合流が数千になっても、描く量を抑える）。続きはボタンで足す。 */
 const LIST_PAGE = 200;
@@ -148,7 +148,9 @@ export function BookTreeJump({
         detail = (node) => {
             const value = values.get(node.id);
             return value === undefined ? null : (
-                <span className={cn("tabular-nums", valueClass(value))}>{value}</span>
+                <span className={cn("tabular-nums", valueClass(value))}>
+                    {formatBookValue(value)}
+                </span>
             );
         };
         empty = tree.capped
