@@ -404,6 +404,9 @@ export function useStudyAnalysis({
             latestRef.current.onFlush?.();
         },
         onProgress: (request, result) => {
+            // 保存できなかったときに止めるのは、この読みだけ（その間に別の局面へ移っていたら、移った先の
+            // 読みを止めない）。
+            const generation = generationRef.current;
             const outcome = latestRef.current.onApplyOps(
                 [
                     {
@@ -422,7 +425,9 @@ export function useStudyAnalysis({
             );
             if (outcome instanceof Promise) {
                 void outcome.then((saved) => {
-                    if (!saved && mountedRef.current) void cancelRef.current();
+                    if (!saved && mountedRef.current && generationRef.current === generation) {
+                        void cancelRef.current();
+                    }
                 });
             }
         },

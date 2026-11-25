@@ -1665,6 +1665,9 @@ export function createStudySync(options: StudySyncOptions): StudySync {
                 const entry = entryOf(studyId);
                 clearTimer(entry);
                 await entry.writeChain;
+                // 待っている間の書き込みが予約した送信も、ここで送るので取り消す（残すと、あとで延ばして
+                // 予約した変更まで、その早い時刻に送ってしまう）。
+                clearTimer(entry);
                 await runSync(studyId, false);
                 return;
             }

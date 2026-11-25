@@ -320,22 +320,13 @@ describe("レイヤーと解析結果", () => {
         ).toThrow(StudyOpError);
     });
 
-    it("採用優先度: 深さ > ノード数 > 完了 > runId。到着順に依存しない", () => {
+    it("採用優先度: 深さ > ノード数 > runId。到着順に依存しない", () => {
         const { doc, layerId, nodeId } = withLayer();
         const cases: Array<[StudyAnalysisResult, StudyAnalysisResult]> = [
             // [優先される側, 負ける側]
-            // 途中で止めた深い読みは、読み切った浅い読みに勝つ。
-            [
-                result({ completion: "aborted", depth: 30 }),
-                result({ completion: "completed", depth: 5 }),
-            ],
             [result({ depth: 16, nodes: 1 }), result({ depth: 15, nodes: 999_999 })],
-            // 同じ深さなら、後から読んだ（局面数の多い）途中の結果が勝つ。
-            [
-                result({ completion: "aborted", nodes: 2000 }),
-                result({ completion: "completed", nodes: 1000 }),
-            ],
-            [result({ completion: "completed" }), result({ completion: "aborted" })],
+            // 同じ深さなら、後から読んだ（局面数の多い）結果が勝つ。
+            [result({ nodes: 2000 }), result({ nodes: 1000 })],
             [result({ nodes: 0 }), result({ nodes: null })],
             [result({ runId: "b" }), result({ runId: "a" })],
         ];
@@ -354,6 +345,40 @@ describe("レイヤーと解析結果", () => {
             }
         }
         expect(compareStudyAnalysisPriority(result(), result())).toBe(0);
+    });
+
+    it("途中で止めた深い読みは読み切った浅い読みに勝ち、読み切ったことは引き継ぐ（到着順に依存しない）", () => {
+        const { doc, layerId, nodeId } = withLayer();
+        const deepAborted = result({ completion: "aborted", depth: 30, nodes: 5000 });
+        const shallowCompleted = result({ completion: "completed", depth: 5, runId: "b" });
+        for (const order of [
+            [deepAborted, shallowCompleted],
+            [shallowCompleted, deepAborted],
+        ]) {
+            const next = applyStudyOps(
+                doc,
+                order.map((item) => ({ type: "putAnalysis", layerId, nodeId, result: item })),
+            );
+            expect(next.layers[0].results[nodeId]).toEqual({
+                ...deepAborted,
+                completion: "completed",
+            });
+        }
+        // 読み切った結果に、同じ内容の途中の結果が届いても変わらない（文書を作り直さない）。
+        const stored = applyStudyOp(doc, {
+            type: "putAnalysis",
+            layerId,
+            nodeId,
+            result: result(),
+        });
+        expect(
+            applyStudyOp(stored, {
+                type: "putAnalysis",
+                layerId,
+                nodeId,
+                result: result({ completion: "aborted" }),
+            }),
+        ).toBe(stored);
     });
 
     it("deleteLayer はレイヤーと結果を消す", () => {

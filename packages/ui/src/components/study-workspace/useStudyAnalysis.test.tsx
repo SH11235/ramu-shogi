@@ -478,6 +478,34 @@ describe("useStudyAnalysis", () => {
             });
             expect(saves).toHaveLength(1);
             expect(result.current.flushCount).toBe(flushes);
+
+            // 同じ深さでもう一度入れ替われば、また残す。
+            now += 3_000;
+            act(() => {
+                engine.emitInfo({ depth: 5, scoreCp: 50, multipv: 1, pv: ["7g7f"], nodes: 400 });
+            });
+            await waitFor(() => expect(saved()?.candidates[0].pv).toEqual(["7g7f"]));
+            expect(saves).toHaveLength(2);
+
+            // 止めて続きを読むと、info の局面数は 0 から数え直しても、途中の結果は前の区切りまでの
+            // 局面数に足した数で残る（同じ深さで前の区切りの結果に負けない）。
+            await act(async () => {
+                await result.current.controller.cancel();
+            });
+            await waitFor(() =>
+                expect(result.current.controller.continuableDeepNodeId).toBe(ids[2]),
+            );
+            const before = saved()?.nodes ?? 0;
+            await act(async () => {
+                await result.current.controller.continueDeep();
+            });
+            await waitFor(() => expect(result.current.controller.mode).toBe("deep"));
+            now += 3_000;
+            act(() => {
+                engine.emitInfo({ depth: 10, scoreCp: 80, multipv: 1, pv: ["2g2f"], nodes: 10 });
+            });
+            await waitFor(() => expect(saved()?.depth).toBe(10));
+            expect(saved()?.nodes).toBe(before + 10);
         } finally {
             clock.mockRestore();
         }

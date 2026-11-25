@@ -92,6 +92,13 @@ interface Session {
     previewAt: number;
     /** 最後に `onProgress` へ渡した結果の最善手・評価値・深さ（変わったときだけ渡すため）。 */
     progressKey: string | null;
+    /**
+     * 前の区切りまでに読んだ局面数の通算と、いまの区切りの info の局面数。info の局面数は続きを読む
+     * たびに 0 から数え直すので、途中の結果の局面数は足して出す（同じ深さでは局面数の多い結果が残るので、
+     * 続きの読みの途中の結果が前の区切りの結果に負けないように）。
+     */
+    nodesBefore: number;
+    segmentNodes: number;
 }
 
 const progressKeyOf = (result: StudyAnalysisResult): string => {
@@ -156,12 +163,19 @@ export function useStudyDeepSearch(options: Options): {
             const session = sessionRef.current;
             if (!session || session.key !== key) return;
             session.collector.push(info);
+            if (info.nodes !== undefined && Number.isFinite(info.nodes)) {
+                session.segmentNodes = Math.max(session.segmentNodes, Math.trunc(info.nodes));
+            }
             const depth = info.depth ?? null;
             const now = Date.now();
-            const preview =
+            const collected =
                 now - session.previewAt >= PREVIEW_INTERVAL_MS
                     ? session.collector.finish("aborted")
                     : null;
+            const preview = collected && {
+                ...collected,
+                nodes: session.nodesBefore + session.segmentNodes,
+            };
             if (preview) {
                 session.previewAt = now;
                 const key = progressKeyOf(preview);
@@ -192,6 +206,8 @@ export function useStudyDeepSearch(options: Options): {
                     ? "aborted"
                     : "completed";
             const result = session.collector.finish(completion);
+            session.nodesBefore = finished.totalNodes;
+            session.segmentNodes = 0;
             if (!result) return;
             options.onResult(session.request, {
                 ...result,
@@ -279,6 +295,8 @@ export function useStudyDeepSearch(options: Options): {
             }),
             previewAt: Date.now(),
             progressKey: null,
+            nodesBefore: 0,
+            segmentNodes: 0,
         };
         setState({ ...IDLE, phase: "preparing", nodeId: request.nodeId });
         await controller.select({

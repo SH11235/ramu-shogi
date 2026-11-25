@@ -56,30 +56,43 @@ export function sanitizeStudyPv(
 }
 
 /**
- * 同じレイヤー・同じノードの解析結果の採用優先度を比べる。
+ * 同じレイヤー・同じノードの解析結果のどちらの読みを残すかを比べる。
  *
- * 1. `depth` が深い方  2. `nodes` が多い方（null は最小扱い）  3. `completed` を `aborted` より優先
- * 4. `runId` の辞書順で大きい方
+ * 1. `depth` が深い方  2. `nodes` が多い方（null は最小扱い）  3. `runId` の辞書順で大きい方
  *
- * 読んでいる途中の結果も保存するので、途中で止めた深い読みが、読み切った浅い読みに負けないよう
- * 深さを先に比べる。同じ深さでも最善手は入れ替わるので、次に読んだ局面数（後の読みほど多い）で比べる。
+ * 読んでいる途中の結果も保存するので、途中で止めた深い読みが読み切った浅い読みに負けないよう、
+ * 読み切ったか（`completion`）では比べない（`mergeStudyAnalysisResults` で別に引き継ぐ）。
+ * 同じ深さでも最善手は入れ替わるので、次に読んだ局面数（後の読みほど多い）で比べる。
  *
  * @returns a が優先なら正、b が優先なら負、同じなら 0
  */
 export function compareStudyAnalysisPriority(
-    a: Pick<StudyAnalysisResult, "completion" | "depth" | "nodes" | "runId">,
-    b: Pick<StudyAnalysisResult, "completion" | "depth" | "nodes" | "runId">,
+    a: Pick<StudyAnalysisResult, "depth" | "nodes" | "runId">,
+    b: Pick<StudyAnalysisResult, "depth" | "nodes" | "runId">,
 ): number {
     if (a.depth !== b.depth) return a.depth - b.depth;
     const nodesA = a.nodes ?? -1;
     const nodesB = b.nodes ?? -1;
     if (nodesA !== nodesB) return nodesA - nodesB;
-    const completionRank = (value: StudyAnalysisResult["completion"]): number =>
-        value === "completed" ? 1 : 0;
-    const byCompletion = completionRank(a.completion) - completionRank(b.completion);
-    if (byCompletion !== 0) return byCompletion;
     if (a.runId === b.runId) return 0;
     return a.runId > b.runId ? 1 : -1;
+}
+
+/**
+ * 同じレイヤー・同じノードに届いた結果を 1 つにまとめる。読みは `compareStudyAnalysisPriority` で
+ * 勝つ方（同じなら既存）を残し、どちらかが読み切って（`completed`）いれば読み切ったものとする
+ * （「残りを解析」が、深い途中の結果のある局面を読み直し続けないように）。
+ * どちらの順で届いても同じ結果になる。既存のままでよいときは `existing` をそのまま返す。
+ */
+function mergeStudyAnalysisResults(
+    existing: StudyAnalysisResult,
+    incoming: StudyAnalysisResult,
+): StudyAnalysisResult {
+    const kept = compareStudyAnalysisPriority(incoming, existing) > 0 ? incoming : existing;
+    const completed = existing.completion === "completed" || incoming.completion === "completed";
+    return completed && kept.completion !== "completed"
+        ? { ...kept, completion: "completed" }
+        : kept;
 }
 
 const sameStringArray = (a: readonly string[] | null, b: readonly string[] | null): boolean => {
@@ -225,13 +238,10 @@ function applyPutAnalysis(
     if (layerIndex < 0 || !hasNode(doc, nodeId)) return doc;
     const layer = doc.layers[layerIndex];
     const existing = Object.hasOwn(layer.results, nodeId) ? layer.results[nodeId] : undefined;
-    if (existing) {
-        const priority = compareStudyAnalysisPriority(result, existing);
-        // 既存より下なら既存を残す。同じ優先度（同じ探索の再送）も既存のままでよい。
-        if (priority <= 0) return doc;
-    }
+    const merged = existing ? mergeStudyAnalysisResults(existing, result) : result;
+    if (merged === existing) return doc;
     const layers = [...doc.layers];
-    layers[layerIndex] = { ...layer, results: { ...layer.results, [nodeId]: result } };
+    layers[layerIndex] = { ...layer, results: { ...layer.results, [nodeId]: merged } };
     return { ...doc, layers };
 }
 
