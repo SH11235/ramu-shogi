@@ -66,7 +66,7 @@ export function BookMoveList({
                     <thead className="sticky top-0 bg-wafuu-washi text-xs text-wafuu-sumi-light">
                         <tr className="border-b border-wafuu-border">
                             <th className="px-2 py-1 text-left font-medium">手</th>
-                            <th className="px-2 py-1 text-right font-medium">評価値（先手基準）</th>
+                            <th className="px-2 py-1 text-right font-medium">評価値</th>
                             {showDepth && (
                                 <th className="px-2 py-1 text-right font-medium">深さ</th>
                             )}
