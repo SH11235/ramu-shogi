@@ -1,7 +1,7 @@
 import type { BookData, BookTree } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
-import { bookValue, moveLabel, valueClass } from "./bookLabels";
+import { bookValue, formatBookValue, moveLabel, valueClass } from "./bookLabels";
 
 /** 定跡に 0 でない深さが 1 つでもあるか（深さを書かない道具の定跡で、0 だけの列を出さないように）。 */
 function hasDepth(book: BookData): boolean {
@@ -66,7 +66,7 @@ export function BookMoveList({
                     <thead className="sticky top-0 bg-wafuu-washi text-xs text-wafuu-sumi-light">
                         <tr className="border-b border-wafuu-border">
                             <th className="px-2 py-1 text-left font-medium">手</th>
-                            <th className="px-2 py-1 text-right font-medium">評価値</th>
+                            <th className="px-2 py-1 text-right font-medium">評価値（先手基準）</th>
                             {showDepth && (
                                 <th className="px-2 py-1 text-right font-medium">深さ</th>
                             )}
@@ -110,7 +110,7 @@ export function BookMoveList({
                                             value !== undefined && valueClass(value),
                                         )}
                                     >
-                                        {value ?? ""}
+                                        {value !== undefined && formatBookValue(value)}
                                     </td>
                                     {showDepth && (
                                         <td className="px-2 text-right tabular-nums">

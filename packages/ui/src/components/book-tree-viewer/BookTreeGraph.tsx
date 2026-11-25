@@ -15,7 +15,7 @@ import { Button } from "../button";
 import { useIsMobile } from "../shogi-match/hooks/useMediaQuery";
 import { StaticBoardView } from "../static-board-view";
 import { BookTreeJump } from "./BookTreeJump";
-import { bookValue, moveLabel, valueClass } from "./bookLabels";
+import { bookValue, formatBookValue, moveLabel, valueClass } from "./bookLabels";
 import { loadBookmarks, saveBookmarks } from "./bookmarks";
 
 /** 木の 1 手の箱と、その並びの間隔（px）。手数が列、分かれた手が行になる。 */
@@ -97,7 +97,7 @@ export type BookTreeValueOf = (node: BookTreeNode) => BookTreeValue | undefined;
 function bookValueOf(tree: BookTree, book: BookData): BookTreeValueOf {
     return (node) => {
         const value = bookValue(tree, book, node);
-        return value === undefined ? undefined : { value, text: String(value) };
+        return value === undefined ? undefined : { value, text: formatBookValue(value) };
     };
 }
 

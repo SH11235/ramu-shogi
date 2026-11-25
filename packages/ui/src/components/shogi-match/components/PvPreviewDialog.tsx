@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { StaticBoardView } from "../../static-board-view";
 import type { SquareNotation } from "../types";
 import type { PvDisplayMove } from "../utils/kifFormat";
-import { convertPvToDisplay } from "../utils/kifFormat";
+import { convertPvToDisplay, MATE_WITHOUT_PLY } from "../utils/kifFormat";
 
 interface PvPreviewDialogProps {
     /** 閉じるコールバック */
@@ -192,10 +192,12 @@ export function PvPreviewDialog({
 
     // 評価値の表示フォーマット
     const evalText = (() => {
-        if (evalMate !== undefined && evalMate !== null) {
+        if (evalMate === MATE_WITHOUT_PLY) return "先手が詰ませる";
+        if (evalMate === -MATE_WITHOUT_PLY) return "後手が詰ませる";
+        if (evalMate !== undefined && Number.isInteger(evalMate)) {
             return evalMate > 0 ? `詰み${evalMate}手` : `被詰み${Math.abs(evalMate)}手`;
         }
-        if (evalCp !== undefined && evalCp !== null) {
+        if (evalCp !== undefined && Number.isFinite(evalCp)) {
             const sign = evalCp >= 0 ? "+" : "";
             return `${sign}${evalCp}`;
         }

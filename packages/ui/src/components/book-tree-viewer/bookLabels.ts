@@ -16,6 +16,10 @@ export function bookValue(tree: BookTree, book: BookData, node: BookTreeNode): n
     return parent.position.turn === "gote" ? -value : value;
 }
 
+export function formatBookValue(value: number): string {
+    return value > 0 ? `+${value}` : String(value);
+}
+
 /** 評価値の色。先手よし（正）は先手の印と同じ朱、後手よし（負）は藍。 */
 export function valueClass(value: number) {
     if (value > 0) return "text-wafuu-shu";

@@ -224,8 +224,8 @@ export function OnlineGameView({
     const canPlay = isMyTurn && canSend;
 
     const totalPly = Math.max(0, positionHistory.length - 1);
-    // 自分の手番になったら巻き戻しを解除してライブ追従（effect 不要、レンダー時に派生）
-    const effectiveNavIndex = isMyTurn ? null : navIndex;
+    // 対局中は自分の手番が来たら最新の盤面を見せる。
+    const effectiveNavIndex = !gameResult && isMyTurn ? null : navIndex;
     const isRewound = effectiveNavIndex !== null;
     const currentPly = isRewound ? effectiveNavIndex : totalPly;
     // 表示用局面: 巻き戻し中は履歴局面、それ以外はライブ局面
