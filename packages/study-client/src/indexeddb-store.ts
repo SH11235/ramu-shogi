@@ -278,30 +278,45 @@ export function createIndexedDbStudyStore(options: IndexedDbStudyStoreOptions = 
                 const studies = transaction.objectStore(STUDIES);
                 const docs = transaction.objectStore(DOCS);
                 const pending = transaction.objectStore(PENDING);
+                const { study, result, removeOpsUpTo, appendOps = [] } = write;
 
-                if (write.study === null) {
+                if (study === null) {
                     studies.delete(studyId);
                     docs.delete(studyId);
                     transaction.objectStore(VIEW_STATES).delete(studyId);
                     for (const item of snapshot.pending) pending.delete(item.seq);
-                } else {
-                    if (write.study !== undefined) {
-                        const { row, doc } = toRow(write.study);
-                        studies.put(row);
-                        docs.put(doc);
-                    }
-                    if (write.removeOpsUpTo !== undefined) {
-                        for (const item of snapshot.pending) {
-                            if (item.seq <= write.removeOpsUpTo) pending.delete(item.seq);
+                    await done;
+                    return { result, study: null, pendingCount: 0, changed: true };
+                }
+
+                if (study !== undefined) {
+                    const { row, doc } = toRow(study);
+                    studies.put(row);
+                    docs.put(doc);
+                }
+                let pendingCount = snapshot.pending.length;
+                if (removeOpsUpTo !== undefined) {
+                    for (const item of snapshot.pending) {
+                        if (item.seq <= removeOpsUpTo) {
+                            pending.delete(item.seq);
+                            pendingCount--;
                         }
                     }
-                    for (const op of write.appendOps ?? []) {
-                        const row: PendingRow = { studyId, op };
-                        pending.add(row);
-                    }
                 }
+                for (const op of appendOps) {
+                    const row: PendingRow = { studyId, op };
+                    pending.add(row);
+                    pendingCount++;
+                }
+                const commit = {
+                    result,
+                    study: structuredClone(study ?? snapshot.study),
+                    pendingCount,
+                    changed:
+                        study !== undefined || removeOpsUpTo !== undefined || appendOps.length > 0,
+                };
                 await done;
-                return write.result;
+                return commit;
             } catch (error) {
                 try {
                     transaction.abort();
