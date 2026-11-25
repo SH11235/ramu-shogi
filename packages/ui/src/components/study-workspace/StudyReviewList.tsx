@@ -43,8 +43,7 @@ export function buildStudyReviewItems({
         const ply = line.indexOf(highlight.nodeId);
         if (ply < 0 || (highlight.kind === null && !highlight.hasComment)) continue;
         const parent = highlight.parentId === null ? undefined : tree.nodes.get(highlight.parentId);
-        // 候補手の欄の「この手の代わりに」と同じく、表示中の解析の最善手を添える（一覧と欄で別の手を
-        // 案内しないように）。
+        // 深い解析で判定が変わっても、最善手は選択中の設定で読む。
         const parentResult =
             highlight.kind !== null && parent
                 ? pickStudyPositionResult(doc, parent.id, displayLayerId)

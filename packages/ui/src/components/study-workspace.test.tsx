@@ -680,9 +680,6 @@ describe("StudyWorkspaceView", () => {
                 "深く解析した結果、悪手ではありませんでした。",
             );
             expect(candidates.textContent).toContain("全体の解析では悪手");
-            expect(
-                within(candidates).queryByRole("heading", { name: /この手の代わりに/ }),
-            ).toBeNull();
         });
     });
 
@@ -1478,32 +1475,26 @@ describe("StudyWorkspaceView", () => {
         expect(panel.querySelector('[aria-hidden="true"].h-7')).toBeNull();
     });
 
-    it("悪手の局面では、「この手の代わりに」の候補手が先に出る", () => {
+    it("悪手を指した直後も、盤面に対応する局面の候補手だけを表示する", () => {
         const { doc, ids } = createTestStudy([cp(30), cp(40), cp(20), cp(-900), cp(-880)]);
-        // 3 手目（☗2六歩）の 1 手前の局面の最善は ☗6六歩、という結果にする。
         const withBest = applyStudyOps(doc, [
             putScoreOp(ids[2], cp(25), { depth: 18, pv: ["6g6f", "8c8d"] }),
+            putScoreOp(ids[3], cp(-900), { depth: 18, pv: ["8c8d"] }),
         ]);
         render(<Harness initialDoc={withBest} />);
 
         selectMove("☗2六歩(27)");
 
-        const candidates = screen.getByRole("region", { name: "候補手" });
-        expect(
-            within(candidates).getByRole("heading", {
-                name: "この手の代わりに（1 手前の局面の候補）",
-            }),
-        ).toBeTruthy();
-        expect(within(candidates).getByText(/指した手 ☗2六歩\(27\)（悪手）/)).toBeTruthy();
-        expect(within(candidates).getByText("☗6六歩(67)")).toBeTruthy();
-        expect(within(candidates).getByRole("heading", { name: "この局面の候補手" })).toBeTruthy();
-        // 代わりの読み筋は、1 手前の局面からの変化として足せる。
-        const before = within(moveList()).queryByText("変化を表示中");
-        expect(before).toBeNull();
+        expect(within(moveList()).getByRole("img", { name: "悪手" })).toBeTruthy();
+        const candidates = within(screen.getByRole("region", { name: "候補手" }));
+        expect(candidates.getByText("☖8四歩(83)")).toBeTruthy();
+        expect(candidates.queryByText("☗6六歩(67)")).toBeNull();
+
+        fireEvent.click(screen.getByRole("button", { name: "1 手戻る（←）" }));
+
+        expect(candidates.getByText("☗6六歩(67)")).toBeTruthy();
         fireEvent.click(
-            within(candidates).getByRole("button", {
-                name: "代わりの候補 1 の読み筋を変化として追加",
-            }),
+            candidates.getByRole("button", { name: "候補 1 の読み筋を変化として追加" }),
         );
         expect(currentMove()).toContain("☗6六歩(67)");
     });
@@ -1567,25 +1558,6 @@ describe("StudyWorkspaceView", () => {
             ]);
             return { doc: twoLayers, ids };
         };
-
-        it("「この手の代わりに」は、表示中の設定の結果で出す", () => {
-            const { doc } = createTwoLayerStudy();
-            render(<Harness initialDoc={doc} initialDisplayLayerId={FAST_ID} />);
-
-            selectMove("☗2六歩(27)");
-            const candidates = screen.getByRole("region", { name: "候補手" });
-            const heading = within(candidates).getByRole("heading", {
-                name: "この手の代わりに（1 手前の局面の候補）",
-            });
-            const group = heading.closest("div")?.parentElement as HTMLElement;
-            const items = within(group).getAllByRole("listitem");
-            // 1 位は表示中の設定（0.5 秒）の最善手で、候補の数もその設定（候補 2）どおり。
-            expect(items[0].textContent).toContain("☗6六歩(67)");
-            expect(items).toHaveLength(2);
-            // どの設定の結果かは、表示中の設定の名前で出す（別の設定の名前を出さない）。
-            expect(group.textContent).toContain("RAMU・0.5 秒");
-            expect(group.textContent).not.toContain("RAMU・1 秒");
-        });
 
         it("より深く読んだ結果がある局面では、それを候補手の一覧にし、全体の解析の最善手を 1 行で添える", () => {
             const { doc } = createTwoLayerStudy();
@@ -1758,24 +1730,6 @@ describe("StudyWorkspaceView", () => {
             expect(screen.getByText("0 / 4")).toBeTruthy();
             expect(screen.queryByText(/別の画面で削除されました/)).toBeNull();
         });
-    });
-
-    it("指した手が 1 手前の局面の 1 位の候補と同じなら、「この手の代わりに」は出さない", () => {
-        const { doc, ids } = createTestStudy([cp(30), cp(40), cp(20), cp(-900), cp(-880)]);
-        // 3 手目（☗2六歩）は、1 手前の局面の解析でも 1 位の手。
-        const playedBest = applyStudyOps(doc, [
-            putScoreOp(ids[2], cp(25), { depth: 18, pv: ["2g2f", "8c8d"] }),
-        ]);
-        render(<Harness initialDoc={playedBest} />);
-
-        selectMove("☗2六歩(27)");
-
-        const candidates = screen.getByRole("region", { name: "候補手" });
-        expect(within(candidates).queryByRole("heading", { name: /この手の代わりに/ })).toBeNull();
-        expect(within(candidates).queryByRole("heading", { name: "この局面の候補手" })).toBeNull();
-        expect(
-            within(candidates).getByText(/指した手 ☗2六歩\(27\) は、1 手前の局面の候補の 1/),
-        ).toBeTruthy();
     });
 
     it("解析エンジンが 1 つだけなら選ぶ欄を出さない。複数あれば選べて、外部エンジンでは「使う AI」を出さない", () => {

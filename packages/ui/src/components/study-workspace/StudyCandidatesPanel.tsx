@@ -1,14 +1,3 @@
-/**
- * 候補手（解析結果）。
- *
- * いま見ている手が悪手・疑問手のときは、「この手の代わりに」（1 手前の局面の候補手）を先に出す。
- * 悪手を見つけた人がまず知りたいのは「代わりに何を指すべきだったか」なので、1 操作で届くようにする。
- *
- * 「この手の代わりに」と「この局面の候補手」は、どちらも表示中の設定の結果（悪手・疑問手の
- * 印と同じ結果）。同じ AI でより深く読んだ結果がその局面にあるときは、差し替えずに、別の小さな段
- * （「より深い解析」）として添える。
- */
-
 import type {
     KifuNode,
     StudyAnalysisResult,
@@ -99,27 +88,11 @@ export type StudyElsewhereActivity =
       };
 
 /** ある局面の候補手のまとまり。 */
-interface CandidateGroup {
-    /** 候補手を読んだ局面のノード。 */
-    node: KifuNode;
-    result: StudyPositionResult;
-}
-
 interface StudyCandidatesPanelProps {
     /** いま見ている局面のノード。 */
     node: KifuNode;
     /** いま見ている局面の解析結果。無ければ null。 */
     positionResult: StudyPositionResult | null;
-    /**
-     * いま見ている手が悪手・疑問手のときの、1 手前の局面の候補手（代わりに指すべきだった手）。
-     * `playedLabel` は実際に指した手、`kindLabel` は判定（悪手 / 疑問手）。
-     */
-    alternative: (CandidateGroup & { playedLabel: string; kindLabel: string }) | null;
-    /**
-     * いま見ている手が悪手・疑問手で、かつ 1 手前の局面の 1 位の候補と同じ手のとき、その手の表記。
-     * 代わりの手は無いので、「この手の代わりに」は出さない。
-     */
-    playedBestLabel?: string | null;
     /**
      * いま見ている局面を、表示中の設定より深く読んだ結果（同じ AI で、探索の上限が大きい設定）。
      * 候補手は差し替えず、別の段として添える。
@@ -454,8 +427,6 @@ const KIND_LABEL: Record<StudyHighlightKind, string> = { blunder: "悪手", dubi
 export function StudyCandidatesPanel({
     node,
     positionResult,
-    alternative,
-    playedBestLabel = null,
     deeperResult = null,
     source,
     analysisMode,
@@ -669,43 +640,9 @@ export function StudyCandidatesPanel({
                 </p>
             )}
 
-            {alternative && (
-                <div className="flex flex-col gap-1 rounded-lg bg-wafuu-washi px-2 py-2">
-                    <div className="flex flex-col px-1">
-                        <h3 className="text-sm font-medium text-wafuu-sumi">
-                            この手の代わりに（1 手前の局面の候補）
-                        </h3>
-                        <span className="text-xs text-muted-foreground">
-                            指した手 {alternative.playedLabel}（{alternative.kindLabel}）・
-                            {resultNote(alternative.result)}
-                        </span>
-                    </div>
-                    <ol className="flex flex-col">
-                        {alternative.result.result.candidates.map((candidate) => (
-                            <CandidateRow
-                                key={candidate.rank}
-                                node={alternative.node}
-                                candidate={candidate}
-                                groupLabel="代わりの"
-                                onPreviewPv={onPreviewPv}
-                                onAddPvAsVariation={onAddPvAsVariation}
-                            />
-                        ))}
-                    </ol>
-                </div>
-            )}
-
-            {!alternative && playedBestLabel !== null && (
-                <p className="px-1 text-xs text-muted-foreground">
-                    指した手 {playedBestLabel} は、1 手前の局面の候補の 1
-                    位と同じ手です（代わりの手はありません）。
-                </p>
-            )}
-
             {/* 深く解析した結果があれば、それを候補手の一覧にする（同じ局面をより深く読んだ結果なので）。
                 全体の解析の結果は、最善手だけを 1 行で添える。 */}
             <div className="flex flex-col gap-1">
-                {/* 悪手・疑問手の局面では「この手の代わりに」と分けるため、ここにも見出しと注記を置く。 */}
                 {live && mainResult ? (
                     // 狭い画面では、今の読みを見やすくするため 1 行にたたむ。
                     collapsePreviousWhileReading ? (
@@ -732,13 +669,6 @@ export function StudyCandidatesPanel({
                             </span>
                         </p>
                     )
-                ) : alternative ? (
-                    <div className="flex flex-col px-1">
-                        <h3 className="text-sm font-medium text-wafuu-sumi">この局面の候補手</h3>
-                        {mainResult && (
-                            <span className="text-xs text-muted-foreground">{mainNote}</span>
-                        )}
-                    </div>
                 ) : (
                     mainResult && (
                         // 1 行に収まらないときは省略し、全文はマウスを載せると見られるようにする。
