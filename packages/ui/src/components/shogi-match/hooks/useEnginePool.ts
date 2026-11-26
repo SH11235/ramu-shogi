@@ -596,6 +596,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         if (workers.length === 0) {
             if (state.runId === runId) {
                 state.running = false;
+                // 初期化は initialized でないときだけ走るので、手放すべきワーカーはもう無い。
                 state.staleReleasePending = false;
                 onError?.(
                     0,
