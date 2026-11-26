@@ -471,15 +471,17 @@ const isNewAnalysis = (doc: StudyDocument, op: StudyOp): boolean => {
 };
 
 /**
- * `doc` から増えた・変わった解析結果と、それを入れるレイヤーの作成だけを残す（レイヤーは、
- * 統合先で消されていても、新しい結果が届いたなら作り直す）。
+ * `doc` から増えた・変わった解析結果と、`doc` に無いレイヤー・新しい結果を入れるレイヤーの
+ * 作成だけを残す（統合先で消されたレイヤーも、新しい結果が届いたなら作り直す）。
  */
 const newAnalysisOps = (doc: StudyDocument, ops: readonly StudyOp[]): StudyOp[] => {
     const results = ops.filter((op) => isNewAnalysis(doc, op));
     const layerIds = new Set(results.map((op) => (op.type === "putAnalysis" ? op.layerId : "")));
     return ops.filter(
         (op) =>
-            (op.type === "ensureLayer" && layerIds.has(studyLayerId(op.spec))) ||
+            (op.type === "ensureLayer" &&
+                (layerIds.has(studyLayerId(op.spec)) ||
+                    !doc.layers.some((layer) => layer.id === studyLayerId(op.spec)))) ||
             results.includes(op),
     );
 };
