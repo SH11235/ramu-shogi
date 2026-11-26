@@ -457,15 +457,18 @@ export function StudyWorkspaceView({
     // 丸で置く（AI が違うと深さを比べられないので）。
     const lineReads = new Map<string, StudyGraphRead>();
     const otherAiReads = new Map<string, StudyGraphRead>();
+    // 表示中の設定がまだ無い（未解析のノートを読み始めた）ときは、比べる相手が無いので今の読みを基準にする。
     const isOtherAi = (layer: Pick<StudyLayer, "spec">): boolean =>
-        !(displayLayer && isSameStudyAi(layer, displayLayer));
+        displayLayer !== undefined && !isSameStudyAi(layer, displayLayer);
+    const isAutoReadLayer = (layer: Pick<StudyLayer, "spec">): boolean =>
+        layer.spec.limits.timeMs === STUDY_DEEP_TIME_MS &&
+        layer.spec.limits.depth === STUDY_DEEP_DEPTH;
     // 自動読みの結果が表示中の設定になっていても（未解析のノートを自動で読んだとき）、保存の区切りの
     // 時間ではなく「自動読み」と呼ぶ。
     const graphReadLabel = (layer: Pick<StudyLayer, "spec" | "display">): string =>
         isOtherAi(layer)
             ? layer.display.label
-            : layer.spec.limits.timeMs === STUDY_DEEP_TIME_MS &&
-                layer.spec.limits.depth === STUDY_DEEP_DEPTH
+            : isAutoReadLayer(layer)
               ? STUDY_AUTO_READ_LABEL
               : studyLimitsLabel(layer.spec.limits);
     /** いまの局面を自動で読んでいる設定。 */
@@ -1277,8 +1280,14 @@ export function StudyWorkspaceView({
             currentNode={currentNode}
             currentPly={currentIndex}
             graph={graph}
-            displayLayerLabel={displayLayer ? displayLayer.display.label : null}
-            displayLayerCondition={displayLayer ? studyLimitsLabel(displayLayer.spec.limits) : null}
+            displayLayerLabel={
+                displayLayer
+                    ? isAutoReadLayer(displayLayer)
+                        ? STUDY_AUTO_READ_LABEL
+                        : displayLayer.display.label
+                    : null
+            }
+            displayLayerCondition={displayLayer ? graphReadLabel(displayLayer) : null}
             onPrimaryChange={setGraphPrimaryChoice}
             run={analysisRun}
             isMobile={isMobile}

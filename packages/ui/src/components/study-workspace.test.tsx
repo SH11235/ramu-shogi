@@ -976,13 +976,27 @@ describe("StudyWorkspaceView", () => {
                             startedAt: null,
                             budgetMs: 30_000,
                             preview,
+                            // 表示中の設定がまだ無いので、どの AI の読みでも解析の線にする。
+                            layer: {
+                                layerId: "first-read",
+                                spec: buildStudyLayerSpec({
+                                    engine: { kind: "wasm", name: "rshogi", version: "0.8.1" },
+                                    appVersion: "0.0.0",
+                                    nnue: null,
+                                    limits: { timeMs: 30_000, depth: 64 },
+                                    multiPv: 3,
+                                }),
+                                display: { label: "簡易AI（駒得）・30 秒" },
+                            },
                         },
                     })}
                 />,
             );
 
             expect(within(graph()).getByRole("button", { name: "対局時" })).toBeTruthy();
-            expect(dashedLines().length).toBeGreaterThan(0);
+            // 解析の値は開始局面の 1 点だけなので、同じ点を 2 つ並べて点として描く。
+            const [point, ...rest] = (dashedLines()[0]?.getAttribute("points") ?? "").split(" ");
+            expect(rest).toEqual([point]);
         });
     });
 
@@ -3460,6 +3474,28 @@ describe("StudyWorkspaceView: スマートフォン", () => {
 
         fireEvent.click(screen.getByRole("tab", { name: "棋譜" }));
         expect(band().textContent).toContain("+1500");
+    });
+
+    it("自動読みの結果を表示しているときも、まだ読んでいない局面の見出しを「30秒」と呼ばない", () => {
+        const autoSpec = buildStudyLayerSpec({
+            engine: { kind: "wasm", name: "rshogi", version: "0.8.1" },
+            appVersion: "0.0.0",
+            nnue: { sha256: "a".repeat(64), fvScale: 24 },
+            limits: { timeMs: 30_000, depth: 64 },
+            multiPv: 3,
+        });
+        const autoId = studyLayerId(autoSpec);
+        const { doc, ids } = createTestStudy();
+        const withAuto = applyStudyOps(doc, [
+            { type: "ensureLayer", spec: autoSpec, display: { label: "RAMU・30 秒" } },
+            putScoreOp(ids[1], cp(61), { depth: 22, layerId: autoId }),
+        ]);
+        render(<Harness initialDoc={withAuto} initialDisplayLayerId={autoId} />);
+        fireEvent.click(screen.getByRole("tab", { name: "グラフ" }));
+
+        const header = graphRegion().firstElementChild?.textContent ?? "";
+        expect(header).toContain("自動読み");
+        expect(header).not.toContain("30秒");
     });
 
     it("グラフの見出しは帯と同じ値を 1 つだけ、どの読みかと深さを添えて出す", () => {

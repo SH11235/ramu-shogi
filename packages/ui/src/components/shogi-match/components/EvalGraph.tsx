@@ -71,6 +71,14 @@ const MARKER_CLASS: Record<EvalGraphMarker["tone"], string> = {
 };
 
 /**
+ * 線分の座標列。前後の手に値が無い 1 点だけの区間は線にならず見えないので、同じ点を 2 つ並べて
+ * 丸い線端で点として描く。
+ */
+function segmentPoints(segment: readonly string[]): string {
+    return segment.length === 1 ? `${segment[0]} ${segment[0]}` : segment.join(" ");
+}
+
+/**
  * 評価値をY座標に変換（自動スケール対応版）
  */
 function evalToYWithScale(
@@ -392,7 +400,8 @@ export function EvalGraph({
                     <polyline
                         key={`secondary-${segment[0]}`}
                         data-series="secondary"
-                        points={segment.join(" ")}
+                        points={segmentPoints(segment)}
+                        strokeLinecap="round"
                         fill="none"
                         stroke="hsl(var(--muted-foreground))"
                         strokeWidth="1.5"
@@ -405,7 +414,8 @@ export function EvalGraph({
                 {senteSegments.map((segment) => (
                     <polyline
                         key={`sente-${segment[0]}`}
-                        points={segment.join(" ")}
+                        points={segmentPoints(segment)}
+                        strokeLinecap="round"
                         fill="none"
                         stroke="hsl(var(--wafuu-shu))"
                         strokeWidth="2"
@@ -417,7 +427,8 @@ export function EvalGraph({
                 {goteSegments.map((segment) => (
                     <polyline
                         key={`gote-${segment[0]}`}
-                        points={segment.join(" ")}
+                        points={segmentPoints(segment)}
+                        strokeLinecap="round"
                         fill="none"
                         stroke="hsl(var(--wafuu-ai))"
                         strokeWidth="2"
@@ -656,7 +667,8 @@ export function EvalGraph({
             {senteSegments.map((segment) => (
                 <polyline
                     key={`sente-${segment[0]}`}
-                    points={segment.join(" ")}
+                    points={segmentPoints(segment)}
+                    strokeLinecap="round"
                     fill="none"
                     stroke="hsl(var(--wafuu-shu))"
                     strokeWidth="2"
@@ -668,7 +680,8 @@ export function EvalGraph({
             {goteSegments.map((segment) => (
                 <polyline
                     key={`gote-${segment[0]}`}
-                    points={segment.join(" ")}
+                    points={segmentPoints(segment)}
+                    strokeLinecap="round"
                     fill="none"
                     stroke="hsl(var(--wafuu-ai))"
                     strokeWidth="2"
