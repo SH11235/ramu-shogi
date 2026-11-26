@@ -17,6 +17,7 @@ import {
     applyStudyOpsStrict,
     diffStudyDocuments,
     isStudyUuid,
+    mergeStudyComments,
     STUDY_LIMITS,
     type StudyDocument,
     type StudyLimitName,
@@ -41,6 +42,7 @@ import {
     STUDY_RECORD_VERSION,
     type StoredStudy,
     type StoredStudySummary,
+    type StudyPendingOpInput,
     type StudyRemoteState,
     StudyStorageError,
     type StudyStorageErrorCode,
@@ -48,6 +50,7 @@ import {
     type StudyStoreSnapshot,
     type StudyStoreWrite,
     type StudyViewState,
+    splitPendingOpInput,
 } from "./store";
 
 /** 送信役を 1 つにするためのロック。同じ名前の `request` は同時に 1 つしか実行されない。 */
@@ -354,28 +357,143 @@ const isLocallyValid = (doc: StudyDocument): boolean => {
 };
 
 /**
- * 操作を順に適用し、文書を実際に変えた操作だけを残す。
+ * 操作を順に適用し、文書を実際に変えた操作だけを、送信待ちに積む形で残す。
+ * `setComment` には、適用する直前のコメントを `commentBase` として添える。
  *
  * 並べ替えは、利用者が作ったときの並び（意図）のまま残す。当て直したあとの完全な並びに
  * 書き直すと、次に当て直すとき、その間に他の端末が並べ替えた兄弟の順まで上書きしてしまう。
  * 作ったときより子が増減していても、サーバーは同じ規則（`applyStudyOp` の reorderChildren）で
  * 並べるので、結果は手元と一致する。
+ *
+ * `rebase` は、送信待ちをサーバーの文書の上へ当て直すとき。ノードの最初の `setComment` の
+ * `commentBase` がサーバーのコメントと違えば（書いている間に別の端末が書いた）、そのノードの
+ * `setComment` はサーバーのコメントに `mergeStudyComments` でつないだ値にする（どちらの文も残す）。
+ * 表題としおりは、つなぐ意味が無い（表題を 2 つ並べても使えない、しおりは真偽値）ので後勝ちのまま。
  */
 const applyEffectiveOps = (
     doc: StudyDocument,
-    ops: readonly StudyOp[],
-): { doc: StudyDocument; effective: StudyOp[] } => {
+    items: readonly StudyPendingOpInput[],
+    options: { rebase?: boolean } = {},
+): { doc: StudyDocument; effective: StudyPendingOpInput[] } => {
     let next = doc;
-    const effective: StudyOp[] = [];
-    for (const op of ops) {
-        const applied = applyStudyOp(next, op);
-        if (applied !== next) {
-            effective.push(op);
-            next = applied;
+    const effective: StudyPendingOpInput[] = [];
+    const checked = new Set<string>();
+    /** 別の端末が書いていたノードの、当て直す前のサーバーのコメント。 */
+    const diverged = new Map<string, string>();
+    for (const item of items) {
+        const {
+            op: original,
+            commentBase,
+            commentLocal,
+            commentAppend,
+        } = splitPendingOpInput(item);
+        let op = original;
+        let before: string | undefined;
+        let local = commentLocal;
+        if (op.type === "setComment" && Object.hasOwn(next.tree.nodes, op.nodeId)) {
+            before = next.tree.nodes[op.nodeId].comment;
+            if (options.rebase && commentAppend !== undefined) {
+                op = { ...op, value: mergeStudyComments(before, commentAppend) };
+            } else if (options.rebase) {
+                if (!checked.has(op.nodeId)) {
+                    checked.add(op.nodeId);
+                    if (commentBase !== undefined && commentBase !== before) {
+                        diverged.set(op.nodeId, before);
+                    }
+                }
+                const server = diverged.get(op.nodeId);
+                if (server !== undefined) {
+                    local = commentLocal ?? op.value;
+                    op = { ...op, value: mergeConflictingComment(server, local) };
+                }
+            }
         }
+        const applied = applyStudyOp(next, op);
+        if (applied === next) continue;
+        next = applied;
+        if (op.type === "deleteSubtree") {
+            // 消した枝を同じ手順で作り直したノードは、別のノードとして確かめ直す。
+            for (const nodeId of checked) {
+                if (!Object.hasOwn(next.tree.nodes, nodeId)) {
+                    checked.delete(nodeId);
+                    diverged.delete(nodeId);
+                }
+            }
+        }
+        if (before === undefined) {
+            effective.push(op);
+            continue;
+        }
+        effective.push({
+            op,
+            commentBase: before,
+            ...(commentAppend === undefined ? {} : { commentAppend }),
+            ...(local === undefined || (op.type === "setComment" && op.value === local)
+                ? {}
+                : { commentLocal: local }),
+        });
     }
     return { doc: next, effective };
 };
+
+/**
+ * 当て直しで、別の端末が書いたコメントに手元の文をつなぐ。つなぐと上限を超えるときは手元の文を
+ * 残す（つながずにサーバーの文だけにすると、手元で保存できていた文が送信待ちから黙って消える）。
+ */
+const mergeConflictingComment = (server: string, local: string): string => {
+    const merged = mergeStudyComments(server, local);
+    if (merged !== server) return merged;
+    const block = local.trim();
+    return block === "" || `\n${server}\n`.includes(`\n${block}\n`) ? server : local;
+};
+
+/**
+ * `setComment` に、つなぐ前の手元の文（`commentLocal`）を添える。値がその文のままなら添えない。
+ */
+const attachCommentLocals = (
+    items: readonly StudyPendingOpInput[],
+    localOf: (nodeId: string) => string | undefined,
+): StudyPendingOpInput[] =>
+    items.map((item) => {
+        const split = splitPendingOpInput(item);
+        if (split.op.type !== "setComment" || split.commentBase === undefined) return item;
+        const local = localOf(split.op.nodeId);
+        if (local === undefined || local === split.op.value) return item;
+        return { ...split, commentLocal: local };
+    });
+
+/** `doc` に無い（または違う）解析結果を足す操作か。 */
+const isNewAnalysis = (doc: StudyDocument, op: StudyOp): boolean => {
+    if (op.type !== "putAnalysis") return false;
+    const layer = doc.layers.find((item) => item.id === op.layerId);
+    if (!layer || !Object.hasOwn(layer.results, op.nodeId)) return true;
+    return JSON.stringify(layer.results[op.nodeId]) !== JSON.stringify(op.result);
+};
+
+/**
+ * `doc` から増えた・変わった解析結果と、`doc` に無いレイヤー・新しい結果を入れるレイヤーの
+ * 作成だけを残す（統合先で消されたレイヤーも、新しい結果が届いたなら作り直す）。
+ */
+const newAnalysisOps = (doc: StudyDocument, ops: readonly StudyOp[]): StudyOp[] => {
+    const results = ops.filter((op) => isNewAnalysis(doc, op));
+    const layerIds = new Set(
+        results.flatMap((op) => (op.type === "putAnalysis" ? [op.layerId] : [])),
+    );
+    return ops.filter(
+        (op) =>
+            (op.type === "ensureLayer" &&
+                (layerIds.has(studyLayerId(op.spec)) ||
+                    !doc.layers.some((layer) => layer.id === studyLayerId(op.spec)))) ||
+            results.includes(op),
+    );
+};
+
+/** ロック中・統合済みでも受け付ける、解析結果の操作か（何度当てても同じ結果になる）。 */
+export const isStudyAnalysisOp = (op: StudyOp): boolean =>
+    op.type === "ensureLayer" || op.type === "putAnalysis";
+
+const mergedError = (into: string): StudySyncError =>
+    new StudySyncError("merged", `研究ノートは統合済みです: ${into}`);
 
 const lastSeqOf = (pending: readonly PendingStudyOp[]): number =>
     pending.length > 0 ? pending[pending.length - 1].seq : 0;
@@ -735,13 +853,15 @@ export function createStudySync(options: StudySyncOptions): StudySync {
          * サーバーの文書に足す操作として送信待ちに積む（消す操作は作らない）。
          */
         keepLocalDocument = false,
-    ): Promise<boolean> => {
-        const changed = await mutate(studyId, (snapshot) => {
+    ): Promise<boolean | "stale"> => {
+        const changed = await mutate(studyId, (snapshot): StudyStoreWrite<boolean | "stale"> => {
             if (!snapshot.study) return { result: false };
-            const rebased = applyEffectiveOps(
-                toStudyDocument(detail),
-                snapshot.pending.map((item) => item.op),
-            );
+            // 手元より古い内容（遅れて届いた応答など）の上に当て直すと、受理済みの変更が巻き戻る。
+            const known = snapshot.study.serverRevision;
+            if (known !== null && detail.revision < known) return { result: "stale" };
+            const rebased = applyEffectiveOps(toStudyDocument(detail), snapshot.pending, {
+                rebase: true,
+            });
             const extra = keepLocalDocument
                 ? applyEffectiveOps(
                       rebased.doc,
@@ -764,7 +884,7 @@ export function createStudySync(options: StudySyncOptions): StudySync {
                 result: true,
             };
         });
-        if (changed) emit({ type: "document", studyId, origin: "remote" });
+        if (changed === true) emit({ type: "document", studyId, origin: "remote" });
         return changed;
     };
 
@@ -827,6 +947,12 @@ export function createStudySync(options: StudySyncOptions): StudySync {
         studyId: string,
         targetId: string,
         fetchedTarget: StudyDetail | null,
+        /**
+         * 一度取り込んだときの元のノートの文書（そのあとに元のノートへ解析結果が届いたとき）。
+         * 渡すと、そこから増えた・変わった解析結果だけを取り込む。全体を取り込み直すと、
+         * その間に統合先で消したコメント・枝・結果が戻ってしまう。
+         */
+        imported: StudyDocument | null = null,
     ): Promise<StepOutcome> => {
         const source = (await store.read(studyId)).study;
         if (!source) return "done";
@@ -850,20 +976,31 @@ export function createStudySync(options: StudySyncOptions): StudySync {
                 (seed ? newStoredStudy(toStudyDocument(seed), source.owner, seed.revision) : null);
             if (!base) return { result: false };
             // 同じノードの両方にコメントがあれば、統合先のコメントを消さずにつなぐ。
-            const ops = studyDocumentToOps(source.doc, { mergeInto: base.doc });
+            const all = studyDocumentToOps(source.doc, { mergeInto: base.doc });
+            const ops = imported ? newAnalysisOps(imported, all) : all;
             const { doc, effective } = applyEffectiveOps(base.doc, ops);
+            const sourceNodes = source.doc.tree.nodes;
             return {
                 study: { ...base, doc, updatedAt: now() },
-                appendOps: effective,
+                appendOps: effective.map((item) => {
+                    const split = splitPendingOpInput(item);
+                    if (split.op.type !== "setComment") return item;
+                    const { nodeId } = split.op;
+                    return Object.hasOwn(sourceNodes, nodeId)
+                        ? { ...split, commentAppend: sourceNodes[nodeId].comment }
+                        : item;
+                }),
                 result: true,
             };
         });
         if (!applied) return "retry";
-        await mutate(studyId, (snapshot) =>
-            snapshot.study
-                ? { study: { ...snapshot.study, mergePending: false }, result: undefined }
-                : { result: undefined },
-        );
+        // 読んだあとに元のノートへ解析結果が届いていたら（`applyOps` を参照）、取り込み直す。
+        const settled = await mutate(studyId, (snapshot) => {
+            if (!snapshot.study) return { result: true };
+            if (snapshot.study.updatedAt !== source.updatedAt) return { result: false };
+            return { study: { ...snapshot.study, mergePending: false }, result: true };
+        });
+        if (!settled) return finishMerge(studyId, targetId, null, source.doc);
         emit({ type: "document", studyId: targetId, origin: "local" });
         schedule(targetId, 0);
         return "done";
@@ -1106,7 +1243,7 @@ export function createStudySync(options: StudySyncOptions): StudySync {
             // 状態だけを送る。ローカルに無いことを理由にした削除は作らない: 削除になるのは、
             // 送信待ちに明示的な削除の操作があるものだけ。
             const pendingOps = snapshot.pending.map((item) => item.op);
-            const rebased = applyEffectiveOps(serverDoc, pendingOps);
+            const rebased = applyEffectiveOps(serverDoc, snapshot.pending, { rebase: true });
             // 送信待ちの中の明示的な削除（サーバーの文書に対象があるもの）は、差分に畳まずに
             // 先頭でそのまま送る。「消して同じものを作り直す」操作（大きくなりすぎたレイヤーの
             // 結果を消して作り直す、枝を消して同じ手順で作り直す）は、再適用後の文書に同じ ID が
@@ -1123,10 +1260,19 @@ export function createStudySync(options: StudySyncOptions): StudySync {
                 ),
             );
             // 残りは「サーバーの文書にその削除を適用した文書 → 再適用後の文書」の差分。
-            const { doc, effective } = applyEffectiveOps(serverDoc, [
+            const { doc, effective: folded } = applyEffectiveOps(serverDoc, [
                 ...explicitDeletes.effective,
                 ...diffStudyDocuments(explicitDeletes.doc, rebased.doc),
             ]);
+            // 差分に畳むと、当て直しでつないだコメントの手元の原文が落ちるので、付け直す。
+            const locals = new Map<string, string>();
+            for (const item of rebased.effective) {
+                const { op, commentLocal } = splitPendingOpInput(item);
+                if (op.type !== "setComment") continue;
+                if (commentLocal === undefined) locals.delete(op.nodeId);
+                else locals.set(op.nodeId, commentLocal);
+            }
+            const effective = attachCommentLocals(folded, (nodeId) => locals.get(nodeId));
             return {
                 study: {
                     ...snapshot.study,
@@ -1338,8 +1484,13 @@ export function createStudySync(options: StudySyncOptions): StudySync {
         if (study.inflight !== null) return "inflight";
         const fetched = await api.get(studyId);
         if (fetched.ok) {
+            // 手元より古い内容は取り込まない（取り込み済みとも扱わない）。取得の間に別のタブが
+            // 先へ進めていることもある（ロックがタブをまたがない環境）ので、読み直して比べる。
+            const latest = (await store.read(studyId)).study?.serverRevision ?? null;
+            const known = Math.max(study.serverRevision, latest ?? 0);
+            if (fetched.data.study.revision < known) return "skipped";
             if (fetched.data.study.revision !== study.serverRevision) {
-                await rebaseOnto(studyId, fetched.data.study);
+                if ((await rebaseOnto(studyId, fetched.data.study)) === "stale") return "skipped";
             }
             return "fetched";
         }
@@ -1472,6 +1623,83 @@ export function createStudySync(options: StudySyncOptions): StudySync {
             }
         }
     };
+
+    const applyOps: StudySync["applyOps"] = (studyId, ops, applyOptions) =>
+        enqueueWrite(studyId, async () => {
+            const outcome = await mutate(
+                studyId,
+                (
+                    snapshot,
+                ): StudyStoreWrite<
+                    | { doc: StudyDocument; changed: boolean; redirect: null }
+                    | { doc: StudyDocument; changed: false; redirect: string }
+                > => {
+                    if (!snapshot.study || snapshot.study.deleting || !isVisible(snapshot.study)) {
+                        throw new StudySyncError("not_found", `研究ノートがありません: ${studyId}`);
+                    }
+                    if (snapshot.study.mergedInto !== null) {
+                        // 統合に気づく前の画面から届いた解析結果は、捨てずに統合先へ渡す。
+                        if (ops.length > 0 && ops.every(isStudyAnalysisOp)) {
+                            if (snapshot.study.mergePending) {
+                                // 取り込みの途中は、統合先にまだ無い枝の結果が読み飛ばされるので、
+                                // 元のノートに書いて取り込みに含めさせる。`updatedAt` は必ず進め、
+                                // 取り込みが「読んだあとに書かれた」ことに気づけるようにする。
+                                applyStudyOpsStrict(snapshot.study.doc, ops);
+                                const applied = applyEffectiveOps(snapshot.study.doc, ops);
+                                return {
+                                    study: {
+                                        ...snapshot.study,
+                                        doc: applied.doc,
+                                        updatedAt: Math.max(now(), snapshot.study.updatedAt + 1),
+                                    },
+                                    result: { doc: applied.doc, changed: false, redirect: null },
+                                };
+                            }
+                            // 取り込み済みなら、統合先に直接書く（レイヤーの作成と結果の書き込みは
+                            // 何度当てても同じ結果になる）。
+                            return {
+                                result: {
+                                    doc: snapshot.study.doc,
+                                    changed: false,
+                                    redirect: snapshot.study.mergedInto,
+                                },
+                            };
+                        }
+                        throw mergedError(snapshot.study.mergedInto);
+                    }
+                    // サーバーが受け付けない操作（上限超過・形の不正）は、保存する前に弾く。
+                    applyStudyOpsStrict(snapshot.study.doc, ops);
+                    const applied = applyEffectiveOps(snapshot.study.doc, ops);
+                    if (applied.effective.length === 0) {
+                        return {
+                            result: { doc: snapshot.study.doc, changed: false, redirect: null },
+                        };
+                    }
+                    return {
+                        study: { ...snapshot.study, doc: applied.doc, updatedAt: now() },
+                        appendOps: applied.effective,
+                        result: { doc: applied.doc, changed: true, redirect: null },
+                    };
+                },
+            );
+            if (outcome.redirect !== null) {
+                try {
+                    await applyOps(outcome.redirect, ops, applyOptions);
+                } catch (error) {
+                    // 統合先がまだ手元に無い（取り込みの途中）なら、従来どおり統合済みとして拒否する。
+                    if (error instanceof StudySyncError && error.code === "not_found") {
+                        throw mergedError(outcome.redirect);
+                    }
+                    throw error;
+                }
+                return outcome.doc;
+            }
+            if (outcome.changed) {
+                emit({ type: "document", studyId, origin: "local" });
+                schedule(studyId, applyOptions?.flushDelayMs ?? flushDelayMs);
+            }
+            return outcome.doc;
+        });
 
     return {
         setSession(next) {
@@ -1628,37 +1856,7 @@ export function createStudySync(options: StudySyncOptions): StudySync {
             return study && isVisible(study) ? study : null;
         },
 
-        applyOps(studyId, ops, options) {
-            return enqueueWrite(studyId, async () => {
-                const { doc, changed } = await mutate(studyId, (snapshot) => {
-                    if (!snapshot.study || snapshot.study.deleting || !isVisible(snapshot.study)) {
-                        throw new StudySyncError("not_found", `研究ノートがありません: ${studyId}`);
-                    }
-                    if (snapshot.study.mergedInto !== null) {
-                        throw new StudySyncError(
-                            "merged",
-                            `研究ノートは統合済みです: ${snapshot.study.mergedInto}`,
-                        );
-                    }
-                    // サーバーが受け付けない操作（上限超過・形の不正）は、保存する前に弾く。
-                    applyStudyOpsStrict(snapshot.study.doc, ops);
-                    const applied = applyEffectiveOps(snapshot.study.doc, ops);
-                    if (applied.effective.length === 0) {
-                        return { result: { doc: snapshot.study.doc, changed: false } };
-                    }
-                    return {
-                        study: { ...snapshot.study, doc: applied.doc, updatedAt: now() },
-                        appendOps: applied.effective,
-                        result: { doc: applied.doc, changed: true },
-                    };
-                });
-                if (changed) {
-                    emit({ type: "document", studyId, origin: "local" });
-                    schedule(studyId, options?.flushDelayMs ?? flushDelayMs);
-                }
-                return doc;
-            });
-        },
+        applyOps,
 
         async flush(studyId) {
             if (studyId !== undefined) {

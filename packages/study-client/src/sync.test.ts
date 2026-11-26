@@ -2891,4 +2891,297 @@ describe.each(STORES)("同期エンジン（保存層: $name）", ({ create }) =
             expect((await harness.store.read(TEST_STUDY_ID)).study).toBeNull();
         });
     });
+    describe("保存・同期の競合", () => {
+        it("409 のとき、別の端末が書いたコメントを上書きせず、両方の文をつないで送る", async () => {
+            const harness = await createSyncedHarness();
+            harness.server.applyFromOtherDevice(TEST_STUDY_ID, [comment("他の端末のコメント")]);
+
+            // 他の端末のコメントを知らないまま、2 回に分けて書いた（どちらも送信待ち）。
+            await harness.sync.applyOps(TEST_STUDY_ID, [comment("この端末")]);
+            await harness.sync.applyOps(TEST_STUDY_ID, [comment("この端末のコメント")]);
+            await harness.sync.flush(TEST_STUDY_ID);
+
+            expect(harness.postOpsCalls().map((call) => call.status)).toEqual([409, 200]);
+            const expected = "他の端末のコメント\n\nこの端末のコメント";
+            expect(serverDoc(harness).tree.nodes[firstId].comment).toBe(expected);
+            expect((await localDoc(harness)).tree.nodes[firstId].comment).toBe(expected);
+        });
+
+        it("取り込み（pull）で、送信待ちのコメントを別の端末のコメントの上へ当て直すときも、両方を残す", async () => {
+            const harness = await createSyncedHarness();
+            await harness.sync.applyOps(TEST_STUDY_ID, [comment("この端末のコメント")]);
+            harness.server.applyFromOtherDevice(TEST_STUDY_ID, [comment("他の端末のコメント")]);
+
+            await harness.sync.pull(TEST_STUDY_ID);
+
+            const expected = "他の端末のコメント\n\nこの端末のコメント";
+            expect(serverDoc(harness).tree.nodes[firstId].comment).toBe(expected);
+            expect((await localDoc(harness)).tree.nodes[firstId].comment).toBe(expected);
+        });
+
+        it("書き始めたときから別の端末が変えていないコメントは、つながずにそのまま置き換える", async () => {
+            const harness = await createSyncedHarness();
+            await harness.sync.applyOps(TEST_STUDY_ID, [comment("前のコメント")]);
+            await harness.sync.flush(TEST_STUDY_ID);
+            // 別の端末は、別の手にだけ書いた（409 は起きるが、このコメントは誰も変えていない）。
+            harness.server.applyFromOtherDevice(TEST_STUDY_ID, [comment("他の端末", rootId)]);
+
+            await harness.sync.applyOps(TEST_STUDY_ID, [comment("書き直したコメント")]);
+            await harness.sync.flush(TEST_STUDY_ID);
+
+            expect(harness.postOpsCalls().map((call) => call.status)).toEqual([200, 409, 200]);
+            expect(serverDoc(harness).tree.nodes[firstId].comment).toBe("書き直したコメント");
+            expect(serverDoc(harness).tree.nodes[rootId].comment).toBe("他の端末");
+        });
+
+        it("手元より古いリビジョンが返ってきても、取り込んで巻き戻さない", async () => {
+            const harness = await createSyncedHarness();
+            const stale = harness.server.study(TEST_STUDY_ID);
+            await harness.sync.applyOps(TEST_STUDY_ID, [
+                { type: "addMoves", parentId: firstId, moves: ["8c8d"] },
+            ]);
+            await harness.sync.flush(TEST_STUDY_ID);
+            expect((await harness.store.read(TEST_STUDY_ID)).study?.serverRevision).toBe(2);
+
+            harness.server.interceptOnce("get", { data: { study: stale } });
+            await harness.sync.open(TEST_STUDY_ID);
+            await settle();
+
+            const study = (await harness.store.read(TEST_STUDY_ID)).study;
+            expect(study?.serverRevision).toBe(2);
+            expect(study?.doc.tree.nodes[studyChildNodeId(firstId, "8c8d")]).toBeDefined();
+            // 捨てた応答では、最新の内容を取り込めたことにしない。
+            expect(harness.sync.getPullState(TEST_STUDY_ID)).toBe("pending");
+            expect(harness.events).not.toContainEqual({ type: "pulled", studyId: TEST_STUDY_ID });
+        });
+
+        it("つなぐと上限を超えるときは、手元のコメントを送信待ちから落とさずに送る", async () => {
+            const harness = await createSyncedHarness();
+            harness.server.applyFromOtherDevice(TEST_STUDY_ID, [comment("a".repeat(2100))]);
+            await harness.sync.applyOps(TEST_STUDY_ID, [comment("b".repeat(2100))]);
+            await harness.sync.flush(TEST_STUDY_ID);
+
+            expect(harness.postOpsCalls().map((call) => call.status)).toEqual([409, 200]);
+            expect(serverDoc(harness).tree.nodes[firstId].comment).toBe("b".repeat(2100));
+        });
+
+        it("つないで送る前にもう一度競合しても、前につないだサーバーの文を二重にしない", async () => {
+            const harness = await createSyncedHarness();
+            harness.server.applyFromOtherDevice(TEST_STUDY_ID, [comment("甲")]);
+            let posts = 0;
+            harness.server.beforeHandle = async ({ method }) => {
+                if (method !== "postOps") return;
+                posts += 1;
+                // つないだ値を送る直前に、別の端末がさらに追記した。
+                if (posts === 2) {
+                    harness.server.applyFromOtherDevice(TEST_STUDY_ID, [comment("甲\n\n乙")]);
+                }
+            };
+            await harness.sync.applyOps(TEST_STUDY_ID, [comment("手元")]);
+            await harness.sync.flush(TEST_STUDY_ID);
+
+            expect(harness.postOpsCalls().map((call) => call.status)).toEqual([409, 409, 200]);
+            expect(serverDoc(harness).tree.nodes[firstId].comment).toBe("甲\n\n乙\n\n手元");
+        });
+
+        it("消して同じ手順で作り直した手には、消す前の手のコメントの競合を持ち込まない", async () => {
+            const harness = await createSyncedHarness();
+            await harness.sync.applyOps(TEST_STUDY_ID, [comment("旧")]);
+            await harness.sync.flush(TEST_STUDY_ID);
+            harness.server.applyFromOtherDevice(TEST_STUDY_ID, [comment("別の端末")]);
+
+            await harness.sync.applyOps(TEST_STUDY_ID, [comment("旧を直した")]);
+            await harness.sync.applyOps(TEST_STUDY_ID, [
+                { type: "deleteSubtree", nodeId: firstId },
+            ]);
+            await harness.sync.applyOps(TEST_STUDY_ID, [
+                { type: "addMoves", parentId: rootId, moves: ["7g7f"] },
+            ]);
+            await harness.sync.applyOps(TEST_STUDY_ID, [comment("新しい")]);
+            await harness.sync.flush(TEST_STUDY_ID);
+
+            expect(serverDoc(harness).tree.nodes[firstId].comment).toBe("新しい");
+            expect((await localDoc(harness)).tree.nodes[firstId].comment).toBe("新しい");
+        });
+
+        it("統合先への取り込みの途中に届いた、元のノートにだけある枝の解析結果も、統合先に残る", async () => {
+            const origin = { kind: "rshogi_csa", ref: "wdoor-20261009000001-93ef4d36a6" } as const;
+            const existingId = "0d9f5c3a-2b7e-4c1d-9a55-1f2e3d4c5b6a";
+            const inner = createStore();
+            let lateSettled: Promise<unknown> | null = null;
+            // 取り込みが元のノートを読むのを、届いた解析結果の書き込みが済むまで遅らせる。
+            const store: StudyStore = {
+                ...inner,
+                async read(studyId) {
+                    const snapshot = await inner.read(studyId);
+                    if (studyId === TEST_STUDY_ID && snapshot.study?.mergePending && lateSettled) {
+                        await Promise.race([
+                            lateSettled,
+                            new Promise((resolve) => setTimeout(resolve, 200)),
+                        ]);
+                        return inner.read(studyId);
+                    }
+                    return snapshot;
+                },
+            };
+            const harness = createHarness({ store });
+            harness.server.seed(USER_A, createTestDocument({ id: existingId, origin }));
+            await harness.sync.createStudy(createTestDocument({ origin }));
+            const branch = studyChildNodeId(firstId, "8c8d");
+            await harness.sync.applyOps(TEST_STUDY_ID, [
+                { type: "addMoves", parentId: firstId, moves: ["8c8d"] },
+            ]);
+            // 統合済みになった直後（取り込みの途中）に、その枝の解析結果が届く。
+            let late: Promise<unknown> | null = null;
+            harness.sync.subscribeEvents((event) => {
+                if (event.type === "merged" && late === null) {
+                    late = harness.sync.applyOps(TEST_STUDY_ID, analysisOps(branch, 77));
+                    lateSettled = late.catch(() => undefined);
+                }
+            });
+
+            harness.login(USER_A);
+            await harness.sync.adoptAnonymousStudies();
+            await harness.advance(0);
+            await lateSettled;
+            await harness.advance(0);
+            await expect(late).resolves.toBeDefined();
+            await harness.sync.flush(existingId);
+
+            expect((await localDoc(harness, existingId)).layers[0]?.results[branch]).toBeDefined();
+            expect(harness.server.study(existingId)?.layers[0]?.results[branch]).toBeDefined();
+        });
+
+        it("取り込みが元のノートを読んだあとに届いた解析結果は、解析結果だけを取り込み直して残す", async () => {
+            const origin = { kind: "rshogi_csa", ref: "wdoor-20261009000001-93ef4d36a6" } as const;
+            const existingId = "0d9f5c3a-2b7e-4c1d-9a55-1f2e3d4c5b6a";
+            const inner = createStore();
+            const branch = studyChildNodeId(firstId, "8c8d");
+            let harness: Harness | null = null;
+            let late: Promise<unknown> | null = null;
+            // 取り込みが元のノートを読んだ直後に解析結果が届き、その書き込みが済んでから
+            // 取り込みが統合先に書く、という順に固定する。
+            const store: StudyStore = {
+                ...inner,
+                async read(studyId) {
+                    const snapshot = await inner.read(studyId);
+                    if (
+                        studyId === TEST_STUDY_ID &&
+                        snapshot.study?.mergePending &&
+                        late === null &&
+                        harness
+                    ) {
+                        late = harness.sync.applyOps(TEST_STUDY_ID, analysisOps(branch, 77));
+                    }
+                    return snapshot;
+                },
+                async transact(studyId, mutate) {
+                    if (studyId === existingId && late) await late.catch(() => undefined);
+                    return inner.transact(studyId, mutate);
+                },
+            };
+            harness = createHarness({ store });
+            harness.server.seed(USER_A, createTestDocument({ id: existingId, origin }));
+            await harness.sync.createStudy(createTestDocument({ origin }));
+            await harness.sync.applyOps(TEST_STUDY_ID, [
+                { type: "addMoves", parentId: firstId, moves: ["8c8d"] },
+            ]);
+
+            harness.login(USER_A);
+            await harness.sync.adoptAnonymousStudies();
+            await harness.advance(0);
+            await harness.advance(0);
+            await expect(late).resolves.toBeDefined();
+            await harness.sync.flush(existingId);
+
+            expect((await localDoc(harness, existingId)).layers[0]?.results[branch]).toBeDefined();
+            expect(harness.server.study(existingId)?.layers[0]?.results[branch]).toBeDefined();
+        });
+
+        it("統合でつないだコメントの送信が競合しても、統合先の未送信のコメントも元のノートのコメントも残る", async () => {
+            const origin = { kind: "rshogi_csa", ref: "wdoor-20261009000001-93ef4d36a6" } as const;
+            const existingId = "0d9f5c3a-2b7e-4c1d-9a55-1f2e3d4c5b6a";
+            const harness = createHarness();
+            harness.server.seed(USER_A, createTestDocument({ id: existingId, origin }));
+            harness.login(USER_A);
+            // 統合先にまだ送っていないコメントがある。
+            await harness.sync.open(existingId);
+            await harness.sync.applyOps(existingId, [comment("統合先")]);
+            let sent = false;
+            harness.server.beforeHandle = async ({ method, studyId }) => {
+                // 統合先へ最初に送る直前に、別の端末が統合先にコメントを書いた。
+                if (method === "postOps" && studyId === existingId && !sent) {
+                    sent = true;
+                    harness.server.applyFromOtherDevice(existingId, [comment("別の端末")]);
+                }
+            };
+            await harness.sync.createStudy(createTestDocument({ origin }));
+            await harness.sync.applyOps(TEST_STUDY_ID, [comment("元のノート")]);
+
+            await harness.advance(0);
+            await harness.advance(0);
+            await harness.sync.flush(existingId);
+
+            expect(harness.server.study(existingId)?.tree.nodes[firstId].comment).toBe(
+                "別の端末\n\n統合先\n\n元のノート",
+            );
+        });
+
+        it("統合でつないだコメントの送信前に、別の端末が統合先のコメントを消したら、消した文は戻さない", async () => {
+            const origin = { kind: "rshogi_csa", ref: "wdoor-20261009000001-93ef4d36a6" } as const;
+            const existingId = "0d9f5c3a-2b7e-4c1d-9a55-1f2e3d4c5b6a";
+            const harness = createHarness();
+            harness.server.seed(
+                USER_A,
+                applyStudyOps(createTestDocument({ id: existingId, origin }), [comment("旧文")]),
+            );
+            let sent = false;
+            harness.server.beforeHandle = async ({ method, studyId }) => {
+                if (method === "postOps" && studyId === existingId && !sent) {
+                    sent = true;
+                    harness.server.applyFromOtherDevice(existingId, [comment("")]);
+                }
+            };
+            await harness.sync.createStudy(createTestDocument({ origin }));
+            await harness.sync.applyOps(TEST_STUDY_ID, [comment("元のノート")]);
+
+            harness.login(USER_A);
+            await harness.sync.adoptAnonymousStudies();
+            await harness.advance(0);
+            await harness.advance(0);
+            await harness.sync.flush(existingId);
+
+            expect(harness.server.study(existingId)?.tree.nodes[firstId].comment).toBe(
+                "元のノート",
+            );
+        });
+
+        it("統合済みのノート宛ての解析結果は、統合先に保存して送る（ほかの操作は従来どおり拒否する）", async () => {
+            const origin = { kind: "rshogi_csa", ref: "wdoor-20261009000001-93ef4d36a6" } as const;
+            const existingId = "0d9f5c3a-2b7e-4c1d-9a55-1f2e3d4c5b6a";
+            const harness = createHarness();
+            harness.server.seed(USER_A, createTestDocument({ id: existingId, origin }));
+            harness.login(USER_A);
+            await harness.sync.createStudy(createTestDocument({ origin }));
+            await harness.advance(0);
+            await harness.advance(0);
+            expect(harness.events).toContainEqual({
+                type: "merged",
+                studyId: TEST_STUDY_ID,
+                into: existingId,
+            });
+
+            // 統合に気づく前の画面から、元のノート宛てに解析結果が届く。
+            await expect(
+                harness.sync.applyOps(TEST_STUDY_ID, analysisOps(firstId, 120)),
+            ).resolves.toBeDefined();
+            await harness.sync.flush(existingId);
+
+            expect((await localDoc(harness, existingId)).layers[0]?.results[firstId]).toBeDefined();
+            expect(harness.server.study(existingId)?.layers[0]?.results[firstId]).toBeDefined();
+            await expect(
+                harness.sync.applyOps(TEST_STUDY_ID, [comment("x")]),
+            ).rejects.toMatchObject({ code: "merged" });
+        });
+    });
 });

@@ -1,4 +1,4 @@
-import type { StudyOp } from "@shogi/app-core";
+import { type StudyLayerSpec, type StudyOp, studyLayerId } from "@shogi/app-core";
 import {
     createMemoryStudyStore,
     createStudySync,
@@ -74,6 +74,34 @@ vi.mock("@shogi/ui", () => ({
     downloadTextFile: () => {},
 }));
 vi.mock("../../hooks/useAccountNnue", () => ({ useAccountNnue: () => undefined }));
+
+const analysisSpec: StudyLayerSpec = {
+    version: 1,
+    engine: { kind: "wasm", name: "rshogi", version: "0.8.1" },
+    evaluation: { nnueSha256: null, fvScale: null, progressSha256: null, layerStacks: null },
+    limits: { timeMs: 1000, depth: 15, nodes: null },
+    multiPv: 1,
+    rules: { variant: "standard" },
+};
+const analysisOps = (nodeId: string): StudyOp[] => [
+    { type: "ensureLayer", spec: analysisSpec, display: { label: "RAMU・1 秒" } },
+    {
+        type: "putAnalysis",
+        layerId: studyLayerId(analysisSpec),
+        nodeId,
+        result: {
+            runId: "9d6783f2-d773-4572-ae4e-bd463bf8f816",
+            completion: "completed",
+            depth: 15,
+            nodes: 1000,
+            timeMs: 1000,
+            execution: { threads: 1, hashMb: null, parallelWorkers: 1 },
+            candidates: [
+                { rank: 1, score: { kind: "cp", value: 30 }, depth: 15, seldepth: null, pv: [] },
+            ],
+        },
+    },
+];
 
 /** コメント欄が知らせる「下書きを置く」（コメントが空のときに書き始めた入力）。 */
 const setDraft = (text: string) => ({ type: "set" as const, text, base: "" });
@@ -462,6 +490,24 @@ describe("StudyPage", () => {
             view.rerender(<StudyPage />);
             await waitFor(() => expect(workspaceProps?.locked).toBe(false));
             expect(await workspaceProps?.onApplyOps(edit)).toBe(true);
+        });
+
+        it("編集を止めている間に届いた解析結果は、送らずにブラウザ内へ保存する", async () => {
+            await openThenUnauthorized();
+            await waitFor(() => expect(workspaceProps?.locked).toBe(true));
+            const nodeId = workspaceProps?.doc.tree.rootId ?? "";
+
+            let saved: unknown;
+            act(() => {
+                saved = workspaceProps?.onApplyOps(analysisOps(nodeId));
+            });
+
+            expect(await saved).toBe(true);
+            expect(
+                (await currentSync.load(STUDY_ID))?.doc.layers[0]?.results[nodeId],
+            ).toBeDefined();
+            expect(currentSync.isUnauthorized()).toBe(true);
+            expect(currentSync.getStatus(STUDY_ID).pendingCount).toBeGreaterThan(0);
         });
 
         it("セッション切れ（401）のまま、取り直しに失敗した状態でノートを開いても、編集を止めて開く", async () => {
@@ -1050,6 +1096,26 @@ describe("StudyPage", () => {
         expect(workspaceText()).toContain("2 つ目");
         expect((await currentSync.load(STUDY_ID))?.doc.title).toBe("遅れて届いた変更");
         expect((await currentSync.load(OTHER_ID))?.doc.title).toBe("2 つ目");
+    });
+
+    it("画面を離れたあとに届いた書き込み（欄を閉じるときのコメントの保存など）は、間引かずに送る", async () => {
+        await currentSync.createStudy(createTestDoc(STUDY_ID, "開くノート"));
+        const view = render(<StudyPage />);
+        await screen.findByTestId("workspace");
+        const props = workspaceProps;
+        const nodeId = props?.doc.tree.rootId ?? "";
+        const applyOps = vi.spyOn(currentSync, "applyOps");
+        const flush = vi.spyOn(currentSync, "flush");
+
+        // 親の後始末（送信）が先に走って済み、子の後始末の書き込みはそのあとに届く。
+        view.unmount();
+        expect(flush).toHaveBeenCalledWith(STUDY_ID);
+        await flush.mock.results[0]?.value;
+        expect(
+            await props?.onApplyOps([{ type: "setComment", nodeId, value: "閉じるときの保存" }]),
+        ).toBe(true);
+
+        expect(applyOps).toHaveBeenCalledWith(STUDY_ID, expect.any(Array), { flushDelayMs: 0 });
     });
 
     it("表示の状態（表示中の解析の設定と見ていた局面）を保存し、開くときに戻す", async () => {

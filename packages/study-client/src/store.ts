@@ -81,10 +81,47 @@ export interface StoredStudy {
 }
 
 /** 送信待ちの操作。`seq` は保存層の中で単調に増える連番。 */
-export interface PendingStudyOp {
+export interface PendingStudyOp extends StudyPendingOpMeta {
     seq: number;
     op: StudyOp;
 }
+
+/**
+ * `setComment` の当て直しに使う、送信待ちだけに持つ情報（サーバーへは送らない）。
+ * 409 などでサーバーの文書の上へ当て直すとき、サーバーのコメントが `commentBase` と違えば、
+ * 別の端末が書いた文を消さずにつなぐ。
+ */
+interface StudyPendingOpMeta {
+    /** この操作が上書きした、その時点のコメント。 */
+    commentBase?: string;
+    /**
+     * 当て直しでつないだ値を送るときの、手元が書いた文。もう一度当て直すときは、前につないだ
+     * サーバーの文ではなく、これを新しいサーバーのコメントにつなぐ（同じ文を二重にしない）。
+     */
+    commentLocal?: string;
+    /**
+     * 統合で、統合先のコメントに足す元のノートの文。当て直すときは、そのときの統合先のコメントに
+     * つなぎ直す（統合先の未送信のコメントも、別の端末の変更も残し、消された文は戻さない）。
+     */
+    commentAppend?: string;
+}
+
+/** 送信待ちに積む操作。 */
+export type StudyPendingOpInput = StudyOp | ({ op: StudyOp } & StudyPendingOpMeta);
+
+/** 送信待ちに積む形を、操作と付随する情報（無い項目は省く）に分ける。 */
+export const splitPendingOpInput = (
+    input: StudyPendingOpInput,
+): { op: StudyOp } & StudyPendingOpMeta => {
+    if (!("op" in input)) return { op: input };
+    const { op, commentBase, commentLocal, commentAppend } = input;
+    return {
+        op,
+        ...(commentBase === undefined ? {} : { commentBase }),
+        ...(commentLocal === undefined ? {} : { commentLocal }),
+        ...(commentAppend === undefined ? {} : { commentAppend }),
+    };
+};
 
 /** 一覧用の要約（文書の本体を読まずに得られる）。 */
 export interface StoredStudySummary {
@@ -121,7 +158,7 @@ export interface StudyStoreWrite<T> {
     /** レコードを置き換える。null なら削除する（送信待ちの操作も消える）。 */
     study?: StoredStudy | null;
     /** 送信待ちの末尾に足す操作。 */
-    appendOps?: readonly StudyOp[];
+    appendOps?: readonly StudyPendingOpInput[];
     /** この連番以下の送信待ちの操作を消す。 */
     removeOpsUpTo?: number;
     /** 呼び出し元に返す値。 */
@@ -257,7 +294,10 @@ export function createMemoryStudyStore(): StudyStore {
                 queue = queue.filter((item) => item.seq > upTo);
             }
             if (appended.length > 0) {
-                queue = [...queue, ...appended.map((op) => ({ seq: nextSeq++, op }))];
+                queue = [
+                    ...queue,
+                    ...appended.map((input) => ({ seq: nextSeq++, ...splitPendingOpInput(input) })),
+                ];
             }
             if (queue.length > 0) pending.set(studyId, queue);
             else pending.delete(studyId);

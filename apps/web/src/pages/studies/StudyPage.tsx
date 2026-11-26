@@ -1,5 +1,10 @@
 import { applyStudyOps, STUDY_LIMITS, type StudyDocument, type StudyOp } from "@shogi/app-core";
-import { createStudyApiClient, type StoredStudy, toStudyDocument } from "@shogi/study-client";
+import {
+    createStudyApiClient,
+    isStudyAnalysisOp,
+    type StoredStudy,
+    toStudyDocument,
+} from "@shogi/study-client";
 import type {
     EngineOption,
     StudyApplyOpsOptions,
@@ -296,9 +301,14 @@ export default function StudyPage(): ReactElement {
         }
     };
 
+    // 画面を離れたノート。離れるときの送信（下の後始末の `flush`）は、子の後始末の書き込み
+    // （コメント欄を閉じるときの保存など）より先に走るので、そのあとの書き込みは別に送る。
+    const leftStudyIdsRef = useRef(new Set<string>());
+
     useEffect(() => {
         let cancelled = false;
         let openedLocal = false;
+        leftStudyIdsRef.current.delete(studyId);
         const isCancelled = (): boolean => cancelled;
         // 同じノートを開き直すだけのとき（ログイン状態が変わった、など）は、画面を作り直さない
         // （作り直すと、実行中の解析が止まり、書きかけのコメントも消えてしまう）。
@@ -470,6 +480,7 @@ export default function StudyPage(): ReactElement {
 
         return () => {
             cancelled = true;
+            leftStudyIdsRef.current.add(studyId);
             unsubscribe();
             sync.close(studyId);
             // 画面を離れるときは、間引きを待たずに送る。
@@ -491,7 +502,18 @@ export default function StudyPage(): ReactElement {
     ): Promise<boolean> => {
         const current = stateRef.current;
         // 編集できない間（ログインが切れた）は、保存を試みない。書きかけは画面と下書きに残る。
-        if (current.status === "ready" && current.studyId === targetId && current.locked) {
+        // 解析結果だけは、持ち主のままセッションが切れた（401）間ならブラウザ内に保存する
+        // （同期エンジンは送らずに貯めておく）。捨てると、その局面を読み直すしかなくなる。
+        if (
+            current.status === "ready" &&
+            current.studyId === targetId &&
+            current.locked &&
+            !(
+                ops.length > 0 &&
+                ops.every(isStudyAnalysisOp) &&
+                sync.getSession()?.userId === current.ownerId
+            )
+        ) {
             return Promise.resolve(false);
         }
         const writes = writesOf(targetId);
@@ -506,7 +528,9 @@ export default function StudyPage(): ReactElement {
                 return previous;
             }
         });
-        return sync.applyOps(targetId, ops, { flushDelayMs: options?.syncDelayMs }).then(
+        // 画面を離れたあとに届いた書き込みは、離れるときの送信に間に合わないので間引かずに送る。
+        const flushDelayMs = leftStudyIdsRef.current.has(targetId) ? 0 : options?.syncDelayMs;
+        return sync.applyOps(targetId, ops, { flushDelayMs }).then(
             (doc) => {
                 writes.pending -= 1;
                 // 待っている書き込みが無くなったら、保存層の内容に揃える。
