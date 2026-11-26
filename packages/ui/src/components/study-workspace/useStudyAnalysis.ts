@@ -674,6 +674,8 @@ export function useStudyAnalysis({
                 const multiPv = target?.spec.multiPv ?? fullMultiPv;
                 const prepared = await prepareLayer(selection, limits, multiPv);
                 if (!isCurrent() || !prepared || lockedRef.current) return;
+                // 準備（AI の読み込み）を待つ間に、自動で読むを入れ直すなどの操作があれば始めない。
+                if (options?.isWanted && !options.isWanted()) return;
                 if (target && prepared.layer.layerId !== target.id) {
                     // AI のファイルや版が違うと、同じ設定の続きにならない。別の結果を黙って作らない。
                     setMessage({
@@ -710,7 +712,6 @@ export function useStudyAnalysis({
                 // 止めてある「深く解析」の読みは手放す（全体の解析と同時にエンジンを持ち続けない）。
                 await deep.release();
                 if (!isCurrent() || lockedRef.current) return;
-                // 準備（AI の読み込み）を待つ間に、自動で読むを入れ直すなどの操作があれば始めない。
                 if (options?.isWanted && !options.isWanted()) return;
                 run(jobs, prepared, multiPv, "full");
             },

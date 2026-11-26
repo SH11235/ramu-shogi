@@ -578,20 +578,29 @@ export function StudyWorkspaceView({
      * 別の操作（スイッチを入れ直すなど）をしたら始めない。切った知らせは、始めるときに出す。
      */
     const fullStartOptions = (): StudyFullStartOptions => {
+        // 別のタブで自動で読むを入れたときは操作の番号が進まないので、スイッチの状態も見る。
         if (!autoAnalyze) {
             const request = ++actionSerialRef.current;
-            return { isWanted: () => actionSerialRef.current === request };
+            return {
+                isWanted: () => actionSerialRef.current === request && !autoAnalyzeRef.current,
+            };
         }
         let request = 0;
         return {
             onCommit: () => {
                 request = ++actionSerialRef.current;
+                autoAnalyzeRef.current = false;
                 setAutoAnalyze(false);
             },
-            isWanted: () => actionSerialRef.current === request,
+            isWanted: () => actionSerialRef.current === request && !autoAnalyzeRef.current,
             notice: AUTO_ANALYZE_OFF_NOTICE,
         };
     };
+    /** 待っている解析の開始が、始める直前に自動で読むが入っているかを見るための値。 */
+    const autoAnalyzeRef = useRef(autoAnalyze);
+    useEffect(() => {
+        autoAnalyzeRef.current = autoAnalyze;
+    }, [autoAnalyze]);
     /** 自動で読み始めた（または手で読み始めた）局面。同じ局面で読み直さないために覚える。 */
     const autoStartedNodeRef = useRef<string | null>(null);
     // 外すと、開き直したとき（StrictMode の付け直しも）に同じ局面をもう一度読み始められる。
