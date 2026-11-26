@@ -21,6 +21,7 @@ import {
     putScoreOp,
     TEST_LAYER_ID,
 } from "./study-workspace/study-test-support";
+import type { StudyDeepReadRef } from "./study-workspace/studyPositionInsights";
 import { buildStudyViewTree, chooseStudyDisplayLayer } from "./study-workspace/studyView";
 import type {
     StudyAnalysisController,
@@ -119,7 +120,7 @@ interface HarnessProps {
     commentBaseConfirmed?: boolean;
     /** 最初に表示する解析の設定（省略時は、結果の最も多いもの）。 */
     initialDisplayLayerId?: string;
-    deepLayerId?: string | null;
+    deepRead?: StudyDeepReadRef | null;
     onPlayFromPosition?: (position: { sfen: string; moves: string[] }) => void;
     onSaveKifuFile?: (file: { fileName: string; text: string }) => void;
     mate?: StudyMateController;
@@ -145,7 +146,7 @@ function Harness({
     onExternal,
     commentBaseConfirmed,
     initialDisplayLayerId,
-    deepLayerId,
+    deepRead,
     onPlayFromPosition,
     onSaveKifuFile,
     mate,
@@ -186,7 +187,7 @@ function Harness({
             commentBaseConfirmed={commentBaseConfirmed}
             displayLayerId={displayLayerId}
             onDisplayLayerChange={setPreferredLayerId}
-            deepLayerId={deepLayerId}
+            deepRead={deepRead}
             onPlayFromPosition={onPlayFromPosition}
             onSaveKifuFile={onSaveKifuFile}
             analysis={analysis}
@@ -271,6 +272,43 @@ describe("StudyWorkspaceView", () => {
         expect(
             (screen.getByRole("button", { name: "パスして解析" }) as HTMLButtonElement).disabled,
         ).toBe(true);
+    });
+
+    it("読んでいる間の候補手の欄は今の読みだけを出し、それより深い記録は見出しの下に 1 行で添える", () => {
+        const { doc } = createTestStudy([cp(120), cp(0), cp(0), cp(0), cp(0)]);
+        const preview = (depth: number) => ({
+            runId: "preview",
+            completion: "aborted" as const,
+            depth,
+            nodes: 1_000,
+            timeMs: 1_000,
+            execution: { threads: null, hashMb: null, parallelWorkers: null },
+            candidates: [{ rank: 1, score: cp(-300), depth, seldepth: null, pv: ["7g7f"] }],
+        });
+        const live = (depth: number) => ({
+            nodeId: doc.tree.rootId,
+            depth,
+            startedAt: null,
+            budgetMs: 30_000,
+            preview: preview(depth),
+        });
+        const view = render(
+            <Harness initialDoc={doc} analysis={createAnalysis({ mode: "deep", live: live(5) })} />,
+        );
+        const panel = screen.getByRole("region", { name: "候補手" });
+        expect(panel.textContent).toContain("今の読み");
+        expect(panel.textContent).toContain("記録");
+        expect(panel.textContent).toContain("+120");
+        expect(panel.textContent).not.toContain("保存済みの読み");
+        // 今の読みが記録を超えたら、記録の行も消える。
+        view.rerender(
+            <Harness
+                initialDoc={doc}
+                analysis={createAnalysis({ mode: "deep", live: live(23) })}
+            />,
+        );
+        expect(panel.textContent).not.toContain("記録");
+        expect(panel.textContent).not.toContain("+120");
     });
 
     it("自動で読むを入れると、見ている局面を読み始める", async () => {
@@ -1036,7 +1074,7 @@ describe("StudyWorkspaceView", () => {
                 <Harness
                     initialDoc={doc}
                     initialDisplayLayerId={TEST_LAYER_ID}
-                    deepLayerId={DEEP_ID}
+                    deepRead={{ nodeId: ids[0], layerId: DEEP_ID }}
                     analysis={createAnalysis({
                         mode: "deep",
                         live: {
@@ -2086,7 +2124,7 @@ describe("StudyWorkspaceView", () => {
             expect(within(candidates).getByText(/全体の解析（深さ/)).toBeTruthy();
         });
 
-        it("別の AI で深く解析した結果も、自動で読んだ局面では必ず出す", async () => {
+        it("別の AI で読んで結果を書いた局面では、その結果を必ず出す", () => {
             const { doc, ids } = createTestStudy([cp(30), cp(40), cp(20), cp(-900), cp(-880)]);
             const OTHER_SPEC = buildStudyLayerSpec({
                 engine: { kind: "wasm", name: "rshogi", version: "0.8.1" },
@@ -2104,17 +2142,15 @@ describe("StudyWorkspaceView", () => {
                 },
                 putScoreOp(ids[0], cp(5), { layerId: otherId, depth: 30, pv: ["2g2f"] }),
             ]);
-            render(<Harness initialDoc={withOther} deepLayerId={otherId} />);
+            const { rerender } = render(<Harness initialDoc={withOther} />);
 
             const candidates = screen.getByRole("region", { name: "候補手" });
             // 読む前は、別の AI の結果は出さない。
             expect(candidates.textContent).not.toContain("深く解析・");
-            fireEvent.click(screen.getByRole("switch", { name: /自動で読む/ }));
-            await waitFor(() =>
-                expect(candidates.textContent).toContain(
-                    "深く解析・簡易AI（駒得）・10 秒・深さ 30",
-                ),
+            rerender(
+                <Harness initialDoc={withOther} deepRead={{ nodeId: ids[0], layerId: otherId }} />,
             );
+            expect(candidates.textContent).toContain("深く解析・簡易AI（駒得）・10 秒・深さ 30");
             expect(candidates.textContent).toContain("☗2六歩(27)");
         });
     });
@@ -2591,7 +2627,7 @@ describe("StudyWorkspaceView", () => {
             // 「残りを解析」は出さない。コメントは、操作できない領域（inert）の中にある。
             expect(screen.queryByRole("button", { name: /局面を解析/ })).toBeNull();
             // 読む操作（自動で読む・パスして解析）は出さない。
-            expect(screen.queryByRole("switch", { name: /自動で読む/ })).toBeNull();
+            expect(screen.queryByRole("switch", { name: /自動/ })).toBeNull();
             expect(screen.queryByRole("button", { name: "パスして解析" })).toBeNull();
             expect(commentTextbox().closest("[inert]")).toBeTruthy();
             // キーボードでも動かない。
@@ -3310,7 +3346,7 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         );
     });
 
-    it("自動で読むのスイッチは局面の帯にあり、帯は読んでいる間その途中の最善手・評価値・深さを出す", () => {
+    it("自動で読むのスイッチは局面の帯にあり、帯は今の読みと、それより深い記録を 2 段で出す", () => {
         localStorage.setItem("shogi:studyAutoAnalyze", "true");
         const { doc } = createTestStudy([cp(120), cp(0), cp(0), cp(0), cp(0)]);
         const live = (depth: number, pv: string[]) => ({
@@ -3331,14 +3367,16 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         const view = render(<Harness initialDoc={doc} />);
         const band = () =>
             screen.getByRole("status", { name: "この局面の最善手" }).parentElement as HTMLElement;
-        // 候補手の欄にはスイッチを出さない（帯の 1 つだけ）。名前は読んでいる間も「自動で読む」のまま。
-        expect(screen.getAllByRole("switch", { name: /自動で読む/ })).toHaveLength(1);
-        within(band()).getByRole("switch", { name: "自動で読む" });
-        // 読んでいないときは保存済みの読み。
+        // 候補手の欄にはスイッチを出さない（帯の 1 つだけ）。名前は読んでいる間も変わらない。
+        expect(screen.getAllByRole("switch")).toHaveLength(1);
+        within(band()).getByRole("switch", { name: "自動読み" });
+        // 読み始めるまでは、保存してある記録を下の段に出す。
+        expect(band().textContent).toContain("読み中…");
+        expect(band().textContent).toContain("記録");
         expect(band().textContent).toContain("+120");
         expect(band().textContent).toContain("深さ 15");
 
-        // 保存済みより浅くても、読み始めから読んでいる値を出す。
+        // 記録より浅くても、読み始めから読んでいる値を上の段に出し、記録は下の段に残す。
         view.rerender(
             <Harness
                 initialDoc={doc}
@@ -3348,6 +3386,7 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         expect(band().textContent).toContain("7六歩");
         expect(band().textContent).toContain("-300");
         expect(band().textContent).toContain("深さ 5");
+        expect(band().textContent).toContain("+120");
 
         view.rerender(
             <Harness
@@ -3357,6 +3396,65 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         );
         expect(band().textContent).toContain("2六歩");
         expect(band().textContent).toContain("深さ 23");
+        // 今の読みが記録を超えたら、記録は出さない（2 つの値を並べない）。
+        expect(band().textContent).not.toContain("記録");
+        expect(band().textContent).not.toContain("+120");
+    });
+
+    it("帯の記録の段を押すと、記録の最善手の読み筋を盤で再生する（読んでいる間も）", async () => {
+        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+        const { doc, ids } = createTestStudy([cp(120), cp(0), cp(0), cp(0), cp(0)]);
+        const withPv = applyStudyOps(doc, [
+            putScoreOp(ids[0], cp(120), { depth: 16, pv: ["2g2f", "8c8d"] }),
+        ]);
+        render(
+            <Harness
+                initialDoc={withPv}
+                analysis={createAnalysis({
+                    mode: "deep",
+                    live: {
+                        nodeId: withPv.tree.rootId,
+                        depth: 5,
+                        startedAt: null,
+                        budgetMs: 30_000,
+                        preview: {
+                            runId: "preview",
+                            completion: "aborted",
+                            depth: 5,
+                            nodes: 1_000,
+                            timeMs: 1_000,
+                            execution: { threads: null, hashMb: null, parallelWorkers: null },
+                            candidates: [
+                                { rank: 1, score: cp(-50), depth: 5, seldepth: null, pv: ["7g7f"] },
+                            ],
+                        },
+                    },
+                })}
+            />,
+        );
+        expect(screen.queryByText("読み筋を 1 手ずつ盤面で再生します。")).toBeNull();
+        const recordButton = screen.getByRole("button", { name: /記録.*読み筋を盤で見る/ });
+        recordButton.focus();
+        fireEvent.click(recordButton);
+        const dialog = screen.getByRole("dialog");
+        // 今の読みではなく、記録の最善手（☗2六歩）から再生する。
+        expect(dialog.textContent).toContain("2六歩");
+        expect(dialog.textContent).not.toContain("7六歩");
+        // 閉じたら押したボタンに戻る。
+        fireEvent.keyDown(window, { key: "Escape" });
+        await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+        await waitFor(() => expect(document.activeElement).toBe(recordButton));
+    });
+
+    it("評価値の無い記録でも、最善手があれば帯に出して押せる", () => {
+        const { doc, ids } = createTestStudy([cp(0), cp(0), cp(0), cp(0), cp(0)]);
+        const withPv = applyStudyOps(doc, [
+            putScoreOp(ids[0], null, { depth: 16, pv: ["2g2f", "8c8d"] }),
+        ]);
+        render(<Harness initialDoc={withPv} />);
+        const band = screen.getByRole("status", { name: "この局面の最善手" });
+        expect(band.textContent).toContain("2六歩");
+        expect(within(band).getByRole("button", { name: /記録.*読み筋を盤で見る/ })).toBeTruthy();
     });
 
     it("自動で読み始めて途中の候補がまだ無い間は、帯に未解析ではなく読んでいることを出す", async () => {

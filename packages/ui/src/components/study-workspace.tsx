@@ -17,6 +17,7 @@ import {
     type Player,
     type PositionState,
     type Square,
+    type StudyAnalysisResult,
     type StudyDocument,
     type StudyOp,
     studyScoreToKifuEval,
@@ -77,7 +78,7 @@ import { type StudyKifuFormat, StudyMoreMenu } from "./study-workspace/StudyMore
 import { StudyMoveList } from "./study-workspace/StudyMoveList";
 import { StudyNavBar } from "./study-workspace/StudyNavBar";
 import { StudyNotice } from "./study-workspace/StudyNotice";
-import { StudyPositionBand } from "./study-workspace/StudyPositionBand";
+import { type StudyBandLine, StudyPositionBand } from "./study-workspace/StudyPositionBand";
 import { buildStudyReviewItems, StudyReviewList } from "./study-workspace/StudyReviewList";
 import {
     StudySaveIndicator,
@@ -99,6 +100,7 @@ import { type StudyKifuFile, studyKifuFileName } from "./study-workspace/studyFi
 import {
     deriveStudyPositionInsights,
     pickStudyBandResult,
+    type StudyDeepReadRef,
 } from "./study-workspace/studyPositionInsights";
 import {
     applyStudyLayerToTree,
@@ -232,8 +234,8 @@ interface StudyWorkspaceViewProps extends StudyWorkspaceCommonProps {
     initialNodeId?: string | null;
     /** 見ている局面が変わった。 */
     onCurrentNodeChange?: (nodeId: string) => void;
-    /** 直近の「この局面を深く解析」で使った解析の設定（レイヤー）。 */
-    deepLayerId?: string | null;
+    /** 1 局面の読み（自動で読む）で、直近に結果を書いた局面と設定（レイヤー）。 */
+    deepRead?: StudyDeepReadRef | null;
     /** 詰み探索。渡さなければ出さない。 */
     mate?: StudyMateController;
 }
@@ -282,7 +284,7 @@ export function StudyWorkspaceView({
     onMessageChange,
     initialNodeId,
     onCurrentNodeChange,
-    deepLayerId = null,
+    deepRead = null,
     mate,
 }: StudyWorkspaceViewProps): ReactElement {
     const track = useUsageTracker();
@@ -323,8 +325,6 @@ export function StudyWorkspaceView({
         initialDrafts: initialCommentDrafts,
         onDraftChange: onCommentDraftChange,
     });
-    // 「この局面を深く解析」を押した局面。その局面を見ている間、結果を開いた状態で目立たせる。
-    const [deepNodeId, setDeepNodeId] = useState<string | null>(null);
     /** 自動で読むが、続きを読めずに読み終えた局面（局面を離れると消す）。 */
     const [autoFinishedNodeId, setAutoFinishedNodeId] = useState<string | null>(null);
     /**
@@ -365,7 +365,6 @@ export function StudyWorkspaceView({
         locked,
         onLeave: (leaving) => {
             leaveCountRef.current += 1;
-            setDeepNodeId(null);
             setAutoFinishedNodeId(null);
             setFinishedElsewhere(null);
             // 長すぎて保存できていないコメントを残して移るときは、黙って移らず知らせる。
@@ -426,8 +425,7 @@ export function StudyWorkspaceView({
         doc,
         currentNodeId,
         displayLayerId,
-        deepNodeId,
-        deepLayerId,
+        deepRead,
     });
     const { highlightKinds, displayLayer, unanalyzedCount } = insights;
     const hasResults = insights.analyzedCount > 0;
@@ -444,19 +442,19 @@ export function StudyWorkspaceView({
         doc,
         nodeId: currentNodeId,
         displayLayerId,
-        deepNodeId,
-        deepLayerId,
+        deepRead,
     });
-    // この局面を読んでいる間は、帯にはその途中の値を出す（読みに連れて動かす。浅い間は深さで分かる）。
     const liveHere = analysis.live?.nodeId === currentNodeId ? analysis.live : undefined;
-    const bandResult = liveHere?.preview ?? savedPicked?.result ?? null;
     // 帯が表示中の設定とは別の読みの値を出す局面（グラフに、線とは別の印で示す）。全体の解析の途中の
     // 値は表示中の設定の値なので、印にしない。
     const deepReads = new Map<string, StudyDeepRead>();
     for (const nodeId of line) {
         if (nodeId === currentNodeId && liveHere?.preview) {
             if (analysis.mode !== "deep") continue;
-            const deepLayer = doc.layers.find((layer) => layer.id === deepLayerId);
+            const deepLayer =
+                deepRead?.nodeId === nodeId
+                    ? doc.layers.find((layer) => layer.id === deepRead.layerId)
+                    : undefined;
             deepReads.set(nodeId, {
                 limits: studyLimitsLabel(
                     deepLayer?.spec.limits ?? {
@@ -472,7 +470,7 @@ export function StudyWorkspaceView({
         const picked =
             nodeId === currentNodeId
                 ? savedPicked
-                : pickStudyBandResult({ doc, nodeId, displayLayerId, deepNodeId, deepLayerId });
+                : pickStudyBandResult({ doc, nodeId, displayLayerId, deepRead });
         if (picked && picked.layer.id !== displayLayerId) {
             deepReads.set(nodeId, {
                 limits: studyLimitsLabel(picked.layer.spec.limits),
@@ -492,9 +490,21 @@ export function StudyWorkspaceView({
     });
 
     // --- 編集 ---
+    /** 読み筋の再生を閉じたら、開いたボタンへ戻る（ダイアログは開いた操作を知らないので）。 */
+    const pvReturnFocusRef = useRef<HTMLElement | null>(null);
+    const closePvPreview = (): void => {
+        setPvPreview(null);
+        const target = pvReturnFocusRef.current;
+        pvReturnFocusRef.current = null;
+        requestAnimationFrame(() => {
+            if (target?.isConnected) target.focus();
+        });
+    };
     const previewPv = (request: StudyPvRequest): void => {
         const baseNode = tree.nodes.get(request.nodeId);
         if (!baseNode) return;
+        pvReturnFocusRef.current =
+            document.activeElement instanceof HTMLElement ? document.activeElement : null;
         const evalData = studyScoreToKifuEval(request.score);
         setPvPreview({
             pv: request.pv,
@@ -706,7 +716,6 @@ export function StudyWorkspaceView({
         if (locked || deepBlocked) return;
         actionSerialRef.current += 1;
         stopMate();
-        setDeepNodeId(currentNodeId);
         autoStartedNodeRef.current = currentNodeId;
         void analysis.startDeep(currentNodeId);
     };
@@ -751,7 +760,6 @@ export function StudyWorkspaceView({
         if (locked || deepBlocked || actionSerialRef.current !== passRequestRef.current) return;
         actionSerialRef.current += 1;
         stopMate();
-        setDeepNodeId(pendingPassDeepNodeId);
         autoStartedNodeRef.current = pendingPassDeepNodeId;
         void analysis.startDeep(pendingPassDeepNodeId);
     });
@@ -899,7 +907,6 @@ export function StudyWorkspaceView({
         if (locked) return;
         actionSerialRef.current += 1;
         stopMate();
-        setDeepNodeId(currentNodeId);
         void analysis.continueDeep();
     };
     const cancelAnalysis = (): void => {
@@ -974,11 +981,7 @@ export function StudyWorkspaceView({
                 kind: "deep",
                 ...positionOf(deepLive.nodeId),
                 live: deepLive,
-                onGo: () => {
-                    navigateTo(deepLive.nodeId);
-                    // 戻った局面では、深く解析した結果を開いて見せる（移るときに閉じるので、移ってから開く）。
-                    setDeepNodeId(deepLive.nodeId);
-                },
+                onGo: () => navigateTo(deepLive.nodeId),
                 onStop: cancelAnalysis,
             };
         }
@@ -1068,11 +1071,7 @@ export function StudyWorkspaceView({
                                 const nodeId = finishedElsewhere.nodeId;
                                 return {
                                     ...positionOf(nodeId),
-                                    onGo: () => {
-                                        navigateTo(nodeId);
-                                        if (finishedElsewhere.what === "deep")
-                                            setDeepNodeId(nodeId);
-                                    },
+                                    onGo: () => navigateTo(nodeId),
                                 };
                             })(),
                   onDismiss: () => setFinishedElsewhere(null),
@@ -1284,7 +1283,34 @@ export function StudyWorkspaceView({
             className={isMobile ? "min-h-0 flex-1" : isWide ? "max-h-full" : "max-h-[26rem]"}
         />
     );
-    const bandBest = bandResult ? studyBestCandidate(bandResult) : null;
+    // 読んでいる間に、前に深く読んだ記録のほうが深ければ、それも出す（今の読みが超えるまで）。
+    const recordResult = savedPicked?.result ?? null;
+    const recordAhead =
+        liveHere && recordResult && recordResult.depth > (liveHere.preview?.depth ?? 0)
+            ? recordResult
+            : null;
+    const recordBest = recordResult ? studyBestCandidate(recordResult) : null;
+    const playRecordPv =
+        recordBest && recordBest.pv.length > 0
+            ? () =>
+                  previewPv({
+                      nodeId: currentNodeId,
+                      pv: recordBest.pv,
+                      score: recordBest.score,
+                  })
+            : undefined;
+    /** 帯の 1 段に出す値。 */
+    const bandLineOf = (result: StudyAnalysisResult | null): StudyBandLine | null => {
+        if (!result) return null;
+        const best = studyBestCandidate(result);
+        return best
+            ? {
+                  bestMove: studyFirstMoveLabel(currentNode, best.pv),
+                  score: best.score,
+                  depth: result.depth,
+              }
+            : { bestMove: null, score: null, depth: null };
+    };
     // 帯にラムを出すのは自動で読む読みだけ（パスして解析の読みは、止める操作のある候補手のタブで知らせる）。
     // 局面を移った直後は、前の局面の読みを止めてこの局面を読み始めるまで間があるので、その間も読んでいる
     // ことにする（「未解析」が一瞬出ないように）。
@@ -1312,7 +1338,9 @@ export function StudyWorkspaceView({
             }
             // スマートフォンではスイッチを局面の帯に置く（どの表示からでも止められるように）。
             autoSwitchElsewhere={isMobile}
-            collapsePreviousWhileReading={isMobile}
+            // スマートフォンは帯に記録を出すので、ここには添えない。
+            recordAhead={isMobile ? null : recordAhead}
+            readingSoon={bandShowsReading && liveHere === undefined}
             controlsLast={isMobile}
             onStartDeepAfterPass={editingDisabled ? undefined : () => void startDeepAfterPass()}
             revision={insights.revision}
@@ -1559,14 +1587,12 @@ export function StudyWorkspaceView({
                             onBackToMainLine={nav.onMainLine ? null : nav.backToMainLine}
                             positionBand={
                                 <StudyPositionBand
-                                    bestMove={
-                                        bandBest
-                                            ? studyFirstMoveLabel(currentNode, bandBest.pv)
-                                            : null
-                                    }
-                                    score={bandBest?.score ?? null}
-                                    depth={bandBest ? (bandResult?.depth ?? null) : null}
-                                    reading={bandShowsReading}
+                                    live={bandLineOf(liveHere?.preview ?? null)}
+                                    record={bandLineOf(savedPicked?.result ?? null)}
+                                    onPlayRecord={playRecordPv}
+                                    // パスして解析の読みも今の読みとして出すが、ラムは自動で読む読みだけ。
+                                    reading={bandShowsReading || liveHere !== undefined}
+                                    showRam={bandShowsReading}
                                     autoAnalyze={
                                         editingDisabled
                                             ? undefined
@@ -1683,7 +1709,7 @@ export function StudyWorkspaceView({
 
             {pvPreview && (
                 <PvPreviewDialog
-                    onClose={() => setPvPreview(null)}
+                    onClose={closePvPreview}
                     pv={pvPreview.pv}
                     startPosition={pvPreview.startPosition}
                     ply={pvPreview.ply}
@@ -1758,8 +1784,8 @@ export function StudyWorkspace({
     // 設定を変えた解析を中止したときに、表示を戻す先（解析を始める前に表示していた設定）。
     const [revertLayerId, setRevertLayerId] = useState<string | null>(null);
     const previousLayerIdRef = useRef<string | null>(null);
-    // 直近の「この局面を深く解析」で使った設定（結果を、候補手の欄に別の段として出すのに使う）。
-    const [deepLayerId, setDeepLayerId] = useState<string | null>(null);
+    // 1 局面の読みで直近に結果を書いた局面と設定（別の AI で読んだ結果を、帯と候補手に出すのに使う）。
+    const [deepRead, setDeepRead] = useState<StudyDeepReadRef | null>(null);
 
     const displayLayerId = chooseStudyDisplayLayer(doc.layers, preferredLayerId);
 
@@ -1788,13 +1814,15 @@ export function StudyWorkspace({
         onApplyOps,
         onFlush,
         locked: locked || readOnly,
-        // 全体の解析を始めたら、その設定の結果を表示に切り替える。1 局面だけの深い解析では
-        // 切り替えない（評価値グラフと悪手・疑問手の印は全体の解析の結果のまま見せる）。
-        onLayerStarted: (layerId, mode) => {
-            if (mode !== "full") {
-                setDeepLayerId(layerId);
-                return;
-            }
+        onDeepResult: (layerId, nodeId) =>
+            setDeepRead((previous) =>
+                previous?.layerId === layerId && previous.nodeId === nodeId
+                    ? previous
+                    : { layerId, nodeId },
+            ),
+        // 全体の解析を始めたら、その設定の結果を表示に切り替える。1 局面の読みでは切り替えない
+        // （評価値グラフと悪手・疑問手の印は全体の解析の結果のまま見せる）。
+        onLayerStarted: (layerId) => {
             previousLayerIdRef.current = displayLayerId !== layerId ? displayLayerId : null;
             setRevertLayerId(null);
             changeDisplayLayer(layerId);
@@ -1846,6 +1874,12 @@ export function StudyWorkspace({
 
     const analysis: StudyAnalysisController = {
         ...controller,
+        // 新しい読みを頼んだら、前の読みは忘れる（新しい読みが結果を出せなかったときに、別の AI で
+        // 前に読んだ結果を、いま読んだ結果として出さないように）。
+        startDeep: (nodeId) => {
+            setDeepRead(null);
+            return controller.startDeep(nodeId);
+        },
         cancel: async () => {
             const wasFull = controller.mode === "full";
             await controller.cancel();
@@ -1871,7 +1905,7 @@ export function StudyWorkspace({
                 mate={readOnly ? undefined : mate}
                 message={message}
                 onMessageChange={setMessage}
-                deepLayerId={deepLayerId}
+                deepRead={deepRead}
                 initialNodeId={initialView?.currentNodeId ?? null}
                 onCurrentNodeChange={(nodeId) => {
                     viewNodeIdRef.current = nodeId;
