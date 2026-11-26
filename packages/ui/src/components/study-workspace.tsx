@@ -19,6 +19,7 @@ import {
     type Square,
     type StudyAnalysisResult,
     type StudyDocument,
+    type StudyLayer,
     type StudyOp,
     studyScoreToKifuEval,
 } from "@shogi/app-core";
@@ -62,8 +63,9 @@ import { StudyDeleteVariationDialog } from "./study-workspace/StudyDeleteVariati
 import { StudyDesktopLayout } from "./study-workspace/StudyDesktopLayout";
 import {
     buildStudyEvalGraph,
-    type StudyDeepRead,
+    STUDY_AUTO_READ_LABEL,
     StudyEvalGraphPanel,
+    type StudyGraphRead,
     type StudyGraphSeries,
 } from "./study-workspace/StudyEvalGraphPanel";
 import { StudyGameInfo } from "./study-workspace/StudyGameInfo";
@@ -107,6 +109,10 @@ import {
     buildStudyStructureTree,
     chooseStudyDisplayLayer,
     countStudyLayerResults,
+    isSameStudyAi,
+    pickStudyDeeperResult,
+    pickStudyDeepestResult,
+    pickStudyPositionResult,
     type StudyStructureTree,
     studyBestCandidate,
     studyFirstMoveLabel,
@@ -445,37 +451,51 @@ export function StudyWorkspaceView({
         deepRead,
     });
     const liveHere = analysis.live?.nodeId === currentNodeId ? analysis.live : undefined;
-    // 帯が表示中の設定とは別の読みの値を出す局面（グラフに、線とは別の印で示す）。全体の解析の途中の
-    // 値は表示中の設定の値なので、印にしない。
-    const deepReads = new Map<string, StudyDeepRead>();
+    // グラフは局面ごとに帯と同じ値を置く。表示中の AI の値は線につなぎ、別の AI の値は線に混ぜずに
+    // 丸で置く（AI が違うと深さを比べられないので）。
+    const lineReads = new Map<string, StudyGraphRead>();
+    const otherAiReads = new Map<string, StudyGraphRead>();
+    const isOtherAi = (layer: StudyLayer): boolean =>
+        !(displayLayer && isSameStudyAi(layer, displayLayer));
+    const graphReadLabel = (layer: StudyLayer): string =>
+        layer.id === displayLayerId
+            ? studyLimitsLabel(layer.spec.limits)
+            : isOtherAi(layer)
+              ? layer.display.label
+              : STUDY_AUTO_READ_LABEL;
+    /** いまの局面を自動で読んでいる設定（直前に結果を書いていれば分かる）。 */
+    const liveLayer =
+        analysis.mode === "deep" && deepRead?.nodeId === currentNodeId
+            ? doc.layers.find((layer) => layer.id === deepRead.layerId)
+            : undefined;
     for (const nodeId of line) {
-        if (nodeId === currentNodeId && liveHere?.preview) {
-            if (analysis.mode !== "deep") continue;
-            const deepLayer =
-                deepRead?.nodeId === nodeId
-                    ? doc.layers.find((layer) => layer.id === deepRead.layerId)
-                    : undefined;
-            deepReads.set(nodeId, {
-                limits: studyLimitsLabel(
-                    deepLayer?.spec.limits ?? {
-                        timeMs: liveHere.budgetMs,
-                        depth: null,
-                        nodes: null,
-                    },
-                ),
+        const sameAi = pickStudyDeepestResult([
+            pickStudyPositionResult(doc, nodeId, displayLayerId),
+            pickStudyDeeperResult(doc, nodeId, displayLayerId),
+        ]);
+        if (sameAi) {
+            lineReads.set(nodeId, { label: graphReadLabel(sameAi.layer), result: sameAi.result });
+        }
+        // 自動で読んでいる途中の値は、帯の上の段と同じく今の読みとして置く。全体の解析の途中の値は
+        // 表示中の設定の値で、保存されたら線に入るので、ここでは足さない。
+        if (nodeId === currentNodeId && liveHere?.preview && analysis.mode === "deep") {
+            const read = {
+                label: liveLayer ? graphReadLabel(liveLayer) : STUDY_AUTO_READ_LABEL,
                 result: liveHere.preview,
-            });
+            };
+            if (liveLayer && isOtherAi(liveLayer)) {
+                otherAiReads.set(nodeId, read);
+            } else if (!sameAi || liveHere.preview.depth >= sameAi.result.depth) {
+                lineReads.set(nodeId, read);
+            }
             continue;
         }
         const picked =
             nodeId === currentNodeId
                 ? savedPicked
                 : pickStudyBandResult({ doc, nodeId, displayLayerId, deepRead });
-        if (picked && picked.layer.id !== displayLayerId) {
-            deepReads.set(nodeId, {
-                limits: studyLimitsLabel(picked.layer.spec.limits),
-                result: picked.result,
-            });
+        if (picked && isOtherAi(picked.layer)) {
+            otherAiReads.set(nodeId, { label: picked.layer.display.label, result: picked.result });
         }
     }
     const graph = buildStudyEvalGraph({
@@ -485,7 +505,8 @@ export function StudyWorkspaceView({
         highlights: insights.highlights,
         hasResults,
         primaryChoice: graphPrimaryChoice,
-        deepReads,
+        lineReads,
+        otherAiReads,
         currentNodeId,
     });
 
@@ -1269,7 +1290,6 @@ export function StudyWorkspaceView({
             line={line}
             currentNodeId={currentNodeId}
             highlightKinds={highlightKinds}
-            clearedKinds={insights.clearedKinds}
             unsavedComments={comments.unsaved}
             onSelect={(nodeId) => navigateTo(nodeId)}
             onBackToMainLine={nav.backToMainLine}
@@ -1300,7 +1320,10 @@ export function StudyWorkspaceView({
                   })
             : undefined;
     /** 帯の 1 段に出す値。 */
-    const bandLineOf = (result: StudyAnalysisResult | null): StudyBandLine | null => {
+    const bandLineOf = (
+        result: StudyAnalysisResult | null,
+        otherAi: boolean,
+    ): StudyBandLine | null => {
         if (!result) return null;
         const best = studyBestCandidate(result);
         return best
@@ -1308,8 +1331,9 @@ export function StudyWorkspaceView({
                   bestMove: studyFirstMoveLabel(currentNode, best.pv),
                   score: best.score,
                   depth: result.depth,
+                  otherAi,
               }
-            : { bestMove: null, score: null, depth: null };
+            : { bestMove: null, score: null, depth: null, otherAi };
     };
     // 帯にラムを出すのは自動で読む読みだけ（パスして解析の読みは、止める操作のある候補手のタブで知らせる）。
     // 局面を移った直後は、前の局面の読みを止めてこの局面を読み始めるまで間があるので、その間も読んでいる
@@ -1343,7 +1367,6 @@ export function StudyWorkspaceView({
             readingSoon={bandShowsReading && liveHere === undefined}
             controlsLast={isMobile}
             onStartDeepAfterPass={editingDisabled ? undefined : () => void startDeepAfterPass()}
-            revision={insights.revision}
             onCancel={cancelAnalysis}
             onPreviewPv={previewPv}
             onAddPvAsVariation={readOnly ? undefined : editing.addPvAsVariation}
@@ -1587,8 +1610,14 @@ export function StudyWorkspaceView({
                             onBackToMainLine={nav.onMainLine ? null : nav.backToMainLine}
                             positionBand={
                                 <StudyPositionBand
-                                    live={bandLineOf(liveHere?.preview ?? null)}
-                                    record={bandLineOf(savedPicked?.result ?? null)}
+                                    live={bandLineOf(
+                                        liveHere?.preview ?? null,
+                                        liveLayer !== undefined && isOtherAi(liveLayer),
+                                    )}
+                                    record={bandLineOf(
+                                        savedPicked?.result ?? null,
+                                        savedPicked !== null && isOtherAi(savedPicked.layer),
+                                    )}
                                     onPlayRecord={playRecordPv}
                                     // パスして解析の読みも今の読みとして出すが、ラムは自動で読む読みだけ。
                                     reading={bandShowsReading || liveHere !== undefined}

@@ -53,7 +53,7 @@ export interface EvalGraphMarker {
     /** `evalHistory` の添字（0 = 開始局面）。 */
     ply: number;
     /** 印の種類。色だけでなく形でも見分けられるようにしている。 */
-    tone: "blunder" | "dubious" | "deep";
+    tone: "blunder" | "dubious" | "otherAi";
     /** 読み上げ・ツールチップ用の説明（例: `42手目 悪手`）。 */
     label: string;
     /** `secondary` なら、`secondaryHistory` の線の上に置く（印の元になった評価値の線に載せる）。 */
@@ -67,7 +67,7 @@ export interface EvalGraphMarker {
 const MARKER_CLASS: Record<EvalGraphMarker["tone"], string> = {
     blunder: "rounded-full bg-study-blunder ring-2 ring-background",
     dubious: "rounded-full border-2 border-study-dubious bg-background",
-    deep: "rotate-45 border-2 border-wafuu-sumi bg-background",
+    otherAi: "rounded-full border-2 border-muted-foreground bg-background",
 };
 
 /**
@@ -378,7 +378,10 @@ export function EvalGraph({
                         y1={label.position}
                         x2="100%"
                         y2={label.position}
-                        stroke="hsl(var(--border))"
+                        // 0 は形勢の分かれ目なので、薄い補助線と見分けられるよう墨色にする。
+                        stroke={
+                            label.value === "0" ? "hsl(var(--wafuu-sumi))" : "hsl(var(--border))"
+                        }
                         strokeWidth={label.value === "0" ? "1" : "0.5"}
                         vectorEffect="non-scaling-stroke"
                         strokeDasharray={label.value === "0" ? "none" : "2,2"}
@@ -559,7 +562,7 @@ export function EvalGraph({
                             };
                             const shapeClass = cn(
                                 "block",
-                                marker.tone === "deep" ? "h-2 w-2" : "h-2.5 w-2.5",
+                                marker.tone === "otherAi" ? "h-2 w-2" : "h-2.5 w-2.5",
                                 MARKER_CLASS[marker.tone],
                                 // 現在位置の縦線と同じく、金の外側に墨の縁を付けて明るい地でも見えるようにする。
                                 marker.current &&
@@ -644,7 +647,7 @@ export function EvalGraph({
                 y1={padding.top + graphHeight / 2}
                 x2="100%"
                 y2={padding.top + graphHeight / 2}
-                stroke="hsl(var(--border))"
+                stroke="hsl(var(--wafuu-sumi))"
                 strokeWidth="1"
                 vectorEffect="non-scaling-stroke"
             />

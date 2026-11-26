@@ -34,13 +34,9 @@ export function deriveStudyPositionInsights({
         deeperLayerIds: studyDeeperLayerIds(doc, displayLayerId),
     });
     const highlightKinds = new Map<string, StudyHighlightKind>();
-    /** 深く読んで、悪手・疑問手ではなかったと分かった手（元の判定）。 */
-    const clearedKinds = new Map<string, StudyHighlightKind>();
     for (const highlight of highlights) {
         if (highlight.kind) highlightKinds.set(highlight.nodeId, highlight.kind);
-        else if (highlight.revisedFrom) clearedKinds.set(highlight.nodeId, highlight.revisedFrom);
     }
-    const currentHighlight = highlights.find((highlight) => highlight.nodeId === currentNodeId);
     const displayLayer = doc.layers.find((layer) => layer.id === displayLayerId);
     const totalCount = Object.keys(doc.tree.nodes).length;
     const unanalyzedCount = countStudyUnanalyzed(doc, displayLayerId);
@@ -61,12 +57,6 @@ export function deriveStudyPositionInsights({
     return {
         highlights,
         highlightKinds,
-        clearedKinds,
-        /** 深く読んで判定が変わったとき、その前後。 */
-        revision:
-            currentHighlight?.revisedFrom !== undefined
-                ? { from: currentHighlight.revisedFrom, to: currentHighlight.kind }
-                : null,
         displayLayer,
         totalCount,
         unanalyzedCount,

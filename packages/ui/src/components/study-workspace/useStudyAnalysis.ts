@@ -492,7 +492,7 @@ export function useStudyAnalysis({
         },
         onError: (message) => {
             console.error("[study] 深く解析できませんでした:", message);
-            setMessage({ text: `深く解析できませんでした。${RELOAD_HINT}`, type: "error" });
+            setMessage({ text: `この局面を読めませんでした。${RELOAD_HINT}`, type: "error" });
         },
     });
     const isDeepSearching = deep.state.phase === "preparing" || deep.state.phase === "running";

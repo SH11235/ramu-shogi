@@ -13,6 +13,8 @@ export interface StudyBandLine {
     bestMove: string | null;
     score: StudyScore | null;
     depth: number | null;
+    /** 表示中の AI とは別の AI の値（評価値グラフの丸と同じく灰色で出す）。 */
+    otherAi?: boolean;
 }
 
 /**
@@ -179,14 +181,16 @@ function BandRow({
                             "min-w-[5ch] whitespace-nowrap text-right font-mono tabular-nums max-[399px]:min-w-0",
                             !primary
                                 ? "text-xs"
-                                : cn(
-                                      "max-[399px]:text-xs",
-                                      side === "sente"
-                                          ? "text-wafuu-shu"
-                                          : side === "gote"
-                                            ? "text-wafuu-ai"
-                                            : "text-foreground",
-                                  ),
+                                : line.otherAi
+                                  ? "text-muted-foreground max-[399px]:text-xs"
+                                  : cn(
+                                        "max-[399px]:text-xs",
+                                        side === "sente"
+                                            ? "text-wafuu-shu"
+                                            : side === "gote"
+                                              ? "text-wafuu-ai"
+                                              : "text-foreground",
+                                    ),
                         )}
                     >
                         {scoreText}
