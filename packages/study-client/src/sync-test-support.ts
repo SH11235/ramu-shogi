@@ -46,8 +46,13 @@ interface FakeServerCall {
  * - `offline`: サーバーに届かない（何も適用せず、通信失敗を返す）
  * - `drop-response`: サーバーは処理するが、応答が届かない
  * - `{ status, error }`: その応答を返す（サーバーは処理しない）
+ * - `{ data }`: その本文で成功を返す（サーバーは処理しない。古い内容を返すサーバーの模擬）
  */
-type Interception = "offline" | "drop-response" | { status: number; error?: StudyApiErrorBody };
+type Interception =
+    | "offline"
+    | "drop-response"
+    | { status: number; error?: StudyApiErrorBody }
+    | { data: unknown };
 
 export interface FakeStudyServer {
     /** そのユーザーのセッション Cookie を持つクライアント。`getUserId` が null なら未ログイン。 */
@@ -295,7 +300,15 @@ export function createFakeStudyServer(): FakeStudyServer {
                     record(0);
                     return NETWORK_FAILURE;
                 }
-                if (interception !== undefined && interception !== "drop-response") {
+                if (interception !== undefined && typeof interception === "object") {
+                    if ("data" in interception) {
+                        record(200);
+                        return {
+                            ok: true,
+                            status: 200,
+                            data: structuredClone(interception.data) as T,
+                        };
+                    }
                     record(interception.status);
                     return fail(interception.status, interception.error);
                 }

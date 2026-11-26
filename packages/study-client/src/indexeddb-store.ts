@@ -19,6 +19,7 @@ import {
     type StudyStore,
     type StudyStoreSnapshot,
     type StudyViewState,
+    splitPendingOpInput,
     summarizeStoredStudy,
 } from "./store";
 
@@ -53,6 +54,7 @@ interface PendingRow {
     seq?: number;
     studyId: string;
     op: StudyOp;
+    commentBase?: string;
 }
 
 interface IndexedDbStudyStoreOptions {
@@ -224,12 +226,17 @@ export function createIndexedDbStudyStore(options: IndexedDbStudyStoreOptions = 
         const [row, doc, pendingRows] = await Promise.all([
             requestToPromise<StudyRow | undefined>(transaction.objectStore(STUDIES).get(studyId)),
             requestToPromise<DocRow | undefined>(transaction.objectStore(DOCS).get(studyId)),
-            requestToPromise<Required<PendingRow>[]>(
+            requestToPromise<Array<PendingRow & { seq: number }>>(
                 transaction.objectStore(PENDING).index("studyId").getAll(IDBKeyRange.only(studyId)),
             ),
         ]);
         const pending: PendingStudyOp[] = pendingRows
-            .map((item) => ({ seq: item.seq, op: item.op }))
+            .map(
+                (item): PendingStudyOp =>
+                    item.commentBase === undefined
+                        ? { seq: item.seq, op: item.op }
+                        : { seq: item.seq, op: item.op, commentBase: item.commentBase },
+            )
             .sort((a, b) => a.seq - b.seq);
         return { study: row && doc ? fromRow(row, doc) : null, pending };
     };
@@ -303,8 +310,8 @@ export function createIndexedDbStudyStore(options: IndexedDbStudyStoreOptions = 
                         }
                     }
                 }
-                for (const op of appendOps) {
-                    const row: PendingRow = { studyId, op };
+                for (const input of appendOps) {
+                    const row: PendingRow = { studyId, ...splitPendingOpInput(input) };
                     pending.add(row);
                     pendingCount++;
                 }

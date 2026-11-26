@@ -84,7 +84,25 @@ export interface StoredStudy {
 export interface PendingStudyOp {
     seq: number;
     op: StudyOp;
+    /**
+     * `setComment` が上書きした、その時点のコメント（送らない）。409 などでサーバーの文書の上へ
+     * 当て直すとき、サーバーのコメントがこれと違えば、別の端末が書いた文を消さずにつなぐ。
+     */
+    commentBase?: string;
 }
+
+/** 送信待ちに積む操作。`commentBase` は `PendingStudyOp` と同じ。 */
+export type StudyPendingOpInput = StudyOp | { op: StudyOp; commentBase?: string };
+
+/** 送信待ちに積む形を、操作と `commentBase`（無ければ項目ごと省く）に分ける。 */
+export const splitPendingOpInput = (
+    input: StudyPendingOpInput,
+): { op: StudyOp; commentBase?: string } => {
+    if (!("op" in input)) return { op: input };
+    return input.commentBase === undefined
+        ? { op: input.op }
+        : { op: input.op, commentBase: input.commentBase };
+};
 
 /** 一覧用の要約（文書の本体を読まずに得られる）。 */
 export interface StoredStudySummary {
@@ -121,7 +139,7 @@ export interface StudyStoreWrite<T> {
     /** レコードを置き換える。null なら削除する（送信待ちの操作も消える）。 */
     study?: StoredStudy | null;
     /** 送信待ちの末尾に足す操作。 */
-    appendOps?: readonly StudyOp[];
+    appendOps?: readonly StudyPendingOpInput[];
     /** この連番以下の送信待ちの操作を消す。 */
     removeOpsUpTo?: number;
     /** 呼び出し元に返す値。 */
@@ -257,7 +275,10 @@ export function createMemoryStudyStore(): StudyStore {
                 queue = queue.filter((item) => item.seq > upTo);
             }
             if (appended.length > 0) {
-                queue = [...queue, ...appended.map((op) => ({ seq: nextSeq++, op }))];
+                queue = [
+                    ...queue,
+                    ...appended.map((input) => ({ seq: nextSeq++, ...splitPendingOpInput(input) })),
+                ];
             }
             if (queue.length > 0) pending.set(studyId, queue);
             else pending.delete(studyId);
