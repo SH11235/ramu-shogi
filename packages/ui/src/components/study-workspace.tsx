@@ -1330,6 +1330,7 @@ export function StudyWorkspaceView({
             autoSwitchElsewhere={isMobile}
             // スマートフォンは帯に記録を出すので、ここには添えない。
             recordAhead={isMobile ? null : recordAhead}
+            readingSoon={bandShowsReading && liveHere === undefined}
             controlsLast={isMobile}
             onStartDeepAfterPass={editingDisabled ? undefined : () => void startDeepAfterPass()}
             revision={insights.revision}

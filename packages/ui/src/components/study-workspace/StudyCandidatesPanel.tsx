@@ -118,6 +118,11 @@ interface StudyCandidatesPanelProps {
      */
     recordAhead?: StudyAnalysisResult | null;
     /**
+     * 自動で読むがこの局面を読み始めるところ（前の局面の読みを止めている間など）。局面の帯と同じく、
+     * まだ解析していないとは出さない。
+     */
+    readingSoon?: boolean;
+    /**
      * いまの局面でパスを指し（変化として足し）、その局面を深く解析する。手番でない側が何を狙って
      * いるかを見るため。渡さなければ出さない（編集できないとき）。
      */
@@ -455,6 +460,7 @@ export function StudyCandidatesPanel({
     autoAnalyze,
     autoSwitchElsewhere = false,
     recordAhead = null,
+    readingSoon = false,
     onStartDeepAfterPass,
     revision = null,
     onCancel,
@@ -679,7 +685,7 @@ export function StudyCandidatesPanel({
                         </ol>
                     ) : (
                         <p className="px-1 text-sm text-muted-foreground">
-                            この局面はまだ解析していません。
+                            {readingSoon ? "読み中…" : "この局面はまだ解析していません。"}
                         </p>
                     )}
                     {deeperResult && positionResult && (

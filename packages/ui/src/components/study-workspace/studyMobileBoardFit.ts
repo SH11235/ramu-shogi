@@ -7,7 +7,8 @@ const MOBILE_MAX_CELL_SIZE = 52;
 const MOBILE_MIN_CELL_SIZE = 20;
 // 盤の下（移動の行のさらに下）に残す高さ。盤の表示では棋譜の帯とグラフ、一覧の表示では一覧を置く。
 const MOBILE_LOWER_MIN_HEIGHT = 150;
-const MOBILE_LOWER_SHORT_HEIGHT = 48;
+// 低い画面で残す下限は、局面の帯（2 段で 56px）と間の分。
+const MOBILE_LOWER_SHORT_HEIGHT = 64;
 // コメント欄の高さの下限（入力欄と、別の画面の変更との突き合わせの操作が収まる高さ）。
 const MOBILE_COMMENT_MIN_HEIGHT = 200;
 // 局面の移動の行の高さと、行どうしの間。

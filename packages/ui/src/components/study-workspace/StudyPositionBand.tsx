@@ -46,7 +46,17 @@ export function StudyPositionBand({
         (live === null || live.depth === null || (record.depth ?? 0) > live.depth);
     const upper = reading ? (
         <BandRow
-            label={showRam ? <RamRunningIcon dotSize={1} /> : "いま"}
+            label={
+                showRam ? (
+                    <>
+                        <RamRunningIcon dotSize={1} />
+                        {/* ラムは読み上げないので、上の段が今の読みだと名前で伝える。 */}
+                        <span className="sr-only">今の読み</span>
+                    </>
+                ) : (
+                    "いま"
+                )
+            }
             line={live}
             empty="読み中…"
             primary
@@ -143,7 +153,9 @@ function BandRow({
                 <span className="ml-auto flex shrink-0 items-baseline gap-1.5 max-[359px]:gap-1">
                     <span
                         className={cn(
-                            "whitespace-nowrap font-mono tabular-nums",
+                            // 桁数が変わっても手の表記の切れる位置が動かないよう、幅を取っておく（幅の
+                            // 狭い画面では手の表記を優先する）。
+                            "min-w-[5ch] whitespace-nowrap text-right font-mono tabular-nums max-[399px]:min-w-0",
                             !primary
                                 ? "text-xs"
                                 : cn(
