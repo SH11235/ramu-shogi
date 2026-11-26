@@ -105,7 +105,8 @@ if [[ "$MODE" == "stg" ]]; then
   served_storybook=$(mktemp)
   expected_hash=$(sha256_of apps/web/dist/storybook/iframe.html)
   served_hash=""
-  if curl -sf -A 'Mozilla/5.0' -o "$served_storybook" "$SITE_URL/storybook/iframe.html"; then
+  # 配信側は `.html` 付きの URL を拡張子なしの URL へ 307 で転送するので、転送を追う。
+  if curl -sfL -A 'Mozilla/5.0' -o "$served_storybook" "$SITE_URL/storybook/iframe.html"; then
     served_hash=$(sha256_of "$served_storybook")
   fi
   rm -f "$served_storybook"
