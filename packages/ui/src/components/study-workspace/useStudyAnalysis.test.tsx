@@ -648,6 +648,26 @@ describe("useStudyAnalysis", () => {
         expect(result.current.startedLayers.some((key) => key.startsWith("full:"))).toBe(false);
     });
 
+    it("準備を待つ間に画面で別の操作をしていたら、全体の解析は始めない", async () => {
+        const { doc } = createTestStudy();
+        const engine = createEngineOption();
+        const { result } = renderHook(() => useHarness(doc, [engine.option]));
+        let wanted = true;
+        await act(async () => {
+            const starting = result.current.controller.startFull({
+                onCommit: () => {
+                    // 始めると決めたあと、準備を終える前に別の操作をした。
+                    wanted = false;
+                },
+                isWanted: () => wanted,
+            });
+            await starting;
+        });
+        expect(result.current.startedLayers).toEqual([]);
+        expect(engine.searches()).toBe(0);
+        expect(result.current.controller.isPreparing).toBe(false);
+    });
+
     it("始めるときの通知は、前の通知を消したあとに出す", async () => {
         const { doc, ids } = createTestStudy();
         const engine = createResumableEngineOption();

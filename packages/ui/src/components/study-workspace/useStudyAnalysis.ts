@@ -81,7 +81,9 @@ export interface StudyApplyOpsOptions {
 export interface StudyFullStartOptions {
     /** 始められると分かった（設定を確かめ終えた）ときに、深く解析の読みを止める前に呼ぶ。 */
     onCommit?: () => void;
-    /** 読みを止め終えたあとも始めてよいか。待つ間に別の操作があれば false を返す。 */
+    /**
+     * 読みを止め終え、準備を終えたあとも始めてよいか。待つ間に別の操作があれば false を返す。
+     */
     isWanted?: () => boolean;
     /** 始めるときに出す通知。始めるときは前の通知を消すので、消したあとに出す。 */
     notice?: Message;
@@ -653,7 +655,7 @@ export function useStudyAnalysis({
         selection: NnueSelection,
         target?: StudyLayer,
         afterCancel = false,
-        notice: Message | null = null,
+        options?: StudyFullStartOptions,
     ): Promise<void> =>
         withPreparation(
             { kind: "full" },
@@ -701,10 +703,12 @@ export function useStudyAnalysis({
                 // 止めてある「深く解析」の読みは手放す（全体の解析と同時にエンジンを持ち続けない）。
                 await deep.release();
                 if (!isCurrent() || lockedRef.current) return;
+                // 準備（AI の読み込み）を待つ間に、自動で読むを入れ直すなどの操作があれば始めない。
+                if (options?.isWanted && !options.isWanted()) return;
                 run(jobs, prepared, multiPv, "full");
             },
             afterCancel,
-            notice,
+            options?.notice ?? null,
         );
 
     /** 解析結果（レイヤー）を作ったときの AI の選択。このブラウザで分からなければ null。 */
@@ -744,7 +748,7 @@ export function useStudyAnalysis({
             return;
         }
         await afterStoppingDeep(
-            (afterCancel) => startFullWith(selection, target, afterCancel, options?.notice ?? null),
+            (afterCancel) => startFullWith(selection, target, afterCancel, options),
             options,
         );
     };
@@ -978,12 +982,7 @@ export function useStudyAnalysis({
             startFull: (options) =>
                 afterStoppingDeep(
                     (afterCancel) =>
-                        startFullWith(
-                            analysisNnueSelection,
-                            undefined,
-                            afterCancel,
-                            options?.notice ?? null,
-                        ),
+                        startFullWith(analysisNnueSelection, undefined, afterCancel, options),
                     options,
                 ),
             resumeLayer,
