@@ -518,28 +518,18 @@ export function StudyWorkspaceView({
     const analysisBlocked = analysis.isPreparing || mateRunning;
     const startFull = (): void => {
         if (locked || mateRunning) return;
-        if (!autoAnalyze) {
-            void analysis.startFull();
-            return;
-        }
-        void leaveAutoAnalyze().then((left) => {
-            if (left) void analysis.startFull({ afterCancel: left === "stopped" });
-        });
+        turnOffAutoAnalyze();
+        void analysis.startFull();
     };
     /** 表示中の設定の未解析分を、その設定で解析する。表示中の結果が無ければ全体の解析。 */
     const resumeDisplayLayer = (): void => {
         if (locked || mateRunning) return;
-        if (displayLayerId === null) startFull();
-        else if (!autoAnalyze) void analysis.resumeLayer(displayLayerId);
-        else {
-            void leaveAutoAnalyze().then((left) => {
-                if (left) {
-                    void analysis.resumeLayer(displayLayerId, {
-                        afterCancel: left === "stopped",
-                    });
-                }
-            });
+        if (displayLayerId === null) {
+            startFull();
+            return;
         }
+        turnOffAutoAnalyze();
+        void analysis.resumeLayer(displayLayerId);
     };
     /** 解析・詰み探索は 1 つずつ動かす。押した操作を優先し、動いている詰み探索は止める。 */
     const stopMate = (): void => {
@@ -568,19 +558,27 @@ export function StudyWorkspaceView({
     /**
      * 自動で読む以外の解析の操作を始める前に、自動で読むを切る（押した操作をそのまま通し、切ったことを
      * 知らせる）。読んでいた分は残る。止め終わるまでに別の操作をしたら false（その操作のほうを優先する）。
-     * 読みを止めて待ち終えたら "stopped"（続けて始める解析に、止めた直後であることを渡す）。
      */
-    const leaveAutoAnalyze = async (): Promise<false | "idle" | "stopped"> => {
-        if (!autoAnalyze) return "idle";
+    const leaveAutoAnalyze = async (): Promise<boolean> => {
+        if (!autoAnalyze) return true;
+        turnOffAutoAnalyze();
+        if (analysis.mode !== "deep" && !analysis.isPreparing) return true;
+        const request = ++actionSerialRef.current;
+        await analysis.cancel();
+        return actionSerialRef.current === request;
+    };
+    /**
+     * 自動で読むを切り、切ったことを知らせる（読んでいる途中の読みは止めない。全体の解析は、
+     * 始めるときに深く解析の読みを止めてから始める）。止めるのを待っている別の操作は取りやめる。
+     */
+    const turnOffAutoAnalyze = (): void => {
+        if (!autoAnalyze) return;
+        actionSerialRef.current += 1;
         setAutoAnalyze(false);
         onMessageChange({
             text: "自動で読むを切りました（読んだ分は残っています）。",
             type: "warning",
         });
-        if (analysis.mode !== "deep" && !analysis.isPreparing) return "idle";
-        const request = ++actionSerialRef.current;
-        await analysis.cancel();
-        return actionSerialRef.current === request && "stopped";
     };
     /** 自動で読み始めた（または手で読み始めた）局面。同じ局面で読み直さないために覚える。 */
     const autoStartedNodeRef = useRef<string | null>(null);

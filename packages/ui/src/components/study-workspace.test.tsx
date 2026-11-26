@@ -350,10 +350,11 @@ describe("StudyWorkspaceView", () => {
         const full = within(graphRegion()).getByRole("button", { name: "全体を解析" });
         expect((full as HTMLButtonElement).disabled).toBe(false);
         fireEvent.click(full);
-        await waitFor(() => expect(analysis.startFull).toHaveBeenCalledTimes(1));
-        expect(analysis.cancel).toHaveBeenCalled();
-        // 止め終えた直後に始めるので、まだ読んでいる最中という古い表示を見て取りやめさせない。
-        expect(analysis.startFull).toHaveBeenCalledWith({ afterCancel: true });
+        // 読みを止めるのは全体の解析を始める側（止め終わるのを待ってから始める）。
+        expect(analysis.startFull).toHaveBeenCalledTimes(1);
+        expect(
+            screen.getByRole("switch", { name: /自動で読む/ }).getAttribute("aria-checked"),
+        ).toBe("false");
         expect(screen.getByText(/自動で読むを切りました/)).toBeTruthy();
     });
 

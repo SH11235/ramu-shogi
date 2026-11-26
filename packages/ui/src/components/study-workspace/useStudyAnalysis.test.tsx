@@ -594,7 +594,7 @@ describe("useStudyAnalysis", () => {
         }
     });
 
-    it("深く読んでいる途中に止め、描画を待たずに全体を解析しても始まる", async () => {
+    it("深く読んでいる途中に全体を解析すると、読みを止め終えてから全体の解析を始める", async () => {
         const { doc, ids } = createTestStudy();
         const engine = createResumableEngineOption();
         const { result } = renderHook(() => useHarness(doc, [engine.option]));
@@ -603,14 +603,29 @@ describe("useStudyAnalysis", () => {
         });
         await waitFor(() => expect(result.current.controller.mode).toBe("deep"));
         await act(async () => {
-            // 止める前に描画された操作から、止め終わったあとに続けて呼ぶ（自動で読むを切って始めるとき）。
-            const controller = result.current.controller;
-            await controller.cancel();
-            await controller.startFull({ afterCancel: true });
+            await result.current.controller.startFull();
         });
         await waitFor(() =>
             expect(result.current.startedLayers.some((key) => key.startsWith("full:"))).toBe(true),
         );
+    });
+
+    it("読みを止め終わるまでに別の中止があれば、全体の解析は始めない", async () => {
+        const { doc, ids } = createTestStudy();
+        const engine = createResumableEngineOption();
+        const { result } = renderHook(() => useHarness(doc, [engine.option]));
+        await act(async () => {
+            await result.current.controller.startDeep(ids[2]);
+        });
+        await waitFor(() => expect(result.current.controller.mode).toBe("deep"));
+        await act(async () => {
+            const controller = result.current.controller;
+            const starting = controller.startFull();
+            void controller.cancel();
+            await starting;
+        });
+        expect(result.current.startedLayers.some((key) => key.startsWith("full:"))).toBe(false);
+        expect(result.current.controller.mode).toBeNull();
     });
 
     it("別の局面を深く解析している途中に深く解析すると、前の読みを結果に残して切り替える", async () => {

@@ -77,15 +77,6 @@ export interface StudyApplyOpsOptions {
     syncDelayMs?: number;
 }
 
-/** 解析を始めるときの指定。 */
-interface StudyStartAfterCancelOptions {
-    /**
-     * 直前に `cancel` を待ち終えた。止めたあと描画される前に呼ぶと、実行中かの state はまだ
-     * 止める前の値なので、それを見て始めるのを取りやめないようにする。
-     */
-    afterCancel?: boolean;
-}
-
 /**
  * 読んでいる途中の結果をサーバーへ送るまで待つ時間。途中の結果は数秒ごとに手元へ保存するが、
  * そのたびに送ると読んでいる間ずっと送信が続くので、まとめて送る（局面を移る・止めると、すぐ送る）。
@@ -151,13 +142,16 @@ export interface StudyAnalysisController {
     settingsLabel: string;
     /** いまの設定で全体を解析したときに、実際に解析する局面の数。 */
     fullTargetCount: number;
-    /** いまの設定で、まだ解析していない局面をすべて解析する。 */
-    startFull: (options?: StudyStartAfterCancelOptions) => Promise<void>;
+    /**
+     * いまの設定で、まだ解析していない局面をすべて解析する。深く解析している途中なら、それを
+     * 止めて（そこまでの結果は残る）から始める。
+     */
+    startFull: () => Promise<void>;
     /**
      * 既にある解析結果（レイヤー）の続きを、**その結果と同じ設定**で解析する（「残りを解析」）。
      * 設定の画面に残っている値は使わない。
      */
-    resumeLayer: (layerId: string, options?: StudyStartAfterCancelOptions) => Promise<void>;
+    resumeLayer: (layerId: string) => Promise<void>;
     /**
      * 指定した局面を長い時間で解析する。別の局面を深く解析している途中なら、それを止めて
      * （そこまでの結果は残る）切り替える。
@@ -709,10 +703,7 @@ export function useStudyAnalysis({
         return stored ? { presetKey: null, nnueId: stored.id } : null;
     };
 
-    const resumeLayer = async (
-        layerId: string,
-        options?: StudyStartAfterCancelOptions,
-    ): Promise<void> => {
+    const resumeLayer = async (layerId: string): Promise<void> => {
         if (lockedRef.current) return;
         const target = latestRef.current.doc.layers.find((layer) => layer.id === layerId);
         if (!target) return;
@@ -739,7 +730,24 @@ export function useStudyAnalysis({
             });
             return;
         }
-        await startFullWith(selection, target, options?.afterCancel);
+        await afterStoppingDeep((afterCancel) => startFullWith(selection, target, afterCancel));
+    };
+
+    /**
+     * 深く解析している途中なら、止め終わってから `start` を呼ぶ。止め終わるまでに別の中止・開始
+     * （エンジンの切り替えも）があれば世代が変わるので、止める前に押された開始は取りやめる。
+     */
+    const afterStoppingDeep = async (
+        start: (afterCancel: boolean) => Promise<void>,
+    ): Promise<void> => {
+        const deepActive =
+            activeMode === "deep" || (preparingRef.current && requestRef.current?.kind === "deep");
+        if (!deepActive) return start(false);
+        const stopped = cancel();
+        const generation = generationRef.current;
+        await stopped;
+        if (!mountedRef.current || generationRef.current !== generation) return;
+        await start(true);
     };
 
     const startDeepWith = (
@@ -945,8 +953,10 @@ export function useStudyAnalysis({
             live: activeMode === "deep" ? (deepLive ?? live) : null,
             settingsLabel,
             fullTargetCount,
-            startFull: (options) =>
-                startFullWith(analysisNnueSelection, undefined, options?.afterCancel),
+            startFull: () =>
+                afterStoppingDeep((afterCancel) =>
+                    startFullWith(analysisNnueSelection, undefined, afterCancel),
+                ),
             resumeLayer,
             startDeep,
             continuableDeepNodeId:
