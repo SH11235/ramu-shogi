@@ -128,6 +128,19 @@ describe("exportStudyLineToKif", () => {
 });
 
 describe("exportStudyLineToCsa", () => {
+    it.each([
+        ["sente", 100_000],
+        ["gote", -100_000],
+    ] as const)("0 手の mate は %s を勝者として書き出す", (winner, score) => {
+        const { doc } = createTestStudy([null, { kind: "mate", winner, plies: 0 }]);
+        const { tree } = buildStudyViewTree(doc, TEST_LAYER_ID);
+
+        const csa = exportStudyLineToCsa(doc, tree, resolveStudyLine(tree, tree.rootId));
+
+        expect(csa).toContain(`'** ${score}\n`);
+        expect(parseCsaGameRecord(csa).annotations[0]?.mateWinner).toBe(winner);
+    });
+
     it("表示中の手順を、対局者名・評価値・コメントつきの CSA にする（読み直すと同じ手順と評価値になる）", () => {
         const base = createTestStudy([cp(0), cp(30), cp(-20), null, null]);
         const doc = applyStudyOps(base.doc, [
