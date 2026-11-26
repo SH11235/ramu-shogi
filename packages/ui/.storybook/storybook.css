@@ -1,0 +1,5 @@
+@import "tailwindcss";
+/* theme.css は @layer base を使用するため tailwindcss の後に読み込む */
+@import "@shogi/design-system/theme.css";
+
+@config "./tailwind.config.ts";
