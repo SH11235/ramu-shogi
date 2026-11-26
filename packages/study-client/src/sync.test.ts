@@ -3098,33 +3098,32 @@ describe.each(STORES)("同期エンジン（保存層: $name）", ({ create }) =
             expect(harness.server.study(existingId)?.layers[0]?.results[branch]).toBeDefined();
         });
 
-        it("統合でつないだコメントは、統合先への送信が競合しても、元のノートの文だけをつなぎ直す", async () => {
+        it("統合でつないだコメントの送信が競合しても、統合先の未送信のコメントも元のノートのコメントも残る", async () => {
             const origin = { kind: "rshogi_csa", ref: "wdoor-20261009000001-93ef4d36a6" } as const;
             const existingId = "0d9f5c3a-2b7e-4c1d-9a55-1f2e3d4c5b6a";
             const harness = createHarness();
-            harness.server.seed(
-                USER_A,
-                applyStudyOps(createTestDocument({ id: existingId, origin }), [comment("既存")]),
-            );
-            await harness.sync.createStudy(createTestDocument({ origin }));
-            await harness.sync.applyOps(TEST_STUDY_ID, [comment("手元")]);
+            harness.server.seed(USER_A, createTestDocument({ id: existingId, origin }));
+            harness.login(USER_A);
+            // 統合先にまだ送っていないコメントがある。
+            await harness.sync.open(existingId);
+            await harness.sync.applyOps(existingId, [comment("統合先")]);
             let sent = false;
             harness.server.beforeHandle = async ({ method, studyId }) => {
-                // 統合先へ最初に送る直前に、別の端末が統合先のコメントに追記した。
+                // 統合先へ最初に送る直前に、別の端末が統合先にコメントを書いた。
                 if (method === "postOps" && studyId === existingId && !sent) {
                     sent = true;
-                    harness.server.applyFromOtherDevice(existingId, [comment("既存\n\n追記")]);
+                    harness.server.applyFromOtherDevice(existingId, [comment("別の端末")]);
                 }
             };
+            await harness.sync.createStudy(createTestDocument({ origin }));
+            await harness.sync.applyOps(TEST_STUDY_ID, [comment("元のノート")]);
 
-            harness.login(USER_A);
-            await harness.sync.adoptAnonymousStudies();
             await harness.advance(0);
             await harness.advance(0);
             await harness.sync.flush(existingId);
 
             expect(harness.server.study(existingId)?.tree.nodes[firstId].comment).toBe(
-                "既存\n\n追記\n\n手元",
+                "別の端末\n\n統合先\n\n元のノート",
             );
         });
 

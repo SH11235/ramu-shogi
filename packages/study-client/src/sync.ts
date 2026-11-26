@@ -454,6 +454,18 @@ const attachCommentLocals = (
         return { ...split, commentLocal: local };
     });
 
+/** `doc` に無い（または違う）解析結果を足す操作か。 */
+const isNewAnalysis = (doc: StudyDocument, op: StudyOp): boolean => {
+    if (op.type === "ensureLayer") {
+        const layerId = studyLayerId(op.spec);
+        return !doc.layers.some((layer) => layer.id === layerId);
+    }
+    if (op.type !== "putAnalysis") return false;
+    const layer = doc.layers.find((item) => item.id === op.layerId);
+    if (!layer || !Object.hasOwn(layer.results, op.nodeId)) return true;
+    return JSON.stringify(layer.results[op.nodeId]) !== JSON.stringify(op.result);
+};
+
 const isAnalysisOp = (op: StudyOp): boolean =>
     op.type === "ensureLayer" || op.type === "putAnalysis";
 
@@ -913,10 +925,11 @@ export function createStudySync(options: StudySyncOptions): StudySync {
         targetId: string,
         fetchedTarget: StudyDetail | null,
         /**
-         * 解析結果だけを取り込む（一度取り込んだあとに元のノートへ解析結果が届いたとき）。
-         * 全体を取り込み直すと、その間に統合先で消したコメントや枝が戻ってしまう。
+         * 一度取り込んだときの元のノートの文書（そのあとに元のノートへ解析結果が届いたとき）。
+         * 渡すと、そこから増えた・変わった解析結果だけを取り込む。全体を取り込み直すと、
+         * その間に統合先で消したコメント・枝・結果が戻ってしまう。
          */
-        analysisOnly = false,
+        imported: StudyDocument | null = null,
     ): Promise<StepOutcome> => {
         const source = (await store.read(studyId)).study;
         if (!source) return "done";
@@ -941,15 +954,11 @@ export function createStudySync(options: StudySyncOptions): StudySync {
             if (!base) return { result: false };
             // 同じノードの両方にコメントがあれば、統合先のコメントを消さずにつなぐ。
             const all = studyDocumentToOps(source.doc, { mergeInto: base.doc });
-            const ops = analysisOnly ? all.filter(isAnalysisOp) : all;
+            const ops = imported ? all.filter((op) => isNewAnalysis(imported, op)) : all;
             const { doc, effective } = applyEffectiveOps(base.doc, ops);
-            const sourceNodes = source.doc.tree.nodes;
             return {
                 study: { ...base, doc, updatedAt: now() },
-                // つないだコメントには元のノートの文を添える（統合先で競合したときに、つなぎ直す）。
-                appendOps: attachCommentLocals(effective, (nodeId) =>
-                    Object.hasOwn(sourceNodes, nodeId) ? sourceNodes[nodeId].comment : undefined,
-                ),
+                appendOps: effective,
                 result: true,
             };
         });
@@ -960,7 +969,7 @@ export function createStudySync(options: StudySyncOptions): StudySync {
             if (snapshot.study.updatedAt !== source.updatedAt) return { result: false };
             return { study: { ...snapshot.study, mergePending: false }, result: true };
         });
-        if (!settled) return finishMerge(studyId, targetId, null, true);
+        if (!settled) return finishMerge(studyId, targetId, null, source.doc);
         emit({ type: "document", studyId: targetId, origin: "local" });
         schedule(targetId, 0);
         return "done";
@@ -1444,10 +1453,12 @@ export function createStudySync(options: StudySyncOptions): StudySync {
         if (study.inflight !== null) return "inflight";
         const fetched = await api.get(studyId);
         if (fetched.ok) {
-            // 手元より古い内容は取り込まない（取り込み済みとも扱わない）。
-            if (fetched.data.study.revision < study.serverRevision) return "skipped";
+            // 手元より古い内容は取り込まない（取り込み済みとも扱わない）。取得の間に別のタブが
+            // 先へ進めていることもある（ロックがタブをまたがない環境）ので、読み直して比べる。
+            const latest = (await store.read(studyId)).study?.serverRevision ?? null;
+            const known = Math.max(study.serverRevision, latest ?? 0);
+            if (fetched.data.study.revision < known) return "skipped";
             if (fetched.data.study.revision !== study.serverRevision) {
-                // 取得の間に別のタブが先へ進めていたら、この応答は捨てられる。
                 if ((await rebaseOnto(studyId, fetched.data.study)) === "stale") return "skipped";
             }
             return "fetched";
