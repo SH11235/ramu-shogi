@@ -397,7 +397,8 @@ describe("useEnginePool: 実行中の評価関数の変更", () => {
             true,
         );
         expect(engine.clients).toHaveLength(1);
-        expect(engine.clients[0]?.dispose).not.toHaveBeenCalled();
+        // 終わったあとは、前の評価関数のワーカーを手放す。
+        await waitFor(() => expect(engine.clients[0]?.dispose).toHaveBeenCalled());
 
         act(() => result.current.start([job("c", ["7g7f"])], { layer: layer("B") }));
         await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(2));
@@ -439,6 +440,29 @@ describe("useEnginePool: 実行中の評価関数の変更", () => {
         await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
 
         rerender({ nnueId: "nnue-b" });
+        await waitFor(() => expect(engine.clients[0]?.dispose).toHaveBeenCalled());
+    });
+
+    it("実行中に評価関数が変わってから中止したら、前のワーカーを手放す", async () => {
+        const engine = controlledEngine();
+        const { result, rerender } = renderPool(engine, [], vi.fn(), "nnue-a");
+
+        const gate = createGate();
+        engine.holdLoad = gate;
+        act(() => result.current.start([job("a", ["7g7f"])], { layer: layer("A") }));
+        await waitFor(() => expect(engine.clients[0]?.loadPosition).toHaveBeenCalledTimes(1));
+
+        rerender({ nnueId: "nnue-b" });
+        await act(async () => {
+            await settle(5);
+        });
+        expect(engine.clients[0]?.dispose).not.toHaveBeenCalled();
+
+        await act(async () => {
+            await result.current.cancel();
+            gate.open();
+            await settle();
+        });
         await waitFor(() => expect(engine.clients[0]?.dispose).toHaveBeenCalled());
     });
 
