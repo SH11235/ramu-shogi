@@ -1105,9 +1105,12 @@ describe("StudyPage", () => {
         const props = workspaceProps;
         const nodeId = props?.doc.tree.rootId ?? "";
         const applyOps = vi.spyOn(currentSync, "applyOps");
+        const flush = vi.spyOn(currentSync, "flush");
 
-        // 親の後始末（送信）が先に走り、子の後始末の書き込みはそのあとに届く。
+        // 親の後始末（送信）が先に走って済み、子の後始末の書き込みはそのあとに届く。
         view.unmount();
+        expect(flush).toHaveBeenCalledWith(STUDY_ID);
+        await flush.mock.results[0]?.value;
         expect(
             await props?.onApplyOps([{ type: "setComment", nodeId, value: "閉じるときの保存" }]),
         ).toBe(true);

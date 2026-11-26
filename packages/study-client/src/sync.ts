@@ -381,9 +381,10 @@ const applyEffectiveOps = (
     /** 別の端末が書いていたノードの、当て直す前のサーバーのコメント。 */
     const diverged = new Map<string, string>();
     for (const item of items) {
-        const { op: original, commentBase } = splitPendingOpInput(item);
+        const { op: original, commentBase, commentLocal } = splitPendingOpInput(item);
         let op = original;
         let before: string | undefined;
+        let local = commentLocal;
         if (op.type === "setComment" && Object.hasOwn(next.tree.nodes, op.nodeId)) {
             before = next.tree.nodes[op.nodeId].comment;
             if (options.rebase) {
@@ -395,16 +396,47 @@ const applyEffectiveOps = (
                 }
                 const server = diverged.get(op.nodeId);
                 if (server !== undefined) {
-                    op = { ...op, value: mergeStudyComments(server, op.value) };
+                    local = commentLocal ?? op.value;
+                    op = { ...op, value: mergeConflictingComment(server, local) };
                 }
             }
         }
         const applied = applyStudyOp(next, op);
         if (applied === next) continue;
         next = applied;
-        effective.push(before === undefined ? op : { op, commentBase: before });
+        if (op.type === "deleteSubtree") {
+            // 消した枝を同じ手順で作り直したノードは、別のノードとして確かめ直す。
+            for (const nodeId of checked) {
+                if (!Object.hasOwn(next.tree.nodes, nodeId)) {
+                    checked.delete(nodeId);
+                    diverged.delete(nodeId);
+                }
+            }
+        }
+        if (before === undefined) {
+            effective.push(op);
+            continue;
+        }
+        effective.push({
+            op,
+            commentBase: before,
+            ...(local === undefined || (op.type === "setComment" && op.value === local)
+                ? {}
+                : { commentLocal: local }),
+        });
     }
     return { doc: next, effective };
+};
+
+/**
+ * 当て直しで、別の端末が書いたコメントに手元の文をつなぐ。つなぐと上限を超えるときは手元の文を
+ * 残す（つながずにサーバーの文だけにすると、手元で保存できていた文が送信待ちから黙って消える）。
+ */
+const mergeConflictingComment = (server: string, local: string): string => {
+    const merged = mergeStudyComments(server, local);
+    if (merged !== server) return merged;
+    const block = local.trim();
+    return block === "" || `\n${server}\n`.includes(`\n${block}\n`) ? server : local;
 };
 
 const isAnalysisOp = (op: StudyOp): boolean =>
@@ -897,11 +929,13 @@ export function createStudySync(options: StudySyncOptions): StudySync {
             };
         });
         if (!applied) return "retry";
-        await mutate(studyId, (snapshot) =>
-            snapshot.study
-                ? { study: { ...snapshot.study, mergePending: false }, result: undefined }
-                : { result: undefined },
-        );
+        // 読んだあとに元のノートへ解析結果が届いていたら（`applyOps` を参照）、取り込み直す。
+        const settled = await mutate(studyId, (snapshot) => {
+            if (!snapshot.study) return { result: true };
+            if (snapshot.study.updatedAt !== source.updatedAt) return { result: false };
+            return { study: { ...snapshot.study, mergePending: false }, result: true };
+        });
+        if (!settled) return finishMerge(studyId, targetId, null);
         emit({ type: "document", studyId: targetId, origin: "local" });
         schedule(targetId, 0);
         return "done";
@@ -1376,6 +1410,8 @@ export function createStudySync(options: StudySyncOptions): StudySync {
         if (study.inflight !== null) return "inflight";
         const fetched = await api.get(studyId);
         if (fetched.ok) {
+            // 手元より古い内容は取り込まない（取り込み済みとも扱わない）。
+            if (fetched.data.study.revision < study.serverRevision) return "skipped";
             if (fetched.data.study.revision !== study.serverRevision) {
                 await rebaseOnto(studyId, fetched.data.study);
             }
@@ -1525,9 +1561,25 @@ export function createStudySync(options: StudySyncOptions): StudySync {
                         throw new StudySyncError("not_found", `研究ノートがありません: ${studyId}`);
                     }
                     if (snapshot.study.mergedInto !== null) {
-                        // 統合に気づく前の画面から届いた解析結果は、統合先に回す。レイヤーの作成と
-                        // 結果の書き込みは何度当てても同じ結果になるので、統合の取り込みと重なってもよい。
+                        // 統合に気づく前の画面から届いた解析結果は、捨てずに統合先へ渡す。
                         if (ops.length > 0 && ops.every(isAnalysisOp)) {
+                            if (snapshot.study.mergePending) {
+                                // 取り込みの途中は、統合先にまだ無い枝の結果が読み飛ばされるので、
+                                // 元のノートに書いて取り込みに含めさせる。`updatedAt` は必ず進め、
+                                // 取り込みが「読んだあとに書かれた」ことに気づけるようにする。
+                                applyStudyOpsStrict(snapshot.study.doc, ops);
+                                const applied = applyEffectiveOps(snapshot.study.doc, ops);
+                                return {
+                                    study: {
+                                        ...snapshot.study,
+                                        doc: applied.doc,
+                                        updatedAt: Math.max(now(), snapshot.study.updatedAt + 1),
+                                    },
+                                    result: { doc: applied.doc, changed: false, redirect: null },
+                                };
+                            }
+                            // 取り込み済みなら、統合先に直接書く（レイヤーの作成と結果の書き込みは
+                            // 何度当てても同じ結果になる）。
                             return {
                                 result: {
                                     doc: snapshot.study.doc,

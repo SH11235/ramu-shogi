@@ -81,27 +81,40 @@ export interface StoredStudy {
 }
 
 /** 送信待ちの操作。`seq` は保存層の中で単調に増える連番。 */
-export interface PendingStudyOp {
+export interface PendingStudyOp extends StudyPendingOpMeta {
     seq: number;
     op: StudyOp;
-    /**
-     * `setComment` が上書きした、その時点のコメント（送らない）。409 などでサーバーの文書の上へ
-     * 当て直すとき、サーバーのコメントがこれと違えば、別の端末が書いた文を消さずにつなぐ。
-     */
-    commentBase?: string;
 }
 
-/** 送信待ちに積む操作。`commentBase` は `PendingStudyOp` と同じ。 */
-export type StudyPendingOpInput = StudyOp | { op: StudyOp; commentBase?: string };
+/**
+ * `setComment` の当て直しに使う、送信待ちだけに持つ情報（サーバーへは送らない）。
+ * 409 などでサーバーの文書の上へ当て直すとき、サーバーのコメントが `commentBase` と違えば、
+ * 別の端末が書いた文を消さずにつなぐ。
+ */
+interface StudyPendingOpMeta {
+    /** この操作が上書きした、その時点のコメント。 */
+    commentBase?: string;
+    /**
+     * 当て直しでつないだ値を送るときの、手元が書いた文。もう一度当て直すときは、前につないだ
+     * サーバーの文ではなく、これを新しいサーバーのコメントにつなぐ（同じ文を二重にしない）。
+     */
+    commentLocal?: string;
+}
 
-/** 送信待ちに積む形を、操作と `commentBase`（無ければ項目ごと省く）に分ける。 */
+/** 送信待ちに積む操作。 */
+export type StudyPendingOpInput = StudyOp | ({ op: StudyOp } & StudyPendingOpMeta);
+
+/** 送信待ちに積む形を、操作と付随する情報（無い項目は省く）に分ける。 */
 export const splitPendingOpInput = (
     input: StudyPendingOpInput,
-): { op: StudyOp; commentBase?: string } => {
+): { op: StudyOp } & StudyPendingOpMeta => {
     if (!("op" in input)) return { op: input };
-    return input.commentBase === undefined
-        ? { op: input.op }
-        : { op: input.op, commentBase: input.commentBase };
+    const { op, commentBase, commentLocal } = input;
+    return {
+        op,
+        ...(commentBase === undefined ? {} : { commentBase }),
+        ...(commentLocal === undefined ? {} : { commentLocal }),
+    };
 };
 
 /** 一覧用の要約（文書の本体を読まずに得られる）。 */
