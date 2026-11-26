@@ -52,7 +52,7 @@ import { useStudyDeepSearch } from "./useStudyDeepSearch";
  */
 export const STUDY_DEEP_TIME_MS = 30_000;
 /** 「この局面を深く解析」の探索深さの上限（時間で止まる前提の大きめの値）。 */
-const STUDY_DEEP_DEPTH = 64;
+export const STUDY_DEEP_DEPTH = 64;
 /** 「この局面を深く解析」で読む候補手の数の下限。 */
 const STUDY_DEEP_MIN_MULTI_PV = 3;
 
@@ -119,6 +119,8 @@ export interface StudyLiveSearch {
     budgetMs: number;
     /** 読んでいる途中の候補（取れる探索だけ）。 */
     preview: StudyAnalysisResult | null;
+    /** 結果を保存する設定。最初の保存より前から、どの AI の読みかを見分けるのに使う。 */
+    layer?: StudyLayerRef | null;
 }
 
 /** 解析の設定を変える画面に渡すもの。 */
@@ -300,6 +302,8 @@ export function useStudyAnalysis({
     const [mode, setMode] = useState<"full" | "deep" | null>(null);
     const [isPreparing, setIsPreparing] = useState(false);
     const [live, setLive] = useState<StudyLiveSearch | null>(null);
+    /** 続きから読める読みの、結果を保存する設定（続けて読むときも同じ設定に書く）。 */
+    const [deepLayer, setDeepLayer] = useState<StudyLayerRef | null>(null);
     const [completedRuns, setCompletedRuns] = useState(0);
     /** いまの解析で、読めなかった局面があったか（あれば、最後まで進んでも読み終えたことにしない）。 */
     const runFailedRef = useRef(false);
@@ -862,6 +866,7 @@ export function useStudyAnalysis({
                 }
                 if (canResumeDeep && studyLineFitsPassLimit(current.tree.startSfen, moves)) {
                     const passRights = studyPassRightsForLine(current.tree.startSfen, moves);
+                    setDeepLayer(prepared.layer);
                     const started = await deep.start({
                         nodeId,
                         sfen: current.tree.startSfen,
@@ -896,6 +901,7 @@ export function useStudyAnalysis({
                     startedAt: Date.now(),
                     budgetMs: limits.timeMs,
                     preview: null,
+                    layer: prepared.layer,
                 });
                 run(
                     [
@@ -1052,6 +1058,7 @@ export function useStudyAnalysis({
                   startedAt: deep.state.startedAt,
                   budgetMs: STUDY_DEEP_TIME_MS,
                   preview: deep.state.preview,
+                  layer: deepLayer,
               }
             : null;
     return {

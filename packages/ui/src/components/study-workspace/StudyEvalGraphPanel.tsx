@@ -55,6 +55,8 @@ interface StudyEvalGraphData {
     /** 対局時の評価値と解析の両方があるときの、破線で重ねるもう一方。 */
     secondaryHistory: EvalHistory[] | undefined;
     hasSourceGraph: boolean;
+    /** 解析の線に描ける値がある（保存済みの結果か、読んでいる途中の値）。 */
+    hasAnalysis: boolean;
     markers: EvalGraphMarker[];
     /** 別の AI の値の凡例（設定の名前。局面ごとに違えば null）。手順に無ければ undefined。 */
     otherAiLabel: string | null | undefined;
@@ -104,14 +106,18 @@ export function buildStudyEvalGraph({
             evalMate: evalData?.scoreMate ?? null,
         };
     });
+    // 保存済みの結果がまだ無くても、自動で読んでいる途中の値があれば解析の線を出す。
+    const hasAnalysis =
+        hasResults ||
+        analysisHistory.some((entry) => entry.evalCp !== null || entry.evalMate !== null);
     const primary: StudyGraphSeries = !hasSourceGraph
         ? "analysis"
-        : !hasResults
+        : !hasAnalysis
           ? "source"
           : primaryChoice;
     const history = primary === "source" ? sourceHistory : analysisHistory;
     const secondaryHistory =
-        hasSourceGraph && hasResults
+        hasSourceGraph && hasAnalysis
             ? primary === "source"
                 ? analysisHistory
                 : sourceHistory
@@ -161,6 +167,7 @@ export function buildStudyEvalGraph({
         history,
         secondaryHistory,
         hasSourceGraph,
+        hasAnalysis,
         markers,
         otherAiLabel,
         current: currentRead
@@ -241,7 +248,6 @@ function MobileGraphHeader({
         <div className="flex h-7 items-center justify-between gap-2 text-xs text-muted-foreground">
             <h2 className="sr-only">評価値グラフ</h2>
             <div className="flex min-w-0 items-baseline gap-3">
-                {/* 帯と同じ値を 1 つだけ出し、どの読みの値か・どれだけ読んだかを添える。 */}
                 <span className="flex min-w-0 items-baseline gap-1">
                     {current?.otherAi && <OtherAiChip />}
                     <span className="min-w-0 truncate">{current?.label ?? analysisCondition}</span>
@@ -368,7 +374,6 @@ export function StudyEvalGraphPanel({
     currentNode,
     currentPly,
     graph,
-    hasResults,
     displayLayerLabel,
     displayLayerCondition,
     onPrimaryChange,
@@ -383,7 +388,6 @@ export function StudyEvalGraphPanel({
     /** 表示中の手順での、いまの局面の位置。 */
     currentPly: number;
     graph: StudyEvalGraphData;
-    hasResults: boolean;
     /** 表示中の解析の設定の名前。 */
     displayLayerLabel: string | null;
     /** 表示中の解析の設定の探索条件（例: `1秒`）。 */
@@ -416,7 +420,7 @@ export function StudyEvalGraphPanel({
             ) : (
                 <DesktopGraphHeader
                     graph={graph}
-                    hasResults={hasResults}
+                    hasResults={graph.hasAnalysis}
                     analysisLabel={
                         displayLayerLabel !== null ? `解析（${displayLayerLabel}）` : "解析"
                     }

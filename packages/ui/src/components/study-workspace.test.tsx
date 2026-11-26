@@ -954,6 +954,36 @@ describe("StudyWorkspaceView", () => {
             expect(sourceButton.getAttribute("aria-pressed")).toBe("false");
             expect(dashedLines().length).toBeGreaterThan(0);
         });
+        it("解析の結果がまだ無くても、自動で読んでいる途中の値があれば解析の線を重ねる", () => {
+            const { doc, ids } = createTestStudy();
+            const preview = {
+                runId: "preview",
+                completion: "aborted" as const,
+                depth: 12,
+                nodes: 1_000,
+                timeMs: 1_000,
+                execution: { threads: null, hashMb: null, parallelWorkers: null },
+                candidates: [{ rank: 1, score: cp(80), depth: 12, seldepth: null, pv: [] }],
+            };
+            render(
+                <Harness
+                    initialDoc={withSource(doc, ids)}
+                    analysis={createAnalysis({
+                        mode: "deep",
+                        live: {
+                            nodeId: ids[0],
+                            depth: 12,
+                            startedAt: null,
+                            budgetMs: 30_000,
+                            preview,
+                        },
+                    })}
+                />,
+            );
+
+            expect(within(graph()).getByRole("button", { name: "対局時" })).toBeTruthy();
+            expect(dashedLines().length).toBeGreaterThan(0);
+        });
     });
 
     describe("深く読んだ結果での、悪手・疑問手の判定し直し", () => {
@@ -1163,6 +1193,77 @@ describe("StudyWorkspaceView", () => {
 
             expect(linePoints()).toBe(before);
             expect(within(graphRegion()).queryByRole("button", { name: /深さ9/ })).toBeNull();
+        });
+
+        it("直前に同じ AI で読んだ値は、深さが表示中の設定と同じでも帯と同じく線に入れる", () => {
+            // 探索の上限が表示中の設定より大きくない（深く読んだ設定として選ばれない）同じ AI の設定。
+            const SAME_AI_SPEC = buildStudyLayerSpec({
+                engine: { kind: "wasm", name: "rshogi", version: "0.8.1" },
+                appVersion: "0.0.0",
+                nnue: { sha256: "a".repeat(64), fvScale: 24 },
+                limits: { timeMs: 500, depth: null },
+                multiPv: 3,
+            });
+            const sameAiId = studyLayerId(SAME_AI_SPEC);
+            const { doc, ids } = createTestStudy(VALUES);
+            const withRead = applyStudyOps(doc, [
+                { type: "ensureLayer", spec: SAME_AI_SPEC, display: { label: "RAMU・0.5 秒" } },
+                putScoreOp(ids[0], cp(61), { depth: 15, layerId: sameAiId }),
+            ]);
+            const before = plainLinePoints();
+            render(
+                <Harness
+                    initialDoc={withRead}
+                    initialDisplayLayerId={TEST_LAYER_ID}
+                    deepRead={{ nodeId: ids[0], layerId: sameAiId }}
+                />,
+            );
+
+            // 候補手の欄は帯と同じ結果を出す。
+            expect(screen.getByRole("region", { name: "候補手" }).textContent).toContain("+61");
+            expect(linePoints()).not.toBe(before);
+        });
+
+        it("別の AI で読み始めたばかりで保存がまだ無くても、途中の値は線に混ぜず丸で置く", () => {
+            const { doc, ids } = createTestStudy(VALUES);
+            const preview = {
+                runId: "preview",
+                completion: "aborted" as const,
+                depth: 30,
+                nodes: 1_000,
+                timeMs: 1_000,
+                execution: { threads: null, hashMb: null, parallelWorkers: null },
+                candidates: [{ rank: 1, score: cp(-400), depth: 30, seldepth: null, pv: [] }],
+            };
+            const before = plainLinePoints();
+            render(
+                <Harness
+                    initialDoc={doc}
+                    initialDisplayLayerId={TEST_LAYER_ID}
+                    analysis={createAnalysis({
+                        mode: "deep",
+                        live: {
+                            nodeId: ids[0],
+                            depth: 30,
+                            startedAt: null,
+                            budgetMs: 30_000,
+                            preview,
+                            layer: {
+                                layerId: OTHER_ID,
+                                spec: OTHER_SPEC,
+                                display: { label: "簡易AI（駒得）・30 秒" },
+                            },
+                        },
+                    })}
+                />,
+            );
+
+            expect(linePoints()).toBe(before);
+            expect(
+                within(graphRegion()).getByRole("button", {
+                    name: "開始局面（別の AI・簡易AI（駒得）・30 秒 -400 深さ30）へ移動",
+                }),
+            ).toBeTruthy();
         });
 
         it("表示中の設定の結果のほうが深ければ、線は表示中の設定の値のまま", () => {
@@ -1913,7 +2014,7 @@ describe("StudyWorkspaceView", () => {
         expect(panel.textContent).toContain("3手目を読み終えました");
 
         fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
-        expect(panel.textContent).not.toContain("終わりました");
+        expect(panel.textContent).not.toContain("読み終えました");
     });
 
     it("別の局面の最短手順が終わったら、最短手順の探索が終わったと知らせる", () => {
@@ -1948,7 +2049,7 @@ describe("StudyWorkspaceView", () => {
         const panel = screen.getByRole("region", { name: "候補手" });
         fireEvent.click(within(panel).getByRole("button", { name: "止める" }));
         view.rerender(<Harness initialDoc={doc} analysis={createAnalysis()} />);
-        expect(panel.textContent).not.toContain("終わりました");
+        expect(panel.textContent).not.toContain("読み終えました");
         expect(panel.textContent).not.toContain("を読んでいます");
     });
 

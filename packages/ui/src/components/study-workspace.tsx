@@ -124,6 +124,8 @@ import {
     studyStructureKey,
 } from "./study-workspace/studyView";
 import {
+    STUDY_DEEP_DEPTH,
+    STUDY_DEEP_TIME_MS,
     type StudyAnalysisController,
     type StudyApplyOpsOptions,
     type StudyApplyOpsResult,
@@ -455,30 +457,37 @@ export function StudyWorkspaceView({
     // 丸で置く（AI が違うと深さを比べられないので）。
     const lineReads = new Map<string, StudyGraphRead>();
     const otherAiReads = new Map<string, StudyGraphRead>();
-    const isOtherAi = (layer: StudyLayer): boolean =>
+    const isOtherAi = (layer: Pick<StudyLayer, "spec">): boolean =>
         !(displayLayer && isSameStudyAi(layer, displayLayer));
-    const graphReadLabel = (layer: StudyLayer): string =>
-        layer.id === displayLayerId
-            ? studyLimitsLabel(layer.spec.limits)
-            : isOtherAi(layer)
-              ? layer.display.label
-              : STUDY_AUTO_READ_LABEL;
-    /** いまの局面を自動で読んでいる設定（直前に結果を書いていれば分かる）。 */
-    const liveLayer =
-        analysis.mode === "deep" && deepRead?.nodeId === currentNodeId
-            ? doc.layers.find((layer) => layer.id === deepRead.layerId)
-            : undefined;
+    // 自動読みの結果が表示中の設定になっていても（未解析のノートを自動で読んだとき）、保存の区切りの
+    // 時間ではなく「自動読み」と呼ぶ。
+    const graphReadLabel = (layer: Pick<StudyLayer, "spec" | "display">): string =>
+        isOtherAi(layer)
+            ? layer.display.label
+            : layer.spec.limits.timeMs === STUDY_DEEP_TIME_MS &&
+                layer.spec.limits.depth === STUDY_DEEP_DEPTH
+              ? STUDY_AUTO_READ_LABEL
+              : studyLimitsLabel(layer.spec.limits);
+    /** いまの局面を自動で読んでいる設定。 */
+    const liveLayer = analysis.mode === "deep" ? (liveHere?.layer ?? undefined) : undefined;
     for (const nodeId of line) {
-        const sameAi = pickStudyDeepestResult([
-            pickStudyPositionResult(doc, nodeId, displayLayerId),
-            pickStudyDeeperResult(doc, nodeId, displayLayerId),
-        ]);
+        const picked =
+            nodeId === currentNodeId
+                ? savedPicked
+                : pickStudyBandResult({ doc, nodeId, displayLayerId, deepRead });
+        // 帯が別の AI の値を出す局面でも、線は表示中の AI でいちばん深く読めた値でつなぐ。
+        const sameAi =
+            picked && !isOtherAi(picked.layer)
+                ? picked
+                : pickStudyDeepestResult([
+                      pickStudyPositionResult(doc, nodeId, displayLayerId),
+                      pickStudyDeeperResult(doc, nodeId, displayLayerId),
+                  ]);
         if (sameAi) {
             lineReads.set(nodeId, { label: graphReadLabel(sameAi.layer), result: sameAi.result });
         }
-        // 自動で読んでいる途中の値は、帯の上の段と同じく今の読みとして置く。全体の解析の途中の値は
-        // 表示中の設定の値で、保存されたら線に入るので、ここでは足さない。
-        if (nodeId === currentNodeId && liveHere?.preview && analysis.mode === "deep") {
+        // 全体の解析の途中の値は表示中の設定の値で、保存されたら線に入るので、ここでは足さない。
+        if (nodeId === currentNodeId && analysis.mode === "deep" && liveHere?.preview) {
             const read = {
                 label: liveLayer ? graphReadLabel(liveLayer) : STUDY_AUTO_READ_LABEL,
                 result: liveHere.preview,
@@ -490,10 +499,6 @@ export function StudyWorkspaceView({
             }
             continue;
         }
-        const picked =
-            nodeId === currentNodeId
-                ? savedPicked
-                : pickStudyBandResult({ doc, nodeId, displayLayerId, deepRead });
         if (picked && isOtherAi(picked.layer)) {
             otherAiReads.set(nodeId, { label: picked.layer.display.label, result: picked.result });
         }
@@ -1272,7 +1277,6 @@ export function StudyWorkspaceView({
             currentNode={currentNode}
             currentPly={currentIndex}
             graph={graph}
-            hasResults={hasResults}
             displayLayerLabel={displayLayer ? displayLayer.display.label : null}
             displayLayerCondition={displayLayer ? studyLimitsLabel(displayLayer.spec.limits) : null}
             onPrimaryChange={setGraphPrimaryChoice}
