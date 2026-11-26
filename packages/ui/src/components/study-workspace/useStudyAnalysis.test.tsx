@@ -408,6 +408,31 @@ describe("useStudyAnalysis", () => {
         expect(engine.searches()).toBe(1);
     });
 
+    it("1 回だけの深い読みでエンジンの準備に失敗したら、読み始めたと知らせない", async () => {
+        const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+        const { doc, ids } = createTestStudy();
+        const engine = createEngineOption();
+        const failing: EngineOption = {
+            ...engine.option,
+            createClient: () => ({
+                ...engine.option.createClient(),
+                init: vi.fn().mockRejectedValue(new Error("worker replaced")),
+            }),
+        };
+        const onMessage = vi.fn();
+        const { result } = renderHook(() => useHarness(doc, [failing], { onMessage }));
+
+        await act(async () => {
+            await result.current.controller.startDeep(ids[2]);
+        });
+        await waitFor(() =>
+            expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "error" })),
+        );
+        await waitFor(() => expect(result.current.controller.mode).toBeNull());
+        expect(result.current.startedLayers).toEqual([]);
+        consoleError.mockRestore();
+    });
+
     it("続きから読めるエンジンでは、深く解析を止めても同じ局面の続きから読め、止めるたびに結果を残す", async () => {
         const { doc, ids } = createTestStudy();
         const engine = createResumableEngineOption();

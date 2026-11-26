@@ -124,6 +124,7 @@ export function useStudyDeepSearch(options: Options): {
     stop: () => Promise<void>;
     release: () => Promise<void>;
     isReading: (request: StudyDeepRequest) => boolean;
+    hasFailed: () => boolean;
 } {
     const [state, setState] = useState<StudyDeepState>(IDLE);
     const controllerRef = useRef<{
@@ -364,5 +365,8 @@ export function useStudyDeepSearch(options: Options): {
         !sessionRef.current.stopping &&
         controllerRef.current?.controller.getState().phase === "running";
 
-    return { state, start, resume, stop, release, isReading };
+    /** 直近の読みが、エンジンの準備や探索の失敗で止まったか。 */
+    const hasFailed = (): boolean => controllerRef.current?.controller.getState().phase === "error";
+
+    return { state, start, resume, stop, release, isReading, hasFailed };
 }
