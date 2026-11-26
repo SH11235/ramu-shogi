@@ -347,6 +347,16 @@ export function StudyWorkspaceView({
         evalMate?: number;
     } | null>(null);
 
+    /**
+     * 局面を移った回数。止め終わるのを待ってから始める操作が、待つ間に局面を移ったかを見る
+     * （移って戻った場合も、移ったことにする）。変化が消されて戻されたときは数えないので、
+     * 見ている局面とも比べる（`isSamePositionAs`）。
+     */
+    const leaveCountRef = useRef(0);
+    const currentNodeIdRef = useRef<string | null>(null);
+    /** 押したときから局面を移っていないか。 */
+    const isSamePositionAs = (pressed: { nodeId: string; leaveCount: number }): boolean =>
+        leaveCountRef.current === pressed.leaveCount && currentNodeIdRef.current === pressed.nodeId;
     const nav = useStudyNodeNavigation({
         tree,
         initialNodeId,
@@ -354,6 +364,7 @@ export function StudyWorkspaceView({
         onMessageChange,
         locked,
         onLeave: (leaving) => {
+            leaveCountRef.current += 1;
             setDeepNodeId(null);
             setAutoFinishedNodeId(null);
             setFinishedElsewhere(null);
@@ -368,6 +379,9 @@ export function StudyWorkspaceView({
         },
     });
     const { currentNodeId, currentNode, line, currentIndex, movesToCurrent, navigateTo } = nav;
+    useEffect(() => {
+        currentNodeIdRef.current = currentNodeId;
+    }, [currentNodeId]);
     const { selection, promotionSelection } = nav;
     const position = currentNode.positionAfter;
     const storedNode = Object.hasOwn(doc.tree.nodes, currentNodeId)
@@ -609,13 +623,28 @@ export function StudyWorkspaceView({
         false,
     );
     const autoAnalyze = !readOnly && storedAutoAnalyze;
+    /** このタブで最後に書いた自動で読むの値。別のタブで書き換えられたのを見分けるのに使う。 */
+    const localAutoAnalyzeRef = useRef<boolean | null>(null);
+    const setAutoAnalyzeHere = (enabled: boolean): void => {
+        localAutoAnalyzeRef.current = enabled;
+        setAutoAnalyze(enabled);
+    };
+    /** 自動で読むを切って、読みを止めている途中か。止め終わる前に入れ直したとき、止めている読みを取り込まない。 */
+    const stoppingAutoRef = useRef(false);
+    const stopAutoReading = (): void => {
+        actionSerialRef.current += 1;
+        stoppingAutoRef.current = true;
+        void analysis.cancel().finally(() => {
+            stoppingAutoRef.current = false;
+        });
+    };
     /**
      * 自動で読む以外の解析の操作を始める前に、自動で読むを切る（押した操作をそのまま通し、切ったことを
      * 知らせる）。読んでいた分は残る。止め終わるまでに別の操作をしたら false（その操作のほうを優先する）。
      */
     const leaveAutoAnalyze = async (): Promise<boolean> => {
         if (!autoAnalyze) return true;
-        setAutoAnalyze(false);
+        setAutoAnalyzeHere(false);
         onMessageChange(AUTO_ANALYZE_OFF_NOTICE);
         if (analysis.mode !== "deep" && !analysis.isPreparing) return true;
         const request = ++actionSerialRef.current;
@@ -623,9 +652,9 @@ export function StudyWorkspaceView({
         return actionSerialRef.current === request;
     };
     /**
-     * 全体の解析（残りを解析も）を始めるときの指定。自動で読むは、始められると分かってから切る
-     * （始められない設定なら、スイッチも読みもそのままにする）。読みを止め終わるのを待つ間に
-     * 別の操作（スイッチを入れ直すなど）をしたら始めない。切った知らせは、始めるときに出す。
+     * 全体の解析（残りを解析も）を始めるときの指定。自動で読むは、始められる設定と分かってから切り、
+     * そのあと始められずに終わったら（AI のダウンロードを断った、など）入れ直す。読みを止め終わるのを
+     * 待つ間に別の操作（スイッチを入れ直すなど）をしたら始めない。切った知らせは、始めるときに出す。
      */
     const fullStartOptions = (): StudyFullStartOptions => {
         // 別のタブで自動で読むを入れたときは操作の番号が進まないので、入れた回数も見る。
@@ -640,15 +669,22 @@ export function StudyWorkspaceView({
         }
         let request = 0;
         let enabledCount = 0;
+        const isWanted = (): boolean =>
+            actionSerialRef.current === request && autoEnabledCountRef.current === enabledCount;
         return {
             onCommit: () => {
                 request = ++actionSerialRef.current;
                 enabledCount = autoEnabledCountRef.current;
-                setAutoAnalyze(false);
+                setAutoAnalyzeHere(false);
             },
-            isWanted: () =>
-                actionSerialRef.current === request && autoEnabledCountRef.current === enabledCount,
+            isWanted,
             notice: AUTO_ANALYZE_OFF_NOTICE,
+            // 始められなかったら（AI のダウンロードを断った、など）、切った自動で読むを戻して読み直す。
+            onNotStarted: () => {
+                if (!isWanted()) return;
+                autoStartedNodeRef.current = null;
+                setAutoAnalyzeHere(true);
+            },
         };
     };
     /** 自動で読むが入った回数（別のタブでの切り替えも数える）。待っている解析の開始が見る。 */
@@ -684,7 +720,10 @@ export function StudyWorkspaceView({
     const passingRef = useRef(false);
     const startDeepAfterPass = async (): Promise<void> => {
         if (locked || deepBlocked || passingRef.current) return;
+        const pressed = { nodeId: currentNodeId, leaveCount: leaveCountRef.current };
         if (autoAnalyze && !(await leaveAutoAnalyze())) return;
+        // 読みを止め終わるのを待つ間に局面を移ったら、移った先にパスを足さない。
+        if (!isSamePositionAs(pressed)) return;
         const request = ++actionSerialRef.current;
         passRequestRef.current = request;
         passingRef.current = true;
@@ -736,6 +775,9 @@ export function StudyWorkspaceView({
             // 別の局面を読み始めた後に残っている live は、止め終わるのを待っている前の読みで、止め終わると
             // 予約した局面の読みが始まる。取り込まずに読み直す（読み直しで予約は取りやめになる）。
             if (analysis.live?.nodeId === nodeId && autoStartedNodeRef.current === null) {
+                // 切って止めている途中の読みは、止まると続きを読めない（1 回だけの読み）ことがある。
+                // 取り込まず、止まったあと（`mode` が変わってこの判定がもう一度走る）に読み直す。
+                if (stoppingAutoRef.current) return;
                 autoStartedNodeRef.current = nodeId;
                 return;
             }
@@ -759,6 +801,42 @@ export function StudyWorkspaceView({
     useEffect(() => {
         onAutoAnalyzePaused(analysis.continuableDeepNodeId);
     }, [analysis.continuableDeepNodeId]);
+    // 別のタブで自動で読むを切ったときも、このタブの読みを止める（このタブで切ったときは、切った操作の
+    // ほうで止める。全体の解析を始めるために切ったときに止めると、待っている開始を取り消してしまう）。
+    const onAutoAnalyzeChange = useEffectEvent((enabled: boolean): void => {
+        const local = localAutoAnalyzeRef.current === enabled;
+        localAutoAnalyzeRef.current = null;
+        if (enabled) return;
+        // 入れ直したら同じ局面を読み直す（1 拍おいて覚えを消す判定は、すぐ入れ直すと走らない）。
+        autoStartedNodeRef.current = null;
+        if (local) return;
+        // 準備中も止める（この間に全体の解析を始めるときは、このタブで切っているので local になる）。
+        if (analysis.mode === "deep" || analysis.isPreparing) stopAutoReading();
+    });
+    const previousAutoAnalyzeRef = useRef(autoAnalyze);
+    useEffect(() => {
+        if (previousAutoAnalyzeRef.current === autoAnalyze) return;
+        previousAutoAnalyzeRef.current = autoAnalyze;
+        onAutoAnalyzeChange(autoAnalyze);
+    }, [autoAnalyze]);
+    // 解析エンジンが変わると、読んでいた読みは手放される。読み終えたのではないので、同じ局面を新しい
+    // エンジンで読み直す（読み終えたかの判定より先に覚えを消す）。
+    const onAnalysisEngineChange = useEffectEvent((): void => {
+        autoStartedNodeRef.current = null;
+        setAutoFinishedNodeId(null);
+        // 読み終えて止まっていたなら、ここで読み始める（読んでいたなら、手放されて止まったときに
+        // 読み直す）。
+        if (autoAnalyze && !locked && analysis.mode === null && !analysis.isPreparing) {
+            startDeep();
+        }
+    });
+    const analysisEngineId = analysis.form.engineId;
+    const previousEngineIdRef = useRef(analysisEngineId);
+    useEffect(() => {
+        if (previousEngineIdRef.current === analysisEngineId) return;
+        previousEngineIdRef.current = analysisEngineId;
+        onAnalysisEngineChange();
+    }, [analysisEngineId]);
     // 続きから読めない AI・局面と、読めなかったときは、同じ局面を読み直し続けない（同じ結果を繰り返す
     // だけになる）。入れたままでも止まっていることを、スイッチの行で伝える。
     const onAutoAnalyzeSettled = useEffectEvent((mode: StudyAnalysisController["mode"]): void => {
@@ -775,11 +853,13 @@ export function StudyWorkspaceView({
     const changeAutoAnalyze = (enabled: boolean): void => {
         // 自動で読むを切って始めようと待っている操作があれば、スイッチの操作のほうを優先して取りやめる。
         actionSerialRef.current += 1;
-        setAutoAnalyze(enabled);
+        setAutoAnalyzeHere(enabled);
         setAutoDecidedNodeId(null);
         if (!enabled) {
+            // 入れ直したら同じ局面を読み直す（切ったのが描画に出る前に入れ直されることもあるので、ここでも消す）。
+            autoStartedNodeRef.current = null;
             // 切ったら止める（そこまでの読みは残る）。
-            if (analysis.mode === "deep" || analysis.isPreparing) cancelAnalysis();
+            if (analysis.mode === "deep" || analysis.isPreparing) stopAutoReading();
             return;
         }
         // 入れたら、動いている全体の解析より自動で読むを優先する（詰み探索は読み始めるときに止まる）。
@@ -834,6 +914,7 @@ export function StudyWorkspaceView({
     const startMate = async (kind: "mate" | "shortest"): Promise<void> => {
         if (!mate || deepBlocked) return;
         const node = currentNode;
+        const pressed = { nodeId: currentNodeId, leaveCount: leaveCountRef.current };
         if (autoAnalyze && !(await leaveAutoAnalyze())) return;
         const request = ++actionSerialRef.current;
         // 深く解析している読みは止める（そこまでの結果は残る）。別の局面の詰み探索も止める。
@@ -841,6 +922,8 @@ export function StudyWorkspaceView({
             await analysis.cancel();
             if (actionSerialRef.current !== request) return;
         }
+        // 止め終わるのを待つ間に局面を移ったら、押した局面の詰み探索は始めない。
+        if (!isSamePositionAs(pressed)) return;
         stopMate();
         if (kind === "mate") mate.start(node);
         else mate.startShortest(node);
@@ -937,6 +1020,7 @@ export function StudyWorkspaceView({
         target: NonNullable<typeof runningTarget>;
         currentNodeId: string;
         serial: number;
+        completedRuns: number;
     } | null>(null);
     const onRunningChange = useEffectEvent((key: string | null, nodeId: string): void => {
         const previous = previousRunningRef.current;
@@ -945,6 +1029,7 @@ export function StudyWorkspaceView({
                 target: runningTarget,
                 currentNodeId: nodeId,
                 serial: actionSerialRef.current,
+                completedRuns: analysis.completedRuns,
             };
             setFinishedElsewhere(null);
             return;
@@ -960,6 +1045,11 @@ export function StudyWorkspaceView({
         }
         // 別のタブで自動で読むを入れると、深く解析はまだ動いたまま行だけが消える（止めるのは自動で読む）。
         if (previous.target.what === "deep" && analysis.mode === "deep") return;
+        // 全体の解析は、最後まで読んだときだけ「終わりました」と出す（エンジンが変わった・保存できずに
+        // 止めた、などは、その理由のほうを知らせている）。
+        if (previous.target.what === "full" && analysis.completedRuns === previous.completedRuns) {
+            return;
+        }
         setFinishedElsewhere(previous.target);
     });
     useEffect(() => {
