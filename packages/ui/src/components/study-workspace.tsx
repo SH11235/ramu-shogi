@@ -522,8 +522,8 @@ export function StudyWorkspaceView({
             void analysis.startFull();
             return;
         }
-        void leaveAutoAnalyze().then((ok) => {
-            if (ok) void analysis.startFull();
+        void leaveAutoAnalyze().then((left) => {
+            if (left) void analysis.startFull({ afterCancel: left === "stopped" });
         });
     };
     /** 表示中の設定の未解析分を、その設定で解析する。表示中の結果が無ければ全体の解析。 */
@@ -532,8 +532,12 @@ export function StudyWorkspaceView({
         if (displayLayerId === null) startFull();
         else if (!autoAnalyze) void analysis.resumeLayer(displayLayerId);
         else {
-            void leaveAutoAnalyze().then((ok) => {
-                if (ok) void analysis.resumeLayer(displayLayerId);
+            void leaveAutoAnalyze().then((left) => {
+                if (left) {
+                    void analysis.resumeLayer(displayLayerId, {
+                        afterCancel: left === "stopped",
+                    });
+                }
             });
         }
     };
@@ -564,18 +568,19 @@ export function StudyWorkspaceView({
     /**
      * 自動で読む以外の解析の操作を始める前に、自動で読むを切る（押した操作をそのまま通し、切ったことを
      * 知らせる）。読んでいた分は残る。止め終わるまでに別の操作をしたら false（その操作のほうを優先する）。
+     * 読みを止めて待ち終えたら "stopped"（続けて始める解析に、止めた直後であることを渡す）。
      */
-    const leaveAutoAnalyze = async (): Promise<boolean> => {
-        if (!autoAnalyze) return true;
+    const leaveAutoAnalyze = async (): Promise<false | "idle" | "stopped"> => {
+        if (!autoAnalyze) return "idle";
         setAutoAnalyze(false);
         onMessageChange({
             text: "自動で読むを切りました（読んだ分は残っています）。",
             type: "warning",
         });
-        if (analysis.mode !== "deep" && !analysis.isPreparing) return true;
+        if (analysis.mode !== "deep" && !analysis.isPreparing) return "idle";
         const request = ++actionSerialRef.current;
         await analysis.cancel();
-        return actionSerialRef.current === request;
+        return actionSerialRef.current === request && "stopped";
     };
     /** 自動で読み始めた（または手で読み始めた）局面。同じ局面で読み直さないために覚える。 */
     const autoStartedNodeRef = useRef<string | null>(null);
