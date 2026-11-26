@@ -1478,7 +1478,7 @@ describe("StudyWorkspaceView", () => {
         expect(within(panel).queryByRole("button", { name: "その局面へ" })).toBeNull();
         expect(screen.queryByText(/開始局面を読んでいます/)).toBeNull();
         // 見ている局面を読んでいることにし、前の局面の深さは出さない。
-        expect(screen.getAllByText("1手目を読んでいます").length).toBeGreaterThan(0);
+        expect(screen.getByText("1手目を読んでいます")).toBeTruthy();
     });
 
     it("自動で読む間に局面を移り、前の読みが止まる前に戻ったら、戻った局面を読み直す", async () => {
