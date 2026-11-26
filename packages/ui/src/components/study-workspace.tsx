@@ -318,6 +318,11 @@ export function StudyWorkspaceView({
     const [deepNodeId, setDeepNodeId] = useState<string | null>(null);
     /** 自動で読むが、続きを読めずに読み終えた局面（局面を離れると消す）。 */
     const [autoFinishedNodeId, setAutoFinishedNodeId] = useState<string | null>(null);
+    /**
+     * 自動で読むが、読み始めるかを最後に決めた局面。決めるのは 1 拍おいてからなので、局面を移った・入れた
+     * 直後はいまの局面と食い違う。帯にその間だけ「未解析」を出さないのに使う。
+     */
+    const [autoDecidedNodeId, setAutoDecidedNodeId] = useState<string | null>(null);
     /** 別の局面で終わった解析・詰み探索（候補手の欄で知らせる。局面を移ると消す）。 */
     const [finishedElsewhere, setFinishedElsewhere] = useState<{
         what: "deep" | "mate" | "shortest" | "full";
@@ -697,6 +702,7 @@ export function StudyWorkspaceView({
         // 自動で読むを切って始めようと待っている操作があれば、スイッチの操作のほうを優先して取りやめる。
         actionSerialRef.current += 1;
         setAutoAnalyze(enabled);
+        setAutoDecidedNodeId(null);
         if (!enabled) {
             // 切ったら止める（そこまでの読みは残る）。
             if (analysis.mode === "deep" || analysis.isPreparing) cancelAnalysis();
@@ -716,6 +722,7 @@ export function StudyWorkspaceView({
     // 1 拍おいてから始め、その前に外れたら取りやめる。
     useEffect(() => {
         const timer = setTimeout(() => {
+            setAutoDecidedNodeId(currentNodeId);
             onAutoAnalyzeTarget(
                 currentNodeId,
                 autoAnalyze,
@@ -1127,7 +1134,16 @@ export function StudyWorkspaceView({
     const bandResult = liveHere?.preview ?? savedResult;
     const bandBest = bandResult ? studyBestCandidate(bandResult) : null;
     // 帯にラムを出すのは自動で読む読みだけ（パスして解析の読みは、止める操作のある候補手のタブで知らせる）。
-    const bandShowsReading = autoAnalyze && liveHere !== undefined;
+    // 局面を移った直後は、前の局面の読みを止めてこの局面を読み始めるまで間があるので、その間も読んでいる
+    // ことにする（「未解析」が一瞬出ないように）。
+    const bandShowsReading =
+        autoAnalyze &&
+        (liveHere !== undefined ||
+            (!locked &&
+                analysis.mode !== "full" &&
+                (autoDecidedNodeId !== currentNodeId ||
+                    analysis.mode === "deep" ||
+                    analysis.isPreparing)));
     const candidatesPanel = (
         <StudyCandidatesPanel
             node={currentNode}
