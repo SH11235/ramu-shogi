@@ -1,5 +1,6 @@
 import {
     applyStudyOps,
+    createStudyDocumentFromMoves,
     type StudyAnalysisResult,
     type StudyDocument,
     type StudyScore,
@@ -281,19 +282,28 @@ export const 別の局面で詰みを調べている: Story = {
     },
 };
 
+/** 後手番で、先手に金を打たれると詰む局面（☗5二金打までの詰めろ）。 */
+const threatened = createStudyDocumentFromMoves({
+    id: "22222222-2222-4222-8222-222222222222",
+    title: "詰めろの見本",
+    origin: { kind: "paste", ref: null },
+    startSfen: "4k4/9/4G4/9/9/9/9/9/4K4 w G 1",
+    moves: [],
+    meta: { blackName: "先手", whiteName: "後手" },
+});
+
 export const 詰めろの結果: Story = {
     args: {
-        doc: analyzed.doc,
-        initialPly: 1,
+        doc: threatened,
         mate: createMate({
             results: new Map<string, StudyMateState>([
                 [
-                    analyzedIds[1],
+                    threatened.tree.rootId,
                     {
                         status: "done",
                         mate: { kind: "noMate" },
                         mateMs: 500,
-                        threat: { kind: "mate", pv: ["8h3c+"] },
+                        threat: { kind: "mate", pv: ["G*5b"] },
                         threatMs: 500,
                     },
                 ],

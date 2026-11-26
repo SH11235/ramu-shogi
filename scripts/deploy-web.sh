@@ -100,15 +100,19 @@ if [[ "$status" != "200" ]]; then
   exit 1
 fi
 if [[ "$MODE" == "stg" ]]; then
-  # 無いパスにも Web アプリの index.html が 200 で返るので、Storybook の目録の中身で確かめる。
-  storybook_index=$(mktemp)
-  if ! curl -sf -A 'Mozilla/5.0' -o "$storybook_index" "$SITE_URL/storybook/index.json" ||
-    [[ "$(sha256_of "$storybook_index")" != "$(sha256_of apps/web/dist/storybook/index.json)" ]]; then
-    rm -f "$storybook_index"
+  # 無いパスにも Web アプリの index.html が 200 で返るので、中身で確かめる。iframe.html はビルドごとに
+  # 名前の変わる bundle を読み込むので、今回のビルドが配信されたかまで見分けられる。
+  served_storybook=$(mktemp)
+  expected_hash=$(sha256_of apps/web/dist/storybook/iframe.html)
+  served_hash=""
+  if curl -sf -A 'Mozilla/5.0' -o "$served_storybook" "$SITE_URL/storybook/iframe.html"; then
+    served_hash=$(sha256_of "$served_storybook")
+  fi
+  rm -f "$served_storybook"
+  if [[ -z "$expected_hash" || "$served_hash" != "$expected_hash" ]]; then
     echo "$SITE_URL/storybook/ に、ビルドした Storybook が配信されていません。" >&2
     exit 1
   fi
-  rm -f "$storybook_index"
 fi
 
 shopt -s nullglob

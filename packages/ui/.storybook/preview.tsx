@@ -4,16 +4,20 @@ import "./storybook.css";
 // staging では Storybook がアプリと同じオリジン（`/storybook/`）で動くので、story が書く設定
 // （自動で読む、など）がアプリの localStorage に入ると、開いているアプリの動作が変わる。story からの
 // 読み書きは別の名前の下に分ける。
+// sessionStorage は分けない（Storage.prototype は両方で共有なので、localStorage のときだけ付ける）。
 const STORY_KEY_PREFIX = "storybook:";
+const storyLocalStorage = window.localStorage;
+const storyKey = (storage: Storage, key: string): string =>
+    storage === storyLocalStorage ? STORY_KEY_PREFIX + key : key;
 const { getItem, setItem, removeItem } = Storage.prototype;
 Storage.prototype.getItem = function (this: Storage, key: string) {
-    return getItem.call(this, STORY_KEY_PREFIX + key);
+    return getItem.call(this, storyKey(this, key));
 };
 Storage.prototype.setItem = function (this: Storage, key: string, value: string) {
-    setItem.call(this, STORY_KEY_PREFIX + key, value);
+    setItem.call(this, storyKey(this, key), value);
 };
 Storage.prototype.removeItem = function (this: Storage, key: string) {
-    removeItem.call(this, STORY_KEY_PREFIX + key);
+    removeItem.call(this, storyKey(this, key));
 };
 
 const preview: Preview = {
