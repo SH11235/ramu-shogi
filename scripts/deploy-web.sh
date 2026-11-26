@@ -77,18 +77,34 @@ if [[ "$(sha256_of "$RUST_LOCKFILE")" != "$lockfile_hash_before" ]]; then
   exit 1
 fi
 
-# 4. デプロイ (wrangler は apps/web の devDependency の版を使う)
+# 4. Storybook（画面の状態ごとの一覧）は staging にだけ載せる。本番の配信物には入れない。
+if [[ "$MODE" == "stg" ]]; then
+  pnpm --filter @shogi/ui build-storybook
+  cp -R packages/ui/storybook-static apps/web/dist/storybook
+elif [[ -e apps/web/dist/storybook ]]; then
+  echo "apps/web/dist/storybook があります。Storybook は本番に出さないため deploy を中止します。" >&2
+  exit 1
+fi
+
+# 5. デプロイ (wrangler は apps/web の devDependency の版を使う)
 if [[ "$MODE" == "stg" ]]; then
   (cd apps/web && pnpm exec wrangler deploy --env stg)
 else
   (cd apps/web && pnpm exec wrangler deploy)
 fi
 
-# 5. 配信確認: トップページと、ビルドした全 WASM (single / threaded) が配信されていること
+# 6. 配信確認: トップページと、ビルドした全 WASM (single / threaded) が配信されていること
 status=$(curl -s -o /dev/null -w '%{http_code}' -A 'Mozilla/5.0' "$SITE_URL/")
 if [[ "$status" != "200" ]]; then
   echo "$SITE_URL/ が HTTP $status を返しました。" >&2
   exit 1
+fi
+if [[ "$MODE" == "stg" ]]; then
+  status=$(curl -s -o /dev/null -w '%{http_code}' -A 'Mozilla/5.0' "$SITE_URL/storybook/")
+  if [[ "$status" != "200" ]]; then
+    echo "$SITE_URL/storybook/ が HTTP $status を返しました。" >&2
+    exit 1
+  fi
 fi
 
 shopt -s nullglob

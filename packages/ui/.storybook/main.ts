@@ -7,8 +7,9 @@ import { workspaceAliases } from "../../../tooling/workspace-aliases.ts";
 const config: StorybookConfig = {
     stories: ["../src/**/*.stories.tsx"],
     framework: { name: "@storybook/react-vite", options: {} },
-    // 駒の画像などは Web アプリの public にある（盤の部品はそのパスを前提にする）。
-    staticDirs: ["../../../apps/web/public"],
+    core: { disableTelemetry: true },
+    // 駒の画像は Web アプリの public にあり、盤の部品は `/pieces/` のパスを前提にする。
+    staticDirs: [{ from: "../../../apps/web/public/pieces", to: "/pieces" }],
     viteFinal: (viteConfig) => ({
         ...viteConfig,
         // アプリと同じく React Compiler を通す（通さないと、描画の回数が本番と変わる）。
