@@ -27,7 +27,7 @@ import {
     studyPassRightsForLine,
 } from "@shogi/app-core";
 import type { EngineInfoEvent } from "@shogi/engine-client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { useNnueContextOptional } from "../../providers/NnueContext";
 import { useUsageTracker } from "../../providers/UsageContext";
 import { type AnalysisJob, useEnginePool } from "../shogi-match/hooks/useEnginePool";
@@ -155,7 +155,7 @@ export interface StudyAnalysisController {
     progress: { completed: number; total: number } | null;
     /**
      * 全体の解析（Desktop の 1 回だけの深い読みも）を最後まで読み終えた回数。止めた・エンジンが
-     * 変わった・保存できずに止めた、などで終わった回は数えない。
+     * 変わった・保存できずに止めた・読めなかった局面があった、などで終わった回は数えない。
      */
     completedRuns: number;
     /** 深く解析している途中経過。 */
@@ -294,6 +294,8 @@ export function useStudyAnalysis({
     const [isPreparing, setIsPreparing] = useState(false);
     const [live, setLive] = useState<StudyLiveSearch | null>(null);
     const [completedRuns, setCompletedRuns] = useState(0);
+    /** いまの解析で、読めなかった局面があったか（あれば、最後まで進んでも読み終えたことにしない）。 */
+    const runFailedRef = useRef(false);
 
     // 解析は非同期に進むので、結果が届いた時点の最新の文書・コールバックを参照する。
     const latestRef = useRef({ doc, tree, onApplyOps, onFlush });
@@ -395,12 +397,13 @@ export function useStudyAnalysis({
         },
         onComplete: () => {
             flushResults();
-            setCompletedRuns((count) => count + 1);
+            if (!runFailedRef.current) setCompletedRuns((count) => count + 1);
             setMode(null);
             setLive(null);
             latestRef.current.onFlush?.();
         },
         onError: (ply, error) => {
+            runFailedRef.current = true;
             console.error(`[study] 解析に失敗しました (ply=${ply}):`, error);
             // Desktop の内蔵エンジンは、起動してから最初に読み込んだ評価関数しか使えない。
             if (String(error.cause ?? "").includes("Restart the app to change NNUE")) {
@@ -603,6 +606,7 @@ export function useStudyAnalysis({
         setMode(nextMode);
         // 全体解析は一括、深い解析（続きから読めないときの 1 回だけの読み）は 1 局面として数える
         track("analysis_start", { kind: nextMode === "full" ? "batch" : "single" });
+        runFailedRef.current = false;
         pool.start(jobs, {
             nnueId: resolved?.nnueId ?? null,
             layerStacks: resolved?.layerStacks,
@@ -805,7 +809,13 @@ export function useStudyAnalysis({
         const stopped = cancel();
         const generation = generationRef.current;
         await stopped;
-        if (!mountedRef.current || generationRef.current !== generation) return;
+        if (!mountedRef.current) return;
+        if (generationRef.current !== generation) {
+            // エンジンが変わった、などで取りやめた。画面の操作で取って代わられたかは、受け取る側が
+            // `isWanted` で見分ける。
+            options?.onNotStarted?.();
+            return;
+        }
         if (options?.isWanted && !options.isWanted()) return;
         await start(true);
     };
@@ -1000,6 +1010,15 @@ export function useStudyAnalysis({
         closeDownloadPromptRef.current();
         void cancelRef.current();
     }, [locked]);
+    // ダウンロードの情報を取りに行く間に取りやめると、確認はそのあとで開く。待っている準備が
+    // 無ければ閉じる（承認しても解析は始まらない）。
+    const onDownloadPrompt = useEffectEvent((): void => {
+        if (!preparingRef.current) closeDownloadPromptRef.current();
+    });
+    const downloadPromptOpen = download.presets.length > 0;
+    useEffect(() => {
+        if (downloadPromptOpen) onDownloadPrompt();
+    }, [downloadPromptOpen]);
 
     const continueDeep = async (): Promise<void> => {
         if (lockedRef.current || pool.isRunning || isDeepSearching || preparingRef.current) return;

@@ -347,6 +347,11 @@ export function StudyWorkspaceView({
         evalMate?: number;
     } | null>(null);
 
+    /**
+     * 局面を移った回数。止め終わるのを待ってから始める操作が、待つ間に局面を移ったかを見る
+     * （移って戻った場合も、移ったことにする）。
+     */
+    const leaveCountRef = useRef(0);
     const nav = useStudyNodeNavigation({
         tree,
         initialNodeId,
@@ -354,6 +359,7 @@ export function StudyWorkspaceView({
         onMessageChange,
         locked,
         onLeave: (leaving) => {
+            leaveCountRef.current += 1;
             setDeepNodeId(null);
             setAutoFinishedNodeId(null);
             setFinishedElsewhere(null);
@@ -624,11 +630,6 @@ export function StudyWorkspaceView({
             stoppingAutoRef.current = false;
         });
     };
-    /** 見ている局面（止め終わるのを待ってから始める操作が、待つ間に局面を移ったかを見る）。 */
-    const currentNodeIdRef = useRef(currentNodeId);
-    useEffect(() => {
-        currentNodeIdRef.current = currentNodeId;
-    }, [currentNodeId]);
     /**
      * 自動で読む以外の解析の操作を始める前に、自動で読むを切る（押した操作をそのまま通し、切ったことを
      * 知らせる）。読んでいた分は残る。止め終わるまでに別の操作をしたら false（その操作のほうを優先する）。
@@ -711,10 +712,10 @@ export function StudyWorkspaceView({
     const passingRef = useRef(false);
     const startDeepAfterPass = async (): Promise<void> => {
         if (locked || deepBlocked || passingRef.current) return;
-        const nodeId = currentNodeId;
+        const leaveCount = leaveCountRef.current;
         if (autoAnalyze && !(await leaveAutoAnalyze())) return;
         // 読みを止め終わるのを待つ間に局面を移ったら、移った先にパスを足さない。
-        if (currentNodeIdRef.current !== nodeId) return;
+        if (leaveCountRef.current !== leaveCount) return;
         const request = ++actionSerialRef.current;
         passRequestRef.current = request;
         passingRef.current = true;
@@ -797,8 +798,12 @@ export function StudyWorkspaceView({
     const onAutoAnalyzeChange = useEffectEvent((enabled: boolean): void => {
         const local = localAutoAnalyzeRef.current === enabled;
         localAutoAnalyzeRef.current = null;
-        if (enabled || local) return;
-        if (analysis.mode === "deep") stopAutoReading();
+        if (enabled) return;
+        // 入れ直したら同じ局面を読み直す（1 拍おいて覚えを消す判定は、すぐ入れ直すと走らない）。
+        autoStartedNodeRef.current = null;
+        if (local) return;
+        // 準備中も止める（この間に全体の解析を始めるときは、このタブで切っているので local になる）。
+        if (analysis.mode === "deep" || analysis.isPreparing) stopAutoReading();
     });
     const previousAutoAnalyzeRef = useRef(autoAnalyze);
     useEffect(() => {
@@ -808,13 +813,21 @@ export function StudyWorkspaceView({
     }, [autoAnalyze]);
     // 解析エンジンが変わると、読んでいた読みは手放される。読み終えたのではないので、同じ局面を新しい
     // エンジンで読み直す（読み終えたかの判定より先に覚えを消す）。
+    const onAnalysisEngineChange = useEffectEvent((): void => {
+        autoStartedNodeRef.current = null;
+        setAutoFinishedNodeId(null);
+        // 読み終えて止まっていたなら、ここで読み始める（読んでいたなら、手放されて止まったときに
+        // 読み直す）。
+        if (autoAnalyze && !locked && analysis.mode === null && !analysis.isPreparing) {
+            startDeep();
+        }
+    });
     const analysisEngineId = analysis.form.engineId;
     const previousEngineIdRef = useRef(analysisEngineId);
     useEffect(() => {
         if (previousEngineIdRef.current === analysisEngineId) return;
         previousEngineIdRef.current = analysisEngineId;
-        autoStartedNodeRef.current = null;
-        setAutoFinishedNodeId(null);
+        onAnalysisEngineChange();
     }, [analysisEngineId]);
     // 続きから読めない AI・局面と、読めなかったときは、同じ局面を読み直し続けない（同じ結果を繰り返す
     // だけになる）。入れたままでも止まっていることを、スイッチの行で伝える。
@@ -835,7 +848,7 @@ export function StudyWorkspaceView({
         setAutoAnalyzeHere(enabled);
         setAutoDecidedNodeId(null);
         if (!enabled) {
-            // 入れ直したら同じ局面を読み直す。1 拍おいて覚えを消す判定は、すぐ入れ直すと走らない。
+            // 入れ直したら同じ局面を読み直す（切ったのが描画に出る前に入れ直されることもあるので、ここでも消す）。
             autoStartedNodeRef.current = null;
             // 切ったら止める（そこまでの読みは残る）。
             if (analysis.mode === "deep" || analysis.isPreparing) stopAutoReading();
@@ -893,6 +906,7 @@ export function StudyWorkspaceView({
     const startMate = async (kind: "mate" | "shortest"): Promise<void> => {
         if (!mate || deepBlocked) return;
         const node = currentNode;
+        const leaveCount = leaveCountRef.current;
         if (autoAnalyze && !(await leaveAutoAnalyze())) return;
         const request = ++actionSerialRef.current;
         // 深く解析している読みは止める（そこまでの結果は残る）。別の局面の詰み探索も止める。
@@ -901,7 +915,7 @@ export function StudyWorkspaceView({
             if (actionSerialRef.current !== request) return;
         }
         // 止め終わるのを待つ間に局面を移ったら、押した局面の詰み探索は始めない。
-        if (currentNodeIdRef.current !== node.id) return;
+        if (leaveCountRef.current !== leaveCount) return;
         stopMate();
         if (kind === "mate") mate.start(node);
         else mate.startShortest(node);

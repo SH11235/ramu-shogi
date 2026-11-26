@@ -764,8 +764,9 @@ describe("useStudyAnalysis", () => {
         });
         await waitFor(() => expect(result.current.controller.mode).toBe("deep"));
         let starting: Promise<void> = Promise.resolve();
+        const onNotStarted = vi.fn();
         act(() => {
-            starting = result.current.controller.startFull();
+            starting = result.current.controller.startFull({ onNotStarted });
         });
         rerender({ engines: [{ ...other.option, id: "other" }] });
         await act(async () => {
@@ -774,6 +775,8 @@ describe("useStudyAnalysis", () => {
         });
         expect(result.current.startedLayers.some((key) => key.startsWith("full:"))).toBe(false);
         expect(other.searches()).toBe(0);
+        // 自動で読むを切って始めようとしていたなら、画面が入れ直せるよう知らせる。
+        expect(onNotStarted).toHaveBeenCalledTimes(1);
     });
 
     it("別の局面を深く解析している途中に深く解析すると、前の読みを結果に残して切り替える", async () => {
@@ -870,6 +873,35 @@ describe("useStudyAnalysis", () => {
             await result.current.controller.startFull();
         });
         await waitFor(() => expect(result.current.controller.completedRuns).toBe(1));
+    });
+
+    it("読めなかった局面があった全体の解析は、最後まで進んでも読み終えた回数に数えない", async () => {
+        vi.spyOn(console, "error").mockImplementation(() => {});
+        const { doc } = createTestStudy();
+        const engine = createEngineOption();
+        // 最初の 1 局面の探索だけ失敗し、残りは読める。
+        let failed = false;
+        const failing: EngineOption = {
+            ...engine.option,
+            createClient: () => {
+                const client = engine.option.createClient();
+                return {
+                    ...client,
+                    search: (...args: Parameters<EngineClient["search"]>) => {
+                        if (failed) return client.search(...args);
+                        failed = true;
+                        return Promise.reject(new Error("search failed"));
+                    },
+                };
+            },
+        };
+        const { result } = renderHook(() => useHarness(doc, [failing]));
+        await act(async () => {
+            await result.current.controller.startFull();
+        });
+        await waitFor(() => expect(result.current.flushCount).toBe(1));
+        expect(engine.searches()).toBe(4);
+        expect(result.current.controller.completedRuns).toBe(0);
     });
 
     it("解析する局面が無くて全体の解析を始めなかったときは、始めるときの通知を消し、始めなかったと知らせる", async () => {

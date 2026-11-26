@@ -467,6 +467,20 @@ describe("StudyWorkspaceView", () => {
         expect(analysis.cancel).toHaveBeenCalledTimes(1);
     });
 
+    it("別のタブで自動で読むを切ったら、読む準備をしている途中でも止める", () => {
+        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+        const { doc } = createTestStudy();
+        const analysis = createAnalysis({ isPreparing: true });
+        render(<Harness initialDoc={doc} analysis={analysis} />);
+        act(() => {
+            localStorage.setItem("shogi:studyAutoAnalyze", "false");
+            window.dispatchEvent(
+                new StorageEvent("storage", { key: "shogi:studyAutoAnalyze", newValue: "false" }),
+            );
+        });
+        expect(analysis.cancel).toHaveBeenCalledTimes(1);
+    });
+
     it("自動で読む間に解析エンジンが変わって読みが止まったら、読み終えたことにせず読み直す", async () => {
         localStorage.setItem("shogi:studyAutoAnalyze", "true");
         const { doc } = createTestStudy();
@@ -484,16 +498,38 @@ describe("StudyWorkspaceView", () => {
         await act(async () => {
             await new Promise((resolve) => setTimeout(resolve, 0));
         });
-        const switched = {
-            ...reading,
-            mode: null,
-            live: null,
-            continuableDeepNodeId: null,
-            form: { ...reading.form, engineId: "other" },
-        };
+        // エンジンが変わり、そのあとの描画で読みが手放されて止まる。
+        const switched = { ...reading, form: { ...reading.form, engineId: "other" } };
         rerender(<Harness initialDoc={doc} analysis={switched} />);
+        const released = { ...switched, mode: null, live: null, continuableDeepNodeId: null };
+        rerender(<Harness initialDoc={doc} analysis={released} />);
         await waitFor(() => expect(reading.startDeep).toHaveBeenCalledWith(doc.tree.rootId));
         expect(screen.queryByText("この局面は読み終えました。局面を移ると読みます")).toBeNull();
+    });
+
+    it("自動で読むで読み終えて止まったあとに解析エンジンが変わったら、新しいエンジンで読み直す", async () => {
+        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+        const { doc } = createTestStudy();
+        const reading = createAnalysis({
+            mode: "deep",
+            live: {
+                nodeId: doc.tree.rootId,
+                depth: 18,
+                startedAt: null,
+                budgetMs: 30_000,
+                preview: null,
+            },
+        });
+        const { rerender } = render(<Harness initialDoc={doc} analysis={reading} />);
+        await act(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+        const finished = { ...reading, mode: null, live: null, continuableDeepNodeId: null };
+        rerender(<Harness initialDoc={doc} analysis={finished} />);
+        await screen.findByText("この局面は読み終えました。局面を移ると読みます");
+        const switched = { ...finished, form: { ...finished.form, engineId: "other" } };
+        rerender(<Harness initialDoc={doc} analysis={switched} />);
+        await waitFor(() => expect(reading.startDeep).toHaveBeenCalledWith(doc.tree.rootId));
     });
 
     it("自動で読むを切って止め終わる前に入れ直したら、止めた読みを読み終えたことにせず読み直す", async () => {
@@ -564,6 +600,40 @@ describe("StudyWorkspaceView", () => {
         render(<Harness initialDoc={doc} analysis={analysis} mate={mate} />);
         fireEvent.click(screen.getByRole("button", { name: "詰みを読む" }));
         fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
+        await act(async () => {
+            finishCancel();
+        });
+        expect(mate.start).not.toHaveBeenCalled();
+    });
+
+    it("自動で読む間に詰みを読むを押し、読みを止め終わるまでに局面を移って戻ったときも、詰み探索は始めない", async () => {
+        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+        const { doc } = createTestStudy();
+        let finishCancel = (): void => {};
+        const analysis = createAnalysis({
+            mode: "deep",
+            live: {
+                nodeId: doc.tree.rootId,
+                depth: 18,
+                startedAt: null,
+                budgetMs: 30_000,
+                preview: null,
+            },
+            cancel: vi
+                .fn()
+                .mockImplementationOnce(
+                    () =>
+                        new Promise<void>((resolve) => {
+                            finishCancel = resolve;
+                        }),
+                )
+                .mockResolvedValue(undefined),
+        });
+        const mate = createMate();
+        render(<Harness initialDoc={doc} analysis={analysis} mate={mate} />);
+        fireEvent.click(screen.getByRole("button", { name: "詰みを読む" }));
+        fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
+        fireEvent.click(screen.getByRole("button", { name: "1 手戻る（←）" }));
         await act(async () => {
             finishCancel();
         });
