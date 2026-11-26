@@ -755,11 +755,18 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
     // 実行していないときに nnueId が変わったら、前の NNUE を読み込んだワーカーを手放す。
     // 実行中は止めない（止めると onComplete が呼ばれず、呼び出し側は終わったことを知れない）。
     // 作り直しは次の start() の `shouldReinitialize` が、読み込み済みの NNUE と比べて行う。
+    // 中止した実行の初期化がまだ続いていると、終わったあとに前の NNUE のワーカーが登録されるので、
+    // 判定は `initChain` に積み、その初期化が済んでから最新の nnueId と比べる。
+    const latestNnueIdRef = useRef<string | null>(nnueId ?? null);
     const releaseStaleWorkers = useEffectEvent((nextNnueId: string | null) => {
+        latestNnueIdRef.current = nextNnueId;
         const state = stateRef.current;
-        if (state.running || !state.initialized) return;
-        if (nextNnueId === (state.currentNnueId ?? null)) return;
-        void dispose();
+        const release = async () => {
+            if (state.running || !state.initialized) return;
+            if (latestNnueIdRef.current === (state.currentNnueId ?? null)) return;
+            await disposeWorkers();
+        };
+        state.initChain = state.initChain.then(release, release);
     });
     useEffect(() => {
         releaseStaleWorkers(nnueId ?? null);

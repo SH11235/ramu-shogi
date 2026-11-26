@@ -441,6 +441,27 @@ describe("useEnginePool: 実行中の評価関数の変更", () => {
         rerender({ nnueId: "nnue-b" });
         await waitFor(() => expect(engine.clients[0]?.dispose).toHaveBeenCalled());
     });
+
+    it("初期化の途中で中止してから評価関数が変わったら、初期化が終わったあとに前のワーカーを手放す", async () => {
+        const engine = controlledEngine();
+        const { result, rerender } = renderPool(engine, [], vi.fn(), "nnue-a");
+
+        const gate = createGate();
+        engine.holdInit = gate;
+        act(() => result.current.start([job("a", ["7g7f"])], { layer: layer("A") }));
+        await waitFor(() => expect(engine.clients[0]?.init).toHaveBeenCalledTimes(1));
+        await act(async () => {
+            void result.current.cancel();
+            await settle(5);
+        });
+
+        rerender({ nnueId: "nnue-b" });
+        await act(async () => {
+            gate.open();
+            await settle();
+        });
+        await waitFor(() => expect(engine.clients[0]?.dispose).toHaveBeenCalled());
+    });
 });
 
 describe("native batch worker lifetime", () => {
