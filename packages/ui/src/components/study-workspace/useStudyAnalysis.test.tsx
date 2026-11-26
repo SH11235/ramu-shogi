@@ -532,6 +532,66 @@ describe("useStudyAnalysis", () => {
         }
     });
 
+    it("読み始めの途中の候補はすぐ画面に出し、保存は 3 秒たつまで待つ", async () => {
+        const { doc, ids } = createTestStudy();
+        const engine = createResumableEngineOption();
+        const saves: Array<StudyApplyOpsOptions | undefined> = [];
+        let now = 1_000_000;
+        const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+        try {
+            const { result } = renderHook(() =>
+                useHarness(doc, [engine.option], {
+                    onOps: (ops, applyOptions) => {
+                        if (ops.some((op) => op.type === "putAnalysis")) saves.push(applyOptions);
+                    },
+                }),
+            );
+            await act(async () => {
+                await result.current.controller.startDeep(ids[2]);
+            });
+            await waitFor(() => expect(result.current.controller.mode).toBe("deep"));
+            const preview = () => result.current.controller.live?.preview;
+            // 読み始めの最初の info（深さ 5）は待たずに写す。
+            await waitFor(() => expect(preview()?.candidates[0].pv).toEqual(["8c8d"]));
+            expect(preview()?.depth).toBe(5);
+
+            // 間隔より短いうちの info は写さない。
+            now += 200;
+            act(() => {
+                engine.emitInfo({ depth: 6, scoreCp: 40, multipv: 1, pv: ["2g2f"] });
+            });
+            expect(preview()?.depth).toBe(5);
+
+            now += 400;
+            act(() => {
+                engine.emitInfo({ depth: 7, scoreCp: 60, multipv: 1, pv: ["2g2f"] });
+            });
+            await waitFor(() => expect(preview()?.depth).toBe(7));
+            expect(saves).toHaveLength(0);
+            expect(result.current.doc.layers[0]?.results[ids[2]]).toBeUndefined();
+
+            now += 2_200;
+            act(() => {
+                engine.emitInfo({ depth: 8, scoreCp: 80, multipv: 1, pv: ["2g2f"] });
+            });
+            await waitFor(() => expect(preview()?.depth).toBe(8));
+            expect(saves).toHaveLength(0);
+
+            // 保存は 3 秒ごとに、画面の間隔とは別に行う（画面はまだ写さない）。
+            now += 200;
+            act(() => {
+                engine.emitInfo({ depth: 9, scoreCp: 90, multipv: 1, pv: ["2g2f"] });
+            });
+            await waitFor(() =>
+                expect(result.current.doc.layers[0]?.results[ids[2]]?.depth).toBe(9),
+            );
+            expect(preview()?.depth).toBe(8);
+            expect(saves).toEqual([{ syncDelayMs: 30_000 }]);
+        } finally {
+            clock.mockRestore();
+        }
+    });
+
     it("移る前の局面の結果を保存できなくても、移った先の局面の読みは止めない", async () => {
         const { doc, ids } = createTestStudy();
         const engine = createResumableEngineOption();

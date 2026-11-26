@@ -52,7 +52,9 @@ export function StudyPositionBand({
                     {bestMove
                         ? bestMove.replace(/\(\d\d\)$/, "")
                         : score === null && depth === null
-                          ? "未解析"
+                          ? reading
+                              ? "読み中…"
+                              : "未解析"
                           : "—"}
                 </span>
                 <span className="ml-auto flex shrink-0 items-baseline gap-1.5 max-[399px]:flex-col max-[399px]:items-end max-[399px]:gap-0">

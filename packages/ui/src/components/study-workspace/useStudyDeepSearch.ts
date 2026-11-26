@@ -52,7 +52,7 @@ interface StudyDeepState {
     canContinue: boolean;
     /** いまの読みを始めた時刻（`Date.now()`。読んでいる間だけ）。残りの時間を出すのに使う。 */
     startedAt: number | null;
-    /** 読んでいる途中の候補（`PREVIEW_INTERVAL_MS` ごとに更新する）。 */
+    /** 読んでいる途中の候補（`PREVIEW_INTERVAL_MS` ごとに更新する。最初の info ではすぐ出す）。 */
     preview: StudyAnalysisResult | null;
 }
 
@@ -60,7 +60,10 @@ interface StudyDeepState {
  * 途中の候補を画面へ写す間隔。読みの情報は 1 秒に何度も届くので、そのたびに写すと候補が
  * 目まぐるしく入れ替わって読めない。
  */
-const PREVIEW_INTERVAL_MS = 3_000;
+const PREVIEW_INTERVAL_MS = 500;
+
+/** 途中の結果を `onProgress` へ渡す間隔。読み始めの浅い結果で保存と同期を増やさない。 */
+const PROGRESS_INTERVAL_MS = 3_000;
 
 interface Options {
     createClient: (() => EngineClient) | null;
@@ -90,6 +93,8 @@ interface Session {
     collector: StudyAnalysisCollector;
     /** 途中の候補を最後に画面へ写した時刻。 */
     previewAt: number;
+    /** 途中の結果を最後に `onProgress` へ渡すか確かめた時刻。 */
+    progressAt: number;
     /** 最後に `onProgress` へ渡した結果の最善手・評価値・深さ（変わったときだけ渡すため）。 */
     progressKey: string | null;
     /**
@@ -177,21 +182,23 @@ export function useStudyDeepSearch(options: Options): {
             }
             const depth = info.depth ?? null;
             const now = Date.now();
+            const showsPreview = now - session.previewAt >= PREVIEW_INTERVAL_MS;
+            const reportsProgress = now - session.progressAt >= PROGRESS_INTERVAL_MS;
             const collected =
-                now - session.previewAt >= PREVIEW_INTERVAL_MS
-                    ? session.collector.finish("aborted")
-                    : null;
-            const preview = collected && {
+                showsPreview || reportsProgress ? session.collector.finish("aborted") : null;
+            const result = collected && {
                 ...collected,
                 nodes: session.nodesBefore + session.segmentNodes,
                 timeMs: session.timeBefore + session.segmentTimeMs,
             };
-            if (preview) {
-                session.previewAt = now;
-                const key = progressKeyOf(preview);
+            const preview = showsPreview ? result : null;
+            if (preview) session.previewAt = now;
+            if (result && reportsProgress) {
+                session.progressAt = now;
+                const key = progressKeyOf(result);
                 if (key !== session.progressKey) {
                     session.progressKey = key;
-                    options.onProgress(session.request, preview);
+                    options.onProgress(session.request, result);
                 }
             }
             if (depth !== null || preview) {
@@ -305,7 +312,9 @@ export function useStudyDeepSearch(options: Options): {
                 sideToMove: request.sideToMove,
                 execution: { threads: request.setup.threads, parallelWorkers: 1 },
             }),
-            previewAt: Date.now(),
+            // 最初の候補は待たずに出す（読み始めの帯が空のままにならないように）。
+            previewAt: Number.NEGATIVE_INFINITY,
+            progressAt: Date.now(),
             progressKey: null,
             nodesBefore: 0,
             segmentNodes: 0,

@@ -2841,6 +2841,66 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         expect(band().textContent).toContain("深さ 23");
     });
 
+    it("自動で読み始めて途中の候補がまだ無い間は、帯に未解析ではなく読んでいることを出す", () => {
+        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+        const { doc } = createTestStudy();
+        const view = render(<Harness initialDoc={doc} />);
+        const band = () =>
+            screen.getByRole("status", { name: "この局面の最善手" }).parentElement as HTMLElement;
+        expect(band().textContent).toContain("未解析");
+
+        view.rerender(
+            <Harness
+                initialDoc={doc}
+                analysis={createAnalysis({
+                    mode: "deep",
+                    live: {
+                        nodeId: doc.tree.rootId,
+                        depth: null,
+                        startedAt: null,
+                        budgetMs: 30_000,
+                        preview: null,
+                    },
+                })}
+            />,
+        );
+        expect(band().textContent).toContain("読み中");
+        expect(band().textContent).not.toContain("未解析");
+
+        // 移った直後で、まだ前の局面を読んでいる間も同じ。
+        view.rerender(
+            <Harness
+                initialDoc={doc}
+                analysis={createAnalysis({
+                    mode: "deep",
+                    live: {
+                        nodeId: "previous-node",
+                        depth: 12,
+                        startedAt: null,
+                        budgetMs: 30_000,
+                        preview: null,
+                    },
+                })}
+            />,
+        );
+        expect(band().textContent).toContain("読み中");
+    });
+
+    it("自動で読むを入れたまま未解析の局面へ移ると、読み始めるまでの間も帯に未解析と出さない", async () => {
+        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+        const { doc, ids } = createTestStudy();
+        const analysis = createAnalysis();
+        render(<Harness initialDoc={doc} analysis={analysis} />);
+        const band = () =>
+            screen.getByRole("status", { name: "この局面の最善手" }).parentElement as HTMLElement;
+        await waitFor(() => expect(analysis.startDeep).toHaveBeenCalledWith(doc.tree.rootId));
+
+        fireEvent.click(screen.getByRole("button", { name: "1手進む" }));
+        expect(band().textContent).toContain("読み中");
+        expect(band().textContent).not.toContain("未解析");
+        await waitFor(() => expect(analysis.startDeep).toHaveBeenCalledWith(ids[1]));
+    });
+
     it("自動で読むで読み終えたら、候補手の欄に読み終えたことを出す", async () => {
         localStorage.setItem("shogi:studyAutoAnalyze", "true");
         const { doc } = createTestStudy();
