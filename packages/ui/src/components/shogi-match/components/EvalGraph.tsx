@@ -71,14 +71,6 @@ const MARKER_CLASS: Record<EvalGraphMarker["tone"], string> = {
 };
 
 /**
- * 線分の座標列。前後の手に値が無い 1 点だけの区間は線にならず見えないので、同じ点を 2 つ並べて
- * 丸い線端で点として描く。
- */
-function segmentPoints(segment: readonly string[]): string {
-    return segment.length === 1 ? `${segment[0]} ${segment[0]}` : segment.join(" ");
-}
-
-/**
  * 評価値をY座標に変換（自動スケール対応版）
  */
 function evalToYWithScale(
@@ -424,45 +416,51 @@ export function EvalGraph({
                     />
                 ))}
 
-                {secondarySegments.map((segment) => (
-                    <polyline
-                        key={`secondary-${segment[0]}`}
-                        data-series="secondary"
-                        points={segmentPoints(segment)}
-                        strokeLinecap="round"
-                        fill="none"
-                        stroke="hsl(var(--muted-foreground))"
-                        strokeWidth="1.5"
-                        strokeDasharray="4,3"
-                        vectorEffect="non-scaling-stroke"
-                    />
-                ))}
+                {secondarySegments
+                    .filter((segment) => segment.length > 1)
+                    .map((segment) => (
+                        <polyline
+                            key={`secondary-${segment[0]}`}
+                            data-series="secondary"
+                            points={segment.join(" ")}
+                            strokeLinecap="round"
+                            fill="none"
+                            stroke="hsl(var(--muted-foreground))"
+                            strokeWidth="1.5"
+                            strokeDasharray="4,3"
+                            vectorEffect="non-scaling-stroke"
+                        />
+                    ))}
 
                 {/* 評価値ライン（先手：朱色） */}
-                {senteSegments.map((segment) => (
-                    <polyline
-                        key={`sente-${segment[0]}`}
-                        points={segmentPoints(segment)}
-                        strokeLinecap="round"
-                        fill="none"
-                        stroke="hsl(var(--wafuu-shu))"
-                        strokeWidth="2"
-                        vectorEffect="non-scaling-stroke"
-                    />
-                ))}
+                {senteSegments
+                    .filter((segment) => segment.length > 1)
+                    .map((segment) => (
+                        <polyline
+                            key={`sente-${segment[0]}`}
+                            points={segment.join(" ")}
+                            strokeLinecap="round"
+                            fill="none"
+                            stroke="hsl(var(--wafuu-shu))"
+                            strokeWidth="2"
+                            vectorEffect="non-scaling-stroke"
+                        />
+                    ))}
 
                 {/* 評価値ライン（後手：藍色） */}
-                {goteSegments.map((segment) => (
-                    <polyline
-                        key={`gote-${segment[0]}`}
-                        points={segmentPoints(segment)}
-                        strokeLinecap="round"
-                        fill="none"
-                        stroke="hsl(var(--wafuu-ai))"
-                        strokeWidth="2"
-                        vectorEffect="non-scaling-stroke"
-                    />
-                ))}
+                {goteSegments
+                    .filter((segment) => segment.length > 1)
+                    .map((segment) => (
+                        <polyline
+                            key={`gote-${segment[0]}`}
+                            points={segment.join(" ")}
+                            strokeLinecap="round"
+                            fill="none"
+                            stroke="hsl(var(--wafuu-ai))"
+                            strokeWidth="2"
+                            vectorEffect="non-scaling-stroke"
+                        />
+                    ))}
 
                 {/* 現在位置マーカー（縦線）。金は明地でコントラストが弱いため、
                     下層に墨のアウトラインを敷いて両テーマで視認性を確保する */}
@@ -693,30 +691,34 @@ export function EvalGraph({
             />
 
             {/* 評価値ライン（先手：朱色） */}
-            {senteSegments.map((segment) => (
-                <polyline
-                    key={`sente-${segment[0]}`}
-                    points={segmentPoints(segment)}
-                    strokeLinecap="round"
-                    fill="none"
-                    stroke="hsl(var(--wafuu-shu))"
-                    strokeWidth="2"
-                    vectorEffect="non-scaling-stroke"
-                />
-            ))}
+            {senteSegments
+                .filter((segment) => segment.length > 1)
+                .map((segment) => (
+                    <polyline
+                        key={`sente-${segment[0]}`}
+                        points={segment.join(" ")}
+                        strokeLinecap="round"
+                        fill="none"
+                        stroke="hsl(var(--wafuu-shu))"
+                        strokeWidth="2"
+                        vectorEffect="non-scaling-stroke"
+                    />
+                ))}
 
             {/* 評価値ライン（後手：藍色） */}
-            {goteSegments.map((segment) => (
-                <polyline
-                    key={`gote-${segment[0]}`}
-                    points={segmentPoints(segment)}
-                    strokeLinecap="round"
-                    fill="none"
-                    stroke="hsl(var(--wafuu-ai))"
-                    strokeWidth="2"
-                    vectorEffect="non-scaling-stroke"
-                />
-            ))}
+            {goteSegments
+                .filter((segment) => segment.length > 1)
+                .map((segment) => (
+                    <polyline
+                        key={`gote-${segment[0]}`}
+                        points={segment.join(" ")}
+                        strokeLinecap="round"
+                        fill="none"
+                        stroke="hsl(var(--wafuu-ai))"
+                        strokeWidth="2"
+                        vectorEffect="non-scaling-stroke"
+                    />
+                ))}
 
             {/* 現在位置マーカー（縦線）。金は明地でコントラストが弱いため、
                 下層に墨のアウトラインを敷いて両テーマで視認性を確保する */}

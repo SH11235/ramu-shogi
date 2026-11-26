@@ -14,7 +14,7 @@ export interface StudyBandLine {
     score: StudyScore | null;
     depth: number | null;
     /** 表示中の AI とは別の AI の値（評価値グラフの丸と同じく灰色で出す）。 */
-    otherAi?: boolean;
+    otherAi: boolean;
 }
 
 /**
