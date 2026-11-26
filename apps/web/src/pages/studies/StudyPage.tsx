@@ -1,5 +1,10 @@
 import { applyStudyOps, STUDY_LIMITS, type StudyDocument, type StudyOp } from "@shogi/app-core";
-import { createStudyApiClient, type StoredStudy, toStudyDocument } from "@shogi/study-client";
+import {
+    createStudyApiClient,
+    isStudyAnalysisOp,
+    type StoredStudy,
+    toStudyDocument,
+} from "@shogi/study-client";
 import type {
     EngineOption,
     StudyApplyOpsOptions,
@@ -505,7 +510,7 @@ export default function StudyPage(): ReactElement {
             current.locked &&
             !(
                 ops.length > 0 &&
-                ops.every((op) => op.type === "ensureLayer" || op.type === "putAnalysis") &&
+                ops.every(isStudyAnalysisOp) &&
                 sync.getSession()?.userId === current.ownerId
             )
         ) {

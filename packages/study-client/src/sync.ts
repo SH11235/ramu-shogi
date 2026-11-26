@@ -476,7 +476,9 @@ const isNewAnalysis = (doc: StudyDocument, op: StudyOp): boolean => {
  */
 const newAnalysisOps = (doc: StudyDocument, ops: readonly StudyOp[]): StudyOp[] => {
     const results = ops.filter((op) => isNewAnalysis(doc, op));
-    const layerIds = new Set(results.map((op) => (op.type === "putAnalysis" ? op.layerId : "")));
+    const layerIds = new Set(
+        results.flatMap((op) => (op.type === "putAnalysis" ? [op.layerId] : [])),
+    );
     return ops.filter(
         (op) =>
             (op.type === "ensureLayer" &&
@@ -486,7 +488,8 @@ const newAnalysisOps = (doc: StudyDocument, ops: readonly StudyOp[]): StudyOp[] 
     );
 };
 
-const isAnalysisOp = (op: StudyOp): boolean =>
+/** ロック中・統合済みでも受け付ける、解析結果の操作か（何度当てても同じ結果になる）。 */
+export const isStudyAnalysisOp = (op: StudyOp): boolean =>
     op.type === "ensureLayer" || op.type === "putAnalysis";
 
 const mergedError = (into: string): StudySyncError =>
@@ -1636,7 +1639,7 @@ export function createStudySync(options: StudySyncOptions): StudySync {
                     }
                     if (snapshot.study.mergedInto !== null) {
                         // 統合に気づく前の画面から届いた解析結果は、捨てずに統合先へ渡す。
-                        if (ops.length > 0 && ops.every(isAnalysisOp)) {
+                        if (ops.length > 0 && ops.every(isStudyAnalysisOp)) {
                             if (snapshot.study.mergePending) {
                                 // 取り込みの途中は、統合先にまだ無い枝の結果が読み飛ばされるので、
                                 // 元のノートに書いて取り込みに含めさせる。`updatedAt` は必ず進め、
