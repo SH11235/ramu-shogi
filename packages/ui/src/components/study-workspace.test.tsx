@@ -273,6 +273,43 @@ describe("StudyWorkspaceView", () => {
         ).toBe(true);
     });
 
+    it("読んでいる間の候補手の欄は今の読みだけを出し、それより深い記録は見出しの下に 1 行で添える", () => {
+        const { doc } = createTestStudy([cp(120), cp(0), cp(0), cp(0), cp(0)]);
+        const preview = (depth: number) => ({
+            runId: "preview",
+            completion: "aborted" as const,
+            depth,
+            nodes: 1_000,
+            timeMs: 1_000,
+            execution: { threads: null, hashMb: null, parallelWorkers: null },
+            candidates: [{ rank: 1, score: cp(-300), depth, seldepth: null, pv: ["7g7f"] }],
+        });
+        const live = (depth: number) => ({
+            nodeId: doc.tree.rootId,
+            depth,
+            startedAt: null,
+            budgetMs: 30_000,
+            preview: preview(depth),
+        });
+        const view = render(
+            <Harness initialDoc={doc} analysis={createAnalysis({ mode: "deep", live: live(5) })} />,
+        );
+        const panel = screen.getByRole("region", { name: "候補手" });
+        expect(panel.textContent).toContain("今の読み");
+        expect(panel.textContent).toContain("記録");
+        expect(panel.textContent).toContain("+120");
+        expect(panel.textContent).not.toContain("保存済みの読み");
+        // 今の読みが記録を超えたら、記録の行も消える。
+        view.rerender(
+            <Harness
+                initialDoc={doc}
+                analysis={createAnalysis({ mode: "deep", live: live(23) })}
+            />,
+        );
+        expect(panel.textContent).not.toContain("記録");
+        expect(panel.textContent).not.toContain("+120");
+    });
+
     it("自動で読むを入れると、見ている局面を読み始める", async () => {
         const { doc } = createTestStudy();
         const analysis = createAnalysis();
@@ -3310,7 +3347,7 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         );
     });
 
-    it("自動で読むのスイッチは局面の帯にあり、帯は読んでいる間その途中の最善手・評価値・深さを出す", () => {
+    it("自動で読むのスイッチは局面の帯にあり、帯は今の読みと、それより深い記録を 2 段で出す", () => {
         localStorage.setItem("shogi:studyAutoAnalyze", "true");
         const { doc } = createTestStudy([cp(120), cp(0), cp(0), cp(0), cp(0)]);
         const live = (depth: number, pv: string[]) => ({
@@ -3334,11 +3371,13 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         // 候補手の欄にはスイッチを出さない（帯の 1 つだけ）。名前は読んでいる間も「自動で読む」のまま。
         expect(screen.getAllByRole("switch", { name: /自動で読む/ })).toHaveLength(1);
         within(band()).getByRole("switch", { name: "自動で読む" });
-        // 読んでいないときは保存済みの読み。
+        // 読み始めるまでは、保存してある記録を下の段に出す。
+        expect(band().textContent).toContain("読み中…");
+        expect(band().textContent).toContain("記録");
         expect(band().textContent).toContain("+120");
         expect(band().textContent).toContain("深さ 15");
 
-        // 保存済みより浅くても、読み始めから読んでいる値を出す。
+        // 記録より浅くても、読み始めから読んでいる値を上の段に出し、記録は下の段に残す。
         view.rerender(
             <Harness
                 initialDoc={doc}
@@ -3348,6 +3387,7 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         expect(band().textContent).toContain("7六歩");
         expect(band().textContent).toContain("-300");
         expect(band().textContent).toContain("深さ 5");
+        expect(band().textContent).toContain("+120");
 
         view.rerender(
             <Harness
@@ -3357,6 +3397,9 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         );
         expect(band().textContent).toContain("2六歩");
         expect(band().textContent).toContain("深さ 23");
+        // 今の読みが記録を超えたら、記録は出さない（2 つの値を並べない）。
+        expect(band().textContent).not.toContain("記録");
+        expect(band().textContent).not.toContain("+120");
     });
 
     it("自動で読み始めて途中の候補がまだ無い間は、帯に未解析ではなく読んでいることを出す", async () => {

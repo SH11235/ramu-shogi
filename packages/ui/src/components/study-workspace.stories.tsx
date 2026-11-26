@@ -228,6 +228,17 @@ export const 自動で読む_読んでいる: Story = {
     },
 };
 
+export const 自動で読む_記録より浅い読み直し: Story = {
+    beforeEach: withAutoAnalyze(true),
+    args: {
+        doc: analyzed.doc,
+        analysis: createAnalysis({
+            mode: "deep",
+            live: live(analyzedIds[0], { preview: preview(cp(12), 8, ["2g2f", "8c8d"]) }),
+        }),
+    },
+};
+
 export const 自動で読む_読み終えた: Story = {
     beforeEach: withAutoAnalyze(true),
     args: {

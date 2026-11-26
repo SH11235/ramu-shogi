@@ -11,7 +11,6 @@ import type { ReactElement } from "react";
 import { useEffect, useId, useState } from "react";
 import { Button } from "../button";
 import { cardVariants } from "../card";
-import { ChevronIcon } from "../chevron-icon";
 import { RamRunningIcon } from "../ram-running-icon";
 import { convertPvToDisplay } from "../shogi-match/utils/kifFormat";
 import { Switch } from "../switch";
@@ -113,8 +112,11 @@ interface StudyCandidatesPanelProps {
     };
     /** 「自動で読む」のスイッチを欄の外（局面の帯）に置くので、ここには出さない。 */
     autoSwitchElsewhere?: boolean;
-    /** 読んでいる途中は、前回の読みを 1 行にたたむ（画面の狭いスマートフォン）。 */
-    collapsePreviousWhileReading?: boolean;
+    /**
+     * 読んでいる間、前に深く読んだ記録のほうが今の読みより深ければ、その結果（今の読みの見出しの下に
+     * 1 行で添える）。帯に記録を出すスマートフォンでは渡さない。
+     */
+    recordAhead?: StudyAnalysisResult | null;
     /**
      * いまの局面でパスを指し（変化として足し）、その局面を深く解析する。手番でない側が何を狙って
      * いるかを見るため。渡さなければ出さない（編集できないとき）。
@@ -420,6 +422,26 @@ function ShallowResultLine({
     );
 }
 
+/** 読んでいる間に添える、前に深く読んだ記録（今の読みより深いときだけ）。帯の下の段と同じ中身。 */
+function RecordLine({
+    node,
+    result,
+}: {
+    node: KifuNode;
+    result: StudyAnalysisResult;
+}): ReactElement | null {
+    const best = studyBestCandidate(result);
+    if (!best) return null;
+    return (
+        <p className="flex flex-wrap items-baseline gap-x-1.5 px-1 text-xs text-muted-foreground">
+            <span>記録</span>
+            <span className="text-wafuu-sumi">{studyFirstMoveLabel(node, best.pv)}</span>
+            <span className="font-mono tabular-nums">{formatStudyScore(best.score)}</span>
+            <span className="tabular-nums">深さ {result.depth}</span>
+        </p>
+    );
+}
+
 const KIND_LABEL: Record<StudyHighlightKind, string> = { blunder: "悪手", dubious: "疑問手" };
 
 export function StudyCandidatesPanel({
@@ -432,7 +454,7 @@ export function StudyCandidatesPanel({
     live,
     autoAnalyze,
     autoSwitchElsewhere = false,
-    collapsePreviousWhileReading = false,
+    recordAhead = null,
     onStartDeepAfterPass,
     revision = null,
     onCancel,
@@ -445,11 +467,9 @@ export function StudyCandidatesPanel({
 }: StudyCandidatesPanelProps): ReactElement {
     const autoAnalyzeId = useId();
     const autoAnalyzeStatusId = useId();
-    const previousListId = useId();
     const autoOn = autoAnalyze?.enabled ?? false;
     const autoFinished = autoAnalyze?.reading === STUDY_AUTO_ANALYZE_FINISHED;
     const isDeepHere = live !== undefined;
-    const [isPreviousOpen, setIsPreviousOpen] = useState(false);
     // 別の局面の深い解析・詰み探索は、押せばそれを止めて切り替える。全体の解析の途中だけは始めない。
     const startDisabled = isPreparing || analysisMode === "full";
     const sourceText = formatStudyScore(source?.score);
@@ -598,6 +618,7 @@ export function StudyCandidatesPanel({
                             </Button>
                         )}
                     </div>
+                    {recordAhead && <RecordLine node={node} result={recordAhead} />}
                     {live.preview && (
                         <ol className="flex flex-col">
                             {live.preview.candidates.map((candidate) => (
@@ -630,36 +651,11 @@ export function StudyCandidatesPanel({
             )}
 
             {/* 深く解析した結果があれば、それを候補手の一覧にする（同じ局面をより深く読んだ結果なので）。
-                全体の解析の結果は、最善手だけを 1 行で添える。 */}
-            <div className="flex flex-col gap-1">
-                {live && mainResult ? (
-                    // 狭い画面では、今の読みを見やすくするため 1 行にたたむ。
-                    collapsePreviousWhileReading ? (
-                        <button
-                            type="button"
-                            aria-expanded={isPreviousOpen}
-                            aria-controls={previousListId}
-                            onClick={() => setIsPreviousOpen(!isPreviousOpen)}
-                            className="flex min-h-11 min-w-0 items-center gap-1 rounded-md px-1 text-left text-xs text-muted-foreground hover:text-wafuu-sumi focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        >
-                            <span className="shrink-0 font-medium text-wafuu-sumi">
-                                保存済みの読み
-                            </span>
-                            <span className="min-w-0 truncate">{mainNote}</span>
-                            <ChevronIcon expanded={isPreviousOpen} className="ml-auto" />
-                        </button>
-                    ) : (
-                        <p className="flex min-w-0 gap-1 px-1 text-xs text-muted-foreground">
-                            <span className="shrink-0 font-medium text-wafuu-sumi">
-                                保存済みの読み
-                            </span>
-                            <span className="min-w-0 truncate" title={mainNote ?? undefined}>
-                                {mainNote}
-                            </span>
-                        </p>
-                    )
-                ) : (
-                    mainResult && (
+                全体の解析の結果は、最善手だけを 1 行で添える。読んでいる間は今の読みだけを出す（前に深く
+                読んだ記録は、帯か今の読みの見出しの下に 1 行で出す）。 */}
+            {!live && (
+                <div className="flex flex-col gap-1">
+                    {mainResult && (
                         // 1 行に収まらないときは省略し、全文はマウスを載せると見られるようにする。
                         <p
                             className="truncate px-1 text-xs text-muted-foreground"
@@ -667,39 +663,30 @@ export function StudyCandidatesPanel({
                         >
                             {mainNote}
                         </p>
-                    )
-                )}
-                {mainResult ? (
-                    <ol
-                        id={previousListId}
-                        className="flex flex-col"
-                        hidden={
-                            live !== undefined && collapsePreviousWhileReading && !isPreviousOpen
-                        }
-                    >
-                        {mainResult.result.candidates.map((candidate) => (
-                            <CandidateRow
-                                key={candidate.rank}
-                                node={node}
-                                candidate={candidate}
-                                groupLabel=""
-                                onPreviewPv={onPreviewPv}
-                                onAddPvAsVariation={onAddPvAsVariation}
-                            />
-                        ))}
-                    </ol>
-                ) : (
-                    // 深く解析している間は、上の途中経過で分かる。
-                    !live && (
+                    )}
+                    {mainResult ? (
+                        <ol className="flex flex-col">
+                            {mainResult.result.candidates.map((candidate) => (
+                                <CandidateRow
+                                    key={candidate.rank}
+                                    node={node}
+                                    candidate={candidate}
+                                    groupLabel=""
+                                    onPreviewPv={onPreviewPv}
+                                    onAddPvAsVariation={onAddPvAsVariation}
+                                />
+                            ))}
+                        </ol>
+                    ) : (
                         <p className="px-1 text-sm text-muted-foreground">
                             この局面はまだ解析していません。
                         </p>
-                    )
-                )}
-                {deeperResult && positionResult && (
-                    <ShallowResultLine node={node} result={positionResult} />
-                )}
-            </div>
+                    )}
+                    {deeperResult && positionResult && (
+                        <ShallowResultLine node={node} result={positionResult} />
+                    )}
+                </div>
+            )}
 
             {source && (sourceText !== "" || source.pv) && (
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-t border-border pt-2 text-xs text-muted-foreground">

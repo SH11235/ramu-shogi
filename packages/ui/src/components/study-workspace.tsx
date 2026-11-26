@@ -17,6 +17,7 @@ import {
     type Player,
     type PositionState,
     type Square,
+    type StudyAnalysisResult,
     type StudyDocument,
     type StudyOp,
     studyScoreToKifuEval,
@@ -77,7 +78,7 @@ import { type StudyKifuFormat, StudyMoreMenu } from "./study-workspace/StudyMore
 import { StudyMoveList } from "./study-workspace/StudyMoveList";
 import { StudyNavBar } from "./study-workspace/StudyNavBar";
 import { StudyNotice } from "./study-workspace/StudyNotice";
-import { StudyPositionBand } from "./study-workspace/StudyPositionBand";
+import { type StudyBandLine, StudyPositionBand } from "./study-workspace/StudyPositionBand";
 import { buildStudyReviewItems, StudyReviewList } from "./study-workspace/StudyReviewList";
 import {
     StudySaveIndicator,
@@ -447,9 +448,7 @@ export function StudyWorkspaceView({
         deepNodeId,
         deepLayerId,
     });
-    // この局面を読んでいる間は、帯にはその途中の値を出す（読みに連れて動かす。浅い間は深さで分かる）。
     const liveHere = analysis.live?.nodeId === currentNodeId ? analysis.live : undefined;
-    const bandResult = liveHere?.preview ?? savedPicked?.result ?? null;
     // 帯が表示中の設定とは別の読みの値を出す局面（グラフに、線とは別の印で示す）。全体の解析の途中の
     // 値は表示中の設定の値なので、印にしない。
     const deepReads = new Map<string, StudyDeepRead>();
@@ -1284,7 +1283,24 @@ export function StudyWorkspaceView({
             className={isMobile ? "min-h-0 flex-1" : isWide ? "max-h-full" : "max-h-[26rem]"}
         />
     );
-    const bandBest = bandResult ? studyBestCandidate(bandResult) : null;
+    // 読んでいる間に、前に深く読んだ記録のほうが深ければ、それも出す（今の読みが超えるまで）。
+    const recordResult = savedPicked?.result ?? null;
+    const recordAhead =
+        liveHere && recordResult && recordResult.depth > (liveHere.preview?.depth ?? 0)
+            ? recordResult
+            : null;
+    /** 帯の 1 段に出す値。 */
+    const bandLineOf = (result: StudyAnalysisResult | null): StudyBandLine | null => {
+        if (!result) return null;
+        const best = studyBestCandidate(result);
+        return best
+            ? {
+                  bestMove: studyFirstMoveLabel(currentNode, best.pv),
+                  score: best.score,
+                  depth: result.depth,
+              }
+            : { bestMove: null, score: null, depth: null };
+    };
     // 帯にラムを出すのは自動で読む読みだけ（パスして解析の読みは、止める操作のある候補手のタブで知らせる）。
     // 局面を移った直後は、前の局面の読みを止めてこの局面を読み始めるまで間があるので、その間も読んでいる
     // ことにする（「未解析」が一瞬出ないように）。
@@ -1312,7 +1328,8 @@ export function StudyWorkspaceView({
             }
             // スマートフォンではスイッチを局面の帯に置く（どの表示からでも止められるように）。
             autoSwitchElsewhere={isMobile}
-            collapsePreviousWhileReading={isMobile}
+            // スマートフォンは帯に記録を出すので、ここには添えない。
+            recordAhead={isMobile ? null : recordAhead}
             controlsLast={isMobile}
             onStartDeepAfterPass={editingDisabled ? undefined : () => void startDeepAfterPass()}
             revision={insights.revision}
@@ -1559,14 +1576,11 @@ export function StudyWorkspaceView({
                             onBackToMainLine={nav.onMainLine ? null : nav.backToMainLine}
                             positionBand={
                                 <StudyPositionBand
-                                    bestMove={
-                                        bandBest
-                                            ? studyFirstMoveLabel(currentNode, bandBest.pv)
-                                            : null
-                                    }
-                                    score={bandBest?.score ?? null}
-                                    depth={bandBest ? (bandResult?.depth ?? null) : null}
-                                    reading={bandShowsReading}
+                                    live={bandLineOf(liveHere?.preview ?? null)}
+                                    record={bandLineOf(savedPicked?.result ?? null)}
+                                    // パスして解析の読みも今の読みとして出すが、ラムは自動で読む読みだけ。
+                                    reading={bandShowsReading || liveHere !== undefined}
+                                    showRam={bandShowsReading}
                                     autoAnalyze={
                                         editingDisabled
                                             ? undefined
