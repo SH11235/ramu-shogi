@@ -124,8 +124,7 @@ import {
     studyStructureKey,
 } from "./study-workspace/studyView";
 import {
-    STUDY_DEEP_DEPTH,
-    STUDY_DEEP_TIME_MS,
+    isStudyAutoReadLayer,
     type StudyAnalysisController,
     type StudyApplyOpsOptions,
     type StudyApplyOpsResult,
@@ -460,14 +459,17 @@ export function StudyWorkspaceView({
     // 表示中の設定がまだ無い（未解析のノートを読み始めた）ときは、比べる相手が無いので今の読みを基準にする。
     const isOtherAi = (layer: Pick<StudyLayer, "spec">): boolean =>
         displayLayer !== undefined && !isSameStudyAi(layer, displayLayer);
-    const isAutoReadLayer = (layer: Pick<StudyLayer, "spec">): boolean =>
-        layer.spec.limits.timeMs === STUDY_DEEP_TIME_MS &&
-        layer.spec.limits.depth === STUDY_DEEP_DEPTH;
+    const isAutoReadLayer = isStudyAutoReadLayer;
+    /** 別の AI の設定の名前（例: `簡易AI（駒得）・自動読み`）。時間は保存の区切りなので出さない。 */
+    const otherAiLabel = (layer: Pick<StudyLayer, "spec" | "display">): string =>
+        isAutoReadLayer(layer)
+            ? layer.display.label.replace(/・[^・]*$/, `・${STUDY_AUTO_READ_LABEL}`)
+            : layer.display.label;
     // 自動読みの結果が表示中の設定になっていても（未解析のノートを自動で読んだとき）、保存の区切りの
     // 時間ではなく「自動読み」と呼ぶ。
     const graphReadLabel = (layer: Pick<StudyLayer, "spec" | "display">): string =>
         isOtherAi(layer)
-            ? layer.display.label
+            ? otherAiLabel(layer)
             : isAutoReadLayer(layer)
               ? STUDY_AUTO_READ_LABEL
               : studyLimitsLabel(layer.spec.limits);
@@ -503,7 +505,7 @@ export function StudyWorkspaceView({
             continue;
         }
         if (picked && isOtherAi(picked.layer)) {
-            otherAiReads.set(nodeId, { label: picked.layer.display.label, result: picked.result });
+            otherAiReads.set(nodeId, { label: otherAiLabel(picked.layer), result: picked.result });
         }
     }
     const graph = buildStudyEvalGraph({

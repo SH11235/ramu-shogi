@@ -29,7 +29,7 @@ import {
     studyFirstMoveLabel,
     studyScoreSide,
 } from "./studyView";
-import type { StudyLiveSearch } from "./useStudyAnalysis";
+import { isStudyAutoReadLayer, type StudyLiveSearch } from "./useStudyAnalysis";
 
 /** 自動で読むで、続きから読めずに読み終えたときの知らせ。 */
 export const STUDY_AUTO_ANALYZE_FINISHED = "この局面は読み終えました。局面を移ると読みます";
@@ -472,7 +472,7 @@ export function StudyCandidatesPanel({
     const sourceText = formatStudyScore(source?.score);
     const mainResult = deeperResult ?? positionResult;
     const mainNote = mainResult
-        ? `${deeperResult ? "自動読み・" : ""}${resultNote(mainResult)}`
+        ? `${deeperResult && isStudyAutoReadLayer(deeperResult.layer) ? "自動読み・" : ""}${resultNote(mainResult)}`
         : null;
 
     const controls = (

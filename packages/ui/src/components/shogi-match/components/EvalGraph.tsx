@@ -325,6 +325,34 @@ export function EvalGraph({
         return { senteSegments: sente, goteSegments: gote };
     })();
 
+    // 1 点だけの区間は、現在位置の縦線（同じ x に重なることが多い）に隠れないよう、線より後に点を描く。
+    const isolatedDots = [
+        ...secondarySegments
+            .filter((segment) => segment.length === 1)
+            .map((segment) => ({
+                point: segment[0],
+                color: "--muted-foreground",
+                key: "secondary",
+            })),
+        ...senteSegments
+            .filter((segment) => segment.length === 1)
+            .map((segment) => ({ point: segment[0], color: "--wafuu-shu", key: "sente" })),
+        ...goteSegments
+            .filter((segment) => segment.length === 1)
+            .map((segment) => ({ point: segment[0], color: "--wafuu-ai", key: "gote" })),
+    ].map(({ point, color, key }) => (
+        <polyline
+            key={`dot-${key}-${point}`}
+            data-isolated-point={key}
+            points={`${point} ${point}`}
+            fill="none"
+            stroke={`hsl(var(${color}))`}
+            strokeWidth="5"
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
+        />
+    ));
+
     // 現在位置のマーカー
     const currentMarker = (() => {
         if (currentPly < 0 || currentPly >= evalHistory.length) return null;
@@ -460,6 +488,7 @@ export function EvalGraph({
                         />
                     </g>
                 )}
+                {isolatedDots}
             </svg>
         );
 
@@ -713,6 +742,7 @@ export function EvalGraph({
                     />
                 </g>
             )}
+            {isolatedDots}
         </svg>
     );
 

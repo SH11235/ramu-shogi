@@ -994,9 +994,12 @@ describe("StudyWorkspaceView", () => {
             );
 
             expect(within(graph()).getByRole("button", { name: "対局時" })).toBeTruthy();
-            // 解析の値は開始局面の 1 点だけなので、同じ点を 2 つ並べて点として描く。
-            const [point, ...rest] = (dashedLines()[0]?.getAttribute("points") ?? "").split(" ");
-            expect(rest).toEqual([point]);
+            // 解析の値は開始局面の 1 点だけなので、現在位置の線に隠れないよう線より後に点で描く。
+            const dot = graph().querySelector('[data-isolated-point="secondary"]');
+            expect(dot).not.toBeNull();
+            expect(dot?.compareDocumentPosition(graph().querySelector("svg g") as Node)).toBe(
+                Node.DOCUMENT_POSITION_PRECEDING,
+            );
         });
     });
 
@@ -1087,6 +1090,15 @@ describe("StudyWorkspaceView", () => {
             view.unmount();
             return points;
         };
+
+        it("自動で読んだ結果だけに、候補手の欄で「自動読み」と添える", () => {
+            render(
+                <Harness initialDoc={withDeepRead().doc} initialDisplayLayerId={TEST_LAYER_ID} />,
+            );
+            expect(screen.getByRole("region", { name: "候補手" }).textContent).toContain(
+                "自動読み・",
+            );
+        });
 
         it("同じ AI で深く読んだ値は、印にせず線に入れる", () => {
             const before = plainLinePoints();
@@ -2250,7 +2262,7 @@ describe("StudyWorkspaceView", () => {
 
             const candidates = screen.getByRole("region", { name: "候補手" });
             // 一覧は 1 秒の設定（より深い結果）の候補手。開閉や表示の切り替えは出さない。
-            expect(candidates.textContent).toContain("自動読み・RAMU・1 秒");
+            expect(candidates.textContent).toContain("RAMU・1 秒・");
             expect(within(candidates).getByText("☗5六歩(57)")).toBeTruthy();
             expect(within(candidates).queryByText("☗4六歩(47)")).toBeNull();
             expect(
@@ -2274,7 +2286,7 @@ describe("StudyWorkspaceView", () => {
             fireEvent.click(screen.getByRole("switch", { name: /自動で読む/ }));
 
             const candidates = screen.getByRole("region", { name: "候補手" });
-            await waitFor(() => expect(candidates.textContent).toContain("自動読み・RAMU・1 秒"));
+            await waitFor(() => expect(candidates.textContent).toContain("RAMU・1 秒・"));
             expect(within(candidates).getByText(/全体の解析（深さ/)).toBeTruthy();
         });
 
@@ -2300,11 +2312,11 @@ describe("StudyWorkspaceView", () => {
 
             const candidates = screen.getByRole("region", { name: "候補手" });
             // 読む前は、別の AI の結果は出さない。
-            expect(candidates.textContent).not.toContain("自動読み・");
+            expect(candidates.textContent).not.toContain("簡易AI（駒得）・10 秒・深さ 30");
             rerender(
                 <Harness initialDoc={withOther} deepRead={{ nodeId: ids[0], layerId: otherId }} />,
             );
-            expect(candidates.textContent).toContain("自動読み・簡易AI（駒得）・10 秒・深さ 30");
+            expect(candidates.textContent).toContain("簡易AI（駒得）・10 秒・深さ 30");
             expect(candidates.textContent).toContain("☗2六歩(27)");
         });
     });
@@ -2328,9 +2340,9 @@ describe("StudyWorkspaceView", () => {
         render(<Harness initialDoc={withLonger} />);
         const candidates = screen.getByRole("region", { name: "候補手" });
 
-        expect(candidates.textContent).not.toContain("自動読み・");
+        expect(candidates.textContent).not.toContain("RAMU・10 秒");
         fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
-        expect(candidates.textContent).toContain("自動読み・RAMU・10 秒");
+        expect(candidates.textContent).toContain("RAMU・10 秒");
     });
 
     describe("見ている局面が文書から消えたとき", () => {
