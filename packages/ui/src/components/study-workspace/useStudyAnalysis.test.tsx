@@ -854,6 +854,76 @@ describe("useStudyAnalysis", () => {
         expect(onOps).not.toHaveBeenCalled();
     });
 
+    it("全体の解析は、最後まで読み終えた回だけ読み終えた回数に数える", async () => {
+        const { doc } = createTestStudy();
+        const engine = createEngineOption(50);
+        const { result } = renderHook(() => useHarness(doc, [engine.option]));
+        await act(async () => {
+            await result.current.controller.startFull();
+        });
+        await waitFor(() => expect(result.current.controller.mode).toBe("full"));
+        await act(async () => {
+            await result.current.controller.cancel();
+        });
+        expect(result.current.controller.completedRuns).toBe(0);
+        await act(async () => {
+            await result.current.controller.startFull();
+        });
+        await waitFor(() => expect(result.current.controller.completedRuns).toBe(1));
+    });
+
+    it("解析する局面が無くて全体の解析を始めなかったときは、始めるときの通知を消し、始めなかったと知らせる", async () => {
+        const { doc } = createTestStudy();
+        const engine = createEngineOption();
+        const onMessage = vi.fn();
+        const { result } = renderHook(() => useHarness(doc, [engine.option], { onMessage }));
+        await act(async () => {
+            await result.current.controller.startFull();
+        });
+        await waitFor(() => expect(result.current.flushCount).toBe(1));
+        const onNotStarted = vi.fn();
+        await act(async () => {
+            await result.current.controller.startFull({
+                notice: { text: "自動で読むを切りました", type: "warning" },
+                onNotStarted,
+            });
+        });
+        expect(onNotStarted).toHaveBeenCalledTimes(1);
+        expect(onMessage).toHaveBeenLastCalledWith(null);
+    });
+
+    it("準備を待つ間に止めた深く解析は、始まったことにしない", async () => {
+        const { doc, ids } = createTestStudy();
+        const engine = createResumableEngineOption();
+        let releaseInit: () => void = () => {};
+        const initHeld = new Promise<void>((resolve) => {
+            releaseInit = resolve;
+        });
+        const slow: EngineOption = {
+            ...engine.option,
+            createClient: () => ({
+                ...engine.option.createClient(),
+                init: vi.fn(() => initHeld),
+            }),
+        };
+        const { result } = renderHook(() => useHarness(doc, [slow]));
+        let starting: Promise<void> = Promise.resolve();
+        act(() => {
+            starting = result.current.controller.startDeep(ids[2]);
+        });
+        await waitFor(() => expect(result.current.controller.mode).toBe("deep"));
+        let stopping: Promise<void> = Promise.resolve();
+        act(() => {
+            stopping = result.current.controller.cancel();
+        });
+        await act(async () => {
+            releaseInit();
+            await starting;
+            await stopping;
+        });
+        expect(result.current.startedLayers).toEqual([]);
+    });
+
     it("AI の準備中に中止したら、解析を始めない", async () => {
         const { doc } = createTestStudy();
         const engine = createEngineOption();

@@ -87,6 +87,11 @@ export interface StudyFullStartOptions {
     isWanted?: () => boolean;
     /** 始めるときに出す通知。始めるときは前の通知を消すので、消したあとに出す。 */
     notice?: Message;
+    /**
+     * `onCommit` のあと、別の操作に取って代わられたのではなく、始められずに終わったとき（AI の
+     * ダウンロードを断った・準備に失敗した・解析する局面が無かった）に呼ぶ。
+     */
+    onNotStarted?: () => void;
 }
 
 /**
@@ -148,6 +153,11 @@ export interface StudyAnalysisController {
     isPreparing: boolean;
     /** 全体解析の進み具合。 */
     progress: { completed: number; total: number } | null;
+    /**
+     * 全体の解析（Desktop の 1 回だけの深い読みも）を最後まで読み終えた回数。止めた・エンジンが
+     * 変わった・保存できずに止めた、などで終わった回は数えない。
+     */
+    completedRuns: number;
     /** 深く解析している途中経過。 */
     live: StudyLiveSearch | null;
     /** いまの設定で解析したときの表示名（例: 「RAMU・1 秒」）。 */
@@ -200,6 +210,10 @@ interface UseStudyAnalysisOptions {
 
 // 失敗時はエンジン・AI の準備の内部の言葉を出さず、これを添える（開いたままのページでアプリが更新されるなどで起きる）。
 const RELOAD_HINT = "ページを読み込み直してから、もう一度お試しください。";
+
+type StudyStartRequest =
+    | { kind: "full"; options?: StudyFullStartOptions; target?: StudyLayer }
+    | { kind: "deep"; nodeId: string };
 
 const formatSeconds = (timeMs: number): string => {
     const seconds = timeMs / 1000;
@@ -279,6 +293,7 @@ export function useStudyAnalysis({
     const [mode, setMode] = useState<"full" | "deep" | null>(null);
     const [isPreparing, setIsPreparing] = useState(false);
     const [live, setLive] = useState<StudyLiveSearch | null>(null);
+    const [completedRuns, setCompletedRuns] = useState(0);
 
     // 解析は非同期に進むので、結果が届いた時点の最新の文書・コールバックを参照する。
     const latestRef = useRef({ doc, tree, onApplyOps, onFlush });
@@ -292,9 +307,7 @@ export function useStudyAnalysis({
     const mountedRef = useRef(true);
     const preparingRef = useRef(false);
     /** 準備中の依頼（ダウンロードをやめて簡易 AI に切り替えたとき、同じ依頼をやり直すのに使う）。 */
-    const requestRef = useRef<
-        { kind: "full"; options?: StudyFullStartOptions } | { kind: "deep"; nodeId: string } | null
-    >(null);
+    const requestRef = useRef<StudyStartRequest | null>(null);
     /** まだ文書へ反映していない解析結果。 */
     const bufferRef = useRef<{ ops: StudyOp[]; timer: ReturnType<typeof setTimeout> | null }>({
         ops: [],
@@ -382,6 +395,7 @@ export function useStudyAnalysis({
         },
         onComplete: () => {
             flushResults();
+            setCompletedRuns((count) => count + 1);
             setMode(null);
             setLive(null);
             latestRef.current.onFlush?.();
@@ -625,9 +639,7 @@ export function useStudyAnalysis({
      * あれば `isCurrent()` が false になるので、そこで止める。
      */
     const withPreparation = async (
-        request:
-            | { kind: "full"; options?: StudyFullStartOptions }
-            | { kind: "deep"; nodeId: string },
+        request: StudyStartRequest,
         task: (isCurrent: () => boolean) => Promise<void>,
         /** 直前に `cancel` を待ち終えた（描画前なので、実行中かの state はまだ古い値のまま）。 */
         afterCancel = false,
@@ -665,26 +677,38 @@ export function useStudyAnalysis({
         options?: StudyFullStartOptions,
     ): Promise<void> =>
         withPreparation(
-            { kind: "full", options },
+            { kind: "full", options, target },
             async (isCurrent) => {
+                // 別の操作に取って代わられたのではなく、始められずに終わったことを知らせる。
+                const notStarted = (): void => {
+                    if (isCurrent()) options?.onNotStarted?.();
+                };
                 const limits = {
                     timeMs: target?.spec.limits.timeMs ?? settings.batchAnalysisTimeMs,
                     depth: target?.spec.limits.depth ?? settings.batchAnalysisDepth,
                 };
                 const multiPv = target?.spec.multiPv ?? fullMultiPv;
                 const prepared = await prepareLayer(selection, limits, multiPv);
-                if (!isCurrent() || !prepared || lockedRef.current) return;
+                if (!isCurrent() || lockedRef.current) return;
                 // 準備（AI の読み込み）を待つ間に、自動で読むを入れ直すなどの操作があれば始めない。
                 if (options?.isWanted && !options.isWanted()) return;
+                if (!prepared) {
+                    notStarted();
+                    return;
+                }
                 if (target && prepared.layer.layerId !== target.id) {
                     // AI のファイルや版が違うと、同じ設定の続きにならない。別の結果を黙って作らない。
                     setMessage({
                         text: `「${target.display.label}」と同じ条件の AI を用意できないため、続きを解析できません。「設定を変える」から、解析する設定を選び直してください。`,
                         type: "error",
                     });
+                    notStarted();
                     return;
                 }
-                if (!canUseLayer(prepared.layer.layerId)) return;
+                if (!canUseLayer(prepared.layer.layerId)) {
+                    notStarted();
+                    return;
+                }
                 const current = latestRef.current;
                 const results =
                     current.doc.layers.find((item) => item.id === prepared.layer.layerId)
@@ -705,8 +729,11 @@ export function useStudyAnalysis({
                     sideToMove: job.sideToMove,
                 }));
                 if (jobs.length === 0) {
-                    // 解析済みの設定を選び直しただけ。表示をそのレイヤーに切り替える。
+                    // 解析済みの設定を選び直しただけ。表示をそのレイヤーに切り替える（始めないので、
+                    // 始めるときの通知は消す）。
                     onLayerStarted(prepared.layer.layerId, "full");
+                    if (options?.notice) setMessage(null);
+                    notStarted();
                     return;
                 }
                 // 止めてある「深く解析」の読みは手放す（全体の解析と同時にエンジンを持ち続けない）。
@@ -830,6 +857,8 @@ export function useStudyAnalysis({
                         },
                     });
                     if (started) {
+                        // 準備を待つ間に止められていたら、読みは始まらずに止まっている。
+                        if (!isCurrent()) return;
                         onLayerStarted(prepared.layer.layerId, "deep");
                         track("analysis_start", { kind: "single" });
                         return;
@@ -887,6 +916,8 @@ export function useStudyAnalysis({
         preparingRef.current = false;
         requestRef.current = null;
         if (mountedRef.current) setIsPreparing(false);
+        // 待っていた準備は取りやめたので、AI のダウンロードの確認も閉じる（承認しても始まらない）。
+        closeDownloadPromptRef.current();
         if (stoppingRef.current) return stoppingRef.current;
         const stopping = (async () => {
             // 深く解析している読みは、続きから読めるよう止めるだけにする（止めた時点の結果は保存される）。
@@ -939,6 +970,15 @@ export function useStudyAnalysis({
         setAnalysisNnueSelection(MATERIAL_SELECTION);
         setIsPreparing(false);
         if (!request || lockedRef.current) return;
+        if (request.kind === "full" && request.target) {
+            // 残りを解析は、その結果と同じ AI でないと続きにならない。簡易 AI で別の結果を作らない。
+            setMessage({
+                text: `簡易 AI に切り替えました。「${request.target.display.label}」の続きは同じ AI でないと解析できないため、解析は始めていません。`,
+                type: "warning",
+            });
+            request.options?.onNotStarted?.();
+            return;
+        }
         // 選択の保存を待たず、簡易 AI を指定して同じ依頼をやり直す。閉じたダイアログの後始末
         // （AI の確認の終了）が済んでから始めるよう、次のタスクに回す。
         setTimeout(() => {
@@ -986,6 +1026,7 @@ export function useStudyAnalysis({
                 activeMode === "full" && pool.progress
                     ? { completed: pool.progress.completed, total: pool.progress.total }
                     : null,
+            completedRuns,
             live: activeMode === "deep" ? (deepLive ?? live) : null,
             settingsLabel,
             fullTargetCount,
