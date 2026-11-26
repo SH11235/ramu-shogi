@@ -683,6 +683,152 @@ describe("StudyWorkspaceView", () => {
         });
     });
 
+    describe("評価値グラフ: 深く読んだ局面の印", () => {
+        const DEEP_SPEC = buildStudyLayerSpec({
+            engine: { kind: "wasm", name: "rshogi", version: "0.8.1" },
+            appVersion: "0.0.0",
+            nnue: { sha256: "a".repeat(64), fvScale: 24 },
+            limits: { timeMs: 30_000, depth: 64 },
+            multiPv: 3,
+        });
+        const DEEP_ID = studyLayerId(DEEP_SPEC);
+        const withDeepRead = () => {
+            const { doc, ids } = createTestStudy([cp(-6), cp(40), cp(20), cp(30), cp(10)]);
+            return {
+                ids,
+                doc: applyStudyOps(doc, [
+                    { type: "ensureLayer", spec: DEEP_SPEC, display: { label: "RAMU・30 秒" } },
+                    putScoreOp(ids[0], cp(61), { depth: 22, layerId: DEEP_ID }),
+                ]),
+            };
+        };
+
+        it("線は表示中の設定の値のまま、深く読んだ局面に別の印を付け、凡例に条件を書く", () => {
+            render(
+                <Harness initialDoc={withDeepRead().doc} initialDisplayLayerId={TEST_LAYER_ID} />,
+            );
+
+            const mark = within(graphRegion()).getByRole("button", {
+                name: "開始局面（30秒 +61 深さ22）へ移動",
+            });
+            // 開始局面にいるので、帯の値の元になった印として囲む。
+            expect(mark.getAttribute("aria-current")).toBe("true");
+            expect(within(graphRegion()).getByText("深く読んだ（30秒）")).toBeTruthy();
+        });
+
+        it("深く読んでいない局面へ移ると印の囲みを外し、印を押すとその局面へ戻る", () => {
+            render(
+                <Harness initialDoc={withDeepRead().doc} initialDisplayLayerId={TEST_LAYER_ID} />,
+            );
+            selectMove("☗7六歩(77)");
+
+            const mark = within(graphRegion()).getByRole("button", {
+                name: "開始局面（30秒 +61 深さ22）へ移動",
+            });
+            expect(mark.getAttribute("aria-current")).toBeNull();
+            fireEvent.click(mark);
+            expect(currentMove()).toContain("開始局面");
+        });
+
+        it("深く読んだ値を足しても、線は表示中の設定の値のまま描く", () => {
+            const linePoints = () =>
+                Array.from(graphRegion().querySelectorAll("polyline:not([data-series])"))
+                    .map((line) => line.getAttribute("points"))
+                    .join("|");
+            // 縦軸は印の値も入れて決めるので、比べる線は軸が変わらない値（どちらも ±1000 の範囲）にする。
+            const view = render(
+                <Harness
+                    initialDoc={createTestStudy([cp(-6), cp(40), cp(20), cp(30), cp(10)]).doc}
+                    initialDisplayLayerId={TEST_LAYER_ID}
+                />,
+            );
+            const before = linePoints();
+            view.unmount();
+            render(
+                <Harness initialDoc={withDeepRead().doc} initialDisplayLayerId={TEST_LAYER_ID} />,
+            );
+            expect(linePoints()).toBe(before);
+        });
+
+        it("この局面を深く読んでいる間は、今の局面の印を帯と同じ途中の値にする", () => {
+            const { doc, ids } = withDeepRead();
+            const preview = {
+                runId: "preview",
+                completion: "aborted" as const,
+                depth: 9,
+                nodes: 1_000,
+                timeMs: 1_000,
+                execution: { threads: null, hashMb: null, parallelWorkers: null },
+                candidates: [{ rank: 1, score: cp(-40), depth: 9, seldepth: null, pv: [] }],
+            };
+            render(
+                <Harness
+                    initialDoc={doc}
+                    initialDisplayLayerId={TEST_LAYER_ID}
+                    deepLayerId={DEEP_ID}
+                    analysis={createAnalysis({
+                        mode: "deep",
+                        live: {
+                            nodeId: ids[0],
+                            depth: 9,
+                            startedAt: null,
+                            budgetMs: 30_000,
+                            preview,
+                        },
+                    })}
+                />,
+            );
+
+            const mark = within(graphRegion()).getByRole("button", {
+                name: "開始局面（30秒 -40 深さ9）へ移動",
+            });
+            expect(mark.getAttribute("aria-current")).toBe("true");
+        });
+
+        it("全体の解析の途中の値は、深く読んだ印にしない", () => {
+            const { doc, ids } = createTestStudy([cp(-6), cp(40), cp(20), cp(30), cp(10)]);
+            const preview = {
+                runId: "preview",
+                completion: "aborted" as const,
+                depth: 9,
+                nodes: 1_000,
+                timeMs: 1_000,
+                execution: { threads: null, hashMb: null, parallelWorkers: null },
+                candidates: [{ rank: 1, score: cp(-40), depth: 9, seldepth: null, pv: [] }],
+            };
+            render(
+                <Harness
+                    initialDoc={doc}
+                    initialDisplayLayerId={TEST_LAYER_ID}
+                    analysis={createAnalysis({
+                        mode: "full",
+                        live: {
+                            nodeId: ids[0],
+                            depth: 9,
+                            startedAt: null,
+                            budgetMs: 1_000,
+                            preview,
+                        },
+                    })}
+                />,
+            );
+
+            expect(within(graphRegion()).queryByRole("button", { name: /深さ9/ })).toBeNull();
+        });
+
+        it("表示中の設定の結果のほうが深ければ、印を付けない", () => {
+            const { doc, ids } = createTestStudy([cp(-6), cp(40), cp(20), cp(30), cp(10)]);
+            const shallowDeep = applyStudyOps(doc, [
+                { type: "ensureLayer", spec: DEEP_SPEC, display: { label: "RAMU・30 秒" } },
+                putScoreOp(ids[0], cp(61), { depth: 10, layerId: DEEP_ID }),
+            ]);
+            render(<Harness initialDoc={shallowDeep} initialDisplayLayerId={TEST_LAYER_ID} />);
+
+            expect(within(graphRegion()).queryByRole("button", { name: /30秒/ })).toBeNull();
+            expect(within(graphRegion()).queryByText(/深く読んだ/)).toBeNull();
+        });
+    });
+
     it("閲覧専用でも棋譜と変化をたどり、解析を切り替えられる", async () => {
         const { doc, ids } = createTestStudy([cp(0), cp(20)]);
         const branched = applyStudyOps(doc, [
@@ -2790,6 +2936,30 @@ describe("StudyWorkspaceView: スマートフォン", () => {
 
         fireEvent.click(screen.getByRole("tab", { name: "棋譜" }));
         expect(band().textContent).toContain("+1500");
+    });
+
+    it("グラフの見出しは線の値に探索の条件を添え、深く読んだ局面では帯と同じ値をその印と並べる", () => {
+        const deepSpec = buildStudyLayerSpec({
+            engine: { kind: "wasm", name: "rshogi", version: "0.8.1" },
+            appVersion: "0.0.0",
+            nnue: { sha256: "a".repeat(64), fvScale: 24 },
+            limits: { timeMs: 30_000, depth: 64 },
+            multiPv: 3,
+        });
+        const { doc, ids } = createTestStudy([cp(-6), cp(40), cp(20), cp(30), cp(10)]);
+        const withDeep = applyStudyOps(doc, [
+            { type: "ensureLayer", spec: deepSpec, display: { label: "RAMU・30 秒" } },
+            putScoreOp(ids[0], cp(61), { depth: 22, layerId: studyLayerId(deepSpec) }),
+        ]);
+        render(<Harness initialDoc={withDeep} initialDisplayLayerId={TEST_LAYER_ID} />);
+        fireEvent.click(screen.getByRole("tab", { name: "グラフ" }));
+
+        const header = graphRegion().firstElementChild?.textContent ?? "";
+        expect(header).toContain("1秒-6");
+        expect(header).toContain("30秒+61");
+        expect(screen.getByRole("status", { name: "この局面の最善手" }).textContent).toContain(
+            "+61",
+        );
     });
 
     it("自動で読むのスイッチは局面の帯にあり、帯は読んでいる間その途中の最善手・評価値・深さを出す", () => {

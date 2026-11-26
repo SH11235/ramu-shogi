@@ -1,4 +1,12 @@
-import type { KifuNode, KifuTree, StudyDocument, StudyHighlight } from "@shogi/app-core";
+import {
+    type KifuNode,
+    type KifuTree,
+    type StudyAnalysisResult,
+    type StudyDocument,
+    type StudyHighlight,
+    type StudyScore,
+    studyScoreToKifuEval,
+} from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
 import { cardVariants } from "../card";
@@ -7,14 +15,26 @@ import { type EvalHistory, formatEval } from "../shogi-match/utils/kifFormat";
 import { type StudyAnalysisRunState, StudyCompactAnalysisAction } from "./StudyAnalysisRunControls";
 import {
     formatStudyScore,
+    studyBestCandidate,
     studyHighlightTitle,
     studyLineEvalHistory,
     studyLineSourceEvalHistory,
+    studyMoveLabel,
+    studyScoreSide,
 } from "./studyView";
 
 /** 研究ノートの評価値グラフの縦軸の上限（センチポーン）。詰みや大差は端に張り付けて描く。 */
 const GRAPH_AXIS_CAP = 3000;
 const GRAPH_MIN_SCALE = 1000;
+
+const DEEP_LABEL_MIXED = "深く読んだ";
+
+/** 局面の帯が表示中の設定とは別の読みの値を出す局面の、その読み。 */
+export interface StudyDeepRead {
+    /** 読みの探索条件（例: `30秒`）。 */
+    limits: string;
+    result: StudyAnalysisResult;
+}
 
 export type StudyGraphSeries = "source" | "analysis";
 
@@ -26,6 +46,13 @@ interface StudyEvalGraphData {
     secondaryHistory: EvalHistory[] | undefined;
     hasSourceGraph: boolean;
     markers: EvalGraphMarker[];
+    /**
+     * 表示中の設定より深く読んだ局面の印の凡例（例: `30秒`）。条件が局面ごとに違えば「深く読んだ」。
+     * 深く読んだ局面が手順に無ければ null。
+     */
+    deepLabel: string | null;
+    /** 今いる局面を深く読んだ値（局面の帯に出る値）。深く読んでいなければ null。 */
+    currentDeepScore: StudyScore | null;
 }
 
 /**
@@ -40,6 +67,8 @@ export function buildStudyEvalGraph({
     highlights,
     hasResults,
     primaryChoice,
+    deepReads,
+    currentNodeId,
 }: {
     doc: StudyDocument;
     tree: KifuTree;
@@ -47,6 +76,9 @@ export function buildStudyEvalGraph({
     highlights: readonly StudyHighlight[];
     hasResults: boolean;
     primaryChoice: StudyGraphSeries;
+    /** 局面の帯が表示中の設定とは別の（より深い）読みの値を出す局面と、その読み。 */
+    deepReads: ReadonlyMap<string, StudyDeepRead>;
+    currentNodeId: string;
 }): StudyEvalGraphData {
     const sourceHistory = studyLineSourceEvalHistory(doc, tree, line);
     const hasSourceGraph = sourceHistory.some(
@@ -65,8 +97,8 @@ export function buildStudyEvalGraph({
                 ? analysisHistory
                 : sourceHistory
             : undefined;
-    // グラフの印は悪手だけ（疑問手まで出すと、件数が多いときに埋もれる。疑問手は一覧で分かる）。
     const markers: EvalGraphMarker[] = [];
+    // 悪手・疑問手の印は悪手だけ（疑問手まで出すと、件数が多いときに埋もれる。疑問手は一覧で分かる）。
     for (const highlight of highlights) {
         const index = line.indexOf(highlight.nodeId);
         if (index < 0 || highlight.kind !== "blunder") continue;
@@ -78,7 +110,43 @@ export function buildStudyEvalGraph({
             series: primary === "analysis" ? "primary" : "secondary",
         });
     }
-    return { primary, history, secondaryHistory, hasSourceGraph, markers };
+    // 深く読んだ値は線に混ぜず、その値の高さに形の違う印を置く（帯の値がどこから来たかを示す）。
+    // 悪手の印と同じ高さに重なっても両方見えるよう、小さいひし形を後から描く。評価値の無い読みは、
+    // 高さを決められないので点にしない（見出しの値は「—」になる）。
+    const deepLabels = new Set<string>();
+    let currentDeepScore: StudyScore | null = null;
+    line.forEach((nodeId, index) => {
+        const read = deepReads.get(nodeId);
+        if (!read) return;
+        deepLabels.add(read.limits);
+        const score = studyBestCandidate(read.result)?.score ?? null;
+        if (nodeId === currentNodeId) currentDeepScore = score;
+        const evalData = studyScoreToKifuEval(score);
+        if (!evalData) return;
+        const position = index === 0 ? "開始局面" : `${index}手目 ${studyMoveLabel(tree, nodeId)}`;
+        markers.push({
+            ply: index,
+            tone: "deep",
+            label: `${position}（${read.limits} ${formatStudyScore(score)} 深さ${read.result.depth}）`,
+            value: { evalCp: evalData.scoreCp ?? null, evalMate: evalData.scoreMate ?? null },
+            current: nodeId === currentNodeId,
+        });
+    });
+    const deepLabel =
+        deepLabels.size === 0
+            ? null
+            : deepLabels.size === 1
+              ? [...deepLabels][0]
+              : DEEP_LABEL_MIXED;
+    return {
+        primary,
+        history,
+        secondaryHistory,
+        hasSourceGraph,
+        markers,
+        deepLabel,
+        currentDeepScore,
+    };
 }
 
 const sideTextClass = (side: "sente" | "gote" | null): string =>
@@ -94,6 +162,20 @@ function PrimaryLineSwatch(): ReactElement {
     );
 }
 
+/** 深く読んだ局面の印（グラフの印と同じ形）の見本。今いる局面の印があれば、グラフと同じく輪で囲む。 */
+function DeepMarkSwatch({ current }: { current: boolean }): ReactElement {
+    return (
+        <span
+            aria-hidden="true"
+            className={cn(
+                "mx-1 inline-block h-2 w-2 shrink-0 rotate-45 self-center border-2 border-wafuu-sumi bg-background",
+                current &&
+                    "outline outline-1 outline-offset-2 outline-wafuu-sumi ring-2 ring-wafuu-kin",
+            )}
+        />
+    );
+}
+
 /**
  * スマートフォンの見出しの代わりに出す、いまの手の評価値と解析の操作（盤の下に別の行を取らない
  * ため）。値の欄は幅を固定する（桁数で右の表示が動かないように）。
@@ -101,10 +183,15 @@ function PrimaryLineSwatch(): ReactElement {
 function MobileGraphHeader({
     doc,
     currentNode,
+    graph,
+    analysisCondition,
     run,
 }: {
     doc: StudyDocument;
     currentNode: KifuNode;
+    graph: StudyEvalGraphData;
+    /** 線の評価値の探索条件（例: `1秒`）。 */
+    analysisCondition: string;
     run: StudyAnalysisRunState;
 }): ReactElement {
     const mover: "sente" | "gote" | null =
@@ -124,8 +211,9 @@ function MobileGraphHeader({
         <div className="flex h-7 items-center justify-between gap-2 text-xs text-muted-foreground">
             <h2 className="sr-only">評価値グラフ</h2>
             <div className="flex min-w-0 items-baseline gap-3">
+                {/* 帯の値（深く読んだ値）と見分けられるよう、線の値の探索条件を添える。 */}
                 <span className="flex items-baseline gap-1">
-                    解析
+                    {analysisCondition}
                     <span
                         className={cn(
                             "inline-block min-w-[6ch] whitespace-nowrap text-right font-mono text-sm tabular-nums",
@@ -135,6 +223,21 @@ function MobileGraphHeader({
                         {evalText || "—"}
                     </span>
                 </span>
+                {graph.deepLabel !== null && (
+                    <span className="flex items-baseline gap-1">
+                        <DeepMarkSwatch current={graph.currentDeepScore !== null} />
+                        {graph.deepLabel}
+                        <span
+                            className={cn(
+                                "inline-block min-w-[6ch] whitespace-nowrap text-right font-mono text-sm tabular-nums",
+                                // 帯と同じく、形勢の良い側の色にする（帯の値と同じものだと分かるように）。
+                                sideTextClass(studyScoreSide(graph.currentDeepScore)),
+                            )}
+                        >
+                            {formatStudyScore(graph.currentDeepScore) || "—"}
+                        </span>
+                    </span>
+                )}
                 {noteHasSource && (
                     <span className="flex items-baseline gap-1">
                         対局時
@@ -222,6 +325,14 @@ function DesktopGraphHeader({
                         </span>
                     </span>
                 )}
+                {graph.deepLabel !== null && (
+                    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <DeepMarkSwatch current={graph.currentDeepScore !== null} />
+                        {graph.deepLabel === DEEP_LABEL_MIXED
+                            ? DEEP_LABEL_MIXED
+                            : `${DEEP_LABEL_MIXED}（${graph.deepLabel}）`}
+                    </span>
+                )}
             </div>
             <StudyCompactAnalysisAction run={run} wide />
         </div>
@@ -236,6 +347,7 @@ export function StudyEvalGraphPanel({
     graph,
     hasResults,
     displayLayerLabel,
+    displayLayerCondition,
     onPrimaryChange,
     run,
     isMobile,
@@ -251,6 +363,8 @@ export function StudyEvalGraphPanel({
     hasResults: boolean;
     /** 表示中の解析の設定の名前。 */
     displayLayerLabel: string | null;
+    /** 表示中の解析の設定の探索条件（例: `1秒`）。 */
+    displayLayerCondition: string | null;
     onPrimaryChange: (series: StudyGraphSeries) => void;
     run: StudyAnalysisRunState;
     isMobile: boolean;
@@ -269,7 +383,13 @@ export function StudyEvalGraphPanel({
             )}
         >
             {isMobile ? (
-                <MobileGraphHeader doc={doc} currentNode={currentNode} run={run} />
+                <MobileGraphHeader
+                    doc={doc}
+                    currentNode={currentNode}
+                    graph={graph}
+                    analysisCondition={displayLayerCondition ?? "解析"}
+                    run={run}
+                />
             ) : (
                 <DesktopGraphHeader
                     graph={graph}

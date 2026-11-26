@@ -17,7 +17,6 @@ import {
     type Player,
     type PositionState,
     type Square,
-    type StudyAnalysisResult,
     type StudyDocument,
     type StudyOp,
     studyScoreToKifuEval,
@@ -62,6 +61,7 @@ import { StudyDeleteVariationDialog } from "./study-workspace/StudyDeleteVariati
 import { StudyDesktopLayout } from "./study-workspace/StudyDesktopLayout";
 import {
     buildStudyEvalGraph,
+    type StudyDeepRead,
     StudyEvalGraphPanel,
     type StudyGraphSeries,
 } from "./study-workspace/StudyEvalGraphPanel";
@@ -96,16 +96,19 @@ import {
     studyLineHasPass,
 } from "./study-workspace/studyExport";
 import { type StudyKifuFile, studyKifuFileName } from "./study-workspace/studyFile";
-import { deriveStudyPositionInsights } from "./study-workspace/studyPositionInsights";
+import {
+    deriveStudyPositionInsights,
+    pickStudyBandResult,
+} from "./study-workspace/studyPositionInsights";
 import {
     applyStudyLayerToTree,
     buildStudyStructureTree,
     chooseStudyDisplayLayer,
     countStudyLayerResults,
-    pickStudyDeeperResult,
     type StudyStructureTree,
     studyBestCandidate,
     studyFirstMoveLabel,
+    studyLimitsLabel,
     studyMoveLabel,
     studyOriginLabel,
     studyPathTo,
@@ -412,6 +415,46 @@ export function StudyWorkspaceView({
         highlights: insights.highlights,
         displayLayerId,
     });
+    const savedPicked = pickStudyBandResult({
+        doc,
+        nodeId: currentNodeId,
+        displayLayerId,
+        deepNodeId,
+        deepLayerId,
+    });
+    // この局面を読んでいる間は、帯にはその途中の値を出す（読みに連れて動かす。浅い間は深さで分かる）。
+    const liveHere = analysis.live?.nodeId === currentNodeId ? analysis.live : undefined;
+    const bandResult = liveHere?.preview ?? savedPicked?.result ?? null;
+    // 帯が表示中の設定とは別の読みの値を出す局面（グラフに、線とは別の印で示す）。全体の解析の途中の
+    // 値は表示中の設定の値なので、印にしない。
+    const deepReads = new Map<string, StudyDeepRead>();
+    for (const nodeId of line) {
+        if (nodeId === currentNodeId && liveHere?.preview) {
+            if (analysis.mode !== "deep") continue;
+            const deepLayer = doc.layers.find((layer) => layer.id === deepLayerId);
+            deepReads.set(nodeId, {
+                limits: studyLimitsLabel(
+                    deepLayer?.spec.limits ?? {
+                        timeMs: liveHere.budgetMs,
+                        depth: null,
+                        nodes: null,
+                    },
+                ),
+                result: liveHere.preview,
+            });
+            continue;
+        }
+        const picked =
+            nodeId === currentNodeId
+                ? savedPicked
+                : pickStudyBandResult({ doc, nodeId, displayLayerId, deepNodeId, deepLayerId });
+        if (picked && picked.layer.id !== displayLayerId) {
+            deepReads.set(nodeId, {
+                limits: studyLimitsLabel(picked.layer.spec.limits),
+                result: picked.result,
+            });
+        }
+    }
     const graph = buildStudyEvalGraph({
         doc,
         tree,
@@ -419,6 +462,8 @@ export function StudyWorkspaceView({
         highlights: insights.highlights,
         hasResults,
         primaryChoice: graphPrimaryChoice,
+        deepReads,
+        currentNodeId,
     });
 
     // --- 編集 ---
@@ -1070,6 +1115,7 @@ export function StudyWorkspaceView({
             graph={graph}
             hasResults={hasResults}
             displayLayerLabel={displayLayer ? displayLayer.display.label : null}
+            displayLayerCondition={displayLayer ? studyLimitsLabel(displayLayer.spec.limits) : null}
             onPrimaryChange={setGraphPrimaryChoice}
             run={analysisRun}
             isMobile={isMobile}
@@ -1099,19 +1145,6 @@ export function StudyWorkspaceView({
             className={isMobile ? "min-h-0 flex-1" : isWide ? "max-h-full" : "max-h-[26rem]"}
         />
     );
-    const liveHere = analysis.live?.nodeId === currentNodeId ? analysis.live : undefined;
-    // 帯の最善手・評価値は、この局面を読んでいる間はその途中の値（読みに連れて動かす。浅い間は深さで
-    // 分かる）、読んでいなければ保存済みのいちばん深い読み。直近に読んだ結果（`deeperResult`）が、
-    // 前に保存したより深い結果より浅いこともあるので、同じ AI で深く読んだ結果のうち最も深いものも比べる。
-    const savedResult = [
-        insights.deeperResult?.result,
-        insights.positionResult?.result,
-        pickStudyDeeperResult(doc, currentNodeId, displayLayerId)?.result,
-    ].reduce<StudyAnalysisResult | null>(
-        (best, result) => (result && (!best || result.depth > best.depth) ? result : best),
-        null,
-    );
-    const bandResult = liveHere?.preview ?? savedResult;
     const bandBest = bandResult ? studyBestCandidate(bandResult) : null;
     // 帯にラムを出すのは自動で読む読みだけ（パスして解析の読みは、止める操作のある候補手のタブで知らせる）。
     const bandShowsReading = autoAnalyze && liveHere !== undefined;

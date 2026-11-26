@@ -53,17 +53,21 @@ export interface EvalGraphMarker {
     /** `evalHistory` の添字（0 = 開始局面）。 */
     ply: number;
     /** 印の種類。色だけでなく形でも見分けられるようにしている。 */
-    tone: "blunder" | "dubious";
+    tone: "blunder" | "dubious" | "deep";
     /** 読み上げ・ツールチップ用の説明（例: `42手目 悪手`）。 */
     label: string;
     /** `secondary` なら、`secondaryHistory` の線の上に置く（印の元になった評価値の線に載せる）。 */
     series?: "primary" | "secondary";
+    /** 線とは別の評価値の高さに置く（線に混ぜない別の条件の値を、点として見せる）。 */
+    value?: Pick<EvalHistory, "evalCp" | "evalMate">;
+    /** 今いる局面の印（現在位置の縦線と同じ色の輪で囲む）。 */
+    current?: boolean;
 }
 
 const MARKER_CLASS: Record<EvalGraphMarker["tone"], string> = {
-    // 悪手: 塗りの丸 / 疑問手: 白抜きの丸
     blunder: "rounded-full bg-study-blunder ring-2 ring-background",
     dubious: "rounded-full border-2 border-study-dubious bg-background",
+    deep: "rotate-45 border-2 border-wafuu-sumi bg-background",
 };
 
 /**
@@ -221,8 +225,12 @@ export function EvalGraph({
           }
         : undefined;
 
+    // 線とは別の高さに置く印の値も縦軸に入れる（軸の外に張り付いて、実際より小さく見えないように）。
+    const markerValues: EvalHistory[] = (compact ? (markers ?? []) : []).flatMap((marker) =>
+        marker.value ? [{ ply: marker.ply, ...marker.value }] : [],
+    );
     const scaleMax = computeEvalGraphScale(
-        secondaryHistory ? [...evalHistory, ...secondaryHistory] : evalHistory,
+        [...evalHistory, ...(secondaryHistory ?? []), ...markerValues],
         minScale,
         axisCap,
     );
@@ -534,9 +542,10 @@ export function EvalGraph({
                         .filter((marker) => marker.ply >= 0 && marker.ply < evalHistory.length)
                         .map((marker) => {
                             const entry =
-                                marker.series === "secondary" && secondaryHistory
+                                marker.value ??
+                                (marker.series === "secondary" && secondaryHistory
                                     ? secondaryHistory[marker.ply]
-                                    : evalHistory[marker.ply];
+                                    : evalHistory[marker.ply]);
                             const style = {
                                 left: `${(marker.ply / maxPlyForMarkers) * 100}%`,
                                 top:
@@ -548,7 +557,14 @@ export function EvalGraph({
                                         scaleMax,
                                     ),
                             };
-                            const shapeClass = `block h-2.5 w-2.5 ${MARKER_CLASS[marker.tone]}`;
+                            const shapeClass = cn(
+                                "block",
+                                marker.tone === "deep" ? "h-2 w-2" : "h-2.5 w-2.5",
+                                MARKER_CLASS[marker.tone],
+                                // 現在位置の縦線と同じく、金の外側に墨の縁を付けて明るい地でも見えるようにする。
+                                marker.current &&
+                                    "outline outline-1 outline-offset-2 outline-wafuu-sumi ring-2 ring-wafuu-kin",
+                            );
                             const key = `${marker.tone}-${marker.ply}`;
                             return onMarkerSelect ? (
                                 <button
@@ -557,6 +573,7 @@ export function EvalGraph({
                                     className="pointer-events-auto absolute flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center border-0 bg-transparent p-0"
                                     style={style}
                                     onClick={() => onMarkerSelect(marker)}
+                                    aria-current={marker.current ? "true" : undefined}
                                     aria-label={`${marker.label}へ移動`}
                                     title={marker.label}
                                 >
