@@ -654,7 +654,9 @@ export function StudyWorkspaceView({
             // パスを足して解析するのを待っている間は、そちらに任せる。
             if (isPreparing || mode === "full" || pendingPassNodeId !== null) return;
             if (autoStartedNodeRef.current === nodeId) return;
-            if (analysis.live?.nodeId === nodeId) {
+            // 別の局面を読み始めた後に残っている live は、止め終わるのを待っている前の読みで、止め終わると
+            // 予約した局面の読みが始まる。取り込まずに読み直す（読み直しで予約は取りやめになる）。
+            if (analysis.live?.nodeId === nodeId && autoStartedNodeRef.current === null) {
                 autoStartedNodeRef.current = nodeId;
                 return;
             }
@@ -783,9 +785,11 @@ export function StudyWorkspaceView({
             return STUDY_AUTO_ANALYZE_FINISHED;
         }
         if (!autoReadingNow) return null;
-        const nodeId = analysis.live?.nodeId ?? currentNodeId;
-        const depth = analysis.live?.preview?.depth ?? analysis.live?.depth ?? null;
-        return `${positionOf(nodeId).positionLabel}を読んでいます${depth === null ? "" : `・深さ ${depth}`}`;
+        // 前の局面の読みを止め終わるまで live は前の局面を指す。自動で読むは見ている局面を読むので、
+        // 前の局面の深さは出さない。
+        const live = analysis.live?.nodeId === currentNodeId ? analysis.live : null;
+        const depth = live?.preview?.depth ?? live?.depth ?? null;
+        return `${positionOf(currentNodeId).positionLabel}を読んでいます${depth === null ? "" : `・深さ ${depth}`}`;
     })();
     /** いま読んでいる（CPU を使っている）か。スマートフォンで、候補手の欄を開いていない間に知らせる。 */
     const isReading = analysis.mode !== null || mateRunning;
@@ -794,7 +798,14 @@ export function StudyWorkspaceView({
             return { kind: "full", progress: analysis.progress, onStop: cancelAnalysis };
         }
         const deepLive = analysis.live;
-        if (analysis.mode === "deep" && deepLive && deepLive.nodeId !== currentNodeId) {
+        // 自動で読む間に別の局面の live が残るのは、前の局面の読みを止め終わるまで。見ている局面を読む
+        // 準備の間なので、別の局面の行は出さない。
+        if (
+            analysis.mode === "deep" &&
+            !autoAnalyze &&
+            deepLive &&
+            deepLive.nodeId !== currentNodeId
+        ) {
             return {
                 kind: "deep",
                 ...positionOf(deepLive.nodeId),
@@ -866,6 +877,8 @@ export function StudyWorkspaceView({
         ) {
             return;
         }
+        // 別のタブで自動で読むを入れると、深く解析はまだ動いたまま行だけが消える（止めるのは自動で読む）。
+        if (previous.target.what === "deep" && analysis.mode === "deep") return;
         setFinishedElsewhere(previous.target);
     });
     useEffect(() => {
