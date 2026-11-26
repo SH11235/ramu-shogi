@@ -253,6 +253,40 @@ describe.each(STORES)("同期エンジン（保存層: $name）", ({ create }) =
             expect(harness.postOpsCalls()).toHaveLength(1);
         });
 
+        it("送るまでの待ちを延ばした変更は、その時間まで送らない（読んでいる途中の解析結果）", async () => {
+            const harness = await createSyncedHarness();
+            await harness.sync.applyOps(TEST_STUDY_ID, analysisOps(firstId, 120), {
+                flushDelayMs: 30_000,
+            });
+            const deeper = analysisOps(firstId, 150);
+            const put = deeper[1];
+            if (put.type === "putAnalysis") put.result = { ...put.result, depth: 20 };
+            await harness.sync.applyOps(TEST_STUDY_ID, deeper, { flushDelayMs: 30_000 });
+            await harness.advance(29_999);
+            expect(harness.postOpsCalls()).toEqual([]);
+            await harness.advance(1);
+            expect(harness.postOpsCalls()).toHaveLength(1);
+            expect(serverDoc(harness).layers).toEqual((await localDoc(harness)).layers);
+            expect(serverDoc(harness).layers[0].results[firstId].depth).toBe(20);
+        });
+
+        it("flush の間に書き込まれた変更の送信予約は残さない", async () => {
+            const harness = await createSyncedHarness();
+            const writing = harness.sync.applyOps(TEST_STUDY_ID, [comment("一")]);
+            const flushing = harness.sync.flush(TEST_STUDY_ID);
+            await writing;
+            await flushing;
+            expect(harness.postOpsCalls()).toHaveLength(1);
+            // 延ばして予約した変更は、flush の前の書き込みの予約（5 秒）では送らない。
+            await harness.sync.applyOps(TEST_STUDY_ID, analysisOps(firstId, 120), {
+                flushDelayMs: 30_000,
+            });
+            await harness.advance(10_000);
+            expect(harness.postOpsCalls()).toHaveLength(1);
+            await harness.advance(20_000);
+            expect(harness.postOpsCalls()).toHaveLength(2);
+        });
+
         it("何も変えない操作は送信待ちに入れない", async () => {
             const harness = await createSyncedHarness();
             await harness.sync.applyOps(TEST_STUDY_ID, [

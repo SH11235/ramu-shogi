@@ -71,6 +71,18 @@ const RESULT_FLUSH_INTERVAL_MS = 400;
 // biome-ignore lint/suspicious/noConfusingVoidType: 何も返さないコールバック（`() => void`）もそのまま渡せるようにする
 export type StudyApplyOpsResult = void | Promise<boolean>;
 
+/** 操作を渡すときの指定。 */
+export interface StudyApplyOpsOptions {
+    /** サーバーへ送るまで待つ時間（ミリ秒）。省略すると保存層の既定の間引き。 */
+    syncDelayMs?: number;
+}
+
+/**
+ * 読んでいる途中の結果をサーバーへ送るまで待つ時間。途中の結果は数秒ごとに手元へ保存するが、
+ * そのたびに送ると読んでいる間ずっと送信が続くので、まとめて送る（局面を移る・止めると、すぐ送る）。
+ */
+const READING_SYNC_DELAY_MS = 30_000;
+
 /** 内蔵エンジンの識別情報（解析レイヤーの条件に入る）。 */
 export interface StudyEngineIdentity {
     kind: StudyLayerSpecInput["engine"]["kind"];
@@ -158,7 +170,7 @@ interface UseStudyAnalysisOptions {
     manifestUrl: string;
     engine: StudyEngineIdentity;
     defaultNnuePresetKey?: string;
-    onApplyOps: (ops: StudyOp[]) => StudyApplyOpsResult;
+    onApplyOps: (ops: StudyOp[], options?: StudyApplyOpsOptions) => StudyApplyOpsResult;
     /** 解析の区切り（完了・中止）。送信待ちをすぐ流すのに使う。 */
     onFlush?: () => void;
     /** 解析を始めたレイヤー（画面はこのレイヤーを表示に切り替える）。 */
@@ -277,8 +289,11 @@ export function useStudyAnalysis({
     const lockedRef = useRef(locked);
     lockedRef.current = locked;
 
-    /** ためてある解析結果を文書へ反映する。保存できなかったら解析を止める。 */
-    const flushResults = (): void => {
+    /**
+     * ためてある解析結果を文書へ反映する。保存できなかったら、`stopOnFailure` が true を返すとき
+     * （既定は常に）解析を止める。
+     */
+    const flushResults = (stopOnFailure: () => boolean = () => true): void => {
         const buffer = bufferRef.current;
         if (buffer.timer !== null) {
             clearTimeout(buffer.timer);
@@ -291,7 +306,7 @@ export function useStudyAnalysis({
         if (outcome instanceof Promise) {
             void outcome.then((saved) => {
                 // 保存できなかった理由は呼び出し側が画面に出す。ここでは黙って続けないよう止める。
-                if (!saved && mountedRef.current) void cancelRef.current();
+                if (!saved && mountedRef.current && stopOnFailure()) void cancelRef.current();
             });
         }
     };
@@ -387,9 +402,44 @@ export function useStudyAnalysis({
                 ply: latestRef.current.tree.nodes.get(request.nodeId)?.ply ?? 0,
                 result,
             });
-            // 止めるたびの結果なので、まとめずにすぐ反映する。
-            flushResults();
+            // 止めるたびの結果なので、まとめずにすぐ反映する。保存できなかったときに止めるのは、まだ
+            // この読みを続けているときだけ（止めて別の局面へ移る途中なら、移った先の読みを止めない）。
+            const generation = generationRef.current;
+            flushResults(() => generationRef.current === generation && deep.isReading(request));
             latestRef.current.onFlush?.();
+        },
+        onProgress: (request, result) => {
+            const generation = generationRef.current;
+            const outcome = latestRef.current.onApplyOps(
+                [
+                    {
+                        type: "ensureLayer",
+                        spec: request.layer.spec,
+                        display: request.layer.display,
+                    },
+                    {
+                        type: "putAnalysis",
+                        layerId: request.layer.layerId,
+                        nodeId: request.nodeId,
+                        result,
+                    },
+                ],
+                { syncDelayMs: READING_SYNC_DELAY_MS },
+            );
+            if (outcome instanceof Promise) {
+                void outcome.then((saved) => {
+                    // 止めるのは、この読みをまだ続けているときだけ（別の局面の読みを始めていたら、
+                    // 世代が進んでいる）。
+                    if (
+                        !saved &&
+                        mountedRef.current &&
+                        generationRef.current === generation &&
+                        deep.isReading(request)
+                    ) {
+                        void cancelRef.current();
+                    }
+                });
+            }
         },
         onError: (message) => {
             console.error("[study] 深く解析できませんでした:", message);
@@ -781,7 +831,9 @@ export function useStudyAnalysis({
             await deep.stop();
             // 止めた探索は、そこまでの結果が「中断」として `onPositionAnalyzed` に届く。
             await pool.cancel();
-            flushResults();
+            // 止めている途中なので、保存できなくても止め直さない（止め直すと、このあとに始める読みを
+            // 取り消してしまう）。
+            flushResults(() => false);
             if (!mountedRef.current) return;
             setMode(null);
             setLive(null);

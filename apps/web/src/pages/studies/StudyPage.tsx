@@ -1,6 +1,11 @@
 import { applyStudyOps, STUDY_LIMITS, type StudyDocument, type StudyOp } from "@shogi/app-core";
 import { createStudyApiClient, type StoredStudy, toStudyDocument } from "@shogi/study-client";
-import type { EngineOption, StudyCommentDraft, StudyWorkspaceViewState } from "@shogi/ui";
+import type {
+    EngineOption,
+    StudyApplyOpsOptions,
+    StudyCommentDraft,
+    StudyWorkspaceViewState,
+} from "@shogi/ui";
 import { downloadTextFile, NnueLibraryDialog, StudyWorkspace } from "@shogi/ui";
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import type { ReactElement, ReactNode } from "react";
@@ -479,7 +484,11 @@ export default function StudyPage(): ReactElement {
      * `targetId` は、この関数を渡した画面のノート。画面を離れたあとに届いた操作（解析の残りの
      * 結果など）が、次に開いたノートの表示を変えないよう、必ずこの ID に対して行う。
      */
-    const applyOpsTo = (targetId: string, ops: StudyOp[]): Promise<boolean> => {
+    const applyOpsTo = (
+        targetId: string,
+        ops: StudyOp[],
+        options?: StudyApplyOpsOptions,
+    ): Promise<boolean> => {
         const current = stateRef.current;
         // 編集できない間（ログインが切れた）は、保存を試みない。書きかけは画面と下書きに残る。
         if (current.status === "ready" && current.studyId === targetId && current.locked) {
@@ -497,7 +506,7 @@ export default function StudyPage(): ReactElement {
                 return previous;
             }
         });
-        return sync.applyOps(targetId, ops).then(
+        return sync.applyOps(targetId, ops, { flushDelayMs: options?.syncDelayMs }).then(
             (doc) => {
                 writes.pending -= 1;
                 // 待っている書き込みが無くなったら、保存層の内容に揃える。
@@ -701,7 +710,7 @@ export default function StudyPage(): ReactElement {
                     <StudyWorkspace
                         key={studyId}
                         doc={state.doc}
-                        onApplyOps={(ops) => applyOpsTo(studyId, ops)}
+                        onApplyOps={(ops, options) => applyOpsTo(studyId, ops, options)}
                         onFlush={() => void sync.flush(studyId).catch(() => undefined)}
                         saveStatus={saveStatus}
                         onRetrySave={() => void sync.retry(studyId).catch(() => undefined)}

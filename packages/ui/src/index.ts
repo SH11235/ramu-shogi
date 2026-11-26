@@ -49,6 +49,7 @@ export type {
 } from "./components/study-workspace";
 export { StudyWorkspace } from "./components/study-workspace";
 export { downloadTextFile } from "./components/study-workspace/studyFile";
+export type { StudyApplyOpsOptions } from "./components/study-workspace/useStudyAnalysis";
 
 // ============================================================
 // Providers

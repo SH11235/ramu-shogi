@@ -2774,30 +2774,28 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         expect(screen.queryByRole("region", { name: "棋譜と変化" })).toBeNull();
     });
 
-    it("グラフのタブの見直す手を押すとその手へ移り、どのタブでも局面の帯に手と判定が出る", () => {
+    it("グラフのタブの見直す手を押すとその手へ移り、どのタブでも局面の帯にその局面の評価値が出る", () => {
         render(
             <Harness
                 initialDoc={createTestStudy([cp(0), cp(50), cp(1500), cp(1500), cp(1500)]).doc}
             />,
         );
-        const band = () => screen.getByRole("status", { name: "いまの局面" });
-        expect(band().textContent).toContain("開始局面");
+        const band = () => screen.getByRole("status", { name: "この局面の最善手" });
+        expect(band().textContent).toContain("+0");
 
         fireEvent.click(screen.getByRole("tab", { name: "グラフ" }));
         const review = screen.getByRole("region", { name: "見直す手" });
         fireEvent.click(within(review).getByRole("button", { name: /悪手/ }));
-        expect(band().textContent).toMatch(/2手目.*3四歩/);
-        within(band()).getByRole("img", { name: "悪手" });
+        expect(band().textContent).toContain("+1500");
 
         fireEvent.click(screen.getByRole("tab", { name: "棋譜" }));
-        expect(band().textContent).toMatch(/2手目.*3四歩/);
-        within(band()).getByRole("img", { name: "悪手" });
+        expect(band().textContent).toContain("+1500");
     });
 
-    it("自動で読むのスイッチは局面の帯にあり、帯の値は保存済みの読みより深くなってから読んでいる値に替える", () => {
+    it("自動で読むのスイッチは局面の帯にあり、帯は読んでいる間その途中の最善手・評価値・深さを出す", () => {
         localStorage.setItem("shogi:studyAutoAnalyze", "true");
         const { doc } = createTestStudy([cp(120), cp(0), cp(0), cp(0), cp(0)]);
-        const live = (depth: number) => ({
+        const live = (depth: number, pv: string[]) => ({
             nodeId: doc.tree.rootId,
             depth,
             startedAt: null,
@@ -2809,27 +2807,38 @@ describe("StudyWorkspaceView: スマートフォン", () => {
                 nodes: 1_000,
                 timeMs: 1_000,
                 execution: { threads: null, hashMb: null, parallelWorkers: null },
-                candidates: [{ rank: 1, score: cp(-300), depth, seldepth: null, pv: ["7g7f"] }],
+                candidates: [{ rank: 1, score: cp(-300), depth, seldepth: null, pv }],
             },
         });
-        const view = render(
-            <Harness initialDoc={doc} analysis={createAnalysis({ mode: "deep", live: live(5) })} />,
-        );
+        const view = render(<Harness initialDoc={doc} />);
         const band = () =>
-            screen.getByRole("status", { name: "いまの局面" }).parentElement as HTMLElement;
+            screen.getByRole("status", { name: "この局面の最善手" }).parentElement as HTMLElement;
         // 候補手の欄にはスイッチを出さない（帯の 1 つだけ）。名前は読んでいる間も「自動で読む」のまま。
         expect(screen.getAllByRole("switch", { name: /自動で読む/ })).toHaveLength(1);
         within(band()).getByRole("switch", { name: "自動で読む" });
-        // 読み始めの浅い値では、保存済みの値を替えない。
+        // 読んでいないときは保存済みの読み。
         expect(band().textContent).toContain("+120");
+        expect(band().textContent).toContain("深さ 15");
+
+        // 保存済みより浅くても、読み始めから読んでいる値を出す。
+        view.rerender(
+            <Harness
+                initialDoc={doc}
+                analysis={createAnalysis({ mode: "deep", live: live(5, ["7g7f", "3c3d"]) })}
+            />,
+        );
+        expect(band().textContent).toContain("7六歩");
+        expect(band().textContent).toContain("-300");
+        expect(band().textContent).toContain("深さ 5");
 
         view.rerender(
             <Harness
                 initialDoc={doc}
-                analysis={createAnalysis({ mode: "deep", live: live(40) })}
+                analysis={createAnalysis({ mode: "deep", live: live(23, ["2g2f"]) })}
             />,
         );
-        expect(band().textContent).toContain("-300");
+        expect(band().textContent).toContain("2六歩");
+        expect(band().textContent).toContain("深さ 23");
     });
 
     it("自動で読むで読み終えたら、候補手の欄に読み終えたことを出す", async () => {

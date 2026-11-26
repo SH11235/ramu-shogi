@@ -69,6 +69,8 @@ interface Options {
     /** 1 回の読みの上限（ミリ秒）。続けて読むたびに、この分だけ読み足す。 */
     budgetMs: number;
     onResult: (request: StudyDeepRequest, result: StudyAnalysisResult) => void;
+    /** 読んでいる途中の結果。最善手・評価値・深さが前に渡したときから変わったときだけ渡す。 */
+    onProgress: (request: StudyDeepRequest, result: StudyAnalysisResult) => void;
     onError: (message: string) => void;
 }
 
@@ -88,7 +90,26 @@ interface Session {
     collector: StudyAnalysisCollector;
     /** 途中の候補を最後に画面へ写した時刻。 */
     previewAt: number;
+    /** 最後に `onProgress` へ渡した結果の最善手・評価値・深さ（変わったときだけ渡すため）。 */
+    progressKey: string | null;
+    /**
+     * 前の区切りまでに読んだ局面数の通算と、いまの区切りの info の局面数。info の局面数は続きを読む
+     * たびに 0 から数え直すので、途中の結果の局面数は足して出す（同じ深さでは局面数の多い結果が残るので、
+     * 続きの読みの途中の結果が前の区切りの結果に負けないように）。
+     */
+    nodesBefore: number;
+    segmentNodes: number;
+    /** 読んだ時間も、局面数と同じく区切りをまたいで通算する。 */
+    timeBefore: number;
+    segmentTimeMs: number;
+    /** 止めるよう頼まれた（止め終わるのを待っている）。 */
+    stopping: boolean;
 }
+
+const progressKeyOf = (result: StudyAnalysisResult): string => {
+    const best = result.candidates[0];
+    return JSON.stringify([result.depth, best?.pv[0] ?? null, best?.score ?? null]);
+};
 
 export function useStudyDeepSearch(options: Options): {
     state: StudyDeepState;
@@ -97,6 +118,7 @@ export function useStudyDeepSearch(options: Options): {
     resume: () => Promise<boolean>;
     stop: () => Promise<void>;
     release: () => Promise<void>;
+    isReading: (request: StudyDeepRequest) => boolean;
 } {
     const [state, setState] = useState<StudyDeepState>(IDLE);
     const controllerRef = useRef<{
@@ -147,13 +169,31 @@ export function useStudyDeepSearch(options: Options): {
             const session = sessionRef.current;
             if (!session || session.key !== key) return;
             session.collector.push(info);
+            if (info.nodes !== undefined && Number.isFinite(info.nodes)) {
+                session.segmentNodes = Math.max(session.segmentNodes, Math.trunc(info.nodes));
+            }
+            if (info.timeMs !== undefined && Number.isFinite(info.timeMs)) {
+                session.segmentTimeMs = Math.max(session.segmentTimeMs, Math.trunc(info.timeMs));
+            }
             const depth = info.depth ?? null;
             const now = Date.now();
-            const preview =
+            const collected =
                 now - session.previewAt >= PREVIEW_INTERVAL_MS
                     ? session.collector.finish("aborted")
                     : null;
-            if (preview) session.previewAt = now;
+            const preview = collected && {
+                ...collected,
+                nodes: session.nodesBefore + session.segmentNodes,
+                timeMs: session.timeBefore + session.segmentTimeMs,
+            };
+            if (preview) {
+                session.previewAt = now;
+                const key = progressKeyOf(preview);
+                if (key !== session.progressKey) {
+                    session.progressKey = key;
+                    options.onProgress(session.request, preview);
+                }
+            }
             if (depth !== null || preview) {
                 setState((prev) =>
                     (depth === null || prev.depth === depth) && !preview
@@ -176,6 +216,10 @@ export function useStudyDeepSearch(options: Options): {
                     ? "aborted"
                     : "completed";
             const result = session.collector.finish(completion);
+            session.nodesBefore = finished.totalNodes;
+            session.segmentNodes = 0;
+            session.timeBefore = finished.totalTimeMs;
+            session.segmentTimeMs = 0;
             if (!result) return;
             options.onResult(session.request, {
                 ...result,
@@ -262,6 +306,12 @@ export function useStudyDeepSearch(options: Options): {
                 execution: { threads: request.setup.threads, parallelWorkers: 1 },
             }),
             previewAt: Date.now(),
+            progressKey: null,
+            nodesBefore: 0,
+            segmentNodes: 0,
+            timeBefore: 0,
+            segmentTimeMs: 0,
+            stopping: false,
         };
         setState({ ...IDLE, phase: "preparing", nodeId: request.nodeId });
         await controller.select({
@@ -284,6 +334,7 @@ export function useStudyDeepSearch(options: Options): {
         const controller = controllerRef.current?.controller;
         // 続きから読めるかは、画面の状態ではなく解析の部品の状態で確かめる。
         if (!controller || !sessionRef.current || !controller.getState().canResume) return false;
+        sessionRef.current.stopping = false;
         setState((prev) => ({ ...prev, phase: "preparing", canContinue: false }));
         await controller.start(budget());
         return true;
@@ -292,10 +343,17 @@ export function useStudyDeepSearch(options: Options): {
     const stop = async (): Promise<void> => {
         const controller = controllerRef.current?.controller;
         if (!controller) return;
+        if (sessionRef.current) sessionRef.current.stopping = true;
         // 準備中に止めたら、準備が終わっても始めない。
         setState((prev) => (prev.phase === "preparing" ? { ...prev, phase: "paused" } : prev));
         await controller.pause();
     };
 
-    return { state, start, resume, stop, release };
+    /** `request` の読みを続けている（読んでいる最中で、止めるよう頼まれていない）か。 */
+    const isReading = (request: StudyDeepRequest): boolean =>
+        sessionRef.current?.request === request &&
+        !sessionRef.current.stopping &&
+        controllerRef.current?.controller.getState().phase === "running";
+
+    return { state, start, resume, stop, release, isReading };
 }

@@ -1,4 +1,4 @@
-import type { StudyHighlightKind, StudyScore } from "@shogi/app-core";
+import type { StudyScore } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
 import { useId } from "react";
@@ -6,37 +6,24 @@ import { RamRunningIcon } from "../ram-running-icon";
 import { Switch } from "../switch";
 import { formatStudyScore, studyScoreSide } from "./studyView";
 
-export const STUDY_KIND_BADGE: Record<StudyHighlightKind, { label: string; className: string }> = {
-    blunder: {
-        label: "悪手",
-        className: "border-study-blunder-border bg-study-blunder-bg text-study-blunder",
-    },
-    dubious: {
-        label: "疑問手",
-        className: "border-study-dubious-border bg-study-dubious-bg text-study-dubious",
-    },
-};
-
 /**
- * スマートフォンで局面の移動の下に出す、いまの局面の 1 行（手・評価値・悪手かどうか）と「自動で読む」の
- * スイッチ。読みはどの表示を開いていても続くので、止める手段と読んだ値をどの表示でも同じ位置に出す。
+ * スマートフォンで局面の移動の下に出す、この局面の最善手・評価値・深さの 1 行と「自動で読む」のスイッチ。
+ * 読みはどの表示を開いていても続くので、止める手段と読みの進み具合をどの表示でも同じ位置に出す。
  * 高さと右側の幅は固定し、読み始め・読み終わり・桁数の変化で並びが動かないようにする。
  */
 export function StudyPositionBand({
-    ply,
-    moveLabel,
-    kind,
+    bestMove,
     score,
+    depth,
     reading,
     autoAnalyze,
 }: {
-    /** 表示中の手順での位置。 */
-    ply: number;
-    moveLabel: string;
-    kind: StudyHighlightKind | undefined;
-    /** いま出す評価値（読んでいる途中の値、無ければ保存済みのいちばん深い読み）。 */
+    /** この局面から指す最善手の表記（例: `☗2五歩(26)`）。読みが無ければ null。 */
+    bestMove: string | null;
     score: StudyScore | null;
-    /** この局面を読んでいる途中か。 */
+    /** 最善手と評価値を出した読みの深さ。 */
+    depth: number | null;
+    /** この局面を読んでいる途中か（最善手・評価値は読みに連れて変わる）。 */
     reading: boolean;
     /** 渡さなければスイッチを出さない（編集できないとき）。`status` は画面読み上げ向けの状態。 */
     autoAnalyze?: { enabled: boolean; onChange: (enabled: boolean) => void; status: string | null };
@@ -47,37 +34,28 @@ export function StudyPositionBand({
     const side = studyScoreSide(score);
     return (
         <div className="flex h-10 items-center rounded-lg border border-wafuu-border bg-wafuu-washi-warm text-sm">
-            {/* 評価値は読んでいる間に何度も変わるので、読み上げの領域にはしない（帯全体が繰り返し
-                読み上げられてしまう）。 */}
+            {/* 読んでいる間に何度も変わるので、読み上げの領域にはしない（帯全体が繰り返し読み上げられて
+                しまう）。 */}
             <output
-                aria-label="いまの局面"
+                aria-label="この局面の最善手"
                 aria-live="off"
                 className="flex min-w-0 flex-1 items-center gap-1.5 pl-2.5 pr-2 max-[359px]:gap-1 max-[359px]:pl-2"
             >
-                <span className="shrink-0 tabular-nums text-muted-foreground max-[359px]:text-xs">
-                    {ply === 0 ? "開始局面" : `${ply}手目`}
-                </span>
-                {/* 移動元（「(83)」）は省く（盤で直前の手は分かり、狭い画面で手そのものを切らさないため）。 */}
-                {ply > 0 && (
-                    <span className="min-w-0 truncate text-wafuu-sumi" title={moveLabel}>
-                        {moveLabel.replace(/\(\d\d\)$/, "")}
-                    </span>
-                )}
-                <span className="ml-auto flex shrink-0 items-center gap-1.5 max-[359px]:gap-1">
-                    {/* 棋譜の欄と同じ 1 文字の印にする（狭い画面で手の表記を切らさないため）。 */}
-                    {kind && (
-                        <span
-                            role="img"
-                            aria-label={STUDY_KIND_BADGE[kind].label}
-                            title={STUDY_KIND_BADGE[kind].label}
-                            className={cn(
-                                "flex h-5 w-5 items-center justify-center rounded border text-xs font-medium leading-none",
-                                STUDY_KIND_BADGE[kind].className,
-                            )}
-                        >
-                            {STUDY_KIND_BADGE[kind].label.slice(0, 1)}
-                        </span>
+                {/* 移動元（「(26)」）は省く（狭い画面で手そのものを切らさないため）。 */}
+                <span
+                    className={cn(
+                        "min-w-0 truncate",
+                        bestMove ? "text-wafuu-sumi" : "text-muted-foreground",
                     )}
+                    title={bestMove ?? undefined}
+                >
+                    {bestMove
+                        ? bestMove.replace(/\(\d\d\)$/, "")
+                        : score === null && depth === null
+                          ? "未解析"
+                          : "—"}
+                </span>
+                <span className="ml-auto flex shrink-0 items-baseline gap-1.5 max-[359px]:gap-1">
                     <span
                         className={cn(
                             "min-w-[5ch] whitespace-nowrap text-right font-mono tabular-nums max-[359px]:text-xs",
@@ -91,6 +69,10 @@ export function StudyPositionBand({
                         )}
                     >
                         {scoreText || "—"}
+                    </span>
+                    {/* 読み始めの浅い値は振れるので、どれだけ読んだ値かを添える。幅は 2 桁の深さで固定する。 */}
+                    <span className="min-w-[3.75em] text-xs tabular-nums text-muted-foreground">
+                        {depth !== null && `深さ ${depth}`}
                     </span>
                 </span>
             </output>

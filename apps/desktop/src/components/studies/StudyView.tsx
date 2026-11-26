@@ -9,7 +9,12 @@
 import { applyStudyOps, STUDY_LIMITS, type StudyDocument, type StudyOp } from "@shogi/app-core";
 import { getLegalMoves } from "@shogi/engine-tauri";
 import type { StoredStudy, StudySync } from "@shogi/study-client";
-import type { EngineOption, PlayFromPosition, StudyWorkspaceViewState } from "@shogi/ui";
+import type {
+    EngineOption,
+    PlayFromPosition,
+    StudyApplyOpsOptions,
+    StudyWorkspaceViewState,
+} from "@shogi/ui";
 import { NnueLibraryDialog, StudyWorkspace } from "@shogi/ui";
 import { Button } from "@shogi/ui/components/button";
 import type { ReactElement } from "react";
@@ -196,7 +201,7 @@ export function StudyView({
      * 編集の操作を画面にすぐ反映し、保存層へ流す。保存層が受け付けなかったら、理由を出して
      * 画面を保存済みの内容に戻し、`false` を返す。
      */
-    const applyOps = (ops: StudyOp[]): Promise<boolean> => {
+    const applyOps = (ops: StudyOp[], options?: StudyApplyOpsOptions): Promise<boolean> => {
         const writes = writesRef.current;
         writes.seq += 1;
         writes.pending += 1;
@@ -209,7 +214,7 @@ export function StudyView({
                 return previous;
             }
         });
-        return sync.applyOps(studyId, ops).then(
+        return sync.applyOps(studyId, ops, { flushDelayMs: options?.syncDelayMs }).then(
             (doc) => {
                 writes.pending -= 1;
                 // 待っている書き込みが無くなったら、保存層の内容に揃える。

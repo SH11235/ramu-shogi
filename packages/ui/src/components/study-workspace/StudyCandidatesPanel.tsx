@@ -31,9 +31,7 @@ import {
     studyFirstMoveLabel,
     studyScoreSide,
 } from "./studyView";
-import { STUDY_DEEP_TIME_MS, type StudyLiveSearch } from "./useStudyAnalysis";
-
-const DEEP_SEGMENT_SECONDS = STUDY_DEEP_TIME_MS / 1000;
+import type { StudyLiveSearch } from "./useStudyAnalysis";
 
 /** 自動で読むで、続きから読めずに読み終えたときの知らせ。 */
 export const STUDY_AUTO_ANALYZE_FINISHED = "この局面は読み終えました。局面を移ると読みます";
@@ -600,15 +598,6 @@ export function StudyCandidatesPanel({
                             </Button>
                         )}
                     </div>
-                    {/* 保存は「区切りまで読み切った」「深い」の順で勝つ方を残すので、読み直しても黙って
-                        前の結果が残ったように見えないよう、いつ置き換わるかを添える。 */}
-                    {mainResult && (
-                        <p className="px-1 text-xs text-muted-foreground">
-                            {live.preview && live.preview.depth > mainResult.result.depth
-                                ? `保存済みの読みより深くなりました。区切り（${DEEP_SEGMENT_SECONDS} 秒ごと）まで読むと、この読みで置き換えます`
-                                : `保存済みの読み（深さ ${mainResult.result.depth}）より深くなり、区切り（${DEEP_SEGMENT_SECONDS} 秒ごと）まで読むと、この読みで置き換えます`}
-                        </p>
-                    )}
                     {live.preview && (
                         <ol className="flex flex-col">
                             {live.preview.candidates.map((candidate) => (
