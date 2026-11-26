@@ -21,6 +21,7 @@ import {
     putScoreOp,
     TEST_LAYER_ID,
 } from "./study-workspace/study-test-support";
+import type { StudyDeepReadRef } from "./study-workspace/studyPositionInsights";
 import { buildStudyViewTree, chooseStudyDisplayLayer } from "./study-workspace/studyView";
 import type {
     StudyAnalysisController,
@@ -119,7 +120,7 @@ interface HarnessProps {
     commentBaseConfirmed?: boolean;
     /** 最初に表示する解析の設定（省略時は、結果の最も多いもの）。 */
     initialDisplayLayerId?: string;
-    deepLayerId?: string | null;
+    deepRead?: StudyDeepReadRef | null;
     onPlayFromPosition?: (position: { sfen: string; moves: string[] }) => void;
     onSaveKifuFile?: (file: { fileName: string; text: string }) => void;
     mate?: StudyMateController;
@@ -145,7 +146,7 @@ function Harness({
     onExternal,
     commentBaseConfirmed,
     initialDisplayLayerId,
-    deepLayerId,
+    deepRead,
     onPlayFromPosition,
     onSaveKifuFile,
     mate,
@@ -186,7 +187,7 @@ function Harness({
             commentBaseConfirmed={commentBaseConfirmed}
             displayLayerId={displayLayerId}
             onDisplayLayerChange={setPreferredLayerId}
-            deepLayerId={deepLayerId}
+            deepRead={deepRead}
             onPlayFromPosition={onPlayFromPosition}
             onSaveKifuFile={onSaveKifuFile}
             analysis={analysis}
@@ -1073,7 +1074,7 @@ describe("StudyWorkspaceView", () => {
                 <Harness
                     initialDoc={doc}
                     initialDisplayLayerId={TEST_LAYER_ID}
-                    deepLayerId={DEEP_ID}
+                    deepRead={{ nodeId: ids[0], layerId: DEEP_ID }}
                     analysis={createAnalysis({
                         mode: "deep",
                         live: {
@@ -2123,7 +2124,7 @@ describe("StudyWorkspaceView", () => {
             expect(within(candidates).getByText(/全体の解析（深さ/)).toBeTruthy();
         });
 
-        it("別の AI で深く解析した結果も、自動で読んだ局面では必ず出す", async () => {
+        it("別の AI で読んで結果を書いた局面では、その結果を必ず出す", () => {
             const { doc, ids } = createTestStudy([cp(30), cp(40), cp(20), cp(-900), cp(-880)]);
             const OTHER_SPEC = buildStudyLayerSpec({
                 engine: { kind: "wasm", name: "rshogi", version: "0.8.1" },
@@ -2141,17 +2142,15 @@ describe("StudyWorkspaceView", () => {
                 },
                 putScoreOp(ids[0], cp(5), { layerId: otherId, depth: 30, pv: ["2g2f"] }),
             ]);
-            render(<Harness initialDoc={withOther} deepLayerId={otherId} />);
+            const { rerender } = render(<Harness initialDoc={withOther} />);
 
             const candidates = screen.getByRole("region", { name: "候補手" });
             // 読む前は、別の AI の結果は出さない。
             expect(candidates.textContent).not.toContain("深く解析・");
-            fireEvent.click(screen.getByRole("switch", { name: /自動で読む/ }));
-            await waitFor(() =>
-                expect(candidates.textContent).toContain(
-                    "深く解析・簡易AI（駒得）・10 秒・深さ 30",
-                ),
+            rerender(
+                <Harness initialDoc={withOther} deepRead={{ nodeId: ids[0], layerId: otherId }} />,
             );
+            expect(candidates.textContent).toContain("深く解析・簡易AI（駒得）・10 秒・深さ 30");
             expect(candidates.textContent).toContain("☗2六歩(27)");
         });
     });

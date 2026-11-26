@@ -34,8 +34,7 @@ const picks = (
     const args = {
         doc,
         displayLayerId: TEST_LAYER_ID,
-        deepNodeId: deep?.nodeId ?? null,
-        deepLayerId: deep?.layerId ?? null,
+        deepRead: deep,
     };
     const insights = deriveStudyPositionInsights({ ...args, currentNodeId: nodeId });
     return {

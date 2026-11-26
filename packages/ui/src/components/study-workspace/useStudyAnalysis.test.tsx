@@ -228,8 +228,10 @@ function useHarness(
             return undefined;
         },
         onFlush: () => setFlushCount((count) => count + 1),
-        onLayerStarted: (layerId, mode) =>
-            setStartedLayers((previous) => [...previous, `${mode}:${layerId}`]),
+        onLayerStarted: (layerId) =>
+            setStartedLayers((previous) => [...previous, `full:${layerId}`]),
+        onDeepResult: (layerId, nodeId) =>
+            setStartedLayers((previous) => [...previous, `deep:${layerId}:${nodeId}`]),
         setMessage: (message) => options.onMessage?.(message),
         locked: options.locked,
     });
@@ -404,11 +406,11 @@ describe("useStudyAnalysis", () => {
         expect(layer.spec.multiPv).toBe(3);
         expect(layer.display.label).toBe("簡易AI（駒得）・30 秒");
         expect(Object.keys(layer.results)).toEqual([ids[2]]);
-        expect(result.current.startedLayers).toEqual([`deep:${layer.id}`]);
+        expect(result.current.startedLayers).toEqual([`deep:${layer.id}:${ids[2]}`]);
         expect(engine.searches()).toBe(1);
     });
 
-    it("1 回だけの深い読みでエンジンの準備に失敗したら、読み始めたと知らせない", async () => {
+    it("エンジンの準備に失敗した深い読みは、結果を書いたと知らせない", async () => {
         const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
         const { doc, ids } = createTestStudy();
         const engine = createEngineOption();
@@ -465,7 +467,11 @@ describe("useStudyAnalysis", () => {
         });
         await waitFor(() => expect(result.current.controller.mode).toBe("deep"));
         expect(engine.resumes()).toBe(1);
-        expect(result.current.startedLayers).toEqual([`deep:${layerId}`, `deep:${layerId}`]);
+        // 知らせるのは結果を書いた局面と設定だけ（読み始めでは知らせない）。
+        expect(result.current.startedLayers.length).toBeGreaterThan(0);
+        expect(new Set(result.current.startedLayers)).toEqual(
+            new Set([`deep:${layerId}:${ids[2]}`]),
+        );
 
         // 続きの読みが上限に届くと、深くなった結果で置き換わる（読んだ時間は通算）。
         await act(async () => {

@@ -198,11 +198,14 @@ interface UseStudyAnalysisOptions {
     onApplyOps: (ops: StudyOp[], options?: StudyApplyOpsOptions) => StudyApplyOpsResult;
     /** 解析の区切り（完了・中止）。送信待ちをすぐ流すのに使う。 */
     onFlush?: () => void;
+    /** 全体の解析を始めたレイヤー（画面はこのレイヤーを表示に切り替える）。 */
+    onLayerStarted: (layerId: string) => void;
     /**
-     * 解析を始めたレイヤー（画面はこのレイヤーを表示に切り替える）。深く解析では、読み始められた
-     * ときに知らせる（エンジンの準備に失敗したら知らせない）。
+     * 1 局面の読み（自動で読む）の結果を、そのレイヤーの局面に書いた。読み始めではなく結果で知らせる
+     * のは、準備に失敗した・始まる前に別の局面へ移った読みで、前に保存した結果を、いま読んだ結果として
+     * 画面に出さないため。
      */
-    onLayerStarted: (layerId: string, mode: "full" | "deep") => void;
+    onDeepResult: (layerId: string, nodeId: string) => void;
     setMessage: (message: Message | null) => void;
     /**
      * 編集できない状態（ログインが切れて、結果を保存できない）。この間は、どの入口からも解析を
@@ -233,6 +236,7 @@ export function useStudyAnalysis({
     onApplyOps,
     onFlush,
     onLayerStarted,
+    onDeepResult,
     setMessage,
     locked = false,
 }: UseStudyAnalysisOptions): {
@@ -299,17 +303,14 @@ export function useStudyAnalysis({
     const [completedRuns, setCompletedRuns] = useState(0);
     /** いまの解析で、読めなかった局面があったか（あれば、最後まで進んでも読み終えたことにしない）。 */
     const runFailedRef = useRef(false);
-    /**
-     * 1 回だけの深い読みで、まだ知らせていないレイヤー。解析の部品はエンジンの準備ができたことを
-     * 知らせないので、最初の結果が届いたときに知らせる。
-     */
-    const pendingDeepLayerRef = useRef<string | null>(null);
+    /** 解析の部品（`useEnginePool`）でいま回している解析の種類。1 局面の読みの結果だけを知らせるのに使う。 */
+    const runModeRef = useRef<"full" | "deep" | null>(null);
 
     // 解析は非同期に進むので、結果が届いた時点の最新の文書・コールバックを参照する。
-    const latestRef = useRef({ doc, tree, onApplyOps, onFlush, onLayerStarted });
+    const latestRef = useRef({ doc, tree, onApplyOps, onFlush, onDeepResult });
     useEffect(() => {
-        latestRef.current = { doc, tree, onApplyOps, onFlush, onLayerStarted };
-    }, [doc, tree, onApplyOps, onFlush, onLayerStarted]);
+        latestRef.current = { doc, tree, onApplyOps, onFlush, onDeepResult };
+    }, [doc, tree, onApplyOps, onFlush, onDeepResult]);
 
     // 解析の「世代」。準備（AI の確認・ダウンロード）を待っている間に、中止された・画面を離れた・
     // 別の解析が始まったときは、世代が変わっているので続きを実行しない。
@@ -354,10 +355,6 @@ export function useStudyAnalysis({
     const handlePositionAnalyzed = (completion: StudyAnalysisCompletion): void => {
         const { layer, runtimeNodeId, result } = completion;
         if (!layer || runtimeNodeId === null) return;
-        if (pendingDeepLayerRef.current === layer.layerId) {
-            pendingDeepLayerRef.current = null;
-            latestRef.current.onLayerStarted(layer.layerId, "deep");
-        }
         const buffer = bufferRef.current;
         // レイヤーは解析の開始時に作ってあるが、他の端末で消されていても結果を失わないよう確かめる
         // （既にあれば何もしない操作で、送信待ちにも入らない）。まとめる単位ごとに 1 回でよい。
@@ -397,7 +394,13 @@ export function useStudyAnalysis({
         ),
         releaseWorkersAfterRun: engineOption?.batch !== undefined,
         nnueId: isExternalEngine ? undefined : analysisNnueId,
-        onPositionAnalyzed: handlePositionAnalyzed,
+        onPositionAnalyzed: (completion) => {
+            handlePositionAnalyzed(completion);
+            const { layer, runtimeNodeId } = completion;
+            if (runModeRef.current === "deep" && layer && runtimeNodeId !== null) {
+                latestRef.current.onDeepResult(layer.layerId, runtimeNodeId);
+            }
+        },
         onResult: (_ply: number, event: EngineInfoEvent, nodeId?: string) => {
             if (!nodeId) return;
             const depth = event.depth ?? null;
@@ -435,8 +438,6 @@ export function useStudyAnalysis({
         engineOption !== undefined &&
         engineOption.kind !== "external" &&
         engineOption.maxParallel !== 1;
-    /** いまの「深く解析」のレイヤー（続けて読むとき、表示をその結果に切り替えるのに使う）。 */
-    const deepLayerIdRef = useRef<string | null>(null);
     const deep = useStudyDeepSearch({
         createClient: canResumeDeep ? engineOption.createClient : null,
         clientKey: engineOption?.id,
@@ -448,6 +449,7 @@ export function useStudyAnalysis({
                 ply: latestRef.current.tree.nodes.get(request.nodeId)?.ply ?? 0,
                 result,
             });
+            latestRef.current.onDeepResult(request.layer.layerId, request.nodeId);
             // 止めるたびの結果なので、まとめずにすぐ反映する。保存できなかったときに止めるのは、まだ
             // この読みを続けているときだけ（止めて別の局面へ移る途中なら、移った先の読みを止めない）。
             const generation = generationRef.current;
@@ -472,6 +474,7 @@ export function useStudyAnalysis({
                 ],
                 { syncDelayMs: READING_SYNC_DELAY_MS },
             );
+            latestRef.current.onDeepResult(request.layer.layerId, request.nodeId);
             if (outcome instanceof Promise) {
                 void outcome.then((saved) => {
                     // 止めるのは、この読みをまだ続けているときだけ（別の局面の読みを始めていたら、
@@ -614,12 +617,8 @@ export function useStudyAnalysis({
         // 設定（レイヤー）は、ここでは文書に作らない。最初の結果を反映するときに一緒に作る
         // （`handlePositionAnalyzed`）。始めてすぐ中止したときに、結果が 1 件も無い設定が
         // 一覧に残らないようにするため。結果を保存できなかったら `flushResults` が解析を止める。
-        if (nextMode === "full") {
-            pendingDeepLayerRef.current = null;
-            onLayerStarted(layer.layerId, nextMode);
-        } else {
-            pendingDeepLayerRef.current = layer.layerId;
-        }
+        if (nextMode === "full") onLayerStarted(layer.layerId);
+        runModeRef.current = nextMode;
         setMode(nextMode);
         // 全体解析は一括、深い解析（続きから読めないときの 1 回だけの読み）は 1 局面として数える
         track("analysis_start", { kind: nextMode === "full" ? "batch" : "single" });
@@ -752,7 +751,7 @@ export function useStudyAnalysis({
                 if (jobs.length === 0) {
                     // 解析済みの設定を選び直しただけ。表示をそのレイヤーに切り替える（始めないので、
                     // 始めるときの通知は消す）。
-                    onLayerStarted(prepared.layer.layerId, "full");
+                    onLayerStarted(prepared.layer.layerId);
                     if (options?.notice) setMessage(null);
                     notStarted();
                     return;
@@ -863,8 +862,7 @@ export function useStudyAnalysis({
                 }
                 if (canResumeDeep && studyLineFitsPassLimit(current.tree.startSfen, moves)) {
                     const passRights = studyPassRightsForLine(current.tree.startSfen, moves);
-                    deepLayerIdRef.current = prepared.layer.layerId;
-                    const request = {
+                    const started = await deep.start({
                         nodeId,
                         sfen: current.tree.startSfen,
                         moves,
@@ -882,13 +880,10 @@ export function useStudyAnalysis({
                                 engineOption?.maxThreads,
                             ),
                         },
-                    };
-                    const started = await deep.start(request);
+                    });
                     if (started) {
                         // 準備を待つ間に止められていたら、読みは始まらずに止まっている。
                         if (!isCurrent()) return;
-                        // エンジンの準備に失敗したときも、読みは始まらずに止まっている。
-                        if (!deep.hasFailed()) onLayerStarted(prepared.layer.layerId, "deep");
                         track("analysis_start", { kind: "single" });
                         return;
                     }
@@ -1045,11 +1040,7 @@ export function useStudyAnalysis({
 
     const continueDeep = async (): Promise<void> => {
         if (lockedRef.current || pool.isRunning || isDeepSearching || preparingRef.current) return;
-        const generation = generationRef.current;
-        if (!(await deep.resume())) return;
-        // 再開を待つ間に別の解析を頼まれていたら、前の設定を知らせない（新しい解析の表示を上書きしない）。
-        if (generationRef.current !== generation) return;
-        if (deepLayerIdRef.current !== null) onLayerStarted(deepLayerIdRef.current, "deep");
+        await deep.resume();
     };
 
     const activeMode = pool.isRunning ? mode : isDeepSearching ? "deep" : null;

@@ -21,16 +21,13 @@ export function deriveStudyPositionInsights({
     doc,
     currentNodeId,
     displayLayerId,
-    deepNodeId,
-    deepLayerId,
+    deepRead,
 }: {
     doc: StudyDocument;
     currentNodeId: string;
     displayLayerId: string | null;
-    /** 「この局面を深く解析」を押した局面。 */
-    deepNodeId: string | null;
-    /** 直近の「この局面を深く解析」で使った解析の設定（レイヤー）。 */
-    deepLayerId: string | null;
+    /** 1 局面の読みで、直近に結果を書いた局面と設定。 */
+    deepRead: StudyDeepReadRef | null;
 }) {
     // 同じ AI でより深く読んだ結果があれば、悪手・疑問手はそれで判定し直す。
     const highlights = computeStudyHighlights(doc, displayLayerId, {
@@ -56,8 +53,7 @@ export function deriveStudyPositionInsights({
         doc,
         nodeId: currentNodeId,
         displayLayerId,
-        deepNodeId,
-        deepLayerId,
+        deepRead,
     });
     const deeperResult =
         picked !== null && picked.layer.id !== positionResult?.layer.id ? picked : null;
@@ -81,10 +77,17 @@ export function deriveStudyPositionInsights({
 }
 
 /**
+/** 1 局面の読みで、直近に結果を書いた局面と設定（レイヤー）。 */
+export interface StudyDeepReadRef {
+    nodeId: string;
+    layerId: string;
+}
+
+/**
  * 局面の帯と候補手の欄に出す保存済みの読み（読んでいる途中でなければ、この値を出す）。表示中の設定と、
  * 同じ AI で探索の上限だけ大きい設定の中から、いちばん深く読めたものを選ぶ（AI が違うと深さは比べられ
- * ないので、別の AI の結果は深くても選ばない）。ただし、この局面を直前に別の AI で「深く解析」したら、
- * その結果を出す（押したのに結果が見当たらない、にならないように）。深さが同じなら直近の「深く解析」、
+ * ないので、別の AI の結果は深くても選ばない）。ただし、この局面を直前に別の AI で読んで結果を書いたら、
+ * その結果を出す（読んだのに結果が見当たらない、にならないように）。深さが同じなら直前の読み、
  * 表示中の設定、同じ AI で深く読んだ設定の順に採る。
  * 評価値グラフの「深く読んだ局面」の印も、局面ごとにこれで選ぶ（帯の値と印が食い違わないように）。
  */
@@ -92,18 +95,16 @@ export function pickStudyBandResult({
     doc,
     nodeId,
     displayLayerId,
-    deepNodeId,
-    deepLayerId,
+    deepRead,
 }: {
     doc: StudyDocument;
     nodeId: string;
     displayLayerId: string | null;
-    deepNodeId: string | null;
-    deepLayerId: string | null;
+    deepRead: StudyDeepReadRef | null;
 }): StudyPositionResult | null {
     const freshLayer =
-        nodeId === deepNodeId && deepLayerId !== null && deepLayerId !== displayLayerId
-            ? doc.layers.find((layer) => layer.id === deepLayerId)
+        deepRead !== null && deepRead.nodeId === nodeId && deepRead.layerId !== displayLayerId
+            ? doc.layers.find((layer) => layer.id === deepRead.layerId)
             : undefined;
     const fresh =
         freshLayer && Object.hasOwn(freshLayer.results, nodeId)
