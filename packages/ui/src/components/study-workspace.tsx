@@ -578,28 +578,33 @@ export function StudyWorkspaceView({
      * 別の操作（スイッチを入れ直すなど）をしたら始めない。切った知らせは、始めるときに出す。
      */
     const fullStartOptions = (): StudyFullStartOptions => {
-        // 別のタブで自動で読むを入れたときは操作の番号が進まないので、スイッチの状態も見る。
+        // 別のタブで自動で読むを入れたときは操作の番号が進まないので、入れた回数も見る。
         if (!autoAnalyze) {
             const request = ++actionSerialRef.current;
+            const enabledCount = autoEnabledCountRef.current;
             return {
-                isWanted: () => actionSerialRef.current === request && !autoAnalyzeRef.current,
+                isWanted: () =>
+                    actionSerialRef.current === request &&
+                    autoEnabledCountRef.current === enabledCount,
             };
         }
         let request = 0;
+        let enabledCount = 0;
         return {
             onCommit: () => {
                 request = ++actionSerialRef.current;
-                autoAnalyzeRef.current = false;
+                enabledCount = autoEnabledCountRef.current;
                 setAutoAnalyze(false);
             },
-            isWanted: () => actionSerialRef.current === request && !autoAnalyzeRef.current,
+            isWanted: () =>
+                actionSerialRef.current === request && autoEnabledCountRef.current === enabledCount,
             notice: AUTO_ANALYZE_OFF_NOTICE,
         };
     };
-    /** 待っている解析の開始が、始める直前に自動で読むが入っているかを見るための値。 */
-    const autoAnalyzeRef = useRef(autoAnalyze);
+    /** 自動で読むが入った回数（別のタブでの切り替えも数える）。待っている解析の開始が見る。 */
+    const autoEnabledCountRef = useRef(0);
     useEffect(() => {
-        autoAnalyzeRef.current = autoAnalyze;
+        if (autoAnalyze) autoEnabledCountRef.current += 1;
     }, [autoAnalyze]);
     /** 自動で読み始めた（または手で読み始めた）局面。同じ局面で読み直さないために覚える。 */
     const autoStartedNodeRef = useRef<string | null>(null);
