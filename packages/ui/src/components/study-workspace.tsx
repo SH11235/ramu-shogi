@@ -120,6 +120,7 @@ import {
     type StudyApplyOpsOptions,
     type StudyApplyOpsResult,
     type StudyEngineIdentity,
+    type StudyFullStartOptions,
     useStudyAnalysis,
 } from "./study-workspace/useStudyAnalysis";
 import {
@@ -136,6 +137,11 @@ import { TooltipProvider } from "./tooltip";
 
 /** 「自動で読む」を入れているか（端末ごとに覚える）。 */
 const STUDY_AUTO_ANALYZE_STORAGE_KEY = "shogi:studyAutoAnalyze";
+
+const AUTO_ANALYZE_OFF_NOTICE: Message = {
+    text: "自動で読むを切りました（読んだ分は残っています）。",
+    type: "warning",
+};
 
 export type { StudyCommentDraft };
 
@@ -568,24 +574,16 @@ export function StudyWorkspaceView({
     const analysisBlocked = analysis.isPreparing || mateRunning;
     const startFull = (): void => {
         if (locked || mateRunning) return;
-        if (!autoAnalyze) {
-            void analysis.startFull();
-            return;
-        }
-        void leaveAutoAnalyze().then((ok) => {
-            if (ok) void analysis.startFull();
-        });
+        void analysis.startFull(fullStartOptions());
     };
     /** 表示中の設定の未解析分を、その設定で解析する。表示中の結果が無ければ全体の解析。 */
     const resumeDisplayLayer = (): void => {
         if (locked || mateRunning) return;
-        if (displayLayerId === null) startFull();
-        else if (!autoAnalyze) void analysis.resumeLayer(displayLayerId);
-        else {
-            void leaveAutoAnalyze().then((ok) => {
-                if (ok) void analysis.resumeLayer(displayLayerId);
-            });
+        if (displayLayerId === null) {
+            startFull();
+            return;
         }
+        void analysis.resumeLayer(displayLayerId, fullStartOptions());
     };
     /** 解析・詰み探索は 1 つずつ動かす。押した操作を優先し、動いている詰み探索は止める。 */
     const stopMate = (): void => {
@@ -618,15 +616,46 @@ export function StudyWorkspaceView({
     const leaveAutoAnalyze = async (): Promise<boolean> => {
         if (!autoAnalyze) return true;
         setAutoAnalyze(false);
-        onMessageChange({
-            text: "自動で読むを切りました（読んだ分は残っています）。",
-            type: "warning",
-        });
+        onMessageChange(AUTO_ANALYZE_OFF_NOTICE);
         if (analysis.mode !== "deep" && !analysis.isPreparing) return true;
         const request = ++actionSerialRef.current;
         await analysis.cancel();
         return actionSerialRef.current === request;
     };
+    /**
+     * 全体の解析（残りを解析も）を始めるときの指定。自動で読むは、始められると分かってから切る
+     * （始められない設定なら、スイッチも読みもそのままにする）。読みを止め終わるのを待つ間に
+     * 別の操作（スイッチを入れ直すなど）をしたら始めない。切った知らせは、始めるときに出す。
+     */
+    const fullStartOptions = (): StudyFullStartOptions => {
+        // 別のタブで自動で読むを入れたときは操作の番号が進まないので、入れた回数も見る。
+        if (!autoAnalyze) {
+            const request = ++actionSerialRef.current;
+            const enabledCount = autoEnabledCountRef.current;
+            return {
+                isWanted: () =>
+                    actionSerialRef.current === request &&
+                    autoEnabledCountRef.current === enabledCount,
+            };
+        }
+        let request = 0;
+        let enabledCount = 0;
+        return {
+            onCommit: () => {
+                request = ++actionSerialRef.current;
+                enabledCount = autoEnabledCountRef.current;
+                setAutoAnalyze(false);
+            },
+            isWanted: () =>
+                actionSerialRef.current === request && autoEnabledCountRef.current === enabledCount,
+            notice: AUTO_ANALYZE_OFF_NOTICE,
+        };
+    };
+    /** 自動で読むが入った回数（別のタブでの切り替えも数える）。待っている解析の開始が見る。 */
+    const autoEnabledCountRef = useRef(0);
+    useEffect(() => {
+        if (autoAnalyze) autoEnabledCountRef.current += 1;
+    }, [autoAnalyze]);
     /** 自動で読み始めた（または手で読み始めた）局面。同じ局面で読み直さないために覚える。 */
     const autoStartedNodeRef = useRef<string | null>(null);
     // 外すと、開き直したとき（StrictMode の付け直しも）に同じ局面をもう一度読み始められる。

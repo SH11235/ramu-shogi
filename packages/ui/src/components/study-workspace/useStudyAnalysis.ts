@@ -77,6 +77,18 @@ export interface StudyApplyOpsOptions {
     syncDelayMs?: number;
 }
 
+/** 全体の解析を始めるときの指定（自動で読むを切って始めるときに使う）。 */
+export interface StudyFullStartOptions {
+    /** 始められると分かった（設定を確かめ終えた）ときに、深く解析の読みを止める前に呼ぶ。 */
+    onCommit?: () => void;
+    /**
+     * 読みを止め終え、準備を終えたあとも始めてよいか。待つ間に別の操作があれば false を返す。
+     */
+    isWanted?: () => boolean;
+    /** 始めるときに出す通知。始めるときは前の通知を消すので、消したあとに出す。 */
+    notice?: Message;
+}
+
 /**
  * 読んでいる途中の結果をサーバーへ送るまで待つ時間。途中の結果は数秒ごとに手元へ保存するが、
  * そのたびに送ると読んでいる間ずっと送信が続くので、まとめて送る（局面を移る・止めると、すぐ送る）。
@@ -142,13 +154,16 @@ export interface StudyAnalysisController {
     settingsLabel: string;
     /** いまの設定で全体を解析したときに、実際に解析する局面の数。 */
     fullTargetCount: number;
-    /** いまの設定で、まだ解析していない局面をすべて解析する。 */
-    startFull: () => Promise<void>;
+    /**
+     * いまの設定で、まだ解析していない局面をすべて解析する。深く解析している途中なら、それを
+     * 止めて（そこまでの結果は残る）から始める。
+     */
+    startFull: (options?: StudyFullStartOptions) => Promise<void>;
     /**
      * 既にある解析結果（レイヤー）の続きを、**その結果と同じ設定**で解析する（「残りを解析」）。
      * 設定の画面に残っている値は使わない。
      */
-    resumeLayer: (layerId: string) => Promise<void>;
+    resumeLayer: (layerId: string, options?: StudyFullStartOptions) => Promise<void>;
     /**
      * 指定した局面を長い時間で解析する。別の局面を深く解析している途中なら、それを止めて
      * （そこまでの結果は残る）切り替える。
@@ -277,7 +292,9 @@ export function useStudyAnalysis({
     const mountedRef = useRef(true);
     const preparingRef = useRef(false);
     /** 準備中の依頼（ダウンロードをやめて簡易 AI に切り替えたとき、同じ依頼をやり直すのに使う）。 */
-    const requestRef = useRef<{ kind: "full" } | { kind: "deep"; nodeId: string } | null>(null);
+    const requestRef = useRef<
+        { kind: "full"; options?: StudyFullStartOptions } | { kind: "deep"; nodeId: string } | null
+    >(null);
     /** まだ文書へ反映していない解析結果。 */
     const bufferRef = useRef<{ ops: StudyOp[]; timer: ReturnType<typeof setTimeout> | null }>({
         ops: [],
@@ -591,36 +608,42 @@ export function useStudyAnalysis({
         });
     };
 
+    /** 解析のエンジンは、玉の無い側がある局面を読めない。読めなければ知らせて true を返す。 */
+    const rejectWithoutKing = (): boolean => {
+        const { tree: currentTree } = latestRef.current;
+        const root = currentTree.nodes.get(currentTree.rootId);
+        if (!root || sidesWithoutKing(root.positionAfter).length === 0) return false;
+        setMessage({
+            text: "玉の無い局面は解析できません。",
+            type: "warning",
+        });
+        return true;
+    };
+
     /**
      * 準備から開始までを 1 つの世代として実行する。準備を待つ間に中止・離脱・別の解析の開始が
      * あれば `isCurrent()` が false になるので、そこで止める。
      */
     const withPreparation = async (
-        request: { kind: "full" } | { kind: "deep"; nodeId: string },
+        request:
+            | { kind: "full"; options?: StudyFullStartOptions }
+            | { kind: "deep"; nodeId: string },
         task: (isCurrent: () => boolean) => Promise<void>,
         /** 直前に `cancel` を待ち終えた（描画前なので、実行中かの state はまだ古い値のまま）。 */
         afterCancel = false,
+        notice: Message | null = null,
     ): Promise<void> => {
         if (!afterCancel && (pool.isRunning || isDeepSearching)) return;
         if (preparingRef.current || !mountedRef.current) return;
         if (lockedRef.current) return;
-        // 解析のエンジンは、玉の無い側がある局面を読めない
-        const { tree: currentTree } = latestRef.current;
-        const root = currentTree.nodes.get(currentTree.rootId);
-        if (root && sidesWithoutKing(root.positionAfter).length > 0) {
-            setMessage({
-                text: "玉の無い局面は解析できません。",
-                type: "warning",
-            });
-            return;
-        }
+        if (rejectWithoutKing()) return;
         const generation = generationRef.current + 1;
         generationRef.current = generation;
         preparingRef.current = true;
         requestRef.current = request;
         setIsPreparing(true);
         try {
-            setMessage(null);
+            setMessage(notice);
             await task(() => mountedRef.current && generationRef.current === generation);
         } finally {
             if (generationRef.current === generation) {
@@ -635,52 +658,66 @@ export function useStudyAnalysis({
      * 全体を解析する。`target` を渡すと、設定の画面の値ではなく、その解析結果（レイヤー）と
      * 同じ探索の条件で、その続きを解析する。
      */
-    const startFullWith = (selection: NnueSelection, target?: StudyLayer): Promise<void> =>
-        withPreparation({ kind: "full" }, async (isCurrent) => {
-            const limits = {
-                timeMs: target?.spec.limits.timeMs ?? settings.batchAnalysisTimeMs,
-                depth: target?.spec.limits.depth ?? settings.batchAnalysisDepth,
-            };
-            const multiPv = target?.spec.multiPv ?? fullMultiPv;
-            const prepared = await prepareLayer(selection, limits, multiPv);
-            if (!isCurrent() || !prepared || lockedRef.current) return;
-            if (target && prepared.layer.layerId !== target.id) {
-                // AI のファイルや版が違うと、同じ設定の続きにならない。別の結果を黙って作らない。
-                setMessage({
-                    text: `「${target.display.label}」と同じ条件の AI を用意できないため、続きを解析できません。「設定を変える」から、解析する設定を選び直してください。`,
-                    type: "error",
-                });
-                return;
-            }
-            if (!canUseLayer(prepared.layer.layerId)) return;
-            const current = latestRef.current;
-            const results =
-                current.doc.layers.find((item) => item.id === prepared.layer.layerId)?.results ??
-                {};
-            const jobs: AnalysisJob[] = collectTreeAnalysisJobs(current.tree, {
-                includeRoot: true,
-                // 中断した結果しか無い局面は、もう一度解析する。
-                isAnalyzed: (node) =>
-                    Object.hasOwn(results, node.id) && results[node.id].completion === "completed",
-            }).map((job) => ({
-                ply: job.ply,
-                sfen: current.tree.startSfen,
-                moves: job.moves,
-                timeMs: limits.timeMs,
-                depth: limits.depth,
-                nodeId: job.nodeId,
-                sideToMove: job.sideToMove,
-            }));
-            if (jobs.length === 0) {
-                // 解析済みの設定を選び直しただけ。表示をそのレイヤーに切り替える。
-                onLayerStarted(prepared.layer.layerId, "full");
-                return;
-            }
-            // 止めてある「深く解析」の読みは手放す（全体の解析と同時にエンジンを持ち続けない）。
-            await deep.release();
-            if (!isCurrent() || lockedRef.current) return;
-            run(jobs, prepared, multiPv, "full");
-        });
+    const startFullWith = (
+        selection: NnueSelection,
+        target?: StudyLayer,
+        afterCancel = false,
+        options?: StudyFullStartOptions,
+    ): Promise<void> =>
+        withPreparation(
+            { kind: "full", options },
+            async (isCurrent) => {
+                const limits = {
+                    timeMs: target?.spec.limits.timeMs ?? settings.batchAnalysisTimeMs,
+                    depth: target?.spec.limits.depth ?? settings.batchAnalysisDepth,
+                };
+                const multiPv = target?.spec.multiPv ?? fullMultiPv;
+                const prepared = await prepareLayer(selection, limits, multiPv);
+                if (!isCurrent() || !prepared || lockedRef.current) return;
+                // 準備（AI の読み込み）を待つ間に、自動で読むを入れ直すなどの操作があれば始めない。
+                if (options?.isWanted && !options.isWanted()) return;
+                if (target && prepared.layer.layerId !== target.id) {
+                    // AI のファイルや版が違うと、同じ設定の続きにならない。別の結果を黙って作らない。
+                    setMessage({
+                        text: `「${target.display.label}」と同じ条件の AI を用意できないため、続きを解析できません。「設定を変える」から、解析する設定を選び直してください。`,
+                        type: "error",
+                    });
+                    return;
+                }
+                if (!canUseLayer(prepared.layer.layerId)) return;
+                const current = latestRef.current;
+                const results =
+                    current.doc.layers.find((item) => item.id === prepared.layer.layerId)
+                        ?.results ?? {};
+                const jobs: AnalysisJob[] = collectTreeAnalysisJobs(current.tree, {
+                    includeRoot: true,
+                    // 中断した結果しか無い局面は、もう一度解析する。
+                    isAnalyzed: (node) =>
+                        Object.hasOwn(results, node.id) &&
+                        results[node.id].completion === "completed",
+                }).map((job) => ({
+                    ply: job.ply,
+                    sfen: current.tree.startSfen,
+                    moves: job.moves,
+                    timeMs: limits.timeMs,
+                    depth: limits.depth,
+                    nodeId: job.nodeId,
+                    sideToMove: job.sideToMove,
+                }));
+                if (jobs.length === 0) {
+                    // 解析済みの設定を選び直しただけ。表示をそのレイヤーに切り替える。
+                    onLayerStarted(prepared.layer.layerId, "full");
+                    return;
+                }
+                // 止めてある「深く解析」の読みは手放す（全体の解析と同時にエンジンを持ち続けない）。
+                await deep.release();
+                if (!isCurrent() || lockedRef.current) return;
+                if (options?.isWanted && !options.isWanted()) return;
+                run(jobs, prepared, multiPv, "full");
+            },
+            afterCancel,
+            options?.notice ?? null,
+        );
 
     /** 解析結果（レイヤー）を作ったときの AI の選択。このブラウザで分からなければ null。 */
     const selectionOfLayer = (layer: StudyLayer): NnueSelection | null => {
@@ -691,7 +728,7 @@ export function useStudyAnalysis({
         return stored ? { presetKey: null, nnueId: stored.id } : null;
     };
 
-    const resumeLayer = async (layerId: string): Promise<void> => {
+    const resumeLayer = async (layerId: string, options?: StudyFullStartOptions): Promise<void> => {
         if (lockedRef.current) return;
         const target = latestRef.current.doc.layers.find((layer) => layer.id === layerId);
         if (!target) return;
@@ -718,7 +755,32 @@ export function useStudyAnalysis({
             });
             return;
         }
-        await startFullWith(selection, target);
+        await afterStoppingDeep(
+            (afterCancel) => startFullWith(selection, target, afterCancel, options),
+            options,
+        );
+    };
+
+    /**
+     * 深く解析している途中なら、止め終わってから `start` を呼ぶ。止め終わるまでに別の中止・開始
+     * （エンジンの切り替えも）があれば世代が変わるので、止める前に押された開始は取りやめる。
+     */
+    const afterStoppingDeep = async (
+        start: (afterCancel: boolean) => Promise<void>,
+        options?: StudyFullStartOptions,
+    ): Promise<void> => {
+        // 始められないと分かっている局面では、自動で読むを切らない。
+        if (rejectWithoutKing()) return;
+        options?.onCommit?.();
+        const deepActive =
+            activeMode === "deep" || (preparingRef.current && requestRef.current?.kind === "deep");
+        if (!deepActive) return start(false);
+        const stopped = cancel();
+        const generation = generationRef.current;
+        await stopped;
+        if (!mountedRef.current || generationRef.current !== generation) return;
+        if (options?.isWanted && !options.isWanted()) return;
+        await start(true);
     };
 
     const startDeepWith = (
@@ -858,6 +920,9 @@ export function useStudyAnalysis({
     useEffect(() => {
         if (startedEngineIdRef.current === engineOptionId) return;
         startedEngineIdRef.current = engineOptionId;
+        // 読みを止め終わるのを待って始めようとしている解析は、切り替える前のエンジンの条件で
+        // 始めることになるので取りやめる。
+        if (stoppingRef.current) generationRef.current += 1;
         if (preparingRef.current || isAnalysisRunningRef.current) {
             void cancelRef.current();
             setMessage({ text: "解析エンジンが変わったため、解析を止めました。", type: "error" });
@@ -879,7 +944,7 @@ export function useStudyAnalysis({
         setTimeout(() => {
             if (!mountedRef.current) return;
             void (request.kind === "full"
-                ? startFullWith(MATERIAL_SELECTION)
+                ? startFullWith(MATERIAL_SELECTION, undefined, false, request.options)
                 : startDeepWith(request.nodeId, MATERIAL_SELECTION));
         }, 0);
     };
@@ -924,7 +989,12 @@ export function useStudyAnalysis({
             live: activeMode === "deep" ? (deepLive ?? live) : null,
             settingsLabel,
             fullTargetCount,
-            startFull: () => startFullWith(analysisNnueSelection),
+            startFull: (options) =>
+                afterStoppingDeep(
+                    (afterCancel) =>
+                        startFullWith(analysisNnueSelection, undefined, afterCancel, options),
+                    options,
+                ),
             resumeLayer,
             startDeep,
             continuableDeepNodeId:

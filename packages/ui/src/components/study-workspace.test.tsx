@@ -22,7 +22,10 @@ import {
     TEST_LAYER_ID,
 } from "./study-workspace/study-test-support";
 import { buildStudyViewTree, chooseStudyDisplayLayer } from "./study-workspace/studyView";
-import type { StudyAnalysisController } from "./study-workspace/useStudyAnalysis";
+import type {
+    StudyAnalysisController,
+    StudyFullStartOptions,
+} from "./study-workspace/useStudyAnalysis";
 import type { StudyMateController, StudyMateState } from "./study-workspace/useStudyMate";
 
 const LOCAL_STATUS: StudyWorkspaceSaveStatus = {
@@ -48,8 +51,13 @@ const createAnalysis = (
     live: null,
     settingsLabel: "RAMU・1 秒",
     fullTargetCount: 5,
-    startFull: vi.fn(async () => {}),
-    resumeLayer: vi.fn(async () => {}),
+    // 始められると分かったら `onCommit` を呼ぶ（画面はそこで自動で読むを切る）。
+    startFull: vi.fn(async (options?: StudyFullStartOptions) => {
+        options?.onCommit?.();
+    }),
+    resumeLayer: vi.fn(async (_layerId: string, options?: StudyFullStartOptions) => {
+        options?.onCommit?.();
+    }),
     startDeep: vi.fn(async () => {}),
     continuableDeepNodeId: null,
     continueDeep: vi.fn(async () => {}),
@@ -333,6 +341,17 @@ describe("StudyWorkspaceView", () => {
         await waitFor(() => expect(analysis.continueDeep).toHaveBeenCalled());
     });
 
+    it("全体を解析を押したあと、始まる前に自動で読むを入れたら、その全体の解析は始めない", () => {
+        const { doc } = createTestStudy();
+        const analysis = createAnalysis();
+        render(<Harness initialDoc={doc} analysis={analysis} />);
+        fireEvent.click(within(graphRegion()).getByRole("button", { name: "全体を解析" }));
+        const options = vi.mocked(analysis.startFull).mock.calls[0]?.[0];
+        expect(options?.isWanted?.()).toBe(true);
+        fireEvent.click(screen.getByRole("switch", { name: /自動で読む/ }));
+        expect(options?.isWanted?.()).toBe(false);
+    });
+
     it("自動で読んでいる間も全体を解析を押せ、押すと自動で読むを切ってから始める", async () => {
         localStorage.setItem("shogi:studyAutoAnalyze", "true");
         const { doc } = createTestStudy();
@@ -350,9 +369,19 @@ describe("StudyWorkspaceView", () => {
         const full = within(graphRegion()).getByRole("button", { name: "全体を解析" });
         expect((full as HTMLButtonElement).disabled).toBe(false);
         fireEvent.click(full);
-        await waitFor(() => expect(analysis.startFull).toHaveBeenCalledTimes(1));
-        expect(analysis.cancel).toHaveBeenCalled();
-        expect(screen.getByText(/自動で読むを切りました/)).toBeTruthy();
+        // 読みを止めるのは全体の解析を始める側（止め終わるのを待ってから始める）。切った知らせも、
+        // 始めるときに消されないよう、始める側が出す。
+        expect(analysis.startFull).toHaveBeenCalledTimes(1);
+        expect(analysis.startFull).toHaveBeenCalledWith(
+            expect.objectContaining({
+                notice: expect.objectContaining({
+                    text: expect.stringMatching(/自動で読むを切りました/),
+                }),
+            }),
+        );
+        expect(
+            screen.getByRole("switch", { name: /自動で読む/ }).getAttribute("aria-checked"),
+        ).toBe("false");
     });
 
     it("続きから読めずに読み終えたら、自動で読むを入れたまま読み直し続けず、終わったことを出す", async () => {
@@ -2085,7 +2114,10 @@ describe("StudyWorkspaceView", () => {
         expect(graphRegion().textContent).not.toContain("簡易AI");
         fireEvent.click(screen.getByRole("button", { name: "残り 2 局面を解析" }));
 
-        expect(analysis.resumeLayer).toHaveBeenCalledWith(TEST_LAYER_ID);
+        expect(analysis.resumeLayer).toHaveBeenCalledWith(
+            TEST_LAYER_ID,
+            expect.objectContaining({ isWanted: expect.any(Function) }),
+        );
         expect(analysis.startFull).not.toHaveBeenCalled();
     });
 

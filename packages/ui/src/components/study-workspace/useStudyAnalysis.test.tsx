@@ -88,7 +88,10 @@ function createEngineOption(
  * 止めても続きから読める探索（`analysis`）を持つエンジン。読み始める・続けるたびに 5 ずつ深く読んだ
  * info を 1 回流す。読みは `finishRun` で上限に届かせるか、止められるまで続く。
  */
-function createResumableEngineOption(): {
+function createResumableEngineOption(
+    /** 渡すと、読みを止めるのをこの Promise が解決するまで遅らせる。 */
+    holdPause?: Promise<void>,
+): {
     option: EngineOption;
     starts: () => number;
     resumes: () => number;
@@ -137,7 +140,10 @@ function createResumableEngineOption(): {
             sessionId,
             runId: 1,
             finished,
-            pause: async () => (end as NonNullable<typeof end>)("paused", 10_000),
+            pause: async () => {
+                await holdPause;
+                return (end as NonNullable<typeof end>)("paused", 10_000);
+            },
         };
     };
     const createClient = (): EngineClient => ({
@@ -652,6 +658,122 @@ describe("useStudyAnalysis", () => {
         } finally {
             clock.mockRestore();
         }
+    });
+
+    it("深く読んでいる途中に全体を解析すると、読みを止め終えてから全体の解析を始める", async () => {
+        const { doc, ids } = createTestStudy();
+        const engine = createResumableEngineOption();
+        const { result } = renderHook(() => useHarness(doc, [engine.option]));
+        await act(async () => {
+            await result.current.controller.startDeep(ids[2]);
+        });
+        await waitFor(() => expect(result.current.controller.mode).toBe("deep"));
+        await act(async () => {
+            await result.current.controller.startFull();
+        });
+        await waitFor(() =>
+            expect(result.current.startedLayers.some((key) => key.startsWith("full:"))).toBe(true),
+        );
+    });
+
+    it("読みを止め終わるまでに別の中止があれば、全体の解析は始めない", async () => {
+        const { doc, ids } = createTestStudy();
+        const engine = createResumableEngineOption();
+        const { result } = renderHook(() => useHarness(doc, [engine.option]));
+        await act(async () => {
+            await result.current.controller.startDeep(ids[2]);
+        });
+        await waitFor(() => expect(result.current.controller.mode).toBe("deep"));
+        await act(async () => {
+            const controller = result.current.controller;
+            const starting = controller.startFull();
+            void controller.cancel();
+            await starting;
+        });
+        expect(result.current.startedLayers.some((key) => key.startsWith("full:"))).toBe(false);
+        expect(result.current.controller.mode).toBeNull();
+    });
+
+    it("読みを止め終えるまでに画面で別の操作をしていたら、全体の解析は始めない", async () => {
+        const { doc, ids } = createTestStudy();
+        const engine = createResumableEngineOption();
+        const { result } = renderHook(() => useHarness(doc, [engine.option]));
+        await act(async () => {
+            await result.current.controller.startDeep(ids[2]);
+        });
+        await waitFor(() => expect(result.current.controller.mode).toBe("deep"));
+        await act(async () => {
+            await result.current.controller.startFull({ isWanted: () => false });
+        });
+        expect(result.current.startedLayers.some((key) => key.startsWith("full:"))).toBe(false);
+    });
+
+    it("準備を待つ間に画面で別の操作をしていたら、全体の解析は始めない", async () => {
+        const { doc } = createTestStudy();
+        const engine = createEngineOption();
+        const { result } = renderHook(() => useHarness(doc, [engine.option]));
+        let wanted = true;
+        await act(async () => {
+            const starting = result.current.controller.startFull({
+                onCommit: () => {
+                    // 始めると決めたあと、準備を終える前に別の操作をした。
+                    wanted = false;
+                },
+                isWanted: () => wanted,
+            });
+            await starting;
+        });
+        expect(result.current.startedLayers).toEqual([]);
+        expect(engine.searches()).toBe(0);
+        expect(result.current.controller.isPreparing).toBe(false);
+    });
+
+    it("始めるときの通知は、前の通知を消したあとに出す", async () => {
+        const { doc, ids } = createTestStudy();
+        const engine = createResumableEngineOption();
+        const onMessage = vi.fn();
+        const { result } = renderHook(() => useHarness(doc, [engine.option], { onMessage }));
+        await act(async () => {
+            await result.current.controller.startDeep(ids[2]);
+        });
+        await waitFor(() => expect(result.current.controller.mode).toBe("deep"));
+        const notice = { text: "自動で読むを切りました", type: "warning" } as const;
+        await act(async () => {
+            await result.current.controller.startFull({ notice });
+        });
+        await waitFor(() =>
+            expect(result.current.startedLayers.some((key) => key.startsWith("full:"))).toBe(true),
+        );
+        expect(onMessage).toHaveBeenLastCalledWith(notice);
+    });
+
+    it("読みを止め終えるまでに解析エンジンが変わったら、全体の解析は始めない", async () => {
+        const { doc, ids } = createTestStudy();
+        let release: () => void = () => {};
+        const holdPause = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        const engine = createResumableEngineOption(holdPause);
+        const other = createEngineOption();
+        const { result, rerender } = renderHook(
+            ({ engines }: { engines: EngineOption[] }) => useHarness(doc, engines),
+            { initialProps: { engines: [engine.option] } },
+        );
+        await act(async () => {
+            await result.current.controller.startDeep(ids[2]);
+        });
+        await waitFor(() => expect(result.current.controller.mode).toBe("deep"));
+        let starting: Promise<void> = Promise.resolve();
+        act(() => {
+            starting = result.current.controller.startFull();
+        });
+        rerender({ engines: [{ ...other.option, id: "other" }] });
+        await act(async () => {
+            release();
+            await starting;
+        });
+        expect(result.current.startedLayers.some((key) => key.startsWith("full:"))).toBe(false);
+        expect(other.searches()).toBe(0);
     });
 
     it("別の局面を深く解析している途中に深く解析すると、前の読みを結果に残して切り替える", async () => {
