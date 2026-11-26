@@ -1457,6 +1457,80 @@ describe("StudyWorkspaceView", () => {
         expect(panel.textContent).not.toContain("を深く解析中");
     });
 
+    it("自動で読む間に局面を移っても、前の局面の読みが止まるまで別の局面の行を出さない", () => {
+        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+        const { doc } = createTestStudy();
+        // 止め終わるまでの間を模すため、cancel しても前の局面の読みが残る。
+        const analysis = createAnalysis({
+            mode: "deep",
+            live: {
+                nodeId: doc.tree.rootId,
+                depth: 12,
+                startedAt: Date.now(),
+                budgetMs: 30_000,
+                preview: null,
+            },
+        });
+        render(<Harness initialDoc={doc} analysis={analysis} />);
+        fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
+        const panel = screen.getByRole("region", { name: "候補手" });
+        expect(panel.textContent).not.toContain("を深く解析中");
+        expect(within(panel).queryByRole("button", { name: "その局面へ" })).toBeNull();
+        expect(screen.queryByText(/開始局面を読んでいます/)).toBeNull();
+        // 見ている局面を読んでいることにし、前の局面の深さは出さない。
+        expect(screen.getAllByText("1手目を読んでいます").length).toBeGreaterThan(0);
+    });
+
+    it("自動で読む間に局面を移り、前の読みが止まる前に戻ったら、戻った局面を読み直す", async () => {
+        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+        const { doc, ids } = createTestStudy();
+        const analysis = createAnalysis({
+            mode: "deep",
+            live: {
+                nodeId: doc.tree.rootId,
+                depth: 12,
+                startedAt: Date.now(),
+                budgetMs: 30_000,
+                preview: null,
+            },
+        });
+        render(<Harness initialDoc={doc} analysis={analysis} />);
+        // 付けてから 1 拍おいて、読んでいる局面を覚える。
+        await act(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+        fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
+        await waitFor(() => expect(analysis.startDeep).toHaveBeenCalledWith(ids[1]));
+        // 開始局面の読みはまだ止まっていない（live が残っている）うちに戻る。
+        fireEvent.click(screen.getByRole("button", { name: "1 手戻る（←）" }));
+        await waitFor(() => expect(analysis.startDeep).toHaveBeenLastCalledWith(doc.tree.rootId));
+    });
+
+    it("別の局面を深く解析している間に別のタブで自動で読むを入れても、終わったと知らせない", () => {
+        const { doc, ids } = createTestStudy();
+        const analysis = createAnalysis({
+            mode: "deep",
+            live: {
+                nodeId: ids[3],
+                depth: 12,
+                startedAt: Date.now(),
+                budgetMs: 30_000,
+                preview: null,
+            },
+        });
+        render(<Harness initialDoc={doc} analysis={analysis} />);
+        const panel = screen.getByRole("region", { name: "候補手" });
+        expect(panel.textContent).toContain("3手目を深く解析中");
+        act(() => {
+            localStorage.setItem("shogi:studyAutoAnalyze", "true");
+            window.dispatchEvent(
+                new StorageEvent("storage", { key: "shogi:studyAutoAnalyze", newValue: "true" }),
+            );
+        });
+        expect(panel.textContent).not.toContain("を深く解析中");
+        expect(panel.textContent).not.toContain("終わりました");
+    });
+
     it("この局面を深く解析している間は、別の局面の行を出さない（空きも置かない）", () => {
         const { doc } = createTestStudy();
         const analysis = createAnalysis({
