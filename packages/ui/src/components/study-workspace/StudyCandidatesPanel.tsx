@@ -2,7 +2,6 @@ import type {
     KifuNode,
     StudyAnalysisResult,
     StudyCandidate,
-    StudyHighlightKind,
     StudyScore,
     StudySource,
 } from "@shogi/app-core";
@@ -30,7 +29,7 @@ import {
     studyFirstMoveLabel,
     studyScoreSide,
 } from "./studyView";
-import type { StudyLiveSearch } from "./useStudyAnalysis";
+import { isStudyAutoReadLayer, type StudyLiveSearch } from "./useStudyAnalysis";
 
 /** 自動で読むで、続きから読めずに読み終えたときの知らせ。 */
 export const STUDY_AUTO_ANALYZE_FINISHED = "この局面は読み終えました。局面を移ると読みます";
@@ -123,15 +122,10 @@ interface StudyCandidatesPanelProps {
      */
     readingSoon?: boolean;
     /**
-     * いまの局面でパスを指し（変化として足し）、その局面を深く解析する。手番でない側が何を狙って
-     * いるかを見るため。渡さなければ出さない（編集できないとき）。
+     * いまの局面でパスを指し（変化として足し）、その局面を読む。手番でない側が続けて指せたら何を
+     * 狙うかを見るため。渡さなければ出さない（編集できないとき）。
      */
     onStartDeepAfterPass?: () => void;
-    /**
-     * 深く読んだ結果で、いま見ている手の判定が変わったときの、元の判定と新しい判定
-     * （悪手でも疑問手でもないなら null）。
-     */
-    revision?: { from: StudyHighlightKind | null; to: StudyHighlightKind | null } | null;
     onCancel: () => void;
     onPreviewPv: (request: StudyPvRequest) => void;
     onAddPvAsVariation?: (request: StudyPvRequest) => void;
@@ -213,7 +207,7 @@ function DeepProgressNote({ live }: { live: StudyLiveSearch }): ReactElement | n
 }
 
 const FINISHED_TEXT = {
-    deep: "の深く解析が終わりました",
+    deep: "を読み終えました",
     mate: "の詰み探索が終わりました",
     shortest: "の最短手順の探索が終わりました",
 };
@@ -277,7 +271,7 @@ function ElsewhereActivityLine({ activity }: { activity: StudyElsewhereActivity 
             </>
         ) : activity.kind === "deep" ? (
             <>
-                を深く解析中
+                を読んでいます
                 <DeepProgressNote live={activity.live} />
             </>
         ) : (
@@ -447,8 +441,6 @@ function RecordLine({
     );
 }
 
-const KIND_LABEL: Record<StudyHighlightKind, string> = { blunder: "悪手", dubious: "疑問手" };
-
 export function StudyCandidatesPanel({
     node,
     positionResult,
@@ -462,7 +454,6 @@ export function StudyCandidatesPanel({
     recordAhead = null,
     readingSoon = false,
     onStartDeepAfterPass,
-    revision = null,
     onCancel,
     onPreviewPv,
     onAddPvAsVariation,
@@ -481,7 +472,7 @@ export function StudyCandidatesPanel({
     const sourceText = formatStudyScore(source?.score);
     const mainResult = deeperResult ?? positionResult;
     const mainNote = mainResult
-        ? `${deeperResult ? "深く解析・" : ""}${resultNote(mainResult)}`
+        ? `${deeperResult && isStudyAutoReadLayer(deeperResult.layer) ? "自動読み・" : ""}${resultNote(mainResult)}`
         : null;
 
     const controls = (
@@ -533,11 +524,11 @@ export function StudyCandidatesPanel({
                             variant="outline"
                             size="sm"
                             className={COMPACT_BUTTON_CLASS}
-                            title="手番の側がパスした局面を深く解析し、相手の狙いを見ます（パスは変化として足します）"
+                            title="いまの手番を飛ばして、もう一方の側の狙いを読みます（パスは変化として足します）"
                             onClick={onStartDeepAfterPass}
                             disabled={startDisabled}
                         >
-                            パスして解析
+                            パスして読む
                         </Button>
                     )}
                     {mate && (
@@ -640,20 +631,6 @@ export function StudyCandidatesPanel({
                         </ol>
                     )}
                 </div>
-            )}
-
-            {revision && (
-                <p className="rounded-md border border-border bg-muted/40 px-2.5 py-1.5 text-xs text-wafuu-sumi">
-                    {revision.to !== null
-                        ? `深く解析した結果、${KIND_LABEL[revision.to]}と分かりました。`
-                        : revision.from !== null
-                          ? `深く解析した結果、${KIND_LABEL[revision.from]}ではありませんでした。`
-                          : "深く解析した結果、判定が変わりました。"}
-                    <span className="ml-1 text-muted-foreground">
-                        （全体の解析では
-                        {revision.from === null ? "問題なし" : KIND_LABEL[revision.from]}）
-                    </span>
-                </p>
             )}
 
             {/* 深く解析した結果があれば、それを候補手の一覧にする（同じ局面をより深く読んだ結果なので）。

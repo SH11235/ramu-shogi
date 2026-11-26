@@ -34,8 +34,6 @@ interface StudyMoveListProps {
     currentNodeId: string;
     /** 悪手・疑問手と判定された手（ノード ID → 判定）。 */
     highlightKinds: ReadonlyMap<string, StudyHighlightKind>;
-    /** 深く読んで、悪手・疑問手ではなかったと分かった手（ノード ID → 元の判定）。 */
-    clearedKinds?: ReadonlyMap<string, StudyHighlightKind>;
     /**
      * コメントの書きかけが保存されていない手（ノード ID → 理由）。
      * `over_limit`: 長すぎて保存できない。`conflict`: 別の画面での変更とぶつかり、選択待ち。
@@ -87,7 +85,6 @@ export function StudyMoveList({
     line,
     currentNodeId,
     highlightKinds,
-    clearedKinds,
     unsavedComments,
     onSelect,
     onBackToMainLine,
@@ -97,7 +94,7 @@ export function StudyMoveList({
     className,
 }: StudyMoveListProps): ReactElement {
     const hasSource = Object.values(doc.tree.nodes).some((node) => node.source?.score != null);
-    const hasMarks = highlightKinds.size > 0 || (clearedKinds?.size ?? 0) > 0;
+    const hasMarks = highlightKinds.size > 0;
     const rowGrid =
         ROW_GRIDS[
             hasMarks ? (hasSource ? "marksSource" : "marks") : hasSource ? "source" : "plain"
@@ -214,7 +211,6 @@ export function StudyMoveList({
                         ? parent.children.filter((childId) => childId !== nodeId)
                         : [];
                     const kind = highlightKinds.get(nodeId);
-                    const cleared = kind ? undefined : clearedKinds?.get(nodeId);
                     const analysisText = formatEval(node.eval?.scoreCp, node.eval?.scoreMate);
                     // 評価値の色は符号ではなく、その手を指した側で決める (評価値グラフの線と同じ対応)。
                     const mover: "sente" | "gote" | null =
@@ -253,16 +249,6 @@ export function StudyMoveList({
                                                 )}
                                             >
                                                 {KIND_MARK[kind].text}
-                                            </span>
-                                        )}
-                                        {cleared && (
-                                            <span
-                                                role="img"
-                                                aria-label={`${KIND_MARK[cleared].label}ではなかった（深く解析）`}
-                                                title={`${KIND_MARK[cleared].label}ではなかった（深く解析）`}
-                                                className="flex h-4 w-4 items-center justify-center rounded border border-border text-[10px] leading-none text-muted-foreground line-through"
-                                            >
-                                                {KIND_MARK[cleared].text}
                                             </span>
                                         )}
                                     </span>

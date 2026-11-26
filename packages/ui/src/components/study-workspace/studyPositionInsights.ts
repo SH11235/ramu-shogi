@@ -34,13 +34,9 @@ export function deriveStudyPositionInsights({
         deeperLayerIds: studyDeeperLayerIds(doc, displayLayerId),
     });
     const highlightKinds = new Map<string, StudyHighlightKind>();
-    /** 深く読んで、悪手・疑問手ではなかったと分かった手（元の判定）。 */
-    const clearedKinds = new Map<string, StudyHighlightKind>();
     for (const highlight of highlights) {
         if (highlight.kind) highlightKinds.set(highlight.nodeId, highlight.kind);
-        else if (highlight.revisedFrom) clearedKinds.set(highlight.nodeId, highlight.revisedFrom);
     }
-    const currentHighlight = highlights.find((highlight) => highlight.nodeId === currentNodeId);
     const displayLayer = doc.layers.find((layer) => layer.id === displayLayerId);
     const totalCount = Object.keys(doc.tree.nodes).length;
     const unanalyzedCount = countStudyUnanalyzed(doc, displayLayerId);
@@ -61,12 +57,6 @@ export function deriveStudyPositionInsights({
     return {
         highlights,
         highlightKinds,
-        clearedKinds,
-        /** 深く読んで判定が変わったとき、その前後。 */
-        revision:
-            currentHighlight?.revisedFrom !== undefined
-                ? { from: currentHighlight.revisedFrom, to: currentHighlight.kind }
-                : null,
         displayLayer,
         totalCount,
         unanalyzedCount,
@@ -88,7 +78,7 @@ export interface StudyDeepReadRef {
  * ないので、別の AI の結果は深くても選ばない）。ただし、この局面を直前に別の AI で読んで結果を書いたら、
  * その結果を出す（読んだのに結果が見当たらない、にならないように）。深さが同じなら直前の読み、
  * 表示中の設定、同じ AI で深く読んだ設定の順に採る。
- * 評価値グラフの「深く読んだ局面」の印も、局面ごとにこれで選ぶ（帯の値と印が食い違わないように）。
+ * 評価値グラフの線と別の AI の丸も、局面ごとにこれで選ぶ（帯の値とグラフが食い違わないように）。
  */
 export function pickStudyBandResult({
     doc,

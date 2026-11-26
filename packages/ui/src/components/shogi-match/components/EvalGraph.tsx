@@ -53,7 +53,7 @@ export interface EvalGraphMarker {
     /** `evalHistory` の添字（0 = 開始局面）。 */
     ply: number;
     /** 印の種類。色だけでなく形でも見分けられるようにしている。 */
-    tone: "blunder" | "dubious" | "deep";
+    tone: "blunder" | "dubious" | "otherAi";
     /** 読み上げ・ツールチップ用の説明（例: `42手目 悪手`）。 */
     label: string;
     /** `secondary` なら、`secondaryHistory` の線の上に置く（印の元になった評価値の線に載せる）。 */
@@ -67,7 +67,7 @@ export interface EvalGraphMarker {
 const MARKER_CLASS: Record<EvalGraphMarker["tone"], string> = {
     blunder: "rounded-full bg-study-blunder ring-2 ring-background",
     dubious: "rounded-full border-2 border-study-dubious bg-background",
-    deep: "rotate-45 border-2 border-wafuu-sumi bg-background",
+    otherAi: "rounded-full border-2 border-muted-foreground bg-background",
 };
 
 /**
@@ -317,6 +317,34 @@ export function EvalGraph({
         return { senteSegments: sente, goteSegments: gote };
     })();
 
+    // 1 点だけの区間は、現在位置の縦線（同じ x に重なることが多い）に隠れないよう、線より後に点を描く。
+    const isolatedDots = [
+        ...secondarySegments
+            .filter((segment) => segment.length === 1)
+            .map((segment) => ({
+                point: segment[0],
+                color: "--muted-foreground",
+                key: "secondary",
+            })),
+        ...senteSegments
+            .filter((segment) => segment.length === 1)
+            .map((segment) => ({ point: segment[0], color: "--wafuu-shu", key: "sente" })),
+        ...goteSegments
+            .filter((segment) => segment.length === 1)
+            .map((segment) => ({ point: segment[0], color: "--wafuu-ai", key: "gote" })),
+    ].map(({ point, color, key }) => (
+        <polyline
+            key={`dot-${key}-${point}`}
+            data-isolated-point={key}
+            points={`${point} ${point}`}
+            fill="none"
+            stroke={`hsl(var(${color}))`}
+            strokeWidth="5"
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
+        />
+    ));
+
     // 現在位置のマーカー
     const currentMarker = (() => {
         if (currentPly < 0 || currentPly >= evalHistory.length) return null;
@@ -378,49 +406,61 @@ export function EvalGraph({
                         y1={label.position}
                         x2="100%"
                         y2={label.position}
-                        stroke="hsl(var(--border))"
+                        // 0 は形勢の分かれ目なので、薄い補助線と見分けられるよう墨色にする。
+                        stroke={
+                            label.value === "0" ? "hsl(var(--wafuu-sumi))" : "hsl(var(--border))"
+                        }
                         strokeWidth={label.value === "0" ? "1" : "0.5"}
                         vectorEffect="non-scaling-stroke"
                         strokeDasharray={label.value === "0" ? "none" : "2,2"}
                     />
                 ))}
 
-                {secondarySegments.map((segment) => (
-                    <polyline
-                        key={`secondary-${segment[0]}`}
-                        data-series="secondary"
-                        points={segment.join(" ")}
-                        fill="none"
-                        stroke="hsl(var(--muted-foreground))"
-                        strokeWidth="1.5"
-                        strokeDasharray="4,3"
-                        vectorEffect="non-scaling-stroke"
-                    />
-                ))}
+                {secondarySegments
+                    .filter((segment) => segment.length > 1)
+                    .map((segment) => (
+                        <polyline
+                            key={`secondary-${segment[0]}`}
+                            data-series="secondary"
+                            points={segment.join(" ")}
+                            strokeLinecap="round"
+                            fill="none"
+                            stroke="hsl(var(--muted-foreground))"
+                            strokeWidth="1.5"
+                            strokeDasharray="4,3"
+                            vectorEffect="non-scaling-stroke"
+                        />
+                    ))}
 
                 {/* 評価値ライン（先手：朱色） */}
-                {senteSegments.map((segment) => (
-                    <polyline
-                        key={`sente-${segment[0]}`}
-                        points={segment.join(" ")}
-                        fill="none"
-                        stroke="hsl(var(--wafuu-shu))"
-                        strokeWidth="2"
-                        vectorEffect="non-scaling-stroke"
-                    />
-                ))}
+                {senteSegments
+                    .filter((segment) => segment.length > 1)
+                    .map((segment) => (
+                        <polyline
+                            key={`sente-${segment[0]}`}
+                            points={segment.join(" ")}
+                            strokeLinecap="round"
+                            fill="none"
+                            stroke="hsl(var(--wafuu-shu))"
+                            strokeWidth="2"
+                            vectorEffect="non-scaling-stroke"
+                        />
+                    ))}
 
                 {/* 評価値ライン（後手：藍色） */}
-                {goteSegments.map((segment) => (
-                    <polyline
-                        key={`gote-${segment[0]}`}
-                        points={segment.join(" ")}
-                        fill="none"
-                        stroke="hsl(var(--wafuu-ai))"
-                        strokeWidth="2"
-                        vectorEffect="non-scaling-stroke"
-                    />
-                ))}
+                {goteSegments
+                    .filter((segment) => segment.length > 1)
+                    .map((segment) => (
+                        <polyline
+                            key={`gote-${segment[0]}`}
+                            points={segment.join(" ")}
+                            strokeLinecap="round"
+                            fill="none"
+                            stroke="hsl(var(--wafuu-ai))"
+                            strokeWidth="2"
+                            vectorEffect="non-scaling-stroke"
+                        />
+                    ))}
 
                 {/* 現在位置マーカー（縦線）。金は明地でコントラストが弱いため、
                     下層に墨のアウトラインを敷いて両テーマで視認性を確保する */}
@@ -446,6 +486,7 @@ export function EvalGraph({
                         />
                     </g>
                 )}
+                {isolatedDots}
             </svg>
         );
 
@@ -559,7 +600,7 @@ export function EvalGraph({
                             };
                             const shapeClass = cn(
                                 "block",
-                                marker.tone === "deep" ? "h-2 w-2" : "h-2.5 w-2.5",
+                                marker.tone === "otherAi" ? "h-2 w-2" : "h-2.5 w-2.5",
                                 MARKER_CLASS[marker.tone],
                                 // 現在位置の縦線と同じく、金の外側に墨の縁を付けて明るい地でも見えるようにする。
                                 marker.current &&
@@ -644,34 +685,40 @@ export function EvalGraph({
                 y1={padding.top + graphHeight / 2}
                 x2="100%"
                 y2={padding.top + graphHeight / 2}
-                stroke="hsl(var(--border))"
+                stroke="hsl(var(--wafuu-sumi))"
                 strokeWidth="1"
                 vectorEffect="non-scaling-stroke"
             />
 
             {/* 評価値ライン（先手：朱色） */}
-            {senteSegments.map((segment) => (
-                <polyline
-                    key={`sente-${segment[0]}`}
-                    points={segment.join(" ")}
-                    fill="none"
-                    stroke="hsl(var(--wafuu-shu))"
-                    strokeWidth="2"
-                    vectorEffect="non-scaling-stroke"
-                />
-            ))}
+            {senteSegments
+                .filter((segment) => segment.length > 1)
+                .map((segment) => (
+                    <polyline
+                        key={`sente-${segment[0]}`}
+                        points={segment.join(" ")}
+                        strokeLinecap="round"
+                        fill="none"
+                        stroke="hsl(var(--wafuu-shu))"
+                        strokeWidth="2"
+                        vectorEffect="non-scaling-stroke"
+                    />
+                ))}
 
             {/* 評価値ライン（後手：藍色） */}
-            {goteSegments.map((segment) => (
-                <polyline
-                    key={`gote-${segment[0]}`}
-                    points={segment.join(" ")}
-                    fill="none"
-                    stroke="hsl(var(--wafuu-ai))"
-                    strokeWidth="2"
-                    vectorEffect="non-scaling-stroke"
-                />
-            ))}
+            {goteSegments
+                .filter((segment) => segment.length > 1)
+                .map((segment) => (
+                    <polyline
+                        key={`gote-${segment[0]}`}
+                        points={segment.join(" ")}
+                        strokeLinecap="round"
+                        fill="none"
+                        stroke="hsl(var(--wafuu-ai))"
+                        strokeWidth="2"
+                        vectorEffect="non-scaling-stroke"
+                    />
+                ))}
 
             {/* 現在位置マーカー（縦線）。金は明地でコントラストが弱いため、
                 下層に墨のアウトラインを敷いて両テーマで視認性を確保する */}
@@ -697,6 +744,7 @@ export function EvalGraph({
                     />
                 </g>
             )}
+            {isolatedDots}
         </svg>
     );
 
