@@ -24,7 +24,9 @@
         "lint:fix": "pnpm --workspace-root exec biome check --write --files-ignore-unknown=true",
         "lint:fix:unsafe": "pnpm --workspace-root exec biome check --write --unsafe --files-ignore-unknown=true",
         "typecheck": "tsc -p tsconfig.json",
-        "test": "vitest"
+        "test": "vitest",
+        "storybook": "storybook dev -p 6006",
+        "build-storybook": "storybook build -o storybook-static"
     },
     "dependencies": {
         "@radix-ui/react-alert-dialog": "catalog:",
@@ -43,12 +45,20 @@
         "class-variance-authority": "catalog:"
     },
     "devDependencies": {
+        "@rolldown/plugin-babel": "catalog:",
+        "@storybook/react-vite": "catalog:",
+        "@tailwindcss/vite": "catalog:",
         "@testing-library/react": "catalog:",
         "@types/react": "catalog:",
         "@types/react-dom": "catalog:",
+        "@vitejs/plugin-react": "catalog:",
+        "babel-plugin-react-compiler": "catalog:",
         "happy-dom": "catalog:",
         "knip": "catalog:",
+        "storybook": "catalog:",
+        "tailwindcss": "catalog:",
         "typescript": "catalog:",
+        "vite": "catalog:",
         "vitest": "catalog:"
     },
     "peerDependencies": {
