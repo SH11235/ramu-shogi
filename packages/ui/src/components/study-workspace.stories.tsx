@@ -3,6 +3,7 @@ import {
     createStudyDocumentFromMoves,
     type StudyAnalysisResult,
     type StudyDocument,
+    type StudyOp,
     type StudyScore,
 } from "@shogi/app-core";
 import type { Meta, StoryObj } from "@storybook/react-vite";
@@ -11,7 +12,12 @@ import { fn } from "storybook/test";
 import { DEFAULT_ANALYSIS_SETTINGS, type Message } from "./shogi-match/types";
 import { StudyWorkspaceView } from "./study-workspace";
 import type { StudyWorkspaceSaveStatus } from "./study-workspace/StudySaveStatus";
-import { cp, createTestStudy } from "./study-workspace/study-test-support";
+import {
+    cp,
+    createTestStudy,
+    putScoreOp,
+    TEST_LAYER_SPEC,
+} from "./study-workspace/study-test-support";
 import { buildStudyViewTree, chooseStudyDisplayLayer } from "./study-workspace/studyView";
 import type { StudyAnalysisController, StudyLiveSearch } from "./study-workspace/useStudyAnalysis";
 import type { StudyMateController, StudyMateState } from "./study-workspace/useStudyMate";
@@ -92,7 +98,17 @@ const live = (nodeId: string, options: Partial<StudyLiveSearch> = {}): StudyLive
 });
 
 const unanalyzed = createTestStudy();
-const analyzed = createTestStudy([cp(30), cp(45), cp(20), cp(80), cp(-150)]);
+/** 全体の解析を済ませたノート（各局面に、その局面で指せる手の読み筋を付ける）。 */
+const analyzed = (() => {
+    const base = createTestStudy();
+    const scores = [cp(30), cp(45), cp(20), cp(80), cp(-150)];
+    const pvs = [["2g2f"], ["3c3d"], ["2g2f"], ["8c8d"], ["2f2e"]];
+    const ops: StudyOp[] = [
+        { type: "ensureLayer", spec: TEST_LAYER_SPEC, display: { label: "RAMU・1 秒" } },
+        ...base.ids.map((id, index) => putScoreOp(id, scores[index], { pv: pvs[index] })),
+    ];
+    return { doc: applyStudyOps(base.doc, ops), ids: base.ids };
+})();
 
 interface StoryHarnessProps {
     doc: StudyDocument;
