@@ -6,6 +6,14 @@
         "outDir": "dist",
         "rootDir": "src"
     },
-    "include": ["src"],
-    "exclude": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx"]
+    "include": [
+        "src"
+    ],
+    "exclude": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/*.spec.tsx",
+        "**/*.stories.tsx"
+    ]
 }

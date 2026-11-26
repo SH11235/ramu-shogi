@@ -1,4 +1,9 @@
-import { applyStudyOps, type StudyDocument, type StudyScore } from "@shogi/app-core";
+import {
+    applyStudyOps,
+    type StudyAnalysisResult,
+    type StudyDocument,
+    type StudyScore,
+} from "@shogi/app-core";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useEffect, useState } from "react";
 import { fn } from "storybook/test";
@@ -7,11 +12,7 @@ import { StudyWorkspaceView } from "./study-workspace";
 import type { StudyWorkspaceSaveStatus } from "./study-workspace/StudySaveStatus";
 import { cp, createTestStudy } from "./study-workspace/study-test-support";
 import { buildStudyViewTree, chooseStudyDisplayLayer } from "./study-workspace/studyView";
-import type {
-    StudyAnalysisController,
-    StudyAnalysisResult,
-    StudyLiveSearch,
-} from "./study-workspace/useStudyAnalysis";
+import type { StudyAnalysisController, StudyLiveSearch } from "./study-workspace/useStudyAnalysis";
 import type { StudyMateController, StudyMateState } from "./study-workspace/useStudyMate";
 
 // 研究ノートの画面を、解析・詰み探索の状態ごとに並べる。解析と詰み探索は模擬で、押しても動かない
@@ -30,6 +31,7 @@ const createAnalysis = (
     mode: null,
     isPreparing: false,
     progress: null,
+    completedRuns: 0,
     live: null,
     settingsLabel: "RAMU・1 秒",
     fullTargetCount: 5,
@@ -166,11 +168,9 @@ function StoryHarness({
 }
 
 /** 自動で読むのスイッチ（端末に保存される）を、story ごとに決める。 */
-const withAutoAnalyze =
-    (enabled: boolean) =>
-    (): void => {
-        localStorage.setItem("shogi:studyAutoAnalyze", JSON.stringify(enabled));
-    };
+const withAutoAnalyze = (enabled: boolean) => (): void => {
+    localStorage.setItem("shogi:studyAutoAnalyze", JSON.stringify(enabled));
+};
 
 const meta = {
     title: "研究ノート/画面の状態",
@@ -222,7 +222,7 @@ export const 自動で読む_読んでいる: Story = {
         initialPly: 2,
         analysis: createAnalysis({
             mode: "deep",
-            live: live(ids[2], { preview: preview(cp(-300), 22, ["8c8d", "2f2e", "8d8e"]) }),
+            live: live(ids[2], { preview: preview(cp(120), 22, ["2g2f", "8c8d", "2f2e"]) }),
         }),
     },
 };
@@ -230,8 +230,8 @@ export const 自動で読む_読んでいる: Story = {
 export const 自動で読む_読み終えた: Story = {
     beforeEach: withAutoAnalyze(true),
     args: {
-        doc: unanalyzed.doc,
-        analysis: createAnalysis({ mode: "deep", live: live(ids[0]) }),
+        doc: analyzed.doc,
+        analysis: createAnalysis({ mode: "deep", live: live(analyzedIds[0]) }),
         nextAnalysis: createAnalysis(),
     },
 };

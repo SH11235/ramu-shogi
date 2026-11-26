@@ -6,7 +6,10 @@ const preview: Preview = {
         layout: "fullscreen",
         viewport: {
             options: {
-                phone: { name: "スマートフォン（375×812）", styles: { width: "375px", height: "812px" } },
+                phone: {
+                    name: "スマートフォン（375×812）",
+                    styles: { width: "375px", height: "812px" },
+                },
                 desktop: { name: "PC（1280×800）", styles: { width: "1280px", height: "800px" } },
             },
         },
