@@ -2841,13 +2841,14 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         expect(band().textContent).toContain("深さ 23");
     });
 
-    it("自動で読み始めて途中の候補がまだ無い間は、帯に未解析ではなく読んでいることを出す", () => {
+    it("自動で読み始めて途中の候補がまだ無い間は、帯に未解析ではなく読んでいることを出す", async () => {
         localStorage.setItem("shogi:studyAutoAnalyze", "true");
         const { doc } = createTestStudy();
         const view = render(<Harness initialDoc={doc} />);
         const band = () =>
             screen.getByRole("status", { name: "この局面の最善手" }).parentElement as HTMLElement;
-        expect(band().textContent).toContain("未解析");
+        // 読み始めなければ（解析の部品が読まなければ）未解析に戻る。
+        await waitFor(() => expect(band().textContent).toContain("未解析"));
 
         view.rerender(
             <Harness
