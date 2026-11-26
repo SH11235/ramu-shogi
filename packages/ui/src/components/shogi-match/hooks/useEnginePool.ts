@@ -219,6 +219,10 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
          */
         runId: number;
         finishedRunId?: number;
+        /** start() から、完了・中止・初期化の失敗までの間 true。 */
+        running: boolean;
+        /** 実行中だったので見送った、古い NNUE のワーカーを手放すかの判定が残っているか。 */
+        staleReleasePending: boolean;
         releaseWorkersAfterRun: boolean;
         /** ワーカーの初期化・作り直し・破棄を順番に行うための列（同時に走らせない）。 */
         initChain: Promise<void>;
@@ -240,6 +244,8 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         total: 0,
         inProgress: new Set(),
         runId: 0,
+        running: false,
+        staleReleasePending: false,
         releaseWorkersAfterRun: false,
         initChain: Promise.resolve(),
         initialized: false,
@@ -286,12 +292,38 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         callbacksRef.current.onProgress?.(newProgress);
     };
 
+    // 前の NNUE のワーカーを手放すかの判定を `initChain` に積む。実行中なら見送り、その実行が
+    // 終わる・中止されるときに判定し直す（準備の前に中止された実行は、作り直しまで進まない）。
+    const latestNnueIdRef = useRef<string | null>(nnueId ?? null);
+    const enqueueStaleRelease = () => {
+        const state = stateRef.current;
+        const release = async () => {
+            if (state.running) {
+                state.staleReleasePending = true;
+                return;
+            }
+            if (!state.initialized) return;
+            if (latestNnueIdRef.current === (state.currentNnueId ?? null)) return;
+            await disposeWorkers();
+        };
+        state.initChain = state.initChain.then(release, release);
+    };
+    const releasePendingStaleWorkers = () => {
+        const state = stateRef.current;
+        if (!state.staleReleasePending) return;
+        state.staleReleasePending = false;
+        enqueueStaleRelease();
+    };
+
     const completeRun = (runId: number) => {
         const state = stateRef.current;
         if (state.finishedRunId === runId) return;
         state.finishedRunId = runId;
+        state.running = false;
         if (releaseWorkersAfterRun) {
             state.initChain = state.initChain.then(disposeWorkers, disposeWorkers);
+        } else {
+            releasePendingStaleWorkers();
         }
         setIsRunning(false);
         callbacksRef.current.onComplete?.();
@@ -488,6 +520,8 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         const workers = state.workers;
         state.workers = [];
         state.initialized = false;
+        // 手放すワーカーが無くなるので、見送っていた判定も要らない。
+        state.staleReleasePending = false;
         state.currentNnueId = undefined;
         state.currentWorkerCount = undefined;
         state.currentThreadsPerWorker = undefined;
@@ -561,6 +595,9 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         // 初期化に成功したワーカーが1つもない場合はエラー
         if (workers.length === 0) {
             if (state.runId === runId) {
+                state.running = false;
+                // 初期化は initialized でないときだけ走るので、手放すべきワーカーはもう無い。
+                state.staleReleasePending = false;
                 onError?.(
                     0,
                     new Error("No workers could be initialized", { cause: lastInitError }),
@@ -604,6 +641,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         // 変わったことを見て自分で止まる。
         state.runId += 1;
         const runId = state.runId;
+        state.running = true;
         const releasePreviousWorkers = state.releaseWorkersAfterRun;
         state.releaseWorkersAfterRun = releaseWorkersAfterRun;
         const isCurrent = () => state.runId === runId;
@@ -707,6 +745,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         // 世代を進める。待機中（初期化・局面読込・探索開始）の処理は、戻ってきたときに
         // 世代が変わっているのを見て止まる。
         const runId = ++state.runId;
+        state.running = false;
         state.jobQueue = [];
 
         // 全ワーカーを停止
@@ -728,6 +767,8 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         if (dispose || state.releaseWorkersAfterRun) {
             state.initChain = state.initChain.then(disposeWorkers, disposeWorkers);
             stopPromises.push(state.initChain);
+        } else {
+            releasePendingStaleWorkers();
         }
         await Promise.all(stopPromises);
         if (state.runId !== runId) return;
@@ -745,13 +786,17 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
 
     const disposeEvent = useEffectEvent(dispose);
 
-    // nnueId が変更された時にプールを破棄（次回一括解析開始時に新しい NNUE でロード）
-    const prevNnueIdRef = useRef(nnueId);
+    // nnueId が変わっても実行中の解析は止めない（止めると onComplete が呼ばれず、呼び出し側は
+    // 終わったことを知れない）。作り直しは次の start() が読み込み済みの NNUE と比べて行い、
+    // ここでは前の NNUE のワーカーを手放すだけにする。判定を `initChain` に積むのは、中止した
+    // 実行の初期化が続いていると、その後に前の NNUE のワーカーが登録されるため。
+    const releaseStaleWorkers = useEffectEvent((nextNnueId: string | null) => {
+        if (latestNnueIdRef.current === nextNnueId) return;
+        latestNnueIdRef.current = nextNnueId;
+        enqueueStaleRelease();
+    });
     useEffect(() => {
-        if (prevNnueIdRef.current !== nnueId) {
-            prevNnueIdRef.current = nnueId;
-            void disposeEvent();
-        }
+        releaseStaleWorkers(nnueId ?? null);
     }, [nnueId]);
 
     // マウント時の初期化とアンマウント時のクリーンアップ

@@ -147,6 +147,8 @@ function SettingsBody({
                             使う AI
                             <NativeSelect
                                 value={toNnueSelectionValue(form.nnueSelection)}
+                                // 解析エンジンと同じく、解析の準備中・実行中は切り替えさせない。
+                                disabled={!canStart}
                                 onChange={(event) =>
                                     form.onNnueSelectionChange(
                                         parseNnueSelectionValue(event.target.value),

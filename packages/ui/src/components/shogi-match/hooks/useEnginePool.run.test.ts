@@ -50,6 +50,7 @@ function controlledEngine(): ControlledEngine {
                     loaded = moves ?? [];
                 }),
                 setOption: vi.fn().mockResolvedValue(undefined),
+                loadNnue: vi.fn().mockResolvedValue(undefined),
                 stop: vi.fn().mockResolvedValue(undefined),
                 dispose: vi.fn().mockResolvedValue(undefined),
                 subscribe(handler) {
@@ -349,6 +350,141 @@ describe("useEnginePool: 中止とやり直し", () => {
         expect(analyzed[0]?.result.completion).toBe("completed");
         expect(analyzed[0]?.layer?.layerId).toBe("layer-B");
         expect(result.current.isRunning).toBe(false);
+    });
+});
+
+describe("useEnginePool: 実行中の評価関数の変更", () => {
+    const renderPool = (
+        engine: ControlledEngine,
+        analyzed: StudyAnalysisCompletion[],
+        onComplete: () => void,
+        initialNnueId: string | null,
+    ) =>
+        renderHook(
+            ({ nnueId }: { nnueId: string | null }) =>
+                useEnginePool({
+                    createClient: engine.createClient,
+                    workerCount: 1,
+                    nnueId,
+                    onPositionAnalyzed: (completion) => analyzed.push(completion),
+                    onComplete,
+                }),
+            { initialProps: { nnueId: initialNnueId } },
+        );
+
+    it("実行中に評価関数が変わっても止めず、最後まで解析して完了を知らせる。次の start で読み直す", async () => {
+        const engine = controlledEngine();
+        const analyzed: StudyAnalysisCompletion[] = [];
+        const onComplete = vi.fn();
+        const { result, rerender } = renderPool(engine, analyzed, onComplete, "nnue-a");
+
+        const gate = createGate();
+        engine.holdLoad = gate;
+        act(() =>
+            result.current.start([job("a", ["7g7f"]), job("b", ["2g2f"])], { layer: layer("A") }),
+        );
+        await waitFor(() => expect(engine.clients[0]?.loadPosition).toHaveBeenCalledTimes(1));
+
+        rerender({ nnueId: "nnue-b" });
+        await act(async () => {
+            gate.open();
+            await settle(60);
+        });
+        await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
+
+        expect(analyzed.map((completion) => completion.runtimeNodeId)).toEqual(["a", "b"]);
+        expect(analyzed.every((completion) => completion.result.completion === "completed")).toBe(
+            true,
+        );
+        expect(engine.clients).toHaveLength(1);
+        // 終わったあとは、前の評価関数のワーカーを手放す。
+        await waitFor(() => expect(engine.clients[0]?.dispose).toHaveBeenCalled());
+
+        act(() => result.current.start([job("c", ["7g7f"])], { layer: layer("B") }));
+        await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(2));
+        expect(engine.clients).toHaveLength(2);
+        expect(engine.clients[0]?.dispose).toHaveBeenCalled();
+        expect(engine.clients[1]?.loadNnue).toHaveBeenCalledWith("nnue-b", undefined);
+    });
+
+    it("評価関数の id が null から、いま読み込んでいる id に変わっただけなら、作り直さない", async () => {
+        const engine = controlledEngine();
+        const analyzed: StudyAnalysisCompletion[] = [];
+        const onComplete = vi.fn();
+        const { result, rerender } = renderPool(engine, analyzed, onComplete, null);
+
+        // 一覧の読み込み中（null）に、start で実際の id を渡して始める。
+        act(() =>
+            result.current.start([job("a", ["7g7f"])], { layer: layer("A"), nnueId: "nnue-a" }),
+        );
+        await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
+
+        rerender({ nnueId: "nnue-a" });
+        await act(async () => {
+            await settle();
+        });
+        expect(engine.clients[0]?.dispose).not.toHaveBeenCalled();
+
+        act(() => result.current.start([job("b", ["2g2f"])], { layer: layer("A") }));
+        await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(2));
+        expect(engine.clients).toHaveLength(1);
+        expect(analyzed.map((completion) => completion.runtimeNodeId)).toEqual(["a", "b"]);
+    });
+
+    it("実行していないときに評価関数が変わったら、読み込んだワーカーを手放す", async () => {
+        const engine = controlledEngine();
+        const onComplete = vi.fn();
+        const { result, rerender } = renderPool(engine, [], onComplete, "nnue-a");
+
+        act(() => result.current.start([job("a", ["7g7f"])], { layer: layer("A") }));
+        await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
+
+        rerender({ nnueId: "nnue-b" });
+        await waitFor(() => expect(engine.clients[0]?.dispose).toHaveBeenCalled());
+    });
+
+    it("実行中に評価関数が変わってから中止したら、前のワーカーを手放す", async () => {
+        const engine = controlledEngine();
+        const { result, rerender } = renderPool(engine, [], vi.fn(), "nnue-a");
+
+        const gate = createGate();
+        engine.holdLoad = gate;
+        act(() => result.current.start([job("a", ["7g7f"])], { layer: layer("A") }));
+        await waitFor(() => expect(engine.clients[0]?.loadPosition).toHaveBeenCalledTimes(1));
+
+        rerender({ nnueId: "nnue-b" });
+        await act(async () => {
+            await settle(5);
+        });
+        expect(engine.clients[0]?.dispose).not.toHaveBeenCalled();
+
+        await act(async () => {
+            await result.current.cancel();
+            gate.open();
+            await settle();
+        });
+        await waitFor(() => expect(engine.clients[0]?.dispose).toHaveBeenCalled());
+    });
+
+    it("初期化の途中で中止してから評価関数が変わったら、初期化が終わったあとに前のワーカーを手放す", async () => {
+        const engine = controlledEngine();
+        const { result, rerender } = renderPool(engine, [], vi.fn(), "nnue-a");
+
+        const gate = createGate();
+        engine.holdInit = gate;
+        act(() => result.current.start([job("a", ["7g7f"])], { layer: layer("A") }));
+        await waitFor(() => expect(engine.clients[0]?.init).toHaveBeenCalledTimes(1));
+        await act(async () => {
+            void result.current.cancel();
+            await settle(5);
+        });
+
+        rerender({ nnueId: "nnue-b" });
+        await act(async () => {
+            gate.open();
+            await settle();
+        });
+        await waitFor(() => expect(engine.clients[0]?.dispose).toHaveBeenCalled());
     });
 });
 
