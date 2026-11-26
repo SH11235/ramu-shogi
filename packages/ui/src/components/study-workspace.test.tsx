@@ -48,8 +48,8 @@ const createAnalysis = (
     live: null,
     settingsLabel: "RAMU・1 秒",
     fullTargetCount: 5,
-    startFull: vi.fn(async () => {}),
-    resumeLayer: vi.fn(async () => {}),
+    startFull: vi.fn(async () => true),
+    resumeLayer: vi.fn(async () => true),
     startDeep: vi.fn(async () => {}),
     continuableDeepNodeId: null,
     continueDeep: vi.fn(async () => {}),
@@ -355,7 +355,8 @@ describe("StudyWorkspaceView", () => {
         expect(
             screen.getByRole("switch", { name: /自動で読む/ }).getAttribute("aria-checked"),
         ).toBe("false");
-        expect(screen.getByText(/自動で読むを切りました/)).toBeTruthy();
+        // 解析は始めるときに通知を消すので、始めたあとに出す。
+        expect(await screen.findByText(/自動で読むを切りました/)).toBeTruthy();
     });
 
     it("続きから読めずに読み終えたら、自動で読むを入れたまま読み直し続けず、終わったことを出す", async () => {

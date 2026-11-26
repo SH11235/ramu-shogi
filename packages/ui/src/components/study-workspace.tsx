@@ -518,8 +518,10 @@ export function StudyWorkspaceView({
     const analysisBlocked = analysis.isPreparing || mateRunning;
     const startFull = (): void => {
         if (locked || mateRunning) return;
-        turnOffAutoAnalyze();
-        void analysis.startFull();
+        const turnedOff = turnOffAutoAnalyze();
+        void analysis.startFull().then((started) => {
+            if (started && turnedOff) noticeAutoAnalyzeOff();
+        });
     };
     /** 表示中の設定の未解析分を、その設定で解析する。表示中の結果が無ければ全体の解析。 */
     const resumeDisplayLayer = (): void => {
@@ -528,8 +530,10 @@ export function StudyWorkspaceView({
             startFull();
             return;
         }
-        turnOffAutoAnalyze();
-        void analysis.resumeLayer(displayLayerId);
+        const turnedOff = turnOffAutoAnalyze();
+        void analysis.resumeLayer(displayLayerId).then((started) => {
+            if (started && turnedOff) noticeAutoAnalyzeOff();
+        });
     };
     /** 解析・詰み探索は 1 つずつ動かす。押した操作を優先し、動いている詰み探索は止める。 */
     const stopMate = (): void => {
@@ -562,19 +566,24 @@ export function StudyWorkspaceView({
     const leaveAutoAnalyze = async (): Promise<boolean> => {
         if (!autoAnalyze) return true;
         turnOffAutoAnalyze();
+        noticeAutoAnalyzeOff();
         if (analysis.mode !== "deep" && !analysis.isPreparing) return true;
         const request = ++actionSerialRef.current;
         await analysis.cancel();
         return actionSerialRef.current === request;
     };
     /**
-     * 自動で読むを切り、切ったことを知らせる（読んでいる途中の読みは止めない。全体の解析は、
-     * 始めるときに深く解析の読みを止めてから始める）。止めるのを待っている別の操作は取りやめる。
+     * 自動で読むを切る。読んでいる途中の読みは止めない（全体の解析は、始めるときに読みを止めて
+     * から始める）。止めるのを待っている別の操作は取りやめる。切ったら true。
      */
-    const turnOffAutoAnalyze = (): void => {
-        if (!autoAnalyze) return;
+    const turnOffAutoAnalyze = (): boolean => {
+        if (!autoAnalyze) return false;
         actionSerialRef.current += 1;
         setAutoAnalyze(false);
+        return true;
+    };
+    /** 解析は始めるときに通知を消すので、全体の解析では始めたあとに出す。 */
+    const noticeAutoAnalyzeOff = (): void => {
         onMessageChange({
             text: "自動で読むを切りました（読んだ分は残っています）。",
             type: "warning",
