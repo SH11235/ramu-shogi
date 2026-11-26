@@ -520,6 +520,8 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         const workers = state.workers;
         state.workers = [];
         state.initialized = false;
+        // 手放すワーカーが無くなるので、見送っていた判定も要らない。
+        state.staleReleasePending = false;
         state.currentNnueId = undefined;
         state.currentWorkerCount = undefined;
         state.currentThreadsPerWorker = undefined;
@@ -594,6 +596,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         if (workers.length === 0) {
             if (state.runId === runId) {
                 state.running = false;
+                state.staleReleasePending = false;
                 onError?.(
                     0,
                     new Error("No workers could be initialized", { cause: lastInitError }),
