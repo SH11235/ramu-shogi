@@ -52,7 +52,7 @@ import { useStudyDeepSearch } from "./useStudyDeepSearch";
  */
 export const STUDY_DEEP_TIME_MS = 30_000;
 /** 「この局面を深く解析」の探索深さの上限（時間で止まる前提の大きめの値）。 */
-export const STUDY_DEEP_DEPTH = 64;
+const STUDY_DEEP_DEPTH = 64;
 /** 自動で読む（1 局面の読み）の結果を保存する設定か。 */
 export function isStudyAutoReadLayer(layer: Pick<StudyLayer, "spec">): boolean {
     return (
