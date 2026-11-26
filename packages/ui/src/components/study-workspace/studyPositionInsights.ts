@@ -6,7 +6,9 @@ import {
 import {
     countStudyUnanalyzed,
     pickStudyDeeperResult,
+    pickStudyDeepestResult,
     pickStudyPositionResult,
+    type StudyPositionResult,
     studyDeeperLayerIds,
 } from "./studyView";
 
@@ -84,4 +86,37 @@ export function deriveStudyPositionInsights({
         positionResult,
         deeperResult,
     };
+}
+
+/**
+ * 局面の帯に出す保存済みの読み（読んでいる途中でなければ、帯はこの値を出す）。いちばん深く読めた
+ * ものを選び、深さが同じなら直近の「深く解析」、表示中の設定、同じ AI で深く読んだ設定の順に採る。
+ * 評価値グラフの「深く読んだ局面」の印も、局面ごとにこれで選ぶ（帯の値と印が食い違わないように）。
+ */
+export function pickStudyBandResult({
+    doc,
+    nodeId,
+    displayLayerId,
+    deepNodeId,
+    deepLayerId,
+}: {
+    doc: StudyDocument;
+    nodeId: string;
+    displayLayerId: string | null;
+    deepNodeId: string | null;
+    deepLayerId: string | null;
+}): StudyPositionResult | null {
+    const freshLayer =
+        nodeId === deepNodeId && deepLayerId !== null && deepLayerId !== displayLayerId
+            ? doc.layers.find((layer) => layer.id === deepLayerId)
+            : undefined;
+    const fresh =
+        freshLayer && Object.hasOwn(freshLayer.results, nodeId)
+            ? { layer: freshLayer, result: freshLayer.results[nodeId] }
+            : null;
+    return pickStudyDeepestResult([
+        fresh,
+        pickStudyPositionResult(doc, nodeId, displayLayerId),
+        pickStudyDeeperResult(doc, nodeId, displayLayerId),
+    ]);
 }

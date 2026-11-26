@@ -394,6 +394,29 @@ export function studyDeeperLayerIds(doc: StudyDocument, displayLayerId: string |
         .map((layer) => layer.id);
 }
 
+/** 並べた結果のうち最も深く読めたもの。深さが同じなら先に並べたほうを採る。 */
+export function pickStudyDeepestResult(
+    results: readonly (StudyPositionResult | null | undefined)[],
+): StudyPositionResult | null {
+    let picked: StudyPositionResult | null = null;
+    for (const item of results) {
+        if (item && (picked === null || item.result.depth > picked.result.depth)) picked = item;
+    }
+    return picked;
+}
+
+/**
+ * 探索の条件を短く表す（例: `1秒`、`深さ20`）。グラフの見出しで、どの条件で読んだ値かを示すのに
+ * 使う（狭い画面に収まるよう、AI の名前は入れない）。
+ */
+export function studyLimitsLabel(limits: StudyLayer["spec"]["limits"]): string {
+    const { timeMs, depth, nodes } = limits;
+    if (timeMs !== null) return `${Number((timeMs / 1000).toFixed(2))}秒`;
+    if (depth !== null) return `深さ${depth}`;
+    if (nodes !== null) return `${nodes.toLocaleString("ja-JP")}局面`;
+    return "解析";
+}
+
 /** 解析結果の 1 位の候補。無ければ null。 */
 export function studyBestCandidate(result: StudyAnalysisResult): StudyCandidate | null {
     return (
