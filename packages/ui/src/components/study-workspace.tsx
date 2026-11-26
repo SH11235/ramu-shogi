@@ -349,9 +349,14 @@ export function StudyWorkspaceView({
 
     /**
      * 局面を移った回数。止め終わるのを待ってから始める操作が、待つ間に局面を移ったかを見る
-     * （移って戻った場合も、移ったことにする）。
+     * （移って戻った場合も、移ったことにする）。変化が消されて戻されたときは数えないので、
+     * 見ている局面とも比べる（`isSamePositionAs`）。
      */
     const leaveCountRef = useRef(0);
+    const currentNodeIdRef = useRef<string | null>(null);
+    /** 押したときから局面を移っていないか。 */
+    const isSamePositionAs = (pressed: { nodeId: string; leaveCount: number }): boolean =>
+        leaveCountRef.current === pressed.leaveCount && currentNodeIdRef.current === pressed.nodeId;
     const nav = useStudyNodeNavigation({
         tree,
         initialNodeId,
@@ -374,6 +379,9 @@ export function StudyWorkspaceView({
         },
     });
     const { currentNodeId, currentNode, line, currentIndex, movesToCurrent, navigateTo } = nav;
+    useEffect(() => {
+        currentNodeIdRef.current = currentNodeId;
+    }, [currentNodeId]);
     const { selection, promotionSelection } = nav;
     const position = currentNode.positionAfter;
     const storedNode = Object.hasOwn(doc.tree.nodes, currentNodeId)
@@ -712,10 +720,10 @@ export function StudyWorkspaceView({
     const passingRef = useRef(false);
     const startDeepAfterPass = async (): Promise<void> => {
         if (locked || deepBlocked || passingRef.current) return;
-        const leaveCount = leaveCountRef.current;
+        const pressed = { nodeId: currentNodeId, leaveCount: leaveCountRef.current };
         if (autoAnalyze && !(await leaveAutoAnalyze())) return;
         // 読みを止め終わるのを待つ間に局面を移ったら、移った先にパスを足さない。
-        if (leaveCountRef.current !== leaveCount) return;
+        if (!isSamePositionAs(pressed)) return;
         const request = ++actionSerialRef.current;
         passRequestRef.current = request;
         passingRef.current = true;
@@ -906,7 +914,7 @@ export function StudyWorkspaceView({
     const startMate = async (kind: "mate" | "shortest"): Promise<void> => {
         if (!mate || deepBlocked) return;
         const node = currentNode;
-        const leaveCount = leaveCountRef.current;
+        const pressed = { nodeId: currentNodeId, leaveCount: leaveCountRef.current };
         if (autoAnalyze && !(await leaveAutoAnalyze())) return;
         const request = ++actionSerialRef.current;
         // 深く解析している読みは止める（そこまでの結果は残る）。別の局面の詰み探索も止める。
@@ -915,7 +923,7 @@ export function StudyWorkspaceView({
             if (actionSerialRef.current !== request) return;
         }
         // 止め終わるのを待つ間に局面を移ったら、押した局面の詰み探索は始めない。
-        if (leaveCountRef.current !== leaveCount) return;
+        if (!isSamePositionAs(pressed)) return;
         stopMate();
         if (kind === "mate") mate.start(node);
         else mate.startShortest(node);

@@ -779,6 +779,27 @@ describe("useStudyAnalysis", () => {
         expect(onNotStarted).toHaveBeenCalledTimes(1);
     });
 
+    it("全体の解析の準備中に解析エンジンが変わったら、始めずに終わったと知らせる", async () => {
+        const { doc } = createTestStudy();
+        const engine = createEngineOption();
+        const other = createEngineOption();
+        const { result, rerender } = renderHook(
+            ({ engines }: { engines: EngineOption[] }) => useHarness(doc, engines),
+            { initialProps: { engines: [engine.option] } },
+        );
+        const onNotStarted = vi.fn();
+        let starting: Promise<void> = Promise.resolve();
+        act(() => {
+            starting = result.current.controller.startFull({ onNotStarted });
+        });
+        rerender({ engines: [{ ...other.option, id: "other" }] });
+        await act(async () => {
+            await starting;
+        });
+        expect(engine.searches() + other.searches()).toBe(0);
+        expect(onNotStarted).toHaveBeenCalledTimes(1);
+    });
+
     it("別の局面を深く解析している途中に深く解析すると、前の読みを結果に残して切り替える", async () => {
         const { doc, ids } = createTestStudy();
         const engine = createResumableEngineOption();

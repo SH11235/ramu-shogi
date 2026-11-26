@@ -964,6 +964,10 @@ export function useStudyAnalysis({
         // 読みを止め終わるのを待って始めようとしている解析は、切り替える前のエンジンの条件で
         // 始めることになるので取りやめる。
         if (stoppingRef.current) generationRef.current += 1;
+        // 準備中の全体の解析は始めずに終わる。自動で読むを切って始めようとしていたなら、画面が
+        // 入れ直せるよう知らせる（画面の操作で取って代わられたかは、受け取る側が見分ける）。
+        const request = requestRef.current;
+        if (preparingRef.current && request?.kind === "full") request.options?.onNotStarted?.();
         if (preparingRef.current || isAnalysisRunningRef.current) {
             void cancelRef.current();
             setMessage({ text: "解析エンジンが変わったため、解析を止めました。", type: "error" });
