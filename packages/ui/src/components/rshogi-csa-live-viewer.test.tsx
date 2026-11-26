@@ -876,9 +876,9 @@ describe("formatOwnEval", () => {
         expect(formatOwnEval(-45)).toBe("-45");
         expect(formatOwnEval(0)).toBe("+0");
     });
-    it("±100000 の詰みセンチネルは詰み表記にする", () => {
-        expect(formatOwnEval(100_000)).toBe("詰み");
-        expect(formatOwnEval(-100_000)).toBe("詰まされ");
+    it("±100000 は符号のみの mate として表示する", () => {
+        expect(formatOwnEval(100_000)).toBe("mate +");
+        expect(formatOwnEval(-100_000)).toBe("mate -");
     });
 });
 
@@ -1192,8 +1192,8 @@ describe("moveEvals accumulation (initialReview.moveData の材料)", () => {
             { elapsedMs: 3000, evalMate: MATE_WITHOUT_PLY },
             { elapsedMs: 2000, evalMate: -MATE_WITHOUT_PLY },
         ]);
-        expect(formatEval(undefined, moveDetailsToEvals(details)[0]?.evalMate)).toBe("+詰");
-        expect(formatEval(undefined, moveDetailsToEvals(details)[1]?.evalMate)).toBe("-詰");
+        expect(formatEval(undefined, moveDetailsToEvals(details)[0]?.evalMate)).toBe("mate +");
+        expect(formatEval(undefined, moveDetailsToEvals(details)[1]?.evalMate)).toBe("mate -");
     });
 
     it("setMoveEvalAtPly: 後追いコメントの詰みセンチネルも手数不明の詰みとして表示できる形にする", () => {
@@ -1203,7 +1203,7 @@ describe("moveEvals accumulation (initialReview.moveData の材料)", () => {
             { elapsedMs: 3000, evalCp: 30 },
             { elapsedMs: 6000, evalCp: undefined, evalMate: -MATE_WITHOUT_PLY },
         ]);
-        expect(formatEval(next[1]?.evalCp, next[1]?.evalMate)).toBe("-詰");
+        expect(formatEval(next[1]?.evalCp, next[1]?.evalMate)).toBe("mate -");
     });
 
     it("appendMoveEval: broadcast move は消費秒のみで追加し eval は後追い", () => {

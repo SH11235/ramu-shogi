@@ -93,6 +93,15 @@ describe("formatEngineEventLog", () => {
         expect(result).toBe("[G:test] info depth 3");
     });
 
+    it.each([
+        [3, "mate 3"],
+        [-Infinity, "mate -"],
+    ])("エンジンログにも mate %s を記録する", (scoreMate, score) => {
+        expect(formatEngineEventLog({ id: 1, atMs: 0, event: { type: "info", scoreMate } })).toBe(
+            `[Analysis] info score ${score}`,
+        );
+    });
+
     it("info イベントでフィールドが undefined の場合は含めない", () => {
         const event: EngineEvent = {
             type: "info",

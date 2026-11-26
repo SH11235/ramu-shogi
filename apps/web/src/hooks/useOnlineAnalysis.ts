@@ -106,16 +106,15 @@ export function useOnlineAnalysis(
                 const unsub = engine.subscribe((event) => {
                     if (!isCurrent()) return;
                     if (event.type === "info") {
-                        const ev = event as typeof event & {
-                            multipv?: number;
-                            pv?: string[];
-                            scoreCp?: number;
-                        };
-                        const lineIdx = ev.multipv ?? 1;
-                        const pv = ev.pv;
+                        const lineIdx = event.multipv ?? 1;
+                        const pv = event.pv;
                         if (!pv || pv.length === 0) return;
-                        const cp = ev.scoreCp ?? 0;
-                        topMovesMapRef.current.set(lineIdx, { usi: pv[0], cp, pv });
+                        topMovesMapRef.current.set(lineIdx, {
+                            usi: pv[0],
+                            cp: event.scoreCp,
+                            mate: event.scoreMate,
+                            pv,
+                        });
                         const sorted = Array.from(topMovesMapRef.current.entries())
                             .sort(([a], [b]) => a - b)
                             .map(([, v]) => v);

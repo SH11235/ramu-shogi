@@ -39,6 +39,7 @@ export type { PlayFromPosition } from "./components/rshogi-play-from-position";
 export { ShogiMatch } from "./components/shogi-match";
 export { StoredBoardPatternProvider } from "./components/shogi-match/hooks/useBoardPattern";
 export type { EngineOption } from "./components/shogi-match/types";
+export { formatEval } from "./components/shogi-match/utils/kifFormat";
 export { StaticBoardView } from "./components/static-board-view";
 // study-workspace（研究ノートの画面）
 export type {

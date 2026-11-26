@@ -48,6 +48,7 @@ import { PvPreviewDialog } from "./shogi-match/components/PvPreviewDialog";
 import { TabHeader } from "./shogi-match/components/TabHeader";
 import { useIsMobile } from "./shogi-match/hooks/useMediaQuery";
 import type { PromotionSelection } from "./shogi-match/types";
+import { normalizeEngineMateScore } from "./shogi-match/utils/kifFormat";
 import { computeMoveShadow } from "./shogi-match/utils/moveShadow";
 import { boardToGrid } from "./shogi-match/utils/positionUtils";
 import { determinePromotion } from "./shogi-match/utils/promotionLogic";
@@ -205,7 +206,6 @@ export function OnlineGameView({
 
     // analysis prop から分解（undefined 時のデフォルト値）
     const isAnalyzing = analysis?.isAnalyzing ?? false;
-    const topMoves = analysis?.topMoves ?? [];
 
     // 自分の手番か
     const myPlayer: Player | null = seat === "b" ? "sente" : seat === "w" ? "gote" : null;
@@ -473,6 +473,12 @@ export function OnlineGameView({
         movesRef,
         appliedEventIdRef,
     });
+    const analysisSign = analyzedPosition?.turn === "w" ? -1 : 1;
+    const topMoves = (analysis?.topMoves ?? []).map((move) => ({
+        ...move,
+        cp: move.cp === undefined ? undefined : move.cp * analysisSign,
+        mate: normalizeEngineMateScore(move.mate, analysisSign),
+    }));
     const [nnueManagerOpen, setNnueManagerOpen] = useState(false);
     const isMobile = useIsMobile();
 
@@ -867,7 +873,8 @@ export function OnlineGameView({
 
                 {(aiSupport || analysis) && topMoves.length > 0 && (
                     <AnalysisSummaryBar
-                        evalCp={topMoves[0]?.cp ?? null}
+                        evalCp={topMoves[0]?.cp}
+                        evalMate={topMoves[0]?.mate}
                         onOpen={() => dispatchUI({ type: "set_ai_sheet_open", open: true })}
                     />
                 )}
@@ -961,6 +968,7 @@ export function OnlineGameView({
                     startPosition={analyzedPosition.position}
                     ply={analyzedPosition.ply}
                     evalCp={pvPreviewMove.evalCp}
+                    evalMate={pvPreviewMove.evalMate}
                     squareNotation={BOARD_DISPLAY_SETTINGS.squareNotation}
                     showBoardLabels={BOARD_DISPLAY_SETTINGS.showBoardLabels}
                     flipBoard={flipBoard}

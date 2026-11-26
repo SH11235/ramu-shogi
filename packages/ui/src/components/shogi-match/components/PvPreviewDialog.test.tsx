@@ -29,11 +29,11 @@ describe("PvPreviewDialog の持ち駒", () => {
 
 describe("読み筋の評価値", () => {
     it.each([
-        [Number.POSITIVE_INFINITY, ""],
-        [Number.NEGATIVE_INFINITY, ""],
-        [5, ""],
-        [-3, ""],
-        [0, ""],
+        [Number.POSITIVE_INFINITY, "[mate +]"],
+        [Number.NEGATIVE_INFINITY, "[mate -]"],
+        [5, "[mate 5]"],
+        [-3, "[mate -3]"],
+        [0, "[mate 0]"],
         [Number.NaN, "[+25]"],
         [undefined, "[+25]"],
     ] as const)("mate スコア %s に対する見出しの評価表示は %j", (evalMate, expected) => {
@@ -42,15 +42,13 @@ describe("読み筋の評価値", () => {
                 onClose={() => {}}
                 pv={["7g7f"]}
                 startPosition={createInitialPositionState()}
-                ply={0}
+                ply={5}
                 evalCp={25}
                 evalMate={evalMate}
                 flipBoard
             />,
         );
-        expect(screen.getByRole("heading").textContent).toBe(
-            `開始局面からの読み筋（1手）${expected}`,
-        );
+        expect(screen.getByRole("heading").textContent).toBe(`5手目を指した後の読み筋${expected}`);
     });
 });
 

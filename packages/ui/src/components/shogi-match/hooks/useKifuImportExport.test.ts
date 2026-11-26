@@ -123,8 +123,8 @@ describe("importSfen: initialReview.moveData スレッディング", () => {
             scoreMate: -MATE_WITHOUT_PLY,
             normalized: true,
         });
-        expect(formatEval(undefined, addMoveCalls[0].options?.eval?.scoreMate)).toBe("+詰");
-        expect(formatEval(undefined, addMoveCalls[1].options?.eval?.scoreMate)).toBe("-詰");
+        expect(formatEval(undefined, addMoveCalls[0].options?.eval?.scoreMate)).toBe("mate +");
+        expect(formatEval(undefined, addMoveCalls[1].options?.eval?.scoreMate)).toBe("mate -");
     });
 
     it("実 mate は手数付きのまま analysis/kifu 表示まで維持される", async () => {
@@ -140,8 +140,8 @@ describe("importSfen: initialReview.moveData スレッディング", () => {
             evalCp: undefined,
             evalMate: -7,
         });
-        expect(formatEval(undefined, addMoveCalls[0].options?.eval?.scoreMate)).toBe("+詰5");
-        expect(formatEval(undefined, addMoveCalls[1].options?.eval?.scoreMate)).toBe("-詰7");
+        expect(formatEval(undefined, addMoveCalls[0].options?.eval?.scoreMate)).toBe("mate 5");
+        expect(formatEval(undefined, addMoveCalls[1].options?.eval?.scoreMate)).toBe("mate -7");
     });
 
     it("moveData が undefined の手は eval なしで addMove する (後方互換)", async () => {

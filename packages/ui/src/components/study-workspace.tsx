@@ -396,7 +396,6 @@ export function StudyWorkspaceView({
     // --- 悪手・疑問手・解析の状態 ---
     const insights = deriveStudyPositionInsights({
         doc,
-        tree,
         currentNodeId,
         displayLayerId,
         deepNodeId,
@@ -1120,8 +1119,6 @@ export function StudyWorkspaceView({
         <StudyCandidatesPanel
             node={currentNode}
             positionResult={insights.positionResult}
-            alternative={insights.alternative}
-            playedBestLabel={insights.playedBestLabel}
             deeperResult={insights.deeperResult}
             source={storedNode?.source ?? null}
             analysisMode={analysis.mode}

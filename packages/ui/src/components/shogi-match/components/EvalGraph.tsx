@@ -9,7 +9,7 @@ import { cn } from "@shogi/design-system";
 import type { MouseEvent, PointerEvent, ReactElement } from "react";
 import { useRef } from "react";
 import { Card } from "../../card";
-import type { EvalHistory } from "../utils/kifFormat";
+import { type EvalHistory, mateScoreSide } from "../utils/kifFormat";
 
 interface EvalGraphProps {
     /** 評価値の履歴 */
@@ -80,7 +80,7 @@ function evalToYWithScale(
 
     // 詰みの場合は上端または下端に固定
     if (evalMate !== undefined && evalMate !== null) {
-        return evalMate > 0 ? margin : height - margin;
+        return mateScoreSide(evalMate) === "sente" ? margin : height - margin;
     }
 
     if (evalCp === undefined || evalCp === null) {

@@ -398,6 +398,32 @@ describe("OnlineGameView", () => {
         expect(screen.queryByTestId("bottom-sheet")).toBeNull();
     });
 
+    it("後手番の mate は候補手と読み筋プレビューで同じ符号になる", async () => {
+        const client = makeMockClient();
+        const snapshot = makeSnapshot({ turn: "w" });
+        const startAnalysis = vi.fn().mockResolvedValue(undefined);
+        const cancelAnalysis = vi.fn().mockResolvedValue(undefined);
+        const view = (topMoves: { usi: string; mate: number; pv: string[] }[]) => (
+            <OnlineGameView
+                client={client}
+                snapshot={snapshot}
+                seat="w"
+                roomId="test-room"
+                analysis={{ isAnalyzing: false, topMoves, startAnalysis, cancelAnalysis }}
+            />
+        );
+        const { rerender } = render(view([]));
+        await act(async () => {});
+
+        fireEvent.click(screen.getByRole("button", { name: "解析する" }));
+        expect(startAnalysis).toHaveBeenCalledOnce();
+        rerender(view([{ usi: "3c3d", mate: 1, pv: ["3c3d"] }]));
+        expect(screen.getAllByText("mate -1").length).toBeGreaterThan(0);
+
+        fireEvent.click(screen.getByRole("button", { name: "盤面" }));
+        expect(screen.getByRole("heading", { name: /mate -1/ })).toBeTruthy();
+    });
+
     describe("接続が切れている間の解析", () => {
         function renderWhileReconnecting(mode: "limited" | "unlimited") {
             const analysis = {

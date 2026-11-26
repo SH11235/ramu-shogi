@@ -131,7 +131,7 @@ export function studyLineSourceEvalHistory(
     });
 }
 
-/** 評価値を画面の表記にする（例: `+1.2`、`-詰5`）。欠測は空文字。 */
+/** 評価値を画面の表記にする（例: `+120`、`mate -5`）。欠測は空文字。 */
 export function formatStudyScore(score: StudyScore | null | undefined): string {
     const evalData = studyScoreToKifuEval(score ?? null);
     if (!evalData) return "";
@@ -344,13 +344,7 @@ function hasLargerStudyLimits(other: StudyLayer, base: StudyLayer): boolean {
     return larger;
 }
 
-/**
- * ある局面の、表示中の設定の解析結果。
- *
- * 悪手・疑問手の印、候補手の「この手の代わりに」、「この局面の候補手」は、どれもこの
- * 結果から出す（欄によって別の設定の結果が混ざると、印とパネルで手や評価値が食い違う）。
- * 別の設定の結果は `pickStudyDeeperResult` で、別の段として添える。
- */
+/** ある局面の、表示中の設定の解析結果。 */
 export function pickStudyPositionResult(
     doc: StudyDocument,
     nodeId: string,

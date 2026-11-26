@@ -34,13 +34,7 @@ import { formatEval } from "../utils/kifFormat";
 import type { ImportKifHandler, ImportSfenHandler } from "../utils/kifuImport";
 
 export function formatMobileCompactEval(evalCp?: number, evalMate?: number): string {
-    const formatted = formatEval(evalCp, evalMate);
-    if (formatted === "") return "-";
-    if (formatted === "+詰") return "詰み";
-    if (formatted === "-詰") return "詰まされ";
-    if (formatted.startsWith("+詰")) return `詰み${formatted.slice("+詰".length)}手`;
-    if (formatted.startsWith("-詰")) return `詰まされ${formatted.slice("-詰".length)}手`;
-    return formatted;
+    return formatEval(evalCp, evalMate) || "-";
 }
 
 /**

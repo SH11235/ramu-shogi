@@ -128,7 +128,7 @@ function MobileGraphHeader({
                     解析
                     <span
                         className={cn(
-                            "inline-block min-w-[6ch] text-right font-mono text-sm tabular-nums",
+                            "inline-block min-w-[6ch] whitespace-nowrap text-right font-mono text-sm tabular-nums",
                             sideTextClass(mover),
                         )}
                     >
@@ -140,7 +140,7 @@ function MobileGraphHeader({
                         対局時
                         <span
                             className={cn(
-                                "inline-block min-w-[6ch] text-right font-mono text-sm tabular-nums opacity-80",
+                                "inline-block min-w-[6ch] whitespace-nowrap text-right font-mono text-sm tabular-nums opacity-80",
                                 sideTextClass(mover),
                             )}
                         >

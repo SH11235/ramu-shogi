@@ -47,11 +47,9 @@ export function kifuEvalToStudyScore(
 
     if (scoreMate !== undefined && scoreMate !== null && !Number.isNaN(scoreMate)) {
         if (alreadySente) {
-            // 先手視点で 0 手の詰みは、どちらが勝ちか決められない。
-            if (scoreMate === 0) return null;
             return {
                 kind: "mate",
-                winner: scoreMate > 0 ? "sente" : "gote",
+                winner: scoreMate < 0 || Object.is(scoreMate, -0) ? "gote" : "sente",
                 plies: matePlies(scoreMate),
             };
         }
@@ -70,7 +68,7 @@ export function kifuEvalToStudyScore(
 
 /**
  * 保存用の評価値を実行時の `KifuEval` の評価値部分にする（先手視点、`normalized: true`）。
- * 手数不明の詰みは実行時の表現（±Infinity）にする。
+ * 手数不明は ±Infinity。0 手は符号付きゼロにして、勝者を保持する。
  */
 export function studyScoreToKifuEval(
     score: StudyScore | null,
@@ -79,10 +77,6 @@ export function studyScoreToKifuEval(
     if (score.kind === "cp") return { scoreCp: score.value, normalized: true };
     const sign = score.winner === "sente" ? 1 : -1;
     if (score.plies === null) {
-        return { scoreMate: sign * Number.POSITIVE_INFINITY, normalized: true };
-    }
-    // 先手視点の 0 手の詰みは符号で勝者を表せないので、手数不明として渡す。
-    if (score.plies === 0) {
         return { scoreMate: sign * Number.POSITIVE_INFINITY, normalized: true };
     }
     return { scoreMate: sign * score.plies, normalized: true };
@@ -96,6 +90,7 @@ export function legacyEvalToStudyScore(legacy: {
     evalCp?: number | null;
     evalMate?: number | null;
 }): StudyScore | null {
+    if (legacy.evalMate === 0) return null;
     return kifuEvalToStudyScore(
         {
             scoreCp: legacy.evalCp ?? undefined,

@@ -1,6 +1,5 @@
 import {
     computeStudyHighlights,
-    type KifuTree,
     type StudyDocument,
     type StudyHighlightKind,
 } from "@shogi/app-core";
@@ -8,28 +7,21 @@ import {
     countStudyUnanalyzed,
     pickStudyDeeperResult,
     pickStudyPositionResult,
-    studyBestCandidate,
     studyDeeperLayerIds,
-    studyMoveLabel,
 } from "./studyView";
 
 /**
  * 表示中の解析の設定から読み取る、ノート全体の悪手・疑問手の印・解析の済み具合と、いまの局面の
- * 候補手・「この手の代わりに」・より深く読んだ結果。
- *
- * 候補手・「この手の代わりに」・悪手と疑問手の印は、どれも表示中の設定の結果から出す
- * （欄によって別の設定の結果が混ざると、行とパネルで手や評価値が食い違う）。
+ * 候補手・より深く読んだ結果。
  */
 export function deriveStudyPositionInsights({
     doc,
-    tree,
     currentNodeId,
     displayLayerId,
     deepNodeId,
     deepLayerId,
 }: {
     doc: StudyDocument;
-    tree: KifuTree;
     currentNodeId: string;
     displayLayerId: string | null;
     /** 「この局面を深く解析」を押した局面。 */
@@ -76,29 +68,6 @@ export function deriveStudyPositionInsights({
             ? storedDeeperResult
             : null);
 
-    // いま見ている手が悪手・疑問手なら、1 手前の局面の候補手（代わりに指すべきだった手）を出す。
-    const currentNode = tree.nodes.get(currentNodeId);
-    const currentKind = highlightKinds.get(currentNodeId);
-    const parentNode = currentNode?.parentId ? tree.nodes.get(currentNode.parentId) : undefined;
-    const parentResult =
-        currentKind && parentNode
-            ? pickStudyPositionResult(doc, parentNode.id, displayLayerId)
-            : null;
-    // 指した手が 1 手前の局面の 1 位の候補と同じなら、代わりの手は無い（判定は相手の応手のあとの
-    // 評価値との落差なので、1 位の手でも悪手・疑問手になることがある）。
-    const playedIsBest =
-        parentResult !== null &&
-        studyBestCandidate(parentResult.result)?.pv[0] === currentNode?.usiMove;
-    const alternative =
-        currentKind && parentNode && parentResult && !playedIsBest
-            ? {
-                  node: parentNode,
-                  result: parentResult,
-                  playedLabel: studyMoveLabel(tree, currentNodeId),
-                  kindLabel: currentKind === "blunder" ? "悪手" : "疑問手",
-              }
-            : null;
-
     return {
         highlights,
         highlightKinds,
@@ -114,8 +83,5 @@ export function deriveStudyPositionInsights({
         analyzedCount,
         positionResult,
         deeperResult,
-        alternative,
-        /** 悪手・疑問手と判定した手が、1 手前の局面の 1 位の候補と同じだったときの、その手の表記。 */
-        playedBestLabel: currentKind && playedIsBest ? studyMoveLabel(tree, currentNodeId) : null,
     };
 }

@@ -59,7 +59,7 @@ describe("buildStudyReviewItems", () => {
         expect(items.find((item) => item.ply === 2)?.bestLabel).toBeNull();
     });
 
-    it("深く読んだ結果で判定した悪手にも、候補手の欄の「この手の代わりに」と同じ表示中の解析の最善手を添える", () => {
+    it("深く読んだ結果で判定した悪手にも、表示中の解析の最善手を添える", () => {
         const base = createTestStudy([cp(0), cp(50), cp(1500), cp(1500), cp(1500)]);
         const doc = applyStudyOps(base.doc, [
             putScoreOp(base.ids[1], cp(50), { pv: ["8c8d"], depth: 20 }),

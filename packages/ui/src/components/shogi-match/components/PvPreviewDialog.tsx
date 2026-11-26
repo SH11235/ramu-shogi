@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { StaticBoardView } from "../../static-board-view";
 import type { SquareNotation } from "../types";
 import type { PvDisplayMove } from "../utils/kifFormat";
-import { convertPvToDisplay, MATE_WITHOUT_PLY } from "../utils/kifFormat";
+import { convertPvToDisplay, formatEval } from "../utils/kifFormat";
 
 interface PvPreviewDialogProps {
     /** 閉じるコールバック */
@@ -190,13 +190,7 @@ export function PvPreviewDialog({
         }
     }, [positions.length]);
 
-    const hasMateScore =
-        evalMate !== undefined &&
-        (Number.isInteger(evalMate) || Math.abs(evalMate) === MATE_WITHOUT_PLY);
-    const evalText =
-        !hasMateScore && evalCp !== undefined && Number.isFinite(evalCp)
-            ? `${evalCp >= 0 ? "+" : ""}${evalCp}`
-            : null;
+    const evalText = formatEval(evalCp, evalMate);
 
     return (
         <Dialog defaultOpen onOpenChange={(isOpen) => !isOpen && onClose()}>
@@ -208,12 +202,9 @@ export function PvPreviewDialog({
             >
                 <DialogHeader className="flex min-h-8 flex-row items-center justify-between pr-8">
                     <DialogTitle className="text-sm font-medium">
-                        {ply === 0 ? "開始局面からの読み筋" : `${ply}手目の読み筋`}
-                        <span className="text-muted-foreground font-normal">
-                            （{validPv.length}手）
-                        </span>
+                        {ply === 0 ? "開始局面からの読み筋" : `${ply}手目を指した後の読み筋`}
                         {evalText && (
-                            <span className="ml-2 text-xs font-normal text-muted-foreground">
+                            <span className="ml-2 whitespace-nowrap text-xs font-normal text-muted-foreground">
                                 [{evalText}]
                             </span>
                         )}

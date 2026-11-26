@@ -1,10 +1,11 @@
 import { getCurrentNode, type KifuEval } from "@shogi/app-core";
 import type { AiHintMove, AiHintSummary } from "../components/AiHintPanel";
+import { summarizeAiHintEval } from "../components/AiHintPanel";
 import { useAnalysis } from "../contexts/AnalysisContext";
 import { useMatchState } from "../contexts/MatchStateContext";
 import { useNavigation } from "../contexts/NavigationContext";
 import { normalizeEvalToSentePerspective } from "../utils/branchTreeUtils";
-import { formatEval, formatMoveSimple } from "../utils/kifFormat";
+import { formatEval, formatMoveSimple, mateScoreSide } from "../utils/kifFormat";
 
 interface CurrentPositionAiHintsResult {
     moves: AiHintMove[];
@@ -18,8 +19,7 @@ interface CurrentPositionAiHintsResult {
 
 function toScoreTone(evalData: { evalCp?: number; evalMate?: number }): AiHintMove["scoreTone"] {
     if (evalData.evalMate !== undefined && evalData.evalMate !== null) {
-        if (evalData.evalMate > 0) return "sente";
-        if (evalData.evalMate < 0) return "gote";
+        return mateScoreSide(evalData.evalMate);
     }
     if (evalData.evalCp !== undefined && evalData.evalCp !== null) {
         if (evalData.evalCp > 0) return "sente";
@@ -76,48 +76,8 @@ export function useCurrentPositionAiHints(options?: {
         !isAnalyzing && !isPaused && (isReviewMode || (gameMode === "playing" && isHumanTurn));
     const canApplyMove = isReviewMode || (gameMode === "playing" && isHumanTurn && !isPaused);
 
-    const summary: AiHintSummary | null =
-        currentNode && hintMoves.length > 0
-            ? (() => {
-                  const bestEvalSource = hintEvals[0] ?? currentNode.eval ?? undefined;
-                  const bestEval = bestEvalSource
-                      ? normalizeEvalToSentePerspective(
-                            bestEvalSource,
-                            currentNode.ply,
-                            currentNode.positionAfter.turn,
-                        )
-                      : undefined;
-                  const evalCp = bestEval?.evalCp ?? null;
-                  const evalMate = bestEval?.evalMate ?? null;
-                  const percent =
-                      evalMate !== null && evalMate !== undefined
-                          ? evalMate > 0
-                              ? 100
-                              : 0
-                          : evalCp !== null
-                            ? Math.min(100, Math.max(0, 50 + (evalCp / 2000) * 50))
-                            : 50;
-                  return {
-                      percent,
-                      senteLabel:
-                          evalMate !== null
-                              ? evalMate > 0
-                                  ? `▲ +詰${evalMate}`
-                                  : "▲"
-                              : evalCp !== null && evalCp > 0
-                                ? `▲ ${formatEval(evalCp)}`
-                                : "▲",
-                      goteLabel:
-                          evalMate !== null
-                              ? evalMate < 0
-                                  ? `△ +詰${Math.abs(evalMate)}`
-                                  : "△"
-                              : evalCp !== null && evalCp < 0
-                                ? `△ ${formatEval(Math.abs(evalCp))}`
-                                : "△",
-                  };
-              })()
-            : null;
+    const bestHint = hintMoves[0];
+    const summary = bestHint ? summarizeAiHintEval(bestHint.evalCp, bestHint.evalMate) : null;
 
     return {
         moves: hintMoves,

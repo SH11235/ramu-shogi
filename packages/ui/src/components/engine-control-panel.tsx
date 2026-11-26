@@ -21,6 +21,7 @@ import {
 } from "./dialog";
 import { Input } from "./input";
 import { NativeSelect } from "./native-select";
+import { formatMateScore } from "./shogi-match/utils/kifFormat";
 import { buildThreadOptions } from "./shogi-match/utils/threadOptions";
 
 type PanelStatus = "idle" | "init" | "ready" | "searching" | "stopping" | "error";
@@ -129,11 +130,8 @@ function formatEvent(event: EngineEvent): string {
     }
     if (event.type === "info") {
         const score =
-            event.scoreMate !== undefined
-                ? `mate ${event.scoreMate}`
-                : event.scoreCp !== undefined
-                  ? `cp ${event.scoreCp}`
-                  : "";
+            formatMateScore(event.scoreMate) ||
+            (event.scoreCp !== undefined ? `cp ${event.scoreCp}` : "");
         const pv = event.pv && event.pv.length > 0 ? ` pv ${event.pv.join(" ")}` : "";
         return [
             `info depth ${event.depth ?? "-"}`,

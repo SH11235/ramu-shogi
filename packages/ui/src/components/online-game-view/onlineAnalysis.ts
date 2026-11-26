@@ -2,7 +2,8 @@ import type { LayerStacksConfig } from "@shogi/app-core";
 
 export interface AnalysisMoveResult {
     usi: string;
-    cp: number;
+    cp?: number;
+    mate?: number;
     pv: string[];
 }
 

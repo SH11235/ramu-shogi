@@ -20,6 +20,7 @@ import {
 import {
     convertMovesToKif,
     exportToKifString,
+    mateScoreSide,
     type NodeData,
 } from "../shogi-match/utils/kifFormat";
 
@@ -113,11 +114,13 @@ export function exportStudyLineToCsa(
             lines.push(formatCsaMove(node.usiMove, before.board, before.turn));
             const elapsedMs = stored?.source?.elapsedMs;
             if (elapsedMs != null) lines.push(`T${Math.max(0, Math.round(elapsedMs / 1000))}`);
-            // 画面のツリーの詰みは手数（0 手は ±Infinity）で入っているので、符号が勝つ側を表す。
+            const mate = node.eval?.scoreMate;
             const score =
-                node.eval?.scoreMate != null
-                    ? Math.sign(node.eval.scoreMate) * CSA_MATE_EVAL_THRESHOLD
-                    : node.eval?.scoreCp;
+                mate == null
+                    ? node.eval?.scoreCp
+                    : Number.isNaN(mate)
+                      ? undefined
+                      : (mateScoreSide(mate) === "sente" ? 1 : -1) * CSA_MATE_EVAL_THRESHOLD;
             if (score != null && Number.isFinite(score)) lines.push(`'** ${score}`);
         }
         if (stored) lines.push(...csaCommentLines(stored.comment));
