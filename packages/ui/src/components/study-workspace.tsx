@@ -578,7 +578,10 @@ export function StudyWorkspaceView({
      * 別の操作（スイッチを入れ直すなど）をしたら始めない。切った知らせは、始めるときに出す。
      */
     const fullStartOptions = (): StudyFullStartOptions => {
-        if (!autoAnalyze) return {};
+        if (!autoAnalyze) {
+            const request = ++actionSerialRef.current;
+            return { isWanted: () => actionSerialRef.current === request };
+        }
         let request = 0;
         return {
             onCommit: () => {

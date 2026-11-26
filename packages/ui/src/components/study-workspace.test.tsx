@@ -341,6 +341,17 @@ describe("StudyWorkspaceView", () => {
         await waitFor(() => expect(analysis.continueDeep).toHaveBeenCalled());
     });
 
+    it("全体を解析を押したあと、始まる前に自動で読むを入れたら、その全体の解析は始めない", () => {
+        const { doc } = createTestStudy();
+        const analysis = createAnalysis();
+        render(<Harness initialDoc={doc} analysis={analysis} />);
+        fireEvent.click(within(graphRegion()).getByRole("button", { name: "全体を解析" }));
+        const options = vi.mocked(analysis.startFull).mock.calls[0]?.[0];
+        expect(options?.isWanted?.()).toBe(true);
+        fireEvent.click(screen.getByRole("switch", { name: /自動で読む/ }));
+        expect(options?.isWanted?.()).toBe(false);
+    });
+
     it("自動で読んでいる間も全体を解析を押せ、押すと自動で読むを切ってから始める", async () => {
         localStorage.setItem("shogi:studyAutoAnalyze", "true");
         const { doc } = createTestStudy();
@@ -1883,7 +1894,10 @@ describe("StudyWorkspaceView", () => {
         expect(graphRegion().textContent).not.toContain("簡易AI");
         fireEvent.click(screen.getByRole("button", { name: "残り 2 局面を解析" }));
 
-        expect(analysis.resumeLayer).toHaveBeenCalledWith(TEST_LAYER_ID, {});
+        expect(analysis.resumeLayer).toHaveBeenCalledWith(
+            TEST_LAYER_ID,
+            expect.objectContaining({ isWanted: expect.any(Function) }),
+        );
         expect(analysis.startFull).not.toHaveBeenCalled();
     });
 

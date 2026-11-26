@@ -292,7 +292,9 @@ export function useStudyAnalysis({
     const mountedRef = useRef(true);
     const preparingRef = useRef(false);
     /** 準備中の依頼（ダウンロードをやめて簡易 AI に切り替えたとき、同じ依頼をやり直すのに使う）。 */
-    const requestRef = useRef<{ kind: "full" } | { kind: "deep"; nodeId: string } | null>(null);
+    const requestRef = useRef<
+        { kind: "full"; options?: StudyFullStartOptions } | { kind: "deep"; nodeId: string } | null
+    >(null);
     /** まだ文書へ反映していない解析結果。 */
     const bufferRef = useRef<{ ops: StudyOp[]; timer: ReturnType<typeof setTimeout> | null }>({
         ops: [],
@@ -606,12 +608,26 @@ export function useStudyAnalysis({
         });
     };
 
+    /** 解析のエンジンは、玉の無い側がある局面を読めない。読めなければ知らせて true を返す。 */
+    const rejectWithoutKing = (): boolean => {
+        const { tree: currentTree } = latestRef.current;
+        const root = currentTree.nodes.get(currentTree.rootId);
+        if (!root || sidesWithoutKing(root.positionAfter).length === 0) return false;
+        setMessage({
+            text: "玉の無い局面は解析できません。",
+            type: "warning",
+        });
+        return true;
+    };
+
     /**
      * 準備から開始までを 1 つの世代として実行する。準備を待つ間に中止・離脱・別の解析の開始が
      * あれば `isCurrent()` が false になるので、そこで止める。
      */
     const withPreparation = async (
-        request: { kind: "full" } | { kind: "deep"; nodeId: string },
+        request:
+            | { kind: "full"; options?: StudyFullStartOptions }
+            | { kind: "deep"; nodeId: string },
         task: (isCurrent: () => boolean) => Promise<void>,
         /** 直前に `cancel` を待ち終えた（描画前なので、実行中かの state はまだ古い値のまま）。 */
         afterCancel = false,
@@ -620,16 +636,7 @@ export function useStudyAnalysis({
         if (!afterCancel && (pool.isRunning || isDeepSearching)) return;
         if (preparingRef.current || !mountedRef.current) return;
         if (lockedRef.current) return;
-        // 解析のエンジンは、玉の無い側がある局面を読めない
-        const { tree: currentTree } = latestRef.current;
-        const root = currentTree.nodes.get(currentTree.rootId);
-        if (root && sidesWithoutKing(root.positionAfter).length > 0) {
-            setMessage({
-                text: "玉の無い局面は解析できません。",
-                type: "warning",
-            });
-            return;
-        }
+        if (rejectWithoutKing()) return;
         const generation = generationRef.current + 1;
         generationRef.current = generation;
         preparingRef.current = true;
@@ -658,7 +665,7 @@ export function useStudyAnalysis({
         options?: StudyFullStartOptions,
     ): Promise<void> =>
         withPreparation(
-            { kind: "full" },
+            { kind: "full", options },
             async (isCurrent) => {
                 const limits = {
                     timeMs: target?.spec.limits.timeMs ?? settings.batchAnalysisTimeMs,
@@ -761,6 +768,8 @@ export function useStudyAnalysis({
         start: (afterCancel: boolean) => Promise<void>,
         options?: StudyFullStartOptions,
     ): Promise<void> => {
+        // 始められないと分かっている局面では、自動で読むを切らない。
+        if (rejectWithoutKing()) return;
         options?.onCommit?.();
         const deepActive =
             activeMode === "deep" || (preparingRef.current && requestRef.current?.kind === "deep");
@@ -934,7 +943,7 @@ export function useStudyAnalysis({
         setTimeout(() => {
             if (!mountedRef.current) return;
             void (request.kind === "full"
-                ? startFullWith(MATERIAL_SELECTION)
+                ? startFullWith(MATERIAL_SELECTION, undefined, false, request.options)
                 : startDeepWith(request.nodeId, MATERIAL_SELECTION));
         }, 0);
     };
