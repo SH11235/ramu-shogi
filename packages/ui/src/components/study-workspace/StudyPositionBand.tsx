@@ -55,10 +55,10 @@ export function StudyPositionBand({
                           ? "未解析"
                           : "—"}
                 </span>
-                <span className="ml-auto flex shrink-0 items-baseline gap-1.5 max-[359px]:gap-1">
+                <span className="ml-auto flex shrink-0 items-baseline gap-1.5 max-[399px]:flex-col max-[399px]:items-end max-[399px]:gap-0">
                     <span
                         className={cn(
-                            "min-w-[5ch] whitespace-nowrap text-right font-mono tabular-nums max-[359px]:text-xs",
+                            "min-w-[5ch] whitespace-nowrap text-right font-mono tabular-nums max-[399px]:text-xs max-[399px]:leading-tight",
                             scoreText === ""
                                 ? "text-muted-foreground"
                                 : side === "sente"
@@ -71,7 +71,7 @@ export function StudyPositionBand({
                         {scoreText || "—"}
                     </span>
                     {/* 読み始めの浅い値は振れるので、どれだけ読んだ値かを添える。幅は 2 桁の深さで固定する。 */}
-                    <span className="min-w-[3.75em] text-xs tabular-nums text-muted-foreground">
+                    <span className="min-w-[3.75em] whitespace-nowrap text-xs tabular-nums text-muted-foreground max-[399px]:text-right max-[399px]:leading-tight">
                         {depth !== null && `深さ ${depth}`}
                     </span>
                 </span>
