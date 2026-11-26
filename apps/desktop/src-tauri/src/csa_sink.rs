@@ -30,12 +30,17 @@ pub struct TauriEventSink {
 
 impl TauriEventSink {
     /// 新しい sink を作成する。
-    pub fn new(tx: UnboundedSender<CsaSessionEvent>, builtin_engine: bool) -> Self {
+    pub fn new(tx: UnboundedSender<CsaSessionEvent>) -> Self {
         Self {
             tx,
             receiver_closed: Arc::new(AtomicBool::new(false)),
-            builtin_engine,
+            builtin_engine: false,
         }
+    }
+
+    pub(crate) fn with_builtin_scores(mut self) -> Self {
+        self.builtin_engine = true;
+        self
     }
 }
 
@@ -92,7 +97,7 @@ mod tests {
     #[test]
     fn forwards_event_to_channel() {
         let (tx, mut rx) = unbounded_channel();
-        let mut sink = TauriEventSink::new(tx, false);
+        let mut sink = TauriEventSink::new(tx);
         sink.on_event(SessionProgress::Connected).unwrap();
         let event = rx.try_recv().expect("event should be queued");
         assert!(matches!(event, CsaSessionEvent::Connected));
@@ -102,7 +107,7 @@ mod tests {
     fn marks_receiver_closed_on_send_error() {
         let (tx, rx) = unbounded_channel();
         drop(rx);
-        let mut sink = TauriEventSink::new(tx, false);
+        let mut sink = TauriEventSink::new(tx);
         let result = sink.on_event(SessionProgress::Connected);
         assert!(matches!(result, Err(SinkError::NonFatal(_))));
         assert!(!sink.should_continue());
@@ -120,7 +125,10 @@ mod tests {
             (false, Value::mate_in(3).raw(), None),
         ] {
             let (tx, mut rx) = unbounded_channel();
-            let mut sink = TauriEventSink::new(tx, builtin);
+            let mut sink = TauriEventSink::new(tx);
+            if builtin {
+                sink = sink.with_builtin_scores();
+            }
             sink.on_event(SessionProgress::SearchInfo(SearchInfoSnapshot {
                 score_cp: Some(score_cp),
                 ..SearchInfoSnapshot::default()
