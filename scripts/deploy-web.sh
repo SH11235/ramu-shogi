@@ -100,11 +100,15 @@ if [[ "$status" != "200" ]]; then
   exit 1
 fi
 if [[ "$MODE" == "stg" ]]; then
-  status=$(curl -s -o /dev/null -w '%{http_code}' -A 'Mozilla/5.0' "$SITE_URL/storybook/")
-  if [[ "$status" != "200" ]]; then
-    echo "$SITE_URL/storybook/ が HTTP $status を返しました。" >&2
+  # 無いパスにも Web アプリの index.html が 200 で返るので、Storybook の目録の中身で確かめる。
+  storybook_index=$(mktemp)
+  if ! curl -sf -A 'Mozilla/5.0' -o "$storybook_index" "$SITE_URL/storybook/index.json" ||
+    [[ "$(sha256_of "$storybook_index")" != "$(sha256_of apps/web/dist/storybook/index.json)" ]]; then
+    rm -f "$storybook_index"
+    echo "$SITE_URL/storybook/ に、ビルドした Storybook が配信されていません。" >&2
     exit 1
   fi
+  rm -f "$storybook_index"
 fi
 
 shopt -s nullglob

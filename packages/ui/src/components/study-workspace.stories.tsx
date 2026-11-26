@@ -293,7 +293,7 @@ export const 詰めろの結果: Story = {
                         status: "done",
                         mate: { kind: "noMate" },
                         mateMs: 500,
-                        threat: { kind: "mate", pv: ["8h2b+"] },
+                        threat: { kind: "mate", pv: ["8h3c+"] },
                         threatMs: 500,
                     },
                 ],
