@@ -491,9 +491,21 @@ export function StudyWorkspaceView({
     });
 
     // --- 編集 ---
+    /** 読み筋の再生を閉じたら、開いたボタンへ戻る（ダイアログは開いた操作を知らないので）。 */
+    const pvReturnFocusRef = useRef<HTMLElement | null>(null);
+    const closePvPreview = (): void => {
+        setPvPreview(null);
+        const target = pvReturnFocusRef.current;
+        pvReturnFocusRef.current = null;
+        requestAnimationFrame(() => {
+            if (target?.isConnected) target.focus();
+        });
+    };
     const previewPv = (request: StudyPvRequest): void => {
         const baseNode = tree.nodes.get(request.nodeId);
         if (!baseNode) return;
+        pvReturnFocusRef.current =
+            document.activeElement instanceof HTMLElement ? document.activeElement : null;
         const evalData = studyScoreToKifuEval(request.score);
         setPvPreview({
             pv: request.pv,
@@ -1709,7 +1721,7 @@ export function StudyWorkspaceView({
 
             {pvPreview && (
                 <PvPreviewDialog
-                    onClose={() => setPvPreview(null)}
+                    onClose={closePvPreview}
                     pv={pvPreview.pv}
                     startPosition={pvPreview.startPosition}
                     ply={pvPreview.ply}
@@ -1872,6 +1884,12 @@ export function StudyWorkspace({
 
     const analysis: StudyAnalysisController = {
         ...controller,
+        // 前に深く解析した設定は、新しい読みが始まるまで忘れる（新しい読みが始まらなかったときに、
+        // 別の AI で前に読んだ結果を、いま読んだ結果として出さないように）。
+        startDeep: (nodeId) => {
+            setDeepLayerId(null);
+            return controller.startDeep(nodeId);
+        },
         cancel: async () => {
             const wasFull = controller.mode === "full";
             await controller.cancel();

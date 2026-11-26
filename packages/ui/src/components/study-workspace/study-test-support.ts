@@ -39,7 +39,7 @@ function testNodeIds(doc: StudyDocument, moves: readonly string[] = TEST_MOVES):
 /** 解析結果を 1 つ入れる操作。 */
 export function putScoreOp(
     nodeId: string,
-    score: StudyScore,
+    score: StudyScore | null,
     options: { layerId?: string; depth?: number; pv?: string[] } = {},
 ): StudyOp {
     const depth = options.depth ?? 15;

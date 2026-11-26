@@ -320,7 +320,7 @@ export interface StudyPositionResult {
 }
 
 /** 2 つの設定が同じ AI・同じ評価関数か（探索の上限と候補手の数は見ない）。 */
-function isSameStudyAi(a: StudyLayer, b: StudyLayer): boolean {
+export function isSameStudyAi(a: StudyLayer, b: StudyLayer): boolean {
     return (
         canonicalJSON(a.spec.engine) === canonicalJSON(b.spec.engine) &&
         canonicalJSON(a.spec.evaluation) === canonicalJSON(b.spec.evaluation) &&

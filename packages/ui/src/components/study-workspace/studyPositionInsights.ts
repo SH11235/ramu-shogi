@@ -5,6 +5,7 @@ import {
 } from "@shogi/app-core";
 import {
     countStudyUnanalyzed,
+    isSameStudyAi,
     pickStudyDeeperResult,
     pickStudyDeepestResult,
     pickStudyPositionResult,
@@ -108,8 +109,8 @@ export function pickStudyBandResult({
         freshLayer && Object.hasOwn(freshLayer.results, nodeId)
             ? { layer: freshLayer, result: freshLayer.results[nodeId] }
             : null;
-    const deeperLayerIds = studyDeeperLayerIds(doc, displayLayerId);
-    if (fresh && !deeperLayerIds.includes(fresh.layer.id)) return fresh;
+    const display = doc.layers.find((layer) => layer.id === displayLayerId);
+    if (fresh && (!display || !isSameStudyAi(fresh.layer, display))) return fresh;
     return pickStudyDeepestResult([
         fresh,
         pickStudyPositionResult(doc, nodeId, displayLayerId),

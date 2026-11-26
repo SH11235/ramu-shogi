@@ -3402,7 +3402,7 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         expect(band().textContent).not.toContain("+120");
     });
 
-    it("帯の記録の段を押すと、記録の最善手の読み筋を盤で再生する（読んでいる間も）", () => {
+    it("帯の記録の段を押すと、記録の最善手の読み筋を盤で再生する（読んでいる間も）", async () => {
         localStorage.setItem("shogi:studyAutoAnalyze", "true");
         const { doc, ids } = createTestStudy([cp(120), cp(0), cp(0), cp(0), cp(0)]);
         const withPv = applyStudyOps(doc, [
@@ -3418,14 +3418,44 @@ describe("StudyWorkspaceView: スマートフォン", () => {
                         depth: 5,
                         startedAt: null,
                         budgetMs: 30_000,
-                        preview: null,
+                        preview: {
+                            runId: "preview",
+                            completion: "aborted",
+                            depth: 5,
+                            nodes: 1_000,
+                            timeMs: 1_000,
+                            execution: { threads: null, hashMb: null, parallelWorkers: null },
+                            candidates: [
+                                { rank: 1, score: cp(-50), depth: 5, seldepth: null, pv: ["7g7f"] },
+                            ],
+                        },
                     },
                 })}
             />,
         );
         expect(screen.queryByText("読み筋を 1 手ずつ盤面で再生します。")).toBeNull();
-        fireEvent.click(screen.getByRole("button", { name: /記録.*読み筋を盤で見る/ }));
-        expect(screen.getByText("読み筋を 1 手ずつ盤面で再生します。")).toBeTruthy();
+        const recordButton = screen.getByRole("button", { name: /記録.*読み筋を盤で見る/ });
+        recordButton.focus();
+        fireEvent.click(recordButton);
+        const dialog = screen.getByRole("dialog");
+        // 今の読みではなく、記録の最善手（☗2六歩）から再生する。
+        expect(dialog.textContent).toContain("2六歩");
+        expect(dialog.textContent).not.toContain("7六歩");
+        // 閉じたら押したボタンに戻る。
+        fireEvent.keyDown(window, { key: "Escape" });
+        await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+        await waitFor(() => expect(document.activeElement).toBe(recordButton));
+    });
+
+    it("評価値の無い記録でも、最善手があれば帯に出して押せる", () => {
+        const { doc, ids } = createTestStudy([cp(0), cp(0), cp(0), cp(0), cp(0)]);
+        const withPv = applyStudyOps(doc, [
+            putScoreOp(ids[0], null, { depth: 16, pv: ["2g2f", "8c8d"] }),
+        ]);
+        render(<Harness initialDoc={withPv} />);
+        const band = screen.getByRole("status", { name: "この局面の最善手" });
+        expect(band.textContent).toContain("2六歩");
+        expect(within(band).getByRole("button", { name: /記録.*読み筋を盤で見る/ })).toBeTruthy();
     });
 
     it("自動で読み始めて途中の候補がまだ無い間は、帯に未解析ではなく読んでいることを出す", async () => {

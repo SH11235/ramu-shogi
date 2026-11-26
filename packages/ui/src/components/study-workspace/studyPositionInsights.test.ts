@@ -73,4 +73,25 @@ describe("局面の帯と候補手の欄の結果", () => {
             panel: TEST_LAYER_ID,
         });
     });
+
+    it("同じ AI・同じ探索の上限で候補手の数だけ違う設定で浅く読んでも、深い表示中の結果を出す", () => {
+        const { doc, ids } = createTestStudy([cp(30), cp(40), cp(20), cp(10), cp(0)]);
+        // 表示中の設定（RAMU・1 秒・深さ 15・候補 1）と、候補手の数だけが違う。
+        const otherPvSpec = buildStudyLayerSpec({
+            engine: { kind: "wasm", name: "rshogi", version: "0.8.1" },
+            appVersion: "0.0.0",
+            nnue: { sha256: "a".repeat(64), fvScale: 24 },
+            limits: { timeMs: 1000, depth: 15 },
+            multiPv: 3,
+        });
+        const otherPvId = studyLayerId(otherPvSpec);
+        const withOtherPv = applyStudyOps(doc, [
+            { type: "ensureLayer", spec: otherPvSpec, display: { label: "RAMU・1 秒・候補 1" } },
+            putScoreOp(ids[0], cp(35), { layerId: otherPvId, depth: 8, pv: ["2g2f"] }),
+        ]);
+        expect(picks(withOtherPv, ids[0], { nodeId: ids[0], layerId: otherPvId })).toEqual({
+            band: TEST_LAYER_ID,
+            panel: TEST_LAYER_ID,
+        });
+    });
 });

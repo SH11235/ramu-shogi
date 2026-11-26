@@ -47,10 +47,10 @@ export function StudyPositionBand({
 }): ReactElement {
     const switchId = useId();
     const statusId = useId();
+    // 評価値の無い結果でも、最善手があれば記録として出す。
+    const hasRecord = record !== null && (record.score !== null || record.bestMove !== null);
     const recordAhead =
-        record !== null &&
-        record.score !== null &&
-        (live === null || live.depth === null || (record.depth ?? 0) > live.depth);
+        hasRecord && (live === null || live.depth === null || (record.depth ?? 0) > live.depth);
     const upper = reading ? (
         <BandRow
             label={
@@ -70,11 +70,11 @@ export function StudyPositionBand({
         />
     ) : (
         <BandRow
-            label={record?.score ? "記録" : null}
+            label={hasRecord ? "記録" : null}
             line={record}
-            empty={record?.score ? "—" : "未解析"}
+            empty={hasRecord ? "—" : "未解析"}
             primary
-            onPlay={record?.score ? onPlayRecord : undefined}
+            onPlay={hasRecord ? onPlayRecord : undefined}
         />
     );
     return (
@@ -89,7 +89,7 @@ export function StudyPositionBand({
                 {upper}
                 {/* 記録のある局面を読んでいる間は、下の段が空でも場所を取る（今の読みが記録を超えて
                     記録が消えたときに、上の段が動かないように）。それ以外は 1 段を上下の中央に置く。 */}
-                {!reading || record?.score == null ? null : recordAhead ? (
+                {!reading || !hasRecord ? null : recordAhead ? (
                     <BandRow
                         label="記録"
                         line={record}
