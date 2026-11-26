@@ -1289,6 +1289,16 @@ export function StudyWorkspaceView({
         liveHere && recordResult && recordResult.depth > (liveHere.preview?.depth ?? 0)
             ? recordResult
             : null;
+    const recordBest = recordResult ? studyBestCandidate(recordResult) : null;
+    const playRecordPv =
+        recordBest && recordBest.pv.length > 0
+            ? () =>
+                  previewPv({
+                      nodeId: currentNodeId,
+                      pv: recordBest.pv,
+                      score: recordBest.score,
+                  })
+            : undefined;
     /** 帯の 1 段に出す値。 */
     const bandLineOf = (result: StudyAnalysisResult | null): StudyBandLine | null => {
         if (!result) return null;
@@ -1579,6 +1589,7 @@ export function StudyWorkspaceView({
                                 <StudyPositionBand
                                     live={bandLineOf(liveHere?.preview ?? null)}
                                     record={bandLineOf(savedPicked?.result ?? null)}
+                                    onPlayRecord={playRecordPv}
                                     // パスして解析の読みも今の読みとして出すが、ラムは自動で読む読みだけ。
                                     reading={bandShowsReading || liveHere !== undefined}
                                     showRam={bandShowsReading}

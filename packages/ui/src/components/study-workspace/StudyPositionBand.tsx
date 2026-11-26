@@ -4,6 +4,7 @@ import type { ReactElement, ReactNode } from "react";
 import { useId } from "react";
 import { RamRunningIcon } from "../ram-running-icon";
 import { Switch } from "../switch";
+import { PlayIcon } from "./StudyIcons";
 import { formatStudyScore, studyScoreSide } from "./studyView";
 
 /** 帯の 1 段に出す読み（最善手・評価値・深さ）。 */
@@ -26,6 +27,7 @@ export function StudyPositionBand({
     reading,
     showRam,
     autoAnalyze,
+    onPlayRecord,
 }: {
     /** この局面を読んでいる途中の値。読んでいなければ null（途中の値がまだ無ければ、各欄が null）。 */
     live: StudyBandLine | null;
@@ -37,6 +39,11 @@ export function StudyPositionBand({
     showRam: boolean;
     /** 渡さなければスイッチを出さない（編集できないとき）。`status` は画面読み上げ向けの状態。 */
     autoAnalyze?: { enabled: boolean; onChange: (enabled: boolean) => void; status: string | null };
+    /**
+     * 記録の段を押したとき、その読み筋を盤で見せる。読んでいる間は候補手の欄に記録を出さないので、
+     * 記録の読み筋はここから見る。読み筋が無ければ渡さない。
+     */
+    onPlayRecord?: () => void;
 }): ReactElement {
     const switchId = useId();
     const statusId = useId();
@@ -67,6 +74,7 @@ export function StudyPositionBand({
             line={record}
             empty={record?.score ? "—" : "未解析"}
             primary
+            onPlay={record?.score ? onPlayRecord : undefined}
         />
     );
     return (
@@ -79,9 +87,16 @@ export function StudyPositionBand({
                 className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 pl-2.5 pr-2 max-[359px]:pl-2 max-[359px]:pr-1.5"
             >
                 {upper}
-                {/* 下の段は空でも高さを取る（記録が出る・消えるたびに帯が伸び縮みしないように）。 */}
-                {reading && recordAhead ? (
-                    <BandRow label="記録" line={record} empty="—" primary={false} />
+                {/* 記録のある局面を読んでいる間は、下の段が空でも場所を取る（今の読みが記録を超えて
+                    記録が消えたときに、上の段が動かないように）。それ以外は 1 段を上下の中央に置く。 */}
+                {!reading || record?.score == null ? null : recordAhead ? (
+                    <BandRow
+                        label="記録"
+                        line={record}
+                        empty="—"
+                        primary={false}
+                        onPlay={onPlayRecord}
+                    />
                 ) : (
                     <span aria-hidden="true" className="h-[1.1rem]" />
                 )}
@@ -92,7 +107,7 @@ export function StudyPositionBand({
                     htmlFor={switchId}
                     className="flex h-full shrink-0 cursor-pointer items-center gap-1.5 border-l border-wafuu-border pl-2 pr-2.5 max-[359px]:gap-1 max-[359px]:px-1.5"
                 >
-                    <span className="text-xs font-medium text-wafuu-sumi">自動で読む</span>
+                    <span className="text-xs font-medium text-wafuu-sumi">自動読み</span>
                     <Switch
                         id={switchId}
                         aria-describedby={statusId}
@@ -116,6 +131,7 @@ function BandRow({
     line,
     empty,
     primary,
+    onPlay,
 }: {
     label: ReactNode;
     line: StudyBandLine | null;
@@ -123,17 +139,18 @@ function BandRow({
     empty: string;
     /** 上の段（主に見る値）。下の段は控えめに出す。 */
     primary: boolean;
+    /** 渡すと段全体を押せるようにし、読み筋を盤で見せる。 */
+    onPlay?: () => void;
 }): ReactElement {
     const scoreText = formatStudyScore(line?.score ?? null);
     const side = studyScoreSide(line?.score ?? null);
     const bestMove = line?.bestMove ?? null;
-    return (
-        <span
-            className={cn(
-                "flex min-w-0 items-baseline gap-1.5 max-[359px]:gap-1",
-                !primary && "text-muted-foreground",
-            )}
-        >
+    const rowClass = cn(
+        "flex min-w-0 items-baseline gap-1.5 max-[359px]:gap-1",
+        !primary && "text-muted-foreground",
+    );
+    const content = (
+        <>
             {label !== null && (
                 <span className="flex w-[2.5em] shrink-0 text-[11px] text-muted-foreground max-[359px]:w-[2.2em] max-[359px]:text-[10px]">
                     {label}
@@ -143,7 +160,11 @@ function BandRow({
             <span
                 className={cn(
                     "min-w-0 truncate",
-                    primary && (bestMove ? "text-wafuu-sumi" : "text-muted-foreground"),
+                    primary
+                        ? bestMove
+                            ? "text-wafuu-sumi"
+                            : "text-muted-foreground"
+                        : "max-[399px]:text-xs",
                 )}
                 title={bestMove ?? undefined}
             >
@@ -176,6 +197,26 @@ function BandRow({
                     </span>
                 </span>
             )}
-        </span>
+            {onPlay && (
+                <>
+                    {/* 幅の狭い画面では手の表記を優先して印を省く（段全体は押せる）。 */}
+                    <PlayIcon className="-ml-0.5 h-2.5 w-2.5 self-center text-wafuu-ai max-[359px]:hidden" />
+                    <span className="sr-only">（読み筋を盤で見る）</span>
+                </>
+            )}
+        </>
+    );
+    if (!onPlay) return <span className={rowClass}>{content}</span>;
+    return (
+        <button
+            type="button"
+            onClick={onPlay}
+            className={cn(
+                rowClass,
+                "-mx-1 rounded-sm px-1 text-left hover:bg-wafuu-washi active:bg-wafuu-washi focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            )}
+        >
+            {content}
+        </button>
     );
 }

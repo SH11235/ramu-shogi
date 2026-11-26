@@ -2628,7 +2628,7 @@ describe("StudyWorkspaceView", () => {
             // 「残りを解析」は出さない。コメントは、操作できない領域（inert）の中にある。
             expect(screen.queryByRole("button", { name: /局面を解析/ })).toBeNull();
             // 読む操作（自動で読む・パスして解析）は出さない。
-            expect(screen.queryByRole("switch", { name: /自動で読む/ })).toBeNull();
+            expect(screen.queryByRole("switch", { name: /自動/ })).toBeNull();
             expect(screen.queryByRole("button", { name: "パスして解析" })).toBeNull();
             expect(commentTextbox().closest("[inert]")).toBeTruthy();
             // キーボードでも動かない。
@@ -3368,9 +3368,9 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         const view = render(<Harness initialDoc={doc} />);
         const band = () =>
             screen.getByRole("status", { name: "この局面の最善手" }).parentElement as HTMLElement;
-        // 候補手の欄にはスイッチを出さない（帯の 1 つだけ）。名前は読んでいる間も「自動で読む」のまま。
-        expect(screen.getAllByRole("switch", { name: /自動で読む/ })).toHaveLength(1);
-        within(band()).getByRole("switch", { name: "自動で読む" });
+        // 候補手の欄にはスイッチを出さない（帯の 1 つだけ）。名前は読んでいる間も変わらない。
+        expect(screen.getAllByRole("switch")).toHaveLength(1);
+        within(band()).getByRole("switch", { name: "自動読み" });
         // 読み始めるまでは、保存してある記録を下の段に出す。
         expect(band().textContent).toContain("読み中…");
         expect(band().textContent).toContain("記録");
@@ -3400,6 +3400,32 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         // 今の読みが記録を超えたら、記録は出さない（2 つの値を並べない）。
         expect(band().textContent).not.toContain("記録");
         expect(band().textContent).not.toContain("+120");
+    });
+
+    it("帯の記録の段を押すと、記録の最善手の読み筋を盤で再生する（読んでいる間も）", () => {
+        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+        const { doc, ids } = createTestStudy([cp(120), cp(0), cp(0), cp(0), cp(0)]);
+        const withPv = applyStudyOps(doc, [
+            putScoreOp(ids[0], cp(120), { depth: 16, pv: ["2g2f", "8c8d"] }),
+        ]);
+        render(
+            <Harness
+                initialDoc={withPv}
+                analysis={createAnalysis({
+                    mode: "deep",
+                    live: {
+                        nodeId: withPv.tree.rootId,
+                        depth: 5,
+                        startedAt: null,
+                        budgetMs: 30_000,
+                        preview: null,
+                    },
+                })}
+            />,
+        );
+        expect(screen.queryByText("読み筋を 1 手ずつ盤面で再生します。")).toBeNull();
+        fireEvent.click(screen.getByRole("button", { name: /記録.*読み筋を盤で見る/ }));
+        expect(screen.getByText("読み筋を 1 手ずつ盤面で再生します。")).toBeTruthy();
     });
 
     it("自動で読み始めて途中の候補がまだ無い間は、帯に未解析ではなく読んでいることを出す", async () => {

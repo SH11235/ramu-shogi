@@ -49,26 +49,17 @@ export function deriveStudyPositionInsights({
     const analyzedCount = displayLayer === undefined ? 0 : totalCount - unanalyzedCount;
     const positionResult = pickStudyPositionResult(doc, currentNodeId, displayLayerId);
 
-    // 表示中の設定より深く読んだ結果は、候補手を差し替えず、別の段として添える。
-    // 利用者がいま「この局面を深く解析」で得た結果は、AI が表示中の設定と違っていても必ず出す
-    // （押したのに結果が見当たらない、にならないように）。
-    const isDeepHere = deepNodeId === currentNodeId;
-    const deepLayer =
-        isDeepHere && deepLayerId !== null && deepLayerId !== displayLayerId
-            ? doc.layers.find((layer) => layer.id === deepLayerId)
-            : undefined;
-    const freshDeepResult =
-        deepLayer && Object.hasOwn(deepLayer.results, currentNodeId)
-            ? { layer: deepLayer, result: deepLayer.results[currentNodeId] }
-            : null;
-    // ふだん添えるのは、表示中の結果より深く読めているものだけ（同じ深さ・浅い結果は出さない）。
-    const storedDeeperResult = pickStudyDeeperResult(doc, currentNodeId, displayLayerId);
+    // 候補手の一覧は局面の帯と同じ結果にする（帯と欄で別の値が出ないように）。表示中の設定の結果と
+    // 違うものを選んだときは、それを深く読んだ結果として出し、表示中の設定の結果は 1 行で添える。
+    const picked = pickStudyBandResult({
+        doc,
+        nodeId: currentNodeId,
+        displayLayerId,
+        deepNodeId,
+        deepLayerId,
+    });
     const deeperResult =
-        freshDeepResult ??
-        (storedDeeperResult !== null &&
-        (positionResult === null || storedDeeperResult.result.depth > positionResult.result.depth)
-            ? storedDeeperResult
-            : null);
+        picked !== null && picked.layer.id !== positionResult?.layer.id ? picked : null;
 
     return {
         highlights,
@@ -89,8 +80,11 @@ export function deriveStudyPositionInsights({
 }
 
 /**
- * 局面の帯に出す保存済みの読み（読んでいる途中でなければ、帯はこの値を出す）。いちばん深く読めた
- * ものを選び、深さが同じなら直近の「深く解析」、表示中の設定、同じ AI で深く読んだ設定の順に採る。
+ * 局面の帯と候補手の欄に出す保存済みの読み（読んでいる途中でなければ、この値を出す）。表示中の設定と、
+ * 同じ AI で探索の上限だけ大きい設定の中から、いちばん深く読めたものを選ぶ（AI が違うと深さは比べられ
+ * ないので、別の AI の結果は深くても選ばない）。ただし、この局面を直前に別の AI で「深く解析」したら、
+ * その結果を出す（押したのに結果が見当たらない、にならないように）。深さが同じなら直近の「深く解析」、
+ * 表示中の設定、同じ AI で深く読んだ設定の順に採る。
  * 評価値グラフの「深く読んだ局面」の印も、局面ごとにこれで選ぶ（帯の値と印が食い違わないように）。
  */
 export function pickStudyBandResult({
@@ -114,6 +108,8 @@ export function pickStudyBandResult({
         freshLayer && Object.hasOwn(freshLayer.results, nodeId)
             ? { layer: freshLayer, result: freshLayer.results[nodeId] }
             : null;
+    const deeperLayerIds = studyDeeperLayerIds(doc, displayLayerId);
+    if (fresh && !deeperLayerIds.includes(fresh.layer.id)) return fresh;
     return pickStudyDeepestResult([
         fresh,
         pickStudyPositionResult(doc, nodeId, displayLayerId),
