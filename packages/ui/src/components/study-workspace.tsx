@@ -713,6 +713,11 @@ export function StudyWorkspaceView({
             return;
         }
         // 入れたら、動いている全体の解析より自動で読むを優先する（詰み探索は読み始めるときに止まる）。
+        // 準備中の解析も取りやめる（準備を終えると、スイッチを入れたまま全体の解析が始まるため）。
+        if (analysis.isPreparing && analysis.mode === null) {
+            cancelAnalysis();
+            return;
+        }
         if (analysis.mode === "full") {
             cancelAnalysis();
             onMessageChange({

@@ -272,6 +272,13 @@ describe("StudyWorkspaceView", () => {
         ).toBe(true);
     });
 
+    it("解析を準備している間に自動で読むを入れると、準備中の解析を取りやめる", () => {
+        const analysis = createAnalysis({ isPreparing: true });
+        render(<Harness initialDoc={createTestStudy().doc} analysis={analysis} />);
+        fireEvent.click(screen.getByRole("switch", { name: /自動で読む/ }));
+        expect(analysis.cancel).toHaveBeenCalledTimes(1);
+    });
+
     it("自動で読むを入れると、見ている局面を読み始める", async () => {
         const { doc } = createTestStudy();
         const analysis = createAnalysis();
