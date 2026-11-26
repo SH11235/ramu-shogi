@@ -76,7 +76,6 @@ export function deriveStudyPositionInsights({
     };
 }
 
-/**
 /** 1 局面の読みで、直近に結果を書いた局面と設定（レイヤー）。 */
 export interface StudyDeepReadRef {
     nodeId: string;
