@@ -3127,6 +3127,35 @@ describe.each(STORES)("同期エンジン（保存層: $name）", ({ create }) =
             );
         });
 
+        it("統合でつないだコメントの送信前に、別の端末が統合先のコメントを消したら、消した文は戻さない", async () => {
+            const origin = { kind: "rshogi_csa", ref: "wdoor-20261009000001-93ef4d36a6" } as const;
+            const existingId = "0d9f5c3a-2b7e-4c1d-9a55-1f2e3d4c5b6a";
+            const harness = createHarness();
+            harness.server.seed(
+                USER_A,
+                applyStudyOps(createTestDocument({ id: existingId, origin }), [comment("旧文")]),
+            );
+            let sent = false;
+            harness.server.beforeHandle = async ({ method, studyId }) => {
+                if (method === "postOps" && studyId === existingId && !sent) {
+                    sent = true;
+                    harness.server.applyFromOtherDevice(existingId, [comment("")]);
+                }
+            };
+            await harness.sync.createStudy(createTestDocument({ origin }));
+            await harness.sync.applyOps(TEST_STUDY_ID, [comment("元のノート")]);
+
+            harness.login(USER_A);
+            await harness.sync.adoptAnonymousStudies();
+            await harness.advance(0);
+            await harness.advance(0);
+            await harness.sync.flush(existingId);
+
+            expect(harness.server.study(existingId)?.tree.nodes[firstId].comment).toBe(
+                "元のノート",
+            );
+        });
+
         it("統合済みのノート宛ての解析結果は、統合先に保存して送る（ほかの操作は従来どおり拒否する）", async () => {
             const origin = { kind: "rshogi_csa", ref: "wdoor-20261009000001-93ef4d36a6" } as const;
             const existingId = "0d9f5c3a-2b7e-4c1d-9a55-1f2e3d4c5b6a";

@@ -56,6 +56,7 @@ interface PendingRow {
     op: StudyOp;
     commentBase?: string;
     commentLocal?: string;
+    commentAppend?: string;
 }
 
 interface IndexedDbStudyStoreOptions {
@@ -233,9 +234,9 @@ export function createIndexedDbStudyStore(options: IndexedDbStudyStoreOptions = 
         ]);
         const pending: PendingStudyOp[] = pendingRows
             .map(
-                ({ seq, op, commentBase, commentLocal }): PendingStudyOp => ({
+                ({ seq, op, commentBase, commentLocal, commentAppend }): PendingStudyOp => ({
                     seq,
-                    ...splitPendingOpInput({ op, commentBase, commentLocal }),
+                    ...splitPendingOpInput({ op, commentBase, commentLocal, commentAppend }),
                 }),
             )
             .sort((a, b) => a.seq - b.seq);

@@ -381,13 +381,20 @@ const applyEffectiveOps = (
     /** 別の端末が書いていたノードの、当て直す前のサーバーのコメント。 */
     const diverged = new Map<string, string>();
     for (const item of items) {
-        const { op: original, commentBase, commentLocal } = splitPendingOpInput(item);
+        const {
+            op: original,
+            commentBase,
+            commentLocal,
+            commentAppend,
+        } = splitPendingOpInput(item);
         let op = original;
         let before: string | undefined;
         let local = commentLocal;
         if (op.type === "setComment" && Object.hasOwn(next.tree.nodes, op.nodeId)) {
             before = next.tree.nodes[op.nodeId].comment;
-            if (options.rebase) {
+            if (options.rebase && commentAppend !== undefined) {
+                op = { ...op, value: mergeStudyComments(before, commentAppend) };
+            } else if (options.rebase) {
                 if (!checked.has(op.nodeId)) {
                     checked.add(op.nodeId);
                     if (commentBase !== undefined && commentBase !== before) {
@@ -420,6 +427,7 @@ const applyEffectiveOps = (
         effective.push({
             op,
             commentBase: before,
+            ...(commentAppend === undefined ? {} : { commentAppend }),
             ...(local === undefined || (op.type === "setComment" && op.value === local)
                 ? {}
                 : { commentLocal: local }),
@@ -456,14 +464,24 @@ const attachCommentLocals = (
 
 /** `doc` に無い（または違う）解析結果を足す操作か。 */
 const isNewAnalysis = (doc: StudyDocument, op: StudyOp): boolean => {
-    if (op.type === "ensureLayer") {
-        const layerId = studyLayerId(op.spec);
-        return !doc.layers.some((layer) => layer.id === layerId);
-    }
     if (op.type !== "putAnalysis") return false;
     const layer = doc.layers.find((item) => item.id === op.layerId);
     if (!layer || !Object.hasOwn(layer.results, op.nodeId)) return true;
     return JSON.stringify(layer.results[op.nodeId]) !== JSON.stringify(op.result);
+};
+
+/**
+ * `doc` から増えた・変わった解析結果と、それを入れるレイヤーの作成だけを残す（レイヤーは、
+ * 統合先で消されていても、新しい結果が届いたなら作り直す）。
+ */
+const newAnalysisOps = (doc: StudyDocument, ops: readonly StudyOp[]): StudyOp[] => {
+    const results = ops.filter((op) => isNewAnalysis(doc, op));
+    const layerIds = new Set(results.map((op) => (op.type === "putAnalysis" ? op.layerId : "")));
+    return ops.filter(
+        (op) =>
+            (op.type === "ensureLayer" && layerIds.has(studyLayerId(op.spec))) ||
+            results.includes(op),
+    );
 };
 
 const isAnalysisOp = (op: StudyOp): boolean =>
@@ -954,11 +972,19 @@ export function createStudySync(options: StudySyncOptions): StudySync {
             if (!base) return { result: false };
             // 同じノードの両方にコメントがあれば、統合先のコメントを消さずにつなぐ。
             const all = studyDocumentToOps(source.doc, { mergeInto: base.doc });
-            const ops = imported ? all.filter((op) => isNewAnalysis(imported, op)) : all;
+            const ops = imported ? newAnalysisOps(imported, all) : all;
             const { doc, effective } = applyEffectiveOps(base.doc, ops);
+            const sourceNodes = source.doc.tree.nodes;
             return {
                 study: { ...base, doc, updatedAt: now() },
-                appendOps: effective,
+                appendOps: effective.map((item) => {
+                    const split = splitPendingOpInput(item);
+                    if (split.op.type !== "setComment") return item;
+                    const { nodeId } = split.op;
+                    return Object.hasOwn(sourceNodes, nodeId)
+                        ? { ...split, commentAppend: sourceNodes[nodeId].comment }
+                        : item;
+                }),
                 result: true,
             };
         });

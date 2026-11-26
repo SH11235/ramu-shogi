@@ -99,6 +99,11 @@ interface StudyPendingOpMeta {
      * サーバーの文ではなく、これを新しいサーバーのコメントにつなぐ（同じ文を二重にしない）。
      */
     commentLocal?: string;
+    /**
+     * 統合で、統合先のコメントに足す元のノートの文。当て直すときは、そのときの統合先のコメントに
+     * つなぎ直す（統合先の未送信のコメントも、別の端末の変更も残し、消された文は戻さない）。
+     */
+    commentAppend?: string;
 }
 
 /** 送信待ちに積む操作。 */
@@ -109,11 +114,12 @@ export const splitPendingOpInput = (
     input: StudyPendingOpInput,
 ): { op: StudyOp } & StudyPendingOpMeta => {
     if (!("op" in input)) return { op: input };
-    const { op, commentBase, commentLocal } = input;
+    const { op, commentBase, commentLocal, commentAppend } = input;
     return {
         op,
         ...(commentBase === undefined ? {} : { commentBase }),
         ...(commentLocal === undefined ? {} : { commentLocal }),
+        ...(commentAppend === undefined ? {} : { commentAppend }),
     };
 };
 
