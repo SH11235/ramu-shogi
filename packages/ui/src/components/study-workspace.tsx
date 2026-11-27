@@ -81,7 +81,7 @@ import {
 import { StudyMobileMenu } from "./study-workspace/StudyMobileMenu";
 import { StudyMoveList } from "./study-workspace/StudyMoveList";
 import { StudyNavBar } from "./study-workspace/StudyNavBar";
-import { StudyNewNoteDialog } from "./study-workspace/StudyNewNoteDialog";
+import { StudyNewNoteDialog, type StudyNewNoteOptions } from "./study-workspace/StudyNewNoteDialog";
 import { StudyNotice } from "./study-workspace/StudyNotice";
 import { type StudyBandLine, StudyPositionBand } from "./study-workspace/StudyPositionBand";
 import { buildStudyReviewItems, StudyReviewList } from "./study-workspace/StudyReviewList";
@@ -221,8 +221,8 @@ interface StudyWorkspaceCommonProps {
      * どちらも、作ったノートを開くところまで呼び出し側が行い、失敗時は例外を投げる。
      */
     newNote?: {
-        onCreateFromNote: (doc: StudyDocument) => Promise<void>;
-        onImport: (source: StudyKifuSource) => Promise<void>;
+        onCreateFromNote: (doc: StudyDocument, options: StudyNewNoteOptions) => Promise<void>;
+        onImport: (source: StudyKifuSource, options: StudyNewNoteOptions) => Promise<void>;
         /** 作ったノートがどこに保存されるかの説明。 */
         storageNote?: string;
     };

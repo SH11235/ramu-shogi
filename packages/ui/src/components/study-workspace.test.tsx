@@ -2035,6 +2035,40 @@ describe("StudyWorkspaceView", () => {
             );
         });
 
+        it("保存を待つ間に閉じたら、作り終えても新しいノートを開かせない", async () => {
+            let finish: () => void = () => {};
+            const onImport = vi.fn(
+                (_source: unknown, _options: { shouldOpen: () => boolean }) =>
+                    new Promise<void>((resolve) => {
+                        finish = resolve;
+                    }),
+            );
+            render(
+                <Harness
+                    initialDoc={createTestStudy().doc}
+                    newNote={{ onCreateFromNote: vi.fn(), onImport }}
+                />,
+            );
+            const dialog = openDialog();
+            fireEvent.click(within(dialog).getByRole("tab", { name: "棋譜・局面を読む" }));
+            fireEvent.change(within(dialog).getByRole("textbox", { name: "棋譜のテキスト" }), {
+                target: { value: "position startpos moves 7g7f" },
+            });
+            fireEvent.click(within(dialog).getByRole("button", { name: "ノートを作る" }));
+            await waitFor(() => expect(onImport).toHaveBeenCalledTimes(1));
+            const { shouldOpen } = onImport.mock.calls[0][1];
+            expect(shouldOpen()).toBe(true);
+            fireEvent.click(within(dialog).getByRole("button", { name: "やめる" }));
+            await waitFor(() =>
+                expect(screen.queryByRole("dialog", { name: "新しい研究ノート" })).toBeNull(),
+            );
+            expect(shouldOpen()).toBe(false);
+            await act(async () => finish());
+            // 開き直しても、閉じる前の作成のぶんは開いてよいことにならない。
+            openDialog();
+            expect(shouldOpen()).toBe(false);
+        });
+
         it("作れなかったら理由を出し、閉じない", async () => {
             render(
                 <Harness
@@ -2072,6 +2106,7 @@ describe("StudyWorkspaceView", () => {
             await waitFor(() => expect(onImport).toHaveBeenCalledTimes(1));
             expect(onImport.mock.calls[0]).toEqual([
                 expect.objectContaining({ kind: "moves", moves: ["7g7f"] }),
+                { shouldOpen: expect.any(Function) },
             ]);
         });
 

@@ -9,7 +9,7 @@ import {
     summarizeStudyCopy,
 } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
-import type { ReactElement } from "react";
+import type { ReactElement, RefObject } from "react";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "../button";
 import {
@@ -25,6 +25,11 @@ import type { StudyKifuSource } from "./studyImport";
 
 type NewNoteTab = "note" | "import";
 
+export interface StudyNewNoteOptions {
+    /** いまもモーダルが開いていて、作ったノートを開いてよいか。 */
+    shouldOpen: () => boolean;
+}
+
 interface StudyNewNoteDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
@@ -35,10 +40,13 @@ interface StudyNewNoteDialogProps {
     line: readonly string[];
     /** いまの局面の手数と指し手（「23手目 ☗2六歩(27)」、開始局面なら「開始局面」）。 */
     positionTitle: string;
-    /** 写した文書を新しいノートとして保存して開く。失敗時は例外を投げると、その文言を出す。 */
-    onCreateFromNote: (doc: StudyDocument) => Promise<void>;
-    /** 読んだ棋譜・局面で新しいノートを作って開く。 */
-    onImport: (source: StudyKifuSource) => Promise<void>;
+    /**
+     * 写した文書を新しいノートとして保存して開く。失敗時は例外を投げると、その文言を出す。
+     * 保存し終えたときに `shouldOpen()` が false なら（その間にモーダルを閉じた）、開かない。
+     */
+    onCreateFromNote: (doc: StudyDocument, options: StudyNewNoteOptions) => Promise<void>;
+    /** 読んだ棋譜・局面で新しいノートを作って開く。`shouldOpen` は `onCreateFromNote` と同じ。 */
+    onImport: (source: StudyKifuSource, options: StudyNewNoteOptions) => Promise<void>;
     /** 作ったノートがどこに保存されるかの説明。 */
     storageNote?: string;
     /** 閉じたときにフォーカスを戻す先（メニューの中から開いたとき、開く前の項目は消えている）。 */
@@ -63,6 +71,12 @@ export function StudyNewNoteDialog({
     const [createError, setCreateError] = useState<string | null>(null);
     const [importError, setImportError] = useState<string | null>(null);
     const opener = useRef<HTMLElement | null>(null);
+    // 閉じた回数。開いている間の中身は開いたときの回数を覚えておき、違っていれば（閉じられた）、
+    // 読み終えた棋譜を保存しない・作ったノートを開かない。
+    const closedCount = useRef(0);
+    useEffect(() => {
+        if (!open) closedCount.current += 1;
+    }, [open]);
     return (
         <Dialog
             open={open}
@@ -101,6 +115,7 @@ export function StudyNewNoteDialog({
                 </DialogHeader>
                 <NewNoteBody
                     {...bodyProps}
+                    closedCount={closedCount}
                     busy={busy}
                     onBusyChange={setBusy}
                     createError={createError}
@@ -124,6 +139,7 @@ function NewNoteBody({
     onCreateErrorChange,
     importError,
     onImportErrorChange,
+    closedCount,
     onDone,
     ...noteProps
 }: Omit<StudyNewNoteDialogProps, "open" | "onOpenChange" | "fallbackFocusId"> & {
@@ -133,8 +149,11 @@ function NewNoteBody({
     onCreateErrorChange: (error: string | null) => void;
     importError: string | null;
     onImportErrorChange: (error: string | null) => void;
+    closedCount: RefObject<number>;
     onDone: () => void;
 }): ReactElement {
+    const [openedAt] = useState(() => closedCount.current);
+    const shouldOpen = (): boolean => closedCount.current === openedAt;
     // 取り込みに失敗していれば、理由の出る面から始める（閉じている間に失敗したときも見えるように）。
     const [tab, setTab] = useState<NewNoteTab>(importError ? "import" : "note");
     useEffect(() => {
@@ -197,6 +216,7 @@ function NewNoteBody({
             >
                 <FromNoteForm
                     {...noteProps}
+                    shouldOpen={shouldOpen}
                     busy={busy}
                     onBusyChange={onBusyChange}
                     error={createError}
@@ -213,8 +233,10 @@ function NewNoteBody({
             >
                 <StudyImportForm
                     onImport={async (source) => {
-                        await onImport(source);
-                        onDone();
+                        // ファイルを読んでいる間に閉じられたら、作らない。
+                        if (!shouldOpen()) return;
+                        await onImport(source, { shouldOpen });
+                        if (shouldOpen()) onDone();
                     }}
                     onBusyChange={onBusyChange}
                     busy={busy}
@@ -253,6 +275,7 @@ function FromNoteForm({
     line,
     positionTitle,
     onCreateFromNote,
+    shouldOpen,
     busy,
     onBusyChange,
     error,
@@ -262,6 +285,7 @@ function FromNoteForm({
     StudyNewNoteDialogProps,
     "open" | "onOpenChange" | "onImport" | "storageNote" | "fallbackFocusId"
 > & {
+    shouldOpen: () => boolean;
     busy: boolean;
     onBusyChange: (busy: boolean) => void;
     error: string | null;
@@ -290,8 +314,8 @@ function FromNoteForm({
                 title,
                 includeAnalysis,
             });
-            await onCreateFromNote(copied);
-            onDone();
+            await onCreateFromNote(copied, { shouldOpen });
+            if (shouldOpen()) onDone();
         } catch (failure) {
             setError(failure instanceof Error ? failure.message : "ノートを作れませんでした");
         } finally {

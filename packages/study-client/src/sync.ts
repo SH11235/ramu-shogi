@@ -340,7 +340,8 @@ const describeError = (status: number, error: StudyApiErrorBody): string =>
  * （結果つきの作成はサーバーの 1 リクエストの処理時間が長くなるため）。レイヤーと結果は、
  * 作成のあとに操作バッチ（`ensureLayer` + `putAnalysis` を少しずつ）で送る。
  */
-const toCreateRequest = (doc: StudyDocument): CreateStudyRequest => ({
+const toCreateRequest = (doc: StudyDocument, owner: string | null): CreateStudyRequest => ({
+    ...(owner !== null ? { expectedOwnerUserId: owner } : {}),
     id: doc.id,
     title: doc.title,
     origin: doc.origin,
@@ -1028,7 +1029,8 @@ export function createStudySync(options: StudySyncOptions): StudySync {
             if (!isVerifiedOwner(verified, study.owner)) return "done";
         }
         const sentDoc = study.doc;
-        const response = await api.create(toCreateRequest(sentDoc));
+        // 確かめてから作成が届くまでの間の切り替えは、サーバーが持ち主を照合して断る（OWNER_MISMATCH）。
+        const response = await api.create(toCreateRequest(sentDoc, study.owner));
         if (response.ok && response.data.existing) {
             // 同じ ID のノートが既にある（作成の応答が届かなかった再送など）。サーバーの中身は
             // 分からない（他の端末が変えているかもしれない）ので、最新の文書を取得し、
@@ -1064,6 +1066,23 @@ export function createStudySync(options: StudySyncOptions): StudySync {
                 };
             });
             return "continue";
+        }
+        if (response.status === 409 && response.error.error === "OWNER_MISMATCH") {
+            // 直前の確認のあとでアカウントが切り替わっていた。確かめ直して画面に取り直しを促し、
+            // 持ち主でログインし直すまで送らない。
+            if (!options.verifySession) {
+                emit({ type: "unauthorized" });
+                return "done";
+            }
+            try {
+                // 確かめ直すと持ち主に戻っていた（もう一度切り替えた）なら、作り直す。
+                return isVerifiedOwner(await options.verifySession(), study.owner)
+                    ? "retry"
+                    : "done";
+            } catch (error) {
+                entryOf(study.id).message = error instanceof Error ? error.message : String(error);
+                return "retry";
+            }
         }
         if (response.status === 409 && response.error.error === "ORIGIN_EXISTS") {
             const existingStudyId = response.error.existingStudyId;

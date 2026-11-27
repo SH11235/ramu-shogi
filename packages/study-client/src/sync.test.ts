@@ -2695,6 +2695,26 @@ describe.each(STORES)("同期エンジン（保存層: $name）", ({ create }) =
             },
         );
 
+        it("作成の直前の確認のあとで別のアカウントに切り替わっても、そのアカウントのノートとして作らせない", async () => {
+            // 直前の確認は A と答えるが、作成のリクエストが届く時点の Cookie は B。
+            let verifyCalls = 0;
+            const harness = createHarness({
+                verifySession: async () => {
+                    verifyCalls += 1;
+                    return { userId: verifyCalls <= 2 ? USER_A : USER_B };
+                },
+            });
+            harness.login(USER_A);
+            await harness.sync.createStudy(doc);
+            harness.switchCookie(USER_B);
+            await harness.advance(0);
+            const creates = harness.server.calls.filter((call) => call.method === "create");
+            expect(creates).toHaveLength(1);
+            expect(harness.server.study(TEST_STUDY_ID)).toBeNull();
+            expect(harness.events).toContainEqual({ type: "unauthorized" });
+            expect(harness.sync.getSession()).toEqual({ userId: USER_B });
+        });
+
         it("持ち主を指定して作るとき、サーバーに確かめられなくても伝えられているログインがその人なら、その人のノートにする", async () => {
             const harness = createHarness({
                 verifySession: async () => {

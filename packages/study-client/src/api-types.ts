@@ -45,6 +45,8 @@ export interface CreateStudyRequest {
         display: StudyLayerDisplay;
         results: Record<string, StudyAnalysisResult>;
     }>;
+    /** 持ち主として決めていたユーザー。認証したユーザーと違えば作らない（409 `OWNER_MISMATCH`）。 */
+    expectedOwnerUserId?: string;
 }
 
 /** `201`（新規）または `200`（同じ id が本人のノートとして既にある。`existing: true`）。 */
@@ -90,7 +92,7 @@ export type StudyLimitsResponse = GetStudyLimitsResponse;
 /**
  * エラー応答の本文。`error` はコード:
  * 400 `INVALID_REQUEST` / `INVALID_CURSOR`、403 `ORIGIN_FORBIDDEN`、404 `STUDY_NOT_FOUND`、
- * 409 `REVISION_CONFLICT` / `ORIGIN_EXISTS` / `ID_CONFLICT`、410 `STUDY_DELETED`、
+ * 409 `REVISION_CONFLICT` / `ORIGIN_EXISTS` / `ID_CONFLICT` / `OWNER_MISMATCH`、410 `STUDY_DELETED`、
  * 413 `PAYLOAD_TOO_LARGE`、422 `LIMIT_EXCEEDED`。
  */
 export interface StudyApiErrorBody {

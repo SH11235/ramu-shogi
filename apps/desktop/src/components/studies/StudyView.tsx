@@ -104,8 +104,8 @@ export function StudyView({
             shownStudyRef.current = null;
         };
     }, [studyId]);
-    const openCreated = (startedFrom: string, created: string): void => {
-        if (shownStudyRef.current === startedFrom) onOpenStudy(created);
+    const openCreated = (startedFrom: string, created: string, shouldOpen: () => boolean): void => {
+        if (shownStudyRef.current === startedFrom && shouldOpen()) onOpenStudy(created);
     };
     const saveStatus = useSyncExternalStore(
         (listener) => sync.subscribeStatus(studyId, listener),
@@ -300,20 +300,20 @@ export function StudyView({
                         onRetrySave={() => void sync.retry(studyId).catch(() => undefined)}
                         onPlayFromPosition={onPlayFromPosition}
                         newNote={{
-                            onCreateFromNote: async (doc) => {
+                            onCreateFromNote: async (doc, { shouldOpen }) => {
                                 const startedFrom = studyId;
                                 const { studyId: created } = await createStudyFromDocument(doc, {
                                     sync,
                                 });
-                                openCreated(startedFrom, created);
+                                openCreated(startedFrom, created, shouldOpen);
                             },
-                            onImport: async (source) => {
+                            onImport: async (source, { shouldOpen }) => {
                                 const startedFrom = studyId;
                                 const { studyId: created } = await createStudyFromKifuSource(
                                     source,
                                     { sync },
                                 );
-                                openCreated(startedFrom, created);
+                                openCreated(startedFrom, created, shouldOpen);
                             },
                             storageNote: "読んだ棋譜は、この端末の中で研究ノートになります。",
                         }}

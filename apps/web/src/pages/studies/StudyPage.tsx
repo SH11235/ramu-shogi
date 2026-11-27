@@ -170,13 +170,20 @@ export default function StudyPage(): ReactElement {
             shownStudyRef.current = null;
         };
     }, [studyId]);
-    const openCreated = async (startedFrom: string, created: string): Promise<void> => {
-        if (shownStudyRef.current !== startedFrom) return;
+    const openCreated = async (
+        startedFrom: string,
+        created: string,
+        shouldOpen: () => boolean,
+    ): Promise<void> => {
+        if (shownStudyRef.current !== startedFrom || !shouldOpen()) return;
         await navigate({ to: "/studies/$studyId", params: { studyId: created } });
     };
     // 閲覧のみのノート（他の人の公開ノート）からも作れる。作ったノートは自分のノートになる。
     const newNote = {
-        onCreateFromNote: async (doc: StudyDocument): Promise<void> => {
+        onCreateFromNote: async (
+            doc: StudyDocument,
+            { shouldOpen }: { shouldOpen: () => boolean },
+        ): Promise<void> => {
             const startedFrom = studyId;
             // アカウントのノートの写しは、そのアカウントのノートとしてしか作らない（別のタブでアカウントを
             // 切り替えた直後などに、元のノートを読めないアカウントへ中身を渡さない）。
@@ -195,12 +202,15 @@ export default function StudyPage(): ReactElement {
                 }
                 throw error;
             }
-            await openCreated(startedFrom, created);
+            await openCreated(startedFrom, created, shouldOpen);
         },
-        onImport: async (source: StudyKifuSource): Promise<void> => {
+        onImport: async (
+            source: StudyKifuSource,
+            { shouldOpen }: { shouldOpen: () => boolean },
+        ): Promise<void> => {
             const startedFrom = studyId;
             const { studyId: created } = await createStudyFromKifuSource(source, { sync });
-            await openCreated(startedFrom, created);
+            await openCreated(startedFrom, created, shouldOpen);
         },
     };
     const { session, isLoadingSession, sessionError, refreshSession } = useAuthSession();

@@ -12,7 +12,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 // つなぎ（開く・操作を流す・拒否されたら戻す）だけを見るので、受け取った値を出すだけの部品にする。
 const workspace = vi.hoisted(() => ({
     onApplyOps: null as ((ops: unknown[]) => unknown) | null,
-    newNote: undefined as { onCreateFromNote: (doc: StudyDocument) => Promise<void> } | undefined,
+    newNote: undefined as
+        | {
+              onCreateFromNote: (
+                  doc: StudyDocument,
+                  options: { shouldOpen: () => boolean },
+              ) => Promise<void>;
+          }
+        | undefined,
 }));
 vi.mock("@shogi/ui", () => ({
     StudyWorkspace: (props: {
@@ -20,7 +27,12 @@ vi.mock("@shogi/ui", () => ({
         onApplyOps: (ops: StudyOp[]) => unknown;
         notice?: { text: string } | null;
         engineOptions: Array<{ id: string }>;
-        newNote?: { onCreateFromNote: (doc: StudyDocument) => Promise<void> };
+        newNote?: {
+            onCreateFromNote: (
+                doc: StudyDocument,
+                options: { shouldOpen: () => boolean },
+            ) => Promise<void>;
+        };
     }) => {
         workspace.onApplyOps = props.onApplyOps as (ops: unknown[]) => unknown;
         workspace.newNote = props.newNote;
@@ -120,7 +132,10 @@ describe("StudyView（Desktop の研究ノートの画面）", () => {
         );
         await screen.findByTestId("title");
         await act(async () => {
-            await workspace.newNote?.onCreateFromNote({ ...createDoc(), title: "写したノート" });
+            await workspace.newNote?.onCreateFromNote(
+                { ...createDoc(), title: "写したノート" },
+                { shouldOpen: () => true },
+            );
         });
         expect(onOpenStudy).toHaveBeenCalledTimes(1);
         const created = onOpenStudy.mock.calls[0][0] as string;
