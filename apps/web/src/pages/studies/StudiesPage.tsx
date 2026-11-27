@@ -112,9 +112,11 @@ function progressLabel(item: StudyListItem): string {
 function ImportSection({
     onImport,
     isAuthenticated,
+    busy,
 }: {
     onImport: (source: StudyKifuSource) => Promise<void>;
     isAuthenticated: boolean;
+    busy: boolean;
 }): ReactElement {
     const linkClass =
         "inline-flex h-10 items-center gap-2 rounded-md border border-input px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -123,7 +125,7 @@ function ImportSection({
             <p className="text-sm text-muted-foreground">
                 棋譜を取り込んで全体を解析すると、見直すべき手が自動で並びます。解析結果・変化・コメントは自動で保存されます。
             </p>
-            <StudyImportForm onImport={onImport} sideBySide />
+            <StudyImportForm onImport={onImport} busy={busy} sideBySide />
             <div className="flex flex-col gap-2 border-t border-border pt-3">
                 <p className="text-sm text-muted-foreground">ほかの棋譜から作る</p>
                 <div className="flex flex-col gap-2 sm:flex-row">
@@ -295,10 +297,22 @@ export default function StudiesPage({ api, verifySession }: StudiesPageProps): R
         setIsLoadingMore(false);
     };
 
+    // 取り込み欄は開け閉めでフォームごと作り直されるので、保存の途中かどうかはここで持つ
+    // （閉じて開き直したフォームから、同じ棋譜をもう一度作らせない）。
+    const importingRef = useRef(false);
+    const [isImporting, setIsImporting] = useState(false);
     const handleImport = async (source: StudyKifuSource): Promise<void> => {
-        if (sessionKnown) await ensureStudySession(userId, { confirmed: sessionConfirmed });
-        const { studyId } = await createStudyFromKifuSource(source, { sync, api: client });
-        await navigate({ to: "/studies/$studyId", params: { studyId } });
+        if (importingRef.current) return;
+        importingRef.current = true;
+        setIsImporting(true);
+        try {
+            if (sessionKnown) await ensureStudySession(userId, { confirmed: sessionConfirmed });
+            const { studyId } = await createStudyFromKifuSource(source, { sync, api: client });
+            await navigate({ to: "/studies/$studyId", params: { studyId } });
+        } finally {
+            importingRef.current = false;
+            setIsImporting(false);
+        }
     };
 
     const handleDelete = async (): Promise<void> => {
@@ -406,7 +420,11 @@ export default function StudiesPage({ api, verifySession }: StudiesPageProps): R
                                 className="sm:self-start"
                             />
                         </Section>
-                        <ImportSection onImport={handleImport} isAuthenticated={isAuthenticated} />
+                        <ImportSection
+                            onImport={handleImport}
+                            isAuthenticated={isAuthenticated}
+                            busy={isImporting}
+                        />
                     </>
                 )}
 
@@ -430,6 +448,7 @@ export default function StudiesPage({ api, verifySession }: StudiesPageProps): R
                             <ImportSection
                                 onImport={handleImport}
                                 isAuthenticated={isAuthenticated}
+                                busy={isImporting}
                             />
                         )}
                         <ul className="grid gap-3">

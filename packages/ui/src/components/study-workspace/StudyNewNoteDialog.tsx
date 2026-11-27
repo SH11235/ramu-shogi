@@ -41,6 +41,8 @@ interface StudyNewNoteDialogProps {
     onImport: (source: StudyKifuSource) => Promise<void>;
     /** 作ったノートがどこに保存されるかの説明。 */
     storageNote?: string;
+    /** 閉じたときに開く前のフォーカスが無くなっていたら（メニューの中から開いた）、ここへ戻す。 */
+    fallbackFocusId?: string;
 }
 
 const TABS: ReadonlyArray<{ id: NewNoteTab; label: string }> = [
@@ -51,19 +53,15 @@ const TABS: ReadonlyArray<{ id: NewNoteTab; label: string }> = [
 export function StudyNewNoteDialog({
     open,
     onOpenChange,
+    fallbackFocusId,
     ...bodyProps
 }: StudyNewNoteDialogProps): ReactElement {
-    // 作っている間は閉じさせない（閉じて開き直すと、保存を待たずに別のノートを作り始められる）。
+    // 作っている間の印は、閉じても消えないここに持つ（閉じて開き直しても、保存を待たずに別のノートを
+    // 作り始めさせない）。保存が止まっても閉じられるよう、閉じること自体は止めない。
     const [busy, setBusy] = useState(false);
     const opener = useRef<HTMLElement | null>(null);
     return (
-        <Dialog
-            open={open}
-            onOpenChange={(next) => {
-                if (!next && busy) return;
-                onOpenChange(next);
-            }}
-        >
+        <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent
                 className="flex max-h-[calc(100dvh-24px)] w-[min(560px,calc(100%-24px))] flex-col gap-4 overflow-y-auto"
                 hasDescription
@@ -75,9 +73,14 @@ export function StudyNewNoteDialog({
                             : null;
                 }}
                 onCloseAutoFocus={(event) => {
-                    if (!opener.current?.isConnected) return;
+                    const target = opener.current?.isConnected
+                        ? opener.current
+                        : fallbackFocusId
+                          ? document.getElementById(fallbackFocusId)
+                          : null;
+                    if (!target) return;
                     event.preventDefault();
-                    opener.current.focus();
+                    target.focus();
                 }}
             >
                 <DialogHeader>
@@ -178,6 +181,7 @@ function NewNoteBody({
                 id={`${tabsId}-import-panel`}
                 aria-labelledby={`${tabsId}-import`}
                 hidden={tab !== "import"}
+                className="flex flex-col gap-3"
             >
                 <StudyImportForm
                     onImport={async (source) => {
@@ -185,9 +189,17 @@ function NewNoteBody({
                         onDone();
                     }}
                     onBusyChange={onBusyChange}
+                    busy={busy}
                     submitLabel="ノートを作る"
                     storageNote={storageNote}
                 />
+                <div className="flex justify-end">
+                    <DialogClose asChild>
+                        <Button type="button" variant="outline">
+                            やめる
+                        </Button>
+                    </DialogClose>
+                </div>
             </div>
         </>
     );
@@ -382,7 +394,7 @@ function FromNoteForm({
             )}
             <div className="flex justify-end gap-2">
                 <DialogClose asChild>
-                    <Button type="button" variant="outline" disabled={busy}>
+                    <Button type="button" variant="outline">
                         やめる
                     </Button>
                 </DialogClose>

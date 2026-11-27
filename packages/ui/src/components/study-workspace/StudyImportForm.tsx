@@ -32,6 +32,11 @@ interface StudyImportFormProps {
     storageNote?: string;
     /** 取り込み中かどうかを知らせる（呼び出し側で、ほかの作り方を止めるのに使う）。 */
     onBusyChange?: (busy: boolean) => void;
+    /**
+     * 呼び出し側で、ほかの作り方の保存が進んでいる。フォームを閉じて開き直しても、その間は取り込ませない
+     * （フォームの中の状態は開き直すと消えるので、呼び出し側が持つ）。
+     */
+    busy?: boolean;
     /** 貼り付けた棋譜で作るボタンの文言。 */
     submitLabel?: string;
     /** 広い画面で、貼り付けの欄とファイルの枠を横に並べる（狭い画面では縦に積む）。 */
@@ -46,20 +51,22 @@ export function StudyImportForm({
     onImport,
     storageNote = "読んだ棋譜は、このブラウザの中で研究ノートになります。",
     onBusyChange,
+    busy = false,
     submitLabel = "研究ノートにする",
     sideBySide = false,
     className,
 }: StudyImportFormProps): ReactElement {
     const [text, setText] = useState("");
     const [error, setError] = useState<string | null>(null);
-    const [isBusy, setIsBusy] = useState(false);
+    const [ownBusy, setIsBusy] = useState(false);
+    const isBusy = ownBusy || busy;
     const [isDragOver, setIsDragOver] = useState(false);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
 
     // 同じ時点の連続の操作（2 回のドロップなど）でも 1 回だけにするため、state でなく ref で見る。
     const busyRef = useRef(false);
     const runExclusive = async (task: () => Promise<void>): Promise<void> => {
-        if (busyRef.current) return;
+        if (busyRef.current || busy) return;
         busyRef.current = true;
         setIsBusy(true);
         onBusyChange?.(true);

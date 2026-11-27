@@ -42,6 +42,17 @@ describe("StudyImportForm", () => {
         expect(onImport).toHaveBeenCalledTimes(1);
     });
 
+    it("呼び出し側で保存が進んでいる間は、落としても取り込まない", async () => {
+        const onImport = vi.fn().mockResolvedValue(undefined);
+        render(<StudyImportForm onImport={onImport} busy />);
+        dropFile("a.csa", "V2.2\nPI\n+\n+7776FU\n");
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(onImport).not.toHaveBeenCalled();
+        expect(
+            screen.getByRole<HTMLButtonElement>("button", { name: "ファイルを選ぶ" }).disabled,
+        ).toBe(true);
+    });
+
     it("読めないファイルを落としたら理由を出す", async () => {
         const onImport = vi.fn().mockResolvedValue(undefined);
         render(<StudyImportForm onImport={onImport} />);

@@ -1935,6 +1935,45 @@ describe("StudyWorkspaceView", () => {
             expect(Array.from(title)).toHaveLength(STUDY_LIMITS.titleLength);
         });
 
+        it("作っている間に閉じて開き直しても、保存が終わるまでは別のノートを作らせない", async () => {
+            let finish: () => void = () => {};
+            const onCreateFromNote = vi.fn(
+                () =>
+                    new Promise<void>((resolve) => {
+                        finish = resolve;
+                    }),
+            );
+            const onImport = vi.fn(async () => {});
+            render(
+                <Harness
+                    initialDoc={createTestStudy().doc}
+                    newNote={{ onCreateFromNote, onImport }}
+                />,
+            );
+            let dialog = openDialog();
+            fireEvent.click(within(dialog).getByRole("button", { name: "ノートを作る" }));
+            await waitFor(() => expect(onCreateFromNote).toHaveBeenCalledTimes(1));
+            // 保存が止まっても閉じられる。
+            fireEvent.keyDown(dialog, { key: "Escape" });
+            await waitFor(() =>
+                expect(screen.queryByRole("dialog", { name: "新しい研究ノート" })).toBeNull(),
+            );
+            dialog = openDialog();
+            expect(
+                within(dialog).getByRole<HTMLButtonElement>("button", { name: "作成中…" }).disabled,
+            ).toBe(true);
+            expect(
+                within(dialog).getByRole<HTMLButtonElement>("tab", { name: "棋譜・局面を読む" })
+                    .disabled,
+            ).toBe(true);
+            await act(async () => finish());
+            expect(
+                within(dialog).getByRole<HTMLButtonElement>("button", { name: "ノートを作る" })
+                    .disabled,
+            ).toBe(false);
+            expect(onImport).not.toHaveBeenCalled();
+        });
+
         it("作れなかったら理由を出し、閉じない", async () => {
             render(
                 <Harness

@@ -351,6 +351,7 @@ export function StudyWorkspaceView({
     // メニューの中でのキー操作で変わってしまうため）。
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isNewNoteOpen, setIsNewNoteOpen] = useState(false);
+    const mobileMenuTriggerId = useId();
     // 開いたままスマートフォンの幅を離れると、メニューは閉じる知らせを出さずに外れる。
     useEffect(() => {
         if (!isMobile) setIsMobileMenuOpen(false);
@@ -1524,6 +1525,7 @@ export function StudyWorkspaceView({
     const mobileMenu = (
         <StudyMobileMenu
             onOpenChange={setIsMobileMenuOpen}
+            triggerId={mobileMenuTriggerId}
             // スマートフォンでは出典・保存先の行と、表題・解析の設定・盤の反転を画面に出さず、ここに置く。
             info={metaRow}
             noteItems={[
@@ -1765,6 +1767,7 @@ export function StudyWorkspaceView({
                     onCreateFromNote={newNote.onCreateFromNote}
                     onImport={newNote.onImport}
                     storageNote={newNote.storageNote}
+                    fallbackFocusId={isMobile ? mobileMenuTriggerId : undefined}
                 />
             )}
 
