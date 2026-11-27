@@ -41,7 +41,7 @@ interface StudyNewNoteDialogProps {
     onImport: (source: StudyKifuSource) => Promise<void>;
     /** 作ったノートがどこに保存されるかの説明。 */
     storageNote?: string;
-    /** 閉じたときに開く前のフォーカスが無くなっていたら（メニューの中から開いた）、ここへ戻す。 */
+    /** 閉じたときにフォーカスを戻す先（メニューの中から開いたとき、開く前の項目は消えている）。 */
     fallbackFocusId?: string;
 }
 
@@ -59,9 +59,17 @@ export function StudyNewNoteDialog({
     // 作っている間の印は、閉じても消えないここに持つ（閉じて開き直しても、保存を待たずに別のノートを
     // 作り始めさせない）。保存が止まっても閉じられるよう、閉じること自体は止めない。
     const [busy, setBusy] = useState(false);
+    // 作れなかった理由も、開き直したフォームに出せるようここに持つ。
+    const [createError, setCreateError] = useState<string | null>(null);
     const opener = useRef<HTMLElement | null>(null);
     return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
+        <Dialog
+            open={open}
+            onOpenChange={(next) => {
+                if (!next && !busy) setCreateError(null);
+                onOpenChange(next);
+            }}
+        >
             <DialogContent
                 className="flex max-h-[calc(100dvh-24px)] w-[min(560px,calc(100%-24px))] flex-col gap-4 overflow-y-auto"
                 hasDescription
@@ -73,11 +81,9 @@ export function StudyNewNoteDialog({
                             : null;
                 }}
                 onCloseAutoFocus={(event) => {
-                    const target = opener.current?.isConnected
-                        ? opener.current
-                        : fallbackFocusId
-                          ? document.getElementById(fallbackFocusId)
-                          : null;
+                    const target =
+                        (fallbackFocusId ? document.getElementById(fallbackFocusId) : null) ??
+                        (opener.current?.isConnected ? opener.current : null);
                     if (!target) return;
                     event.preventDefault();
                     target.focus();
@@ -93,6 +99,8 @@ export function StudyNewNoteDialog({
                     {...bodyProps}
                     busy={busy}
                     onBusyChange={setBusy}
+                    createError={createError}
+                    onCreateErrorChange={setCreateError}
                     onDone={() => onOpenChange(false)}
                 />
             </DialogContent>
@@ -106,11 +114,15 @@ function NewNoteBody({
     onImport,
     busy,
     onBusyChange,
+    createError,
+    onCreateErrorChange,
     onDone,
     ...noteProps
-}: Omit<StudyNewNoteDialogProps, "open" | "onOpenChange"> & {
+}: Omit<StudyNewNoteDialogProps, "open" | "onOpenChange" | "fallbackFocusId"> & {
     busy: boolean;
     onBusyChange: (busy: boolean) => void;
+    createError: string | null;
+    onCreateErrorChange: (error: string | null) => void;
     onDone: () => void;
 }): ReactElement {
     const [tab, setTab] = useState<NewNoteTab>("note");
@@ -173,6 +185,8 @@ function NewNoteBody({
                     {...noteProps}
                     busy={busy}
                     onBusyChange={onBusyChange}
+                    error={createError}
+                    onErrorChange={onCreateErrorChange}
                     onDone={onDone}
                 />
             </div>
@@ -225,17 +239,23 @@ function FromNoteForm({
     onCreateFromNote,
     busy,
     onBusyChange,
+    error,
+    onErrorChange: setError,
     onDone,
-}: Omit<StudyNewNoteDialogProps, "open" | "onOpenChange" | "onImport" | "storageNote"> & {
+}: Omit<
+    StudyNewNoteDialogProps,
+    "open" | "onOpenChange" | "onImport" | "storageNote" | "fallbackFocusId"
+> & {
     busy: boolean;
     onBusyChange: (busy: boolean) => void;
+    error: string | null;
+    onErrorChange: (error: string | null) => void;
     onDone: () => void;
 }): ReactElement {
     const [range, setRange] = useState<StudyCopyRange>("upto");
     const [includeVariations, setIncludeVariations] = useState(true);
     const [includeAnalysis, setIncludeAnalysis] = useState(true);
     const [editedTitle, setEditedTitle] = useState<string | null>(null);
-    const [error, setError] = useState<string | null>(null);
     const radioName = useId();
     const selection = { nodeId, line, range, includeVariations };
     const summary = summarizeStudyCopy(doc, selection);

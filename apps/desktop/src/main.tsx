@@ -10,8 +10,12 @@ initializePositionService();
 
 // HTML のドロップを受けるため Tauri のドロップの処理を切っている（tauri.conf.json の dragDropEnabled）。
 // 受け口の外に落としたファイルを WebView が開いて画面が置き換わらないよう、既定の動作を止める。
-window.addEventListener("dragover", (event) => event.preventDefault());
-window.addEventListener("drop", (event) => event.preventDefault());
+// 入力欄へのテキストのドロップは止めないよう、ファイルのときだけにする。
+const preventFileDrop = (event: DragEvent): void => {
+    if (event.dataTransfer?.types.includes("Files")) event.preventDefault();
+};
+window.addEventListener("dragover", preventFileDrop);
+window.addEventListener("drop", preventFileDrop);
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <StrictMode>

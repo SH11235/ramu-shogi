@@ -113,10 +113,12 @@ function ImportSection({
     onImport,
     isAuthenticated,
     busy,
+    onBusyChange,
 }: {
     onImport: (source: StudyKifuSource) => Promise<void>;
     isAuthenticated: boolean;
     busy: boolean;
+    onBusyChange: (busy: boolean) => void;
 }): ReactElement {
     const linkClass =
         "inline-flex h-10 items-center gap-2 rounded-md border border-input px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -125,7 +127,12 @@ function ImportSection({
             <p className="text-sm text-muted-foreground">
                 棋譜を取り込んで全体を解析すると、見直すべき手が自動で並びます。解析結果・変化・コメントは自動で保存されます。
             </p>
-            <StudyImportForm onImport={onImport} busy={busy} sideBySide />
+            <StudyImportForm
+                onImport={onImport}
+                busy={busy}
+                onBusyChange={onBusyChange}
+                sideBySide
+            />
             <div className="flex flex-col gap-2 border-t border-border pt-3">
                 <p className="text-sm text-muted-foreground">ほかの棋譜から作る</p>
                 <div className="flex flex-col gap-2 sm:flex-row">
@@ -301,6 +308,8 @@ export default function StudiesPage({ api, verifySession }: StudiesPageProps): R
     // （閉じて開き直したフォームから、同じ棋譜をもう一度作らせない）。
     const importingRef = useRef(false);
     const [isImporting, setIsImporting] = useState(false);
+    // ファイルを読んでいる間（保存の前）も、開き直したフォームから取り込ませない。
+    const [isReadingFile, setIsReadingFile] = useState(false);
     const handleImport = async (source: StudyKifuSource): Promise<void> => {
         if (importingRef.current) return;
         importingRef.current = true;
@@ -423,7 +432,8 @@ export default function StudiesPage({ api, verifySession }: StudiesPageProps): R
                         <ImportSection
                             onImport={handleImport}
                             isAuthenticated={isAuthenticated}
-                            busy={isImporting}
+                            busy={isImporting || isReadingFile}
+                            onBusyChange={setIsReadingFile}
                         />
                     </>
                 )}
@@ -448,7 +458,8 @@ export default function StudiesPage({ api, verifySession }: StudiesPageProps): R
                             <ImportSection
                                 onImport={handleImport}
                                 isAuthenticated={isAuthenticated}
-                                busy={isImporting}
+                                busy={isImporting || isReadingFile}
+                                onBusyChange={setIsReadingFile}
                             />
                         )}
                         <ul className="grid gap-3">

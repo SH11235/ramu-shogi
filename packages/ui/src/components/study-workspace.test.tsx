@@ -1974,6 +1974,34 @@ describe("StudyWorkspaceView", () => {
             expect(onImport).not.toHaveBeenCalled();
         });
 
+        it("閉じて開き直したあとに作れなかったときも、理由を出す", async () => {
+            let fail: (error: Error) => void = () => {};
+            const onCreateFromNote = vi.fn(
+                () =>
+                    new Promise<void>((_resolve, reject) => {
+                        fail = reject;
+                    }),
+            );
+            render(
+                <Harness
+                    initialDoc={createTestStudy().doc}
+                    newNote={{ onCreateFromNote, onImport: vi.fn() }}
+                />,
+            );
+            let dialog = openDialog();
+            fireEvent.click(within(dialog).getByRole("button", { name: "ノートを作る" }));
+            await waitFor(() => expect(onCreateFromNote).toHaveBeenCalledTimes(1));
+            fireEvent.keyDown(dialog, { key: "Escape" });
+            await waitFor(() =>
+                expect(screen.queryByRole("dialog", { name: "新しい研究ノート" })).toBeNull(),
+            );
+            dialog = openDialog();
+            await act(async () => fail(new Error("保存できませんでした")));
+            expect((await within(dialog).findByRole("alert")).textContent).toBe(
+                "保存できませんでした",
+            );
+        });
+
         it("作れなかったら理由を出し、閉じない", async () => {
             render(
                 <Harness
