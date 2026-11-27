@@ -270,7 +270,7 @@ export function studyFirstMoveLabel(node: KifuNode, pv: readonly string[]): stri
 
 /**
  * 候補手の欄に並べている順の上から `count` 個の候補について、最初の手を盤の矢印にする。
- * 盤の矢印と候補の行の見本は、どちらもこの結果から作る（ずれないように）。パスと読めない手は描かない。
+ * 盤の矢印と候補の行の見本は、どちらもこの結果から作る（ずれないように）。パス・読めない手・移動元と移動先が同じ手は描かない。
  */
 export function studyCandidateArrowPlan(
     node: KifuNode,
@@ -289,7 +289,7 @@ export function studyCandidateArrowPlan(
                 rank: candidate.rank,
                 arrow: { from: null, to: drop[2], side, emphasis, dropPiece: drop[1] as PieceType },
             });
-        } else if (board) {
+        } else if (board && board[1] !== board[2]) {
             plan.push({
                 rank: candidate.rank,
                 arrow: { from: board[1], to: board[2], side, emphasis },

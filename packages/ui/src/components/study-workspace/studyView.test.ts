@@ -289,6 +289,7 @@ describe("studyCandidateArrowPlan", () => {
         expect(
             studyCandidateArrowPlan(node, [candidate(1, "2c2d"), candidate(2, "4c4d")], 1),
         ).toHaveLength(1);
+        expect(studyCandidateArrowPlan(node, [candidate(1, "7g7g")], 1)).toEqual([]);
         expect(
             studyCandidateArrowPlan(node, [candidate(1, "pass"), candidate(2, "4c4d")], 2),
         ).toEqual([

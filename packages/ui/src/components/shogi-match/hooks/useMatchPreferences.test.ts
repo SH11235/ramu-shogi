@@ -102,4 +102,26 @@ describe("useMatchPreferences の候補手の矢印", () => {
             JSON.parse(localStorage.getItem(DISPLAY_SETTINGS_STORAGE_KEY) ?? "{}"),
         ).toMatchObject({ showCandidateArrows: false, candidateArrowCount: 1 });
     });
+
+    it("観戦で数を選んだら、別のタブの値によらず、選んだ数で矢印を入れる", () => {
+        localStorage.setItem(
+            DISPLAY_SETTINGS_STORAGE_KEY,
+            JSON.stringify({ showCandidateArrows: false, candidateArrowCount: 2 }),
+        );
+        const { result } = renderHook(() => useMatchPreferences(options(true)));
+        localStorage.setItem(
+            DISPLAY_SETTINGS_STORAGE_KEY,
+            JSON.stringify({ showCandidateArrows: false, candidateArrowCount: 1 }),
+        );
+        act(() => {
+            result.current.setDisplaySettings({
+                ...result.current.displaySettings,
+                showCandidateArrows: true,
+                candidateArrowCount: 2,
+            });
+        });
+        expect(
+            JSON.parse(localStorage.getItem(DISPLAY_SETTINGS_STORAGE_KEY) ?? "{}"),
+        ).toMatchObject({ showCandidateArrows: true, candidateArrowCount: 2 });
+    });
 });

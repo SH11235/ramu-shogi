@@ -296,17 +296,18 @@ export function useMatchPreferences({
     };
     const setSpectateDisplaySettings: Setter<DisplaySettings> = (next, source) => {
         const value = typeof next === "function" ? next(displaySettings) : next;
-        // 矢印を操作したときだけ書く。ほかの項目の変更で、画面に残っている古い矢印の値を
-        // 研究ノート側へ書き戻さないため。
         const arrows = normalizeCandidateArrowSettings(value);
-        writeSharedArrowSettings({
-            ...(arrows.showCandidateArrows !== displaySettings.showCandidateArrows && {
-                showCandidateArrows: arrows.showCandidateArrows,
-            }),
-            ...(arrows.candidateArrowCount !== displaySettings.candidateArrowCount && {
-                candidateArrowCount: arrows.candidateArrowCount,
-            }),
-        });
+        // 矢印を操作したときだけ書く。ほかの項目の変更で、画面に残っている古い矢印の値を研究ノート側へ
+        // 書き戻さないため。「なし」はスイッチだけを切り（数は別のタブで変えた値を残す）、数を選んだら
+        // スイッチと数の両方を書く。
+        if (
+            arrows.showCandidateArrows !== displaySettings.showCandidateArrows ||
+            arrows.candidateArrowCount !== displaySettings.candidateArrowCount
+        ) {
+            writeSharedArrowSettings(
+                arrows.showCandidateArrows ? arrows : { showCandidateArrows: false },
+            );
+        }
         setDisplaySettings(value, source);
     };
 
