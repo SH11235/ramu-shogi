@@ -1733,7 +1733,7 @@ describe("StudyWorkspaceView", () => {
             );
             fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
             const playButton = within(actionGroup()).getByRole("button", { name: "ここから対局…" });
-            playButton.focus();
+            // クリックでボタンにフォーカスが移らない環境（Safari）でも、閉じたらボタンへ戻す。
             fireEvent.click(playButton);
             // ページを移る前に確認を出す。開いている間は矢印キーで局面を動かさず、やめれば移らない。
             const confirm = screen.getByRole("alertdialog", { name: "この局面から対局しますか？" });

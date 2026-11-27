@@ -112,8 +112,8 @@ export function StudyActionBar({
     /** CSA で書き出せない理由。あれば CSA を選べなくし、行の下に添える。 */
     csaUnavailableReason?: string;
     onCopySfen: () => Promise<boolean>;
-    /** 確認を出してから対局の画面へ移る。 */
-    onPlayFromPosition?: () => void;
+    /** 確認を出してから対局の画面へ移る。押したボタンを渡す（確認を閉じたときのフォーカスの戻り先）。 */
+    onPlayFromPosition?: (opener: HTMLElement) => void;
     /** 渡さなければ出さない（編集できないとき）。 */
     onPass?: () => void;
 }): ReactElement {
@@ -202,7 +202,7 @@ export function StudyActionBar({
                                 type="button"
                                 variant="secondary"
                                 className={BUTTON_CLASS}
-                                onClick={onPlayFromPosition}
+                                onClick={(event) => onPlayFromPosition(event.currentTarget)}
                             >
                                 <PlayIcon />
                                 ここから対局…

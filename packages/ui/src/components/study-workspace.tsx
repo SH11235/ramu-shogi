@@ -360,7 +360,12 @@ export function StudyWorkspaceView({
     const [isTreeOpen, setIsTreeOpen] = useState(false);
     const treeOpener = useRef<HTMLElement | null>(null);
     const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
-    const [isPlayConfirmOpen, setIsPlayConfirmOpen] = useState(false);
+    // 確認を開いた時点の局面。開いている間に局面が変わっても（パスの手の取得の完了など）、確かめた局面を渡す。
+    const [playConfirm, setPlayConfirm] = useState<{
+        position: PlayFromPosition;
+        title: string;
+        turnLabel: string;
+    } | null>(null);
     // 確認を開いたボタンと、スマートフォンの「メニュー」。閉じたときのフォーカスの戻り先に使う。
     const playConfirmOpenerRef = useRef<HTMLElement | null>(null);
     const mobileMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -454,7 +459,7 @@ export function StudyWorkspaceView({
             locked ||
             pvPreview !== null ||
             deleteTargetId !== null ||
-            isPlayConfirmOpen ||
+            playConfirm !== null ||
             isSettingsOpen ||
             isTitleDialogOpen ||
             shareDialog?.open === true ||
@@ -1523,15 +1528,16 @@ export function StudyWorkspaceView({
             )}
         </div>
     );
-    const playFromPosition = onPlayFromPosition
-        ? () => onPlayFromPosition({ sfen: tree.startSfen, moves: movesToCurrent })
-        : undefined;
-    // 押すとページを移るので、確認を挟む。
-    const requestPlayFromPosition = playFromPosition
-        ? () => {
-              playConfirmOpenerRef.current =
-                  document.activeElement instanceof HTMLElement ? document.activeElement : null;
-              setIsPlayConfirmOpen(true);
+    // 押すとページを移るので、確認を挟む。押したボタンは引数で受け取る（Safari はクリックでボタンに
+    // フォーカスを移さないので、activeElement からは取れない）。
+    const requestPlayFromPosition = onPlayFromPosition
+        ? (opener?: HTMLElement) => {
+              playConfirmOpenerRef.current = opener ?? null;
+              setPlayConfirm({
+                  position: { sfen: tree.startSfen, moves: movesToCurrent },
+                  title: moveTitle,
+                  turnLabel: position.turn === "sente" ? "☗先手番" : "☖後手番",
+              });
           }
         : undefined;
     const passFromCurrent = editingDisabled ? undefined : () => void editing.passFromCurrent();
@@ -1840,18 +1846,18 @@ export function StudyWorkspaceView({
             />
 
             <StudyPlayFromPositionDialog
-                open={isPlayConfirmOpen && playFromPosition !== undefined}
-                positionTitle={moveTitle}
-                turnLabel={position.turn === "sente" ? "☗先手番" : "☖後手番"}
+                open={playConfirm !== null && onPlayFromPosition !== undefined}
+                positionTitle={playConfirm?.title ?? ""}
+                turnLabel={playConfirm?.turnLabel ?? ""}
                 returnFocusTo={() => {
                     const opener = playConfirmOpenerRef.current;
                     // スマートフォンでは開いた項目がメニューごと消えているので、「メニュー」へ戻す。
                     return opener?.isConnected ? opener : mobileMenuTriggerRef.current;
                 }}
-                onCancel={() => setIsPlayConfirmOpen(false)}
+                onCancel={() => setPlayConfirm(null)}
                 onConfirm={() => {
-                    setIsPlayConfirmOpen(false);
-                    playFromPosition?.();
+                    if (playConfirm) onPlayFromPosition?.(playConfirm.position);
+                    setPlayConfirm(null);
                 }}
             />
 
