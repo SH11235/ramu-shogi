@@ -1557,6 +1557,8 @@ describe("StudyWorkspaceView", () => {
                 const view = render(
                     <Harness initialDoc={createTestStudy().doc} onSaveKifuFile={onSaveKifuFile} />,
                 );
+                // 「保存」だけだと、ノートの保存（クラウドに保存済み）と紛れる。
+                expect(within(kifuGroup()).getByText("ファイルに保存")).toBeTruthy();
                 fireEvent.click(
                     within(kifuGroup()).getByRole("button", {
                         name: "棋譜をファイルに保存（KIF）",

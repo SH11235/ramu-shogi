@@ -127,7 +127,7 @@ export function StudyDesktopLayout({
                             {fluidBoard}
                             {navBar}
                         </Lockable>
-                        <div className="-mt-1 w-full">{actionBar}</div>
+                        <div className="-mt-1.5 w-full">{actionBar}</div>
                     </div>
                     <Lockable locked={locked}>{graphWithComment}</Lockable>
                 </div>
@@ -139,7 +139,7 @@ export function StudyDesktopLayout({
         );
     }
     // 盤の大きさの決め方は対局画面（PlayPCLayout）に倣う: 高さは画面の高さから、表題の行・盤の上の行・
-    // 局面の移動の 267px と、盤の下の操作の行の高さを引いた残りで決める。横は右の列の
+    // 局面の移動の 266px と、盤の下の操作の行の高さを引いた残りで決める。横は右の列の
     // 幅（xl は 2 列で約 600px、lg は 1 列で約 330px）を残す分で抑える。盤と駒台の幅は
     // マスのおよそ 11.2 倍 + 56px。この分岐は PC だけで描くので、xl 未満の値は画面幅の
     // 条件を付けずに置く（lg の rem と isTablet の px が文字の大きさで食い違っても効くように）。
@@ -148,7 +148,7 @@ export function StudyDesktopLayout({
     return (
         <div
             className={cn(
-                "grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 [--shogi-cell-size:clamp(34px,min(calc((100dvh-267px-var(--study-action-bar-height))/9),calc((100vw-440px)/11.2)),72px)] xl:grid-cols-[auto_minmax(300px,1fr)_minmax(260px,300px)] xl:[--shogi-cell-size:clamp(34px,min(calc((100dvh-267px-var(--study-action-bar-height))/9),calc((min(100vw,1600px)-720px)/11.2)),72px)]",
+                "grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 [--shogi-cell-size:clamp(34px,min(calc((100dvh-266px-var(--study-action-bar-height))/9),calc((100vw-440px)/11.2)),72px)] xl:grid-cols-[auto_minmax(300px,1fr)_minmax(260px,300px)] xl:[--shogi-cell-size:clamp(34px,min(calc((100dvh-266px-var(--study-action-bar-height))/9),calc((min(100vw,1600px)-720px)/11.2)),72px)]",
                 isWide && "h-[calc(100dvh-9.75rem)] grid-rows-[auto_minmax(0,1fr)]",
             )}
             style={{ "--study-action-bar-height": `${actionBarHeight}px` } as CSSProperties}
@@ -169,7 +169,7 @@ export function StudyDesktopLayout({
                     {navBar}
                 </Lockable>
                 {/* 盤の下の行は、局面の移動に寄せて置く（盤の高さを 1px でも多く残す）。 */}
-                <div ref={observeActionBar} className="-mt-1 w-full">
+                <div ref={observeActionBar} className="-mt-1.5 w-full">
                     {actionBar}
                 </div>
             </div>
