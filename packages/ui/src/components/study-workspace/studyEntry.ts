@@ -35,7 +35,10 @@ interface StudyEntrySync {
     /** ログイン中のセッション。未ログインなら null。 */
     getSession(): unknown;
     /** `requiredOwner` を渡したら、そのユーザーのノートとしてしか作らない（できなければ例外）。 */
-    createStudy(doc: StudyDocument, options?: { requiredOwner?: string }): Promise<unknown>;
+    createStudy(
+        doc: StudyDocument,
+        options?: { requiredOwner?: string; shouldCreate?: () => boolean },
+    ): Promise<unknown>;
     /**
      * 何局もまとめて作る取り込みが途中で失敗したとき、作ったノートを消すのに使う。
      * 1 件ずつ開く・作る入口では要らないので省略できる。無ければ、作ったノートは消せずに残り、その件数を知らせる。
@@ -78,6 +81,36 @@ export class StudyCreationCancelledError extends Error {
 const assertShouldCreate = (deps: Pick<StudyEntryDeps, "shouldCreate">): void => {
     if (deps.shouldCreate && !deps.shouldCreate()) throw new StudyCreationCancelledError();
 };
+
+/**
+ * 保存層の書き込みの直前（持ち主を確かめたあと）にも `shouldCreate` を確かめて保存する。
+ * そこでやめたら `StudyCreationCancelledError` にする。
+ */
+async function createGated(
+    sync: StudyEntrySync,
+    doc: StudyDocument,
+    options: { requiredOwner?: string; shouldCreate?: () => boolean },
+): Promise<void> {
+    let cancelled = false;
+    const { shouldCreate } = options;
+    const gate = shouldCreate
+        ? () => {
+              cancelled = !shouldCreate();
+              return !cancelled;
+          }
+        : undefined;
+    try {
+        await sync.createStudy(doc, {
+            ...(options.requiredOwner !== undefined
+                ? { requiredOwner: options.requiredOwner }
+                : {}),
+            ...(gate ? { shouldCreate: gate } : {}),
+        });
+    } catch (error) {
+        if (cancelled) throw new StudyCreationCancelledError();
+        throw error;
+    }
+}
 
 interface OpenOrCreateStudyOptions extends StudyEntryDeps {
     origin: StudyOrigin;
@@ -127,7 +160,7 @@ export async function openOrCreateStudy({
     const doc = build(generateStudyId());
     explainLimits(doc);
     assertShouldCreate({ shouldCreate });
-    await sync.createStudy(doc, requiredOwner !== undefined ? { requiredOwner } : undefined);
+    await createGated(sync, doc, { requiredOwner, shouldCreate });
     return { studyId: doc.id, existing: false };
 }
 
@@ -407,7 +440,7 @@ async function createStudiesFromSelfplayLog(
     assertShouldCreate(deps);
     try {
         for (const doc of docs) {
-            await deps.sync.createStudy(doc);
+            await createGated(deps.sync, doc, { shouldCreate: deps.shouldCreate });
             created.push(doc.id);
         }
     } catch (error) {

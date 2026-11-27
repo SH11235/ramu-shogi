@@ -2715,6 +2715,15 @@ describe.each(STORES)("同期エンジン（保存層: $name）", ({ create }) =
             expect(harness.sync.getSession()).toEqual({ userId: USER_B });
         });
 
+        it("持ち主を確かめている間に取り込みをやめたら（shouldCreate が false）、何も書かない", async () => {
+            const harness = createVerifyingHarness();
+            harness.login(USER_A);
+            await expect(
+                harness.sync.createStudy(doc, { shouldCreate: () => false }),
+            ).rejects.toMatchObject({ code: "cancelled" });
+            expect(await harness.sync.load(TEST_STUDY_ID)).toBeNull();
+        });
+
         it("持ち主を指定して作るとき、サーバーに確かめられなくても伝えられているログインがその人なら、その人のノートにする", async () => {
             const harness = createHarness({
                 verifySession: async () => {

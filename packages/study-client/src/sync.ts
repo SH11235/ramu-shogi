@@ -107,7 +107,12 @@ export type StudySyncEvent =
  */
 export type StudyPullState = "not_needed" | "pending" | "done";
 
-type StudySyncErrorCode = "not_found" | "merged" | "already_exists" | "owner_mismatch";
+type StudySyncErrorCode =
+    | "not_found"
+    | "merged"
+    | "already_exists"
+    | "owner_mismatch"
+    | "cancelled";
 
 export class StudySyncError extends Error {
     readonly code: StudySyncErrorCode;
@@ -194,8 +199,14 @@ export interface StudySync {
      * ノートを読めないアカウントや匿名で作らない）。持ち主がそのユーザーにならなければ何も書かず
      * `StudySyncError("owner_mismatch")`。サーバーに確かめられなかっただけで、伝えられている
      * ログインがそのユーザーなら、そのユーザーのノートとして作る（そのユーザーにしか見えない）。
+     *
+     * `shouldCreate` は書き込む直前（持ち主を確かめたあと）に呼び、false なら何も書かず
+     * `StudySyncError("cancelled")`（確かめている間に、取り込みの画面を閉じられたとき）。
      */
-    createStudy(doc: StudyDocument, options?: { requiredOwner?: string }): Promise<StoredStudy>;
+    createStudy(
+        doc: StudyDocument,
+        options?: { requiredOwner?: string; shouldCreate?: () => boolean },
+    ): Promise<StoredStudy>;
     /**
      * ノートを開く。ローカルにあればそれを返し、裏でサーバーの変更を取り込む。
      * ローカルに無ければ（ログイン中なら）サーバーから取得して保存する。
@@ -1782,6 +1793,9 @@ export function createStudySync(options: StudySyncOptions): StudySync {
             // （呼んだ順に適用するため）。
             const created = enqueueWrite(doc.id, async () => {
                 const { owner, basis } = await decideCreatedOwner();
+                if (createOptions?.shouldCreate && !createOptions.shouldCreate()) {
+                    throw new StudySyncError("cancelled", "ノートを作るのをやめました");
+                }
                 const study = await mutate(doc.id, (snapshot) => {
                     if (snapshot.study) {
                         throw new StudySyncError(

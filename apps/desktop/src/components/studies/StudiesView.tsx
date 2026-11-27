@@ -82,6 +82,13 @@ export function StudiesView({
     // 棋譜のファイルを読み始めてから保存し終えるまでは、ほかの作り方（平手から）を断る
     // （両方が保存され、終わった順に開くノートが切り替わらないように）。
     const busyRef = useRef(false);
+    const mountedRef = useRef(true);
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => {
+            mountedRef.current = false;
+        };
+    }, []);
     const [isCreating, setIsCreating] = useState(false);
     const handleImport = async (source: StudyKifuSource): Promise<void> => {
         if (busyRef.current)
@@ -90,7 +97,8 @@ export function StudiesView({
         setIsCreating(true);
         try {
             const { studyId } = await createStudyFromKifuSource(source, { sync });
-            onOpenStudy(studyId);
+            // 保存を待つ間に一覧から別の画面へ移っていたら、そこから動かさない。
+            if (mountedRef.current) onOpenStudy(studyId);
         } finally {
             busyRef.current = false;
             setIsCreating(false);
