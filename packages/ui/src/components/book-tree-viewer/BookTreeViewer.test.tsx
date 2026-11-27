@@ -156,7 +156,7 @@ sfen ${key("2g2f", "8c8d")} 3
         expect(tree().getByRole("button", { name: /^☗2五歩\(26\)/ })).toBeTruthy();
         fireEvent.change(root, { target: { value: key(...mid) } });
         await built();
-        expect(await tree().findByRole("button", { name: /^☗4五角打/ })).toBeTruthy();
+        expect(await tree().findByRole("button", { name: /^☗4五角、/ })).toBeTruthy();
         expect(screen.getByRole("combobox", { name: "開始局面" })).toBeTruthy();
     });
     it("平手から始まる手順と途中の局面から始まる手順を合わせた定跡は、平手と候補を選べる", async () => {
@@ -176,7 +176,7 @@ B*4e`);
                 .map((option) => option.textContent),
         ).toEqual(["平手", "候補 1（5手目の局面）"]);
         fireEvent.change(root, { target: { value: key(...mid) } });
-        expect(await tree().findByRole("button", { name: /^☗4五角打/ })).toBeTruthy();
+        expect(await tree().findByRole("button", { name: /^☗4五角、/ })).toBeTruthy();
         fireEvent.change(screen.getByRole("combobox", { name: "開始局面" }), {
             target: { value: key() },
         });

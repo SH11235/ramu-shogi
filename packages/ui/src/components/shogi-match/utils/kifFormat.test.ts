@@ -145,6 +145,11 @@ describe("formatMoveToKif", () => {
         expect(formatMoveToKif("8h2b+", "sente", board)).toBe("▲２二角成(88)");
     });
 
+    it("KIF では成らない手に不成を書かない（柿木形式）", () => {
+        const board = placePiece(createEmptyBoard(), "8h", "sente", "B");
+        expect(formatMoveToKif("8h2b", "sente", board)).toBe("▲２二角(88)");
+    });
+
     it("駒打ちを変換する", () => {
         const board = createEmptyBoard();
         expect(formatMoveToKif("P*5e", "sente", board)).toBe("▲５五歩打");
@@ -185,10 +190,10 @@ describe("formatMoveSimple", () => {
         expect(formatMoveSimple("8h2b+", "sente", board)).toBe("☗2二角成(88)");
     });
 
-    it("駒打ちを変換する", () => {
+    it("盤上の同じ駒が動けない升への駒打ちには打を付けない（連盟の表記）", () => {
         const board = createEmptyBoard();
-        expect(formatMoveSimple("P*5e", "sente", board)).toBe("☗5五歩打");
-        expect(formatMoveSimple("G*4b", "gote", board)).toBe("☖4二金打");
+        expect(formatMoveSimple("P*5e", "sente", board)).toBe("☗5五歩");
+        expect(formatMoveSimple("G*4b", "gote", board)).toBe("☖4二金");
     });
 
     it("同の表記を使用する", () => {
@@ -204,6 +209,38 @@ describe("formatMoveSimple", () => {
     it("盤面に駒がない場合はUSI形式をそのまま返す", () => {
         const board = createEmptyBoard();
         expect(formatMoveSimple("7g7f", "sente", board)).toBe("☗7g7f");
+    });
+
+    it("同じ移動先へ同じ駒が動けるときは、相対表記を移動元の前に付ける", () => {
+        const board = createInitialBoard();
+        expect(formatMoveSimple("6i5h", "sente", board)).toBe("☗5八金左(69)");
+        expect(formatMoveSimple("4i5h", "sente", board)).toBe("☗5八金右(49)");
+        expect(formatMoveSimple("6i7h", "sente", board)).toBe("☗7八金(69)");
+    });
+
+    it("相対表記は「同」や成りとも並ぶ", () => {
+        let board = placePiece(createEmptyBoard(), "9d", "sente", "S");
+        board = placePiece(board, "8d", "sente", "S");
+        board = placePiece(board, "8b", "sente", "S");
+        expect(formatMoveSimple("8d9c+", "sente", board, "9c" as Square)).toBe("☗同　銀右上成(84)");
+    });
+
+    it("成れる手で成らなかったときは不成を付け、成れない手には付けない", () => {
+        const board = placePiece(createEmptyBoard(), "3d", "sente", "S");
+        expect(formatMoveSimple("3d2c", "sente", board)).toBe("☗2三銀不成(34)");
+        expect(formatMoveSimple("3d2c+", "sente", board)).toBe("☗2三銀成(34)");
+        expect(formatMoveSimple("3d3e", "sente", board)).toBe("☗3五銀(34)");
+        const gote = placePiece(createEmptyBoard(), "7f", "gote", "S");
+        expect(formatMoveSimple("7f8g", "gote", gote)).toBe("☖8七銀不成(76)");
+        const gold = placePiece(createEmptyBoard(), "3d", "sente", "G");
+        expect(formatMoveSimple("3d3c", "sente", gold)).toBe("☗3三金(34)");
+    });
+
+    it("盤上の駒が動ける升への駒打ちは打、盤上の駒の移動には何も付けない", () => {
+        const board = placePiece(createEmptyBoard(), "8d", "sente", "S");
+        expect(formatMoveSimple("S*7e", "sente", board)).toBe("☗7五銀打");
+        expect(formatMoveSimple("S*7d", "sente", board)).toBe("☗7四銀");
+        expect(formatMoveSimple("8d7e", "sente", board)).toBe("☗7五銀(84)");
     });
 });
 

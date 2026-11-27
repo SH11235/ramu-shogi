@@ -101,6 +101,8 @@ export {
     switchBranch,
     truncateFromCurrent,
 } from "./game/kifu-tree";
+// game/move-notation
+export { canPromoteOnMove, dropNeedsMarker, relativeMoveNotation } from "./game/move-notation";
 // game/position-service
 export type {
     BoardStateJson,

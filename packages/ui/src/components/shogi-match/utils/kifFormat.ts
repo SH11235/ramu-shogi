@@ -5,7 +5,12 @@
  */
 
 import type { BoardState, Piece, PieceType, Player, PositionState, Square } from "@shogi/app-core";
-import { applyMoveAllowingStudyPass } from "@shogi/app-core";
+import {
+    applyMoveAllowingStudyPass,
+    canPromoteOnMove,
+    dropNeedsMarker,
+    relativeMoveNotation,
+} from "@shogi/app-core";
 import { parseSfen } from "./kifParser";
 
 /** 手数不明の詰みを表す evalMate センチネル。符号は勝つ側を先手視点で表す。 */
@@ -331,7 +336,7 @@ export function formatMoveToKif(
     // 駒名を取得（移動前の状態で判定）
     const pieceName = getPieceName(piece.type, piece.promoted ?? false);
 
-    // 成り表記
+    // KIF（柿木形式）は不成を書かない。書くと cshogi など外部のツールが読み飛ばす。
     const promoteText = promotes ? "成" : "";
 
     // 移動元座標
@@ -376,7 +381,9 @@ export function formatMoveSimple(
         const to = usiMove.slice(2, 4);
         const toSimple = squareToSimple(to);
         const pieceName = PIECE_NAMES[pieceChar] ?? pieceChar;
-        return `${mark}${toSimple}${pieceName}打`;
+        // 連盟の表記に合わせ、盤上の同じ駒もそこへ動けるときだけ「打」を書く（KIF の書き出しは常に書く）。
+        const dropText = dropNeedsMarker(board, pieceChar, turn, to as Square) ? "打" : "";
+        return `${mark}${toSimple}${pieceName}${dropText}`;
     }
 
     // 通常移動: "7g7f" or "7g7f+"
@@ -396,13 +403,16 @@ export function formatMoveSimple(
     // 駒名を取得（移動前の状態で判定）
     const pieceName = getPieceName(piece.type, piece.promoted ?? false);
 
-    // 成り表記
-    const promoteText = promotes ? "成" : "";
+    // 成れる手で成らなかったときは「不成」と書く（日本将棋連盟の表記。KIF の書き出しでは書かない）。
+    const promoteText = promotes ? "成" : canPromoteOnMove(board, from, to) ? "不成" : "";
 
     // 移動元座標
     const fromDigits = squareToDigits(from);
 
-    return `${mark}${toSimple}${pieceName}${promoteText}(${fromDigits})`;
+    // 移動元の (69) を省いて見せる場所があるので、どの駒が動いたかを相対表記（左・右・上など）でも示す。
+    const relative = relativeMoveNotation(board, from, to);
+
+    return `${mark}${toSimple}${pieceName}${relative}${promoteText}(${fromDigits})`;
 }
 
 /**
@@ -809,7 +819,7 @@ function formatMoveForKifFile(
     // 駒名を取得
     const pieceName = getPieceName(piece.type, piece.promoted ?? false);
 
-    // 成り表記
+    // KIF（柿木形式）は不成を書かない。書くと cshogi など外部のツールが読み飛ばす。
     const promoteText = promotes ? "成" : "";
 
     // 移動元を数字で表示

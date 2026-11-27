@@ -38,6 +38,9 @@ const rankOf = (square: Square): number =>
 const toSquare = (file: number, rank: number): Square =>
     `${file}${BOARD_RANKS[rank - 1]}` as Square;
 
+/** 盤の 81 マスのどれかを指す文字列か。 */
+export const isSquare = (value: string): value is Square => /^[1-9][a-i]$/.test(value);
+
 /** CSA のマス表記 (`76` = 7 筋 6 段) を内部のマスに直す。 */
 const parseSquare = (value: string): Square | null => {
     const file = Number(value[0]);
@@ -158,6 +161,22 @@ const isKingAttacked = (board: BoardState, owner: Player): boolean => {
     }
     return false;
 };
+
+/**
+ * `from` の駒が `to` へ、駒の動きとして行けて、指した後に自玉へ利きが残らないか。
+ * 成る・成らないで利きは変わらないので、成りは区別しない。
+ */
+export function canMoveOnBoard(board: BoardState, from: Square, to: Square): boolean {
+    // 読み筋などから来た壊れた座標では、isPathClear の歩みが盤の外で止まらなくなる。
+    if (!isSquare(from) || !isSquare(to)) return false;
+    const piece = board[from];
+    if (!piece) return false;
+    const target = board[to];
+    if (target && (target.owner === piece.owner || target.type === "K")) return false;
+    if (!canReach(board, from, to, piece)) return false;
+    const next = { ...board, [from]: null, [to]: piece };
+    return !isKingAttacked(next, piece.owner);
+}
 
 const CSA_MOVE_PATTERN = /^([+-])(\d{2})(\d{2})([A-Z]{2})$/;
 
