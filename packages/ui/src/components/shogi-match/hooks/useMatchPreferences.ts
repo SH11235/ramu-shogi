@@ -128,15 +128,11 @@ function readSharedArrowSettings() {
     }
 }
 
-function writeSharedArrowSettings(settings: DisplaySettings): void {
-    const arrows = normalizeCandidateArrowSettings(settings);
-    const current = readSharedArrowSettings();
-    if (
-        current.showCandidateArrows === arrows.showCandidateArrows &&
-        current.candidateArrowCount === arrows.candidateArrowCount
-    ) {
-        return;
-    }
+/** 変えた矢印の項目だけを通常の表示設定に書く（変えていない項目は、別のタブで変えた値を残す）。 */
+function writeSharedArrowSettings(
+    changes: Partial<Pick<DisplaySettings, "showCandidateArrows" | "candidateArrowCount">>,
+): void {
+    if (Object.keys(changes).length === 0) return;
     let base: unknown = null;
     try {
         base = JSON.parse(localStorage.getItem(DISPLAY_SETTINGS_STORAGE_KEY) ?? "null");
@@ -146,7 +142,7 @@ function writeSharedArrowSettings(settings: DisplaySettings): void {
     const merged = {
         ...DEFAULT_DISPLAY_SETTINGS,
         ...(typeof base === "object" && base !== null ? base : {}),
-        ...arrows,
+        ...changes,
     };
     try {
         localStorage.setItem(DISPLAY_SETTINGS_STORAGE_KEY, JSON.stringify(merged));
@@ -302,12 +298,15 @@ export function useMatchPreferences({
         const value = typeof next === "function" ? next(displaySettings) : next;
         // 矢印を操作したときだけ書く。ほかの項目の変更で、画面に残っている古い矢印の値を
         // 研究ノート側へ書き戻さないため。
-        if (
-            value.showCandidateArrows !== displaySettings.showCandidateArrows ||
-            value.candidateArrowCount !== displaySettings.candidateArrowCount
-        ) {
-            writeSharedArrowSettings(value);
-        }
+        const arrows = normalizeCandidateArrowSettings(value);
+        writeSharedArrowSettings({
+            ...(arrows.showCandidateArrows !== displaySettings.showCandidateArrows && {
+                showCandidateArrows: arrows.showCandidateArrows,
+            }),
+            ...(arrows.candidateArrowCount !== displaySettings.candidateArrowCount && {
+                candidateArrowCount: arrows.candidateArrowCount,
+            }),
+        });
         setDisplaySettings(value, source);
     };
 

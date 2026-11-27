@@ -47,6 +47,7 @@ describe("ShogiBoardArrows", () => {
     it("読めないマスの手は描かない", () => {
         const container = renderArrows([
             { from: "7x", to: "7f", side: "sente", emphasis: "primary" },
+            { from: "7g", to: "7g", side: "sente", emphasis: "secondary" },
         ]);
         expect(container.querySelectorAll("path, circle")).toHaveLength(0);
     });

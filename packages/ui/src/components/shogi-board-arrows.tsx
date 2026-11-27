@@ -122,7 +122,8 @@ export function ShogiBoardArrows({
                     );
                 }
                 const from = centerOf(arrow.from, flipBoard);
-                if (!from) return null;
+                // 移動元と移動先が同じ手は向きが決まらない（描くと座標が NaN になる）。
+                if (!from || (from[0] === to[0] && from[1] === to[1])) return null;
                 return (
                     <path
                         key={key}

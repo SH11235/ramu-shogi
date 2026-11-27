@@ -81,4 +81,25 @@ describe("useMatchPreferences の候補手の矢印", () => {
         });
         expect(result.current.displaySettings.candidateArrowCount).toBe(1);
     });
+
+    it("観戦で「なし」を選んでも、別のタブで変えた表示数は残す", () => {
+        localStorage.setItem(
+            DISPLAY_SETTINGS_STORAGE_KEY,
+            JSON.stringify({ showCandidateArrows: true, candidateArrowCount: 2 }),
+        );
+        const { result } = renderHook(() => useMatchPreferences(options(true)));
+        localStorage.setItem(
+            DISPLAY_SETTINGS_STORAGE_KEY,
+            JSON.stringify({ showCandidateArrows: true, candidateArrowCount: 1 }),
+        );
+        act(() => {
+            result.current.setDisplaySettings({
+                ...result.current.displaySettings,
+                showCandidateArrows: false,
+            });
+        });
+        expect(
+            JSON.parse(localStorage.getItem(DISPLAY_SETTINGS_STORAGE_KEY) ?? "{}"),
+        ).toMatchObject({ showCandidateArrows: false, candidateArrowCount: 1 });
+    });
 });
