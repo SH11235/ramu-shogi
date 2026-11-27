@@ -141,4 +141,16 @@ describe("useMatchPreferences の候補手の矢印", () => {
         });
         expect(result.current.displaySettings.candidateArrowCount).toBe(1);
     });
+
+    it("観戦で同じバッチに関数で 2 つ変えても、両方が残る", () => {
+        const { result } = renderHook(() => useMatchPreferences(options(true)));
+        act(() => {
+            result.current.setDisplaySettings((previous) => ({ ...previous, enableSound: false }));
+            result.current.setDisplaySettings((previous) => ({ ...previous, showKifuEval: false }));
+        });
+        expect(result.current.displaySettings).toMatchObject({
+            enableSound: false,
+            showKifuEval: false,
+        });
+    });
 });

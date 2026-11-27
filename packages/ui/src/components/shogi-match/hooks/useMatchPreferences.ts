@@ -296,8 +296,18 @@ export function useMatchPreferences({
             ? parseSharedArrowSettings(sharedDisplaySettings)
             : normalizeCandidateArrowSettings(storedDisplaySettings)),
     };
+    const sharedArrows = parseSharedArrowSettings(sharedDisplaySettings);
     const setSpectateDisplaySettings: Setter<DisplaySettings> = (next, source) => {
-        const value = typeof next === "function" ? next(displaySettings) : next;
+        // 関数での更新は、同じバッチの前の更新に重ねられるよう、そのまま保存の仕組みに渡す。
+        // 矢印の項目を変える画面（表示設定の欄）は値で渡すので、共有のキーへ書くのは値のときだけでよい。
+        if (typeof next === "function") {
+            setDisplaySettings(
+                (previous) => next({ ...displaySettingsDefaults, ...previous, ...sharedArrows }),
+                source,
+            );
+            return;
+        }
+        const value = next;
         const arrows = normalizeCandidateArrowSettings(value);
         // 矢印を操作したときだけ書く。ほかの項目の変更で、画面に残っている古い矢印の値を研究ノート側へ
         // 書き戻さないため。「なし」はスイッチだけを切り（数は別のタブで変えた値を残す）、数を選んだら
