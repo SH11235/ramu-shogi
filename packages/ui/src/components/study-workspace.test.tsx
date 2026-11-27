@@ -1537,8 +1537,13 @@ describe("StudyWorkspaceView", () => {
                 // KIF は、見ている局面より先も含めた、表示中の手順の全体。
                 expect(writeText.mock.calls[0][0]).toContain("先手：先手太郎");
                 expect(writeText.mock.calls[0][0]).toContain("８四歩");
+                expect(await within(kifuGroup()).findByRole("status")).toHaveProperty(
+                    "textContent",
+                    "コピーしました",
+                );
+                // ボタンの名前は、コピーしたあとも何をコピーするかのまま。
                 expect(
-                    await within(kifuGroup()).findByRole("button", { name: "コピーしました" }),
+                    within(kifuGroup()).getByRole("button", { name: "棋譜をコピー（KIF）" }),
                 ).toBeTruthy();
                 // コピーしたあとに形式を切り替えたら、コピーしていない形式を「コピーしました」と言わない。
                 fireEvent.click(within(kifuGroup()).getByRole("radio", { name: "CSA" }));

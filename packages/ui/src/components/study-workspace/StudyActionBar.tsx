@@ -9,11 +9,12 @@ import { cn } from "@shogi/design-system";
 import type { ReactElement, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { useLocalStorage } from "../shogi-match/hooks/useLocalStorage";
-import { CopyIcon, DownloadIcon, PlayIcon } from "./StudyIcons";
+import { CheckIcon, CopyIcon, DownloadIcon, PlayIcon } from "./StudyIcons";
 import type { StudyKifuFormat } from "./studyFile";
 
 const KIFU_FORMAT_STORAGE_KEY = "shogi:studyKifuFormat";
 const COPIED_LABEL_MS = 2000;
+const COPIED_LABEL = "コピーしました";
 
 const BUTTON_CLASS =
     "inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-wafuu-border bg-background px-2.5 text-sm text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40";
@@ -61,20 +62,26 @@ function CopyButton({
     // コピーしたあとに形式・局面が変わったら、コピーしていない中身を「コピーしました」と言わない。
     const copied = copiedKey === copyKey;
     return (
-        <button
-            type="button"
-            aria-label={copied ? undefined : label}
-            className={BUTTON_CLASS}
-            onClick={() => {
-                void onCopy().then((ok) => {
-                    if (ok) flash(copyKey);
-                });
-            }}
-        >
-            <CopyIcon />
-            <span aria-live="polite">{copied ? "コピーしました" : "コピー"}</span>
-            {!copied && hint && <span className="text-xs text-muted-foreground">{hint}</span>}
-        </button>
+        <>
+            <button
+                type="button"
+                aria-label={label}
+                className={BUTTON_CLASS}
+                onClick={() => {
+                    void onCopy().then((ok) => {
+                        if (ok) flash(copyKey);
+                    });
+                }}
+            >
+                {/* 結果はアイコンだけで返し、文字と幅は変えない。幅が変わると行が折り返し、盤の大きさまで変わる。 */}
+                {copied ? <CheckIcon className="text-status-success" /> : <CopyIcon />}
+                コピー
+                {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
+            </button>
+            <span role="status" className="sr-only">
+                {copied ? COPIED_LABEL : ""}
+            </span>
+        </>
     );
 }
 

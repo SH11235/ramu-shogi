@@ -82,6 +82,15 @@ export function CopyIcon({ className }: IconProps): ReactElement {
     );
 }
 
+/** 済んだ（チェック）。 */
+export function CheckIcon({ className }: IconProps): ReactElement {
+    return (
+        <StrokeIcon className={className}>
+            <path d="M5 12.5l4.5 4.5L19 7" />
+        </StrokeIcon>
+    );
+}
+
 /** ファイルに保存（下向きの矢印）。 */
 export function DownloadIcon({ className }: IconProps): ReactElement {
     return (
