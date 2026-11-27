@@ -12,6 +12,7 @@ import {
 } from "./studies-test-support";
 
 const navigate = vi.fn(async () => {});
+const router = { subscribe: () => () => {} };
 let currentSync: StudySync;
 let auth: TestAuthState = AUTH_SIGNED_OUT;
 const dispatchAuthSessionSyncEvent = vi.fn();
@@ -33,6 +34,7 @@ vi.mock("@tanstack/react-router", () => ({
         return <a href={query ? `${path}?${query}` : path}>{children}</a>;
     },
     useNavigate: () => navigate,
+    useRouter: () => router,
 }));
 vi.mock("../../hooks/useAuthSession", () => ({
     useAuthSession: () => ({ sessionError: null, ...auth }),

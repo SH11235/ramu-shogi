@@ -28,7 +28,7 @@ import {
     studyOriginLabel,
     studyPlayersLabel,
 } from "@shogi/ui/components/study-workspace/studyView";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useRouter } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { useEffect, useRef, useState } from "react";
 import { AuthBadge } from "../../components/AuthBadge";
@@ -313,13 +313,20 @@ export default function StudiesPage({ api, verifySession }: StudiesPageProps): R
     // 取り込み欄は開け閉めでフォームごと作り直されるので、保存の途中かどうかはここで持つ
     // （閉じて開き直したフォームから、同じ棋譜をもう一度作らせない）。
     const importingRef = useRef(false);
-    const mountedRef = useRef(true);
+    // 保存を待つ間に別の画面へ移り始めたか。移った先の読み込み中は一覧がまだ残っているので、
+    // アンマウントではなくルーターの遷移の始まりで見る。
+    const router = useRouter();
+    const leftRef = useRef(false);
     useEffect(() => {
-        mountedRef.current = true;
+        leftRef.current = false;
+        const unsubscribe = router.subscribe("onBeforeNavigate", () => {
+            leftRef.current = true;
+        });
         return () => {
-            mountedRef.current = false;
+            leftRef.current = true;
+            unsubscribe();
         };
-    }, []);
+    }, [router]);
     const [isImporting, setIsImporting] = useState(false);
     // ファイルを読んでいる間（保存の前）も、開き直したフォームから取り込ませない。
     const [isReadingFile, setIsReadingFile] = useState(false);
@@ -343,9 +350,7 @@ export default function StudiesPage({ api, verifySession }: StudiesPageProps): R
         try {
             if (sessionKnown) await ensureStudySession(userId, { confirmed: sessionConfirmed });
             const { studyId } = await createStudyFromKifuSource(source, { sync, api: client });
-            // 保存を待つ間に一覧から別の画面へ移っていたら、そこから動かさない。
-            if (mountedRef.current)
-                await navigate({ to: "/studies/$studyId", params: { studyId } });
+            if (!leftRef.current) await navigate({ to: "/studies/$studyId", params: { studyId } });
         } finally {
             importingRef.current = false;
             setIsImporting(false);

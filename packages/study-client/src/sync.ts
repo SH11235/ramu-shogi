@@ -1793,10 +1793,11 @@ export function createStudySync(options: StudySyncOptions): StudySync {
             // （呼んだ順に適用するため）。
             const created = enqueueWrite(doc.id, async () => {
                 const { owner, basis } = await decideCreatedOwner();
-                if (createOptions?.shouldCreate && !createOptions.shouldCreate()) {
-                    throw new StudySyncError("cancelled", "ノートを作るのをやめました");
-                }
                 const study = await mutate(doc.id, (snapshot) => {
+                    // 書き込みの直前（既存のデータを読んだあと）に確かめる。
+                    if (createOptions?.shouldCreate && !createOptions.shouldCreate()) {
+                        throw new StudySyncError("cancelled", "ノートを作るのをやめました");
+                    }
                     if (snapshot.study) {
                         throw new StudySyncError(
                             "already_exists",
