@@ -403,7 +403,7 @@ export function formatMoveSimple(
     // 駒名を取得（移動前の状態で判定）
     const pieceName = getPieceName(piece.type, piece.promoted ?? false);
 
-    // 成れる手で成らなかったときは「不成」と書く（日本将棋連盟の表記・KIF とも）。
+    // 成れる手で成らなかったときは「不成」と書く（日本将棋連盟の表記。KIF の書き出しでは書かない）。
     const promoteText = promotes ? "成" : canPromoteOnMove(board, from, to) ? "不成" : "";
 
     // 移動元座標
