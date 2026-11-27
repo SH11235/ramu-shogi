@@ -311,7 +311,7 @@ export function StudyView({
                                 const startedFrom = studyId;
                                 const { studyId: created } = await createStudyFromKifuSource(
                                     source,
-                                    { sync },
+                                    { sync, shouldCreate: shouldOpen },
                                 );
                                 openCreated(startedFrom, created, shouldOpen);
                             },

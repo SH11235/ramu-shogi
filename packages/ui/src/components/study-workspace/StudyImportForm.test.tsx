@@ -53,6 +53,19 @@ describe("StudyImportForm", () => {
         ).toBe(true);
     });
 
+    it("複数のファイルを落としたら、取り込まずに 1 つずつ落とすよう知らせる", () => {
+        const onImport = vi.fn().mockResolvedValue(undefined);
+        render(<StudyImportForm onImport={onImport} />);
+        const zone = screen.getByText("ファイルをここに落とす").closest("fieldset") as HTMLElement;
+        const files = [
+            new File(["V2.2"], "a.csa", { type: "text/plain" }),
+            new File(["V2.2"], "b.csa", { type: "text/plain" }),
+        ];
+        fireEvent.drop(zone, { dataTransfer: { files } });
+        expect(screen.getByRole("alert").textContent).toBe("ファイルは 1 つずつ落としてください。");
+        expect(onImport).not.toHaveBeenCalled();
+    });
+
     it("読めないファイルを落としたら理由を出す", async () => {
         const onImport = vi.fn().mockResolvedValue(undefined);
         render(<StudyImportForm onImport={onImport} />);

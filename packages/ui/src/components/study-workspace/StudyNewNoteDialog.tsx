@@ -21,6 +21,7 @@ import {
     DialogTitle,
 } from "../dialog";
 import { StudyImportForm } from "./StudyImportForm";
+import { StudyCreationCancelledError } from "./studyEntry";
 import type { StudyKifuSource } from "./studyImport";
 
 type NewNoteTab = "note" | "import";
@@ -45,7 +46,10 @@ interface StudyNewNoteDialogProps {
      * 保存し終えたときに `shouldOpen()` が false なら（その間にモーダルを閉じた）、開かない。
      */
     onCreateFromNote: (doc: StudyDocument, options: StudyNewNoteOptions) => Promise<void>;
-    /** 読んだ棋譜・局面で新しいノートを作って開く。`shouldOpen` は `onCreateFromNote` と同じ。 */
+    /**
+     * 読んだ棋譜・局面で新しいノートを作って開く。`shouldOpen` は `onCreateFromNote` と同じで、保存を
+     * 始める直前にも確かめる（false なら `StudyCreationCancelledError` を投げて保存しない）。
+     */
     onImport: (source: StudyKifuSource, options: StudyNewNoteOptions) => Promise<void>;
     /** 作ったノートがどこに保存されるかの説明。 */
     storageNote?: string;
@@ -242,7 +246,13 @@ function NewNoteBody({
                     onImport={async (source) => {
                         // ファイルを読んでいる間に閉じられたら、作らない。
                         if (!shouldOpen()) return;
-                        await onImport(source, { shouldOpen });
+                        try {
+                            await onImport(source, { shouldOpen });
+                        } catch (error) {
+                            // 棋譜を確かめている間に閉じられて、保存をやめた。
+                            if (error instanceof StudyCreationCancelledError) return;
+                            throw error;
+                        }
                         if (shouldOpen()) onDone();
                     }}
                     onBusyChange={onBusyChange}

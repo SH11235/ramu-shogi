@@ -60,7 +60,24 @@ export interface StudyEntryDeps {
     api?: StudyEntryApi;
     /** クラウドへの問い合わせでセッション切れ（401）が分かったときに呼ぶ。 */
     onUnauthorized?: () => void;
+    /**
+     * 保存を始める直前に呼び、false なら保存せずに `StudyCreationCancelledError` を投げる
+     * （棋譜を確かめている間に、取り込みの画面を閉じられたとき）。
+     */
+    shouldCreate?: () => boolean;
 }
+
+/** 保存を始める前に取り込みをやめた（`shouldCreate` が false を返した）。 */
+export class StudyCreationCancelledError extends Error {
+    constructor() {
+        super("ノートを作るのをやめました");
+        this.name = "StudyCreationCancelledError";
+    }
+}
+
+const assertShouldCreate = (deps: Pick<StudyEntryDeps, "shouldCreate">): void => {
+    if (deps.shouldCreate && !deps.shouldCreate()) throw new StudyCreationCancelledError();
+};
 
 interface OpenOrCreateStudyOptions extends StudyEntryDeps {
     origin: StudyOrigin;
@@ -90,6 +107,7 @@ export async function openOrCreateStudy({
     api,
     onUnauthorized,
     requiredOwner,
+    shouldCreate,
 }: OpenOrCreateStudyOptions): Promise<OpenOrCreateStudyResult> {
     if (origin.kind !== "paste" && origin.ref !== null) {
         const localId = await sync.findLocalByOrigin(origin);
@@ -108,6 +126,7 @@ export async function openOrCreateStudy({
     }
     const doc = build(generateStudyId());
     explainLimits(doc);
+    assertShouldCreate({ shouldCreate });
     await sync.createStudy(doc, requiredOwner !== undefined ? { requiredOwner } : undefined);
     return { studyId: doc.id, existing: false };
 }
@@ -333,6 +352,7 @@ export async function createStudyFromKifuSource(
         sync: deps.sync,
         api: deps.api,
         onUnauthorized: deps.onUnauthorized,
+        shouldCreate: deps.shouldCreate,
         origin,
         build: (id) =>
             source.kind === "csa"
@@ -384,6 +404,7 @@ async function createStudiesFromSelfplayLog(
     }
     // 保存が途中で失敗したら、作ったぶんを消して、取り込み前に戻す（やり直しで同じ局が重複しないように）。
     const created: string[] = [];
+    assertShouldCreate(deps);
     try {
         for (const doc of docs) {
             await deps.sync.createStudy(doc);
@@ -430,6 +451,7 @@ export async function createStudyFromKifuTree(
         sync: deps.sync,
         api: deps.api,
         onUnauthorized: deps.onUnauthorized,
+        shouldCreate: deps.shouldCreate,
         origin,
         build: (id) =>
             createStudyDocumentFromKifuTree({
@@ -458,6 +480,7 @@ export function createStudyFromDocument(
         sync: deps.sync,
         api: deps.api,
         onUnauthorized: deps.onUnauthorized,
+        shouldCreate: deps.shouldCreate,
         requiredOwner: deps.requiredOwner,
         origin: { kind: "paste", ref: null },
         build: (id) => ({ ...doc, id, origin: { kind: "paste", ref: null } }),

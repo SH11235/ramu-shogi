@@ -209,7 +209,10 @@ export default function StudyPage(): ReactElement {
             { shouldOpen }: { shouldOpen: () => boolean },
         ): Promise<void> => {
             const startedFrom = studyId;
-            const { studyId: created } = await createStudyFromKifuSource(source, { sync });
+            const { studyId: created } = await createStudyFromKifuSource(source, {
+                sync,
+                shouldCreate: shouldOpen,
+            });
             await openCreated(startedFrom, created, shouldOpen);
         },
     };

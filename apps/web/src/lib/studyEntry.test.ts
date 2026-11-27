@@ -13,6 +13,7 @@ import {
     type StudyApi,
     type StudySync,
 } from "@shogi/study-client";
+import { StudyCreationCancelledError } from "@shogi/ui/components/study-workspace/studyEntry";
 import { parseKifuTextForStudy } from "@shogi/ui/components/study-workspace/studyImport";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -166,6 +167,22 @@ describe("openOrCreateStudy", () => {
             /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
         );
         expect(build).toHaveBeenCalledWith(studyId);
+    });
+});
+
+describe("取り込みをやめたとき", () => {
+    it("保存の直前に shouldCreate が false なら、何も作らずにやめる", async () => {
+        const api = createApi();
+        const sync = createSync(api);
+        await expect(
+            createStudyFromKifuSource(parseKifuTextForStudy("position startpos moves 7g7f"), {
+                sync,
+                api,
+                replayMovesStrict: async (_sfen: string, moves: string[]) => ({ applied: moves }),
+                shouldCreate: () => false,
+            }),
+        ).rejects.toBeInstanceOf(StudyCreationCancelledError);
+        expect(await sync.listLocal()).toEqual([]);
     });
 });
 

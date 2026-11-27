@@ -120,6 +120,10 @@ export function StudyImportForm({
     const dropFile = (event: DragEvent<HTMLFieldSetElement>): void => {
         event.preventDefault();
         setIsDragOver(false);
+        if (event.dataTransfer.files.length > 1) {
+            setError("ファイルは 1 つずつ落としてください。");
+            return;
+        }
         const file = event.dataTransfer.files[0];
         if (file) void readFile(file);
     };
