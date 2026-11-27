@@ -5,42 +5,32 @@
 
 ## Architecture
 
-レイヤー構成: UI層 → アプリケーション層 → ドメイン層 / インフラ層
-
-パッケージ依存関係（`→` は依存方向）:
-- apps/web → ui, design-system, app-controller, engine-wasm, study-client
-- apps/desktop → ui, design-system, app-controller, engine-tauri, study-client
-- ui → app-core, app-controller, design-system, engine-client, match-client
-- app-controller → app-core, engine-client
-- app-core → (依存なし)
-- engine-wasm → engine-client, rust-core
-- engine-tauri → engine-client
-- engine-client → (依存なし、インターフェース定義のみ)
-- match-client → app-core（rshogi の CSA 中継で、局面・指し手を復元するのに使う。ルームの通信は依存なし）
-- study-client → app-core, api-contract（型のみ）
-- design-system → (依存なし)
+レイヤー構成: UI層 → アプリケーション層 → ドメイン層 / インフラ層。
+パッケージ間の実際の依存は各 `package.json` を見る。
 
 設計制約:
-- app-core: 完全に依存なし（純粋なドメインロジック）
-- app-controller: app-coreとengine-clientのみに依存、エンジン制御の状態管理とライフサイクル管理を担当
-- engine-wasm/engine-tauri: engine-clientインターフェースの具体的な実装
+- app-core / engine-client / match-protocol / design-system / api-contract は他のパッケージに依存しない（app-core は純粋なドメインロジック、engine-client はインターフェース定義のみ）
+- app-controller は app-core と engine-client にだけ依存する
+- engine-wasm / engine-tauri は engine-client インターフェースの具体的な実装
+- study-client は api-contract を型だけで使う（`import type`）
 - 循環依存禁止、単方向の依存フロー必須
 
 ## Package roles
-- app-core: 局面/棋譜処理、NNUE管理。UI・エンジン実装から完全独立、依存なし
+- app-core: 局面/棋譜処理、NNUE管理
 - app-controller: エンジン制御、状態管理、ライフサイクル管理。app-coreとengine-clientを橋渡し
 - engine-client: EngineClientインターフェース定義、エラー処理、設定正規化
 - engine-wasm: WASMエンジン実装（Worker経由、wasm-bindgen出力を隠蔽）
 - engine-tauri: Tauri IPCエンジン実装（invoke/listen）
 - rust-core: Rustエンジン本体（探索、評価関数、USIプロトコル）
 - ui: 共通UIコンポーネント、design-system前提、必要なものだけ昇格
-- match-client: WebSocket ルームクライアント、通信プロトコル型定義、rshogi の CSA 中継（棋譜・ライブ観戦）のクライアント。外部依存なし（CSA の復元だけ app-core を使う）
+- match-client: WebSocket ルームクライアント、rshogi の CSA 中継（棋譜・ライブ観戦）のクライアント
+- match-protocol: ルーム通信のプロトコル型定義
 - study-client: 研究ノートのローカル保存（IndexedDB）、サーバーとの同期、API クライアント。ブラウザ API（IndexedDB / Web Locks / BroadcastChannel / fetch）に依存する層。型と純粋ロジックは app-core の `study/`
 - design-system: テーマ/トークン/Provider、shadcn/ui基盤
 
 ## 実装方針メモ
 - Web と Desktop は極力足並みを揃え、同じ UI/ロジックを共有する。独自実装の分岐は最小限にする。
-- React Compiler（`babel-plugin-react-compiler`）が有効なため、`useMemo`/`useCallback`/`React.memo` の手動最適化は不要。
+- React Compiler が有効なため、`useMemo`/`useCallback`/`React.memo` の手動最適化は不要。
 - エフェクト内のスタールクロージャ問題は `useEffectEvent`（React 19.2 stable）で解決する。
 
 ## UI-Specific Notes
