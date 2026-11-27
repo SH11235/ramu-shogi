@@ -62,6 +62,7 @@ import {
     type StudyCommentDraftChange,
 } from "./study-workspace/StudyCommentBox";
 import { StudyDeleteVariationDialog } from "./study-workspace/StudyDeleteVariationDialog";
+import { StudyPlayFromPositionDialog } from "./study-workspace/StudyPlayFromPositionDialog";
 import { StudyDesktopLayout } from "./study-workspace/StudyDesktopLayout";
 import {
     buildStudyEvalGraph,
@@ -359,6 +360,7 @@ export function StudyWorkspaceView({
     const [isTreeOpen, setIsTreeOpen] = useState(false);
     const treeOpener = useRef<HTMLElement | null>(null);
     const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+    const [isPlayConfirmOpen, setIsPlayConfirmOpen] = useState(false);
     const comments = useStudyCommentDrafts({
         initialDrafts: initialCommentDrafts,
         onDraftChange: onCommentDraftChange,
@@ -449,6 +451,7 @@ export function StudyWorkspaceView({
             locked ||
             pvPreview !== null ||
             deleteTargetId !== null ||
+            isPlayConfirmOpen ||
             isSettingsOpen ||
             isTitleDialogOpen ||
             shareDialog?.open === true ||
@@ -1520,6 +1523,8 @@ export function StudyWorkspaceView({
     const playFromPosition = onPlayFromPosition
         ? () => onPlayFromPosition({ sfen: tree.startSfen, moves: movesToCurrent })
         : undefined;
+    // 押すとページを移るので、確認を挟む。
+    const requestPlayFromPosition = playFromPosition ? () => setIsPlayConfirmOpen(true) : undefined;
     const passFromCurrent = editingDisabled ? undefined : () => void editing.passFromCurrent();
     const openShare = shareDialog && !readOnly ? shareDialog.onOpen : undefined;
     // ログインが切れている間は出さない（持ち主を確かめられないノートを、このあとログインする別の
@@ -1554,19 +1559,18 @@ export function StudyWorkspaceView({
             onSaveKifu={saveKifu}
             csaUnavailableReason={csaUnavailableReason}
             onCopySfen={() => void copySfen(true)}
-            onPlayFromPosition={playFromPosition}
+            onPlayFromPosition={requestPlayFromPosition}
         />
     );
     const actionBar = (
         <StudyActionBar
-            positionTitle={moveTitle}
             positionKey={currentNodeId}
             lineKey={line[line.length - 1] ?? currentNodeId}
             onCopyKifu={(format) => copyKifu(format, false)}
             onSaveKifu={saveKifu}
             csaUnavailableReason={csaUnavailableReason}
             onCopySfen={() => copySfen(false)}
-            onPlayFromPosition={playFromPosition}
+            onPlayFromPosition={requestPlayFromPosition}
             onPass={passFromCurrent}
         />
     );
@@ -1823,6 +1827,17 @@ export function StudyWorkspaceView({
                               </div>
                           )
                 }
+            />
+
+            <StudyPlayFromPositionDialog
+                open={isPlayConfirmOpen && playFromPosition !== undefined}
+                positionTitle={moveTitle}
+                turnLabel={position.turn === "sente" ? "☗先手番" : "☖後手番"}
+                onCancel={() => setIsPlayConfirmOpen(false)}
+                onConfirm={() => {
+                    setIsPlayConfirmOpen(false);
+                    playFromPosition?.();
+                }}
             />
 
             <StudyDeleteVariationDialog

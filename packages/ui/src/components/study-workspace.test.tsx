@@ -1516,9 +1516,10 @@ describe("StudyWorkspaceView", () => {
     });
 
     describe("盤の下の操作（棋譜の書き出しと、いまの局面）", () => {
-        const kifuGroup = () =>
-            screen.getByRole("group", { name: /^棋譜（表示中の手順・評価値とコメントつき）/ });
-        const positionGroup = () => screen.getByRole("group", { name: /^いまの局面（/ });
+        const kifuGroup = () => screen.getByRole("group", { name: /^書き出す/ });
+        // 局面の SFEN のコピーも、書き出しのまとまりに入る。
+        const positionGroup = kifuGroup;
+        const actionGroup = () => screen.getByRole("group", { name: "この局面で" });
 
         afterEach(() => {
             localStorage.clear();
@@ -1532,7 +1533,7 @@ describe("StudyWorkspaceView", () => {
                 // 2 手目まで進める。
                 fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
                 fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
-                expect(within(positionGroup()).getByText(/2手目 ☖3四歩\(33\)/)).toBeTruthy();
+                expect(screen.getAllByText(/2手目 ☖3四歩\(33\)/).length).toBeGreaterThan(0);
 
                 fireEvent.click(
                     within(kifuGroup()).getByRole("button", { name: "棋譜をコピー（KIF）" }),
@@ -1541,10 +1542,7 @@ describe("StudyWorkspaceView", () => {
                 // KIF は、見ている局面より先も含めた、表示中の手順の全体。
                 expect(writeText.mock.calls[0][0]).toContain("先手：先手太郎");
                 expect(writeText.mock.calls[0][0]).toContain("８四歩");
-                expect(await within(kifuGroup()).findByRole("status")).toHaveProperty(
-                    "textContent",
-                    "コピーしました",
-                );
+                expect(await within(kifuGroup()).findByText("コピーしました")).toBeTruthy();
                 // ボタンの名前は、コピーしたあとも何をコピーするかのまま。
                 expect(
                     within(kifuGroup()).getByRole("button", { name: "棋譜をコピー（KIF）" }),
@@ -1588,7 +1586,9 @@ describe("StudyWorkspaceView", () => {
                     vi.advanceTimersByTime(2100);
                 });
                 expect(within(positionGroup()).queryByText("コピーしました")).toBeNull();
-                expect(within(positionGroup()).getByText("コピー")).toBeTruthy();
+                for (const status of within(positionGroup()).getAllByRole("status")) {
+                    expect(status.textContent).toBe("");
+                }
             } finally {
                 vi.useRealTimers();
                 vi.unstubAllGlobals();
@@ -1663,7 +1663,7 @@ describe("StudyWorkspaceView", () => {
             expect(
                 within(kifuGroup()).getByRole("button", { name: "棋譜をコピー（KIF）" }),
             ).toBeTruthy();
-            expect(within(kifuGroup()).getByText("パスを含む手順は CSA にできません")).toBeTruthy();
+            expect(screen.getByText("パスを含む手順は CSA にできません")).toBeTruthy();
         });
 
         it("「パスを指す」は、いまの局面にパスの手を足してその手へ移る。編集できないときは出さない", async () => {
@@ -1673,7 +1673,7 @@ describe("StudyWorkspaceView", () => {
             const view = render(
                 <Harness initialDoc={doc} onOps={onOps} fetchLegalMoves={fetchLegalMoves} />,
             );
-            fireEvent.click(within(positionGroup()).getByRole("button", { name: "パスを指す" }));
+            fireEvent.click(within(actionGroup()).getByRole("button", { name: "パスを指す" }));
             await waitFor(() =>
                 expect(onOps).toHaveBeenCalledWith([
                     { type: "addMoves", parentId: ids[0], moves: ["pass"] },
@@ -1689,9 +1689,7 @@ describe("StudyWorkspaceView", () => {
             view.unmount();
 
             render(<Harness initialDoc={doc} locked />);
-            expect(
-                within(positionGroup()).queryByRole("button", { name: "パスを指す" }),
-            ).toBeNull();
+            expect(screen.queryByRole("button", { name: "パスを指す" })).toBeNull();
         });
 
         it("パスできない局面（合法手にパスが無い。王手がかかっている、など）では、手を足さずに知らせる", async () => {
@@ -1703,7 +1701,7 @@ describe("StudyWorkspaceView", () => {
                     fetchLegalMoves={async () => ["7g7f"]}
                 />,
             );
-            fireEvent.click(within(positionGroup()).getByRole("button", { name: "パスを指す" }));
+            fireEvent.click(within(actionGroup()).getByRole("button", { name: "パスを指す" }));
             expect(await screen.findByText(/この局面ではパスできません/)).toBeTruthy();
             expect(onOps).not.toHaveBeenCalled();
         });
@@ -1734,7 +1732,14 @@ describe("StudyWorkspaceView", () => {
                 />,
             );
             fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
-            fireEvent.click(within(positionGroup()).getByRole("button", { name: "ここから対局" }));
+            fireEvent.click(within(actionGroup()).getByRole("button", { name: "ここから対局…" }));
+            // ページを移る前に確認を出す。やめれば移らない。
+            const confirm = screen.getByRole("alertdialog", { name: "この局面から対局しますか？" });
+            expect(within(confirm).getByText("1手目 ☗7六歩(77)")).toBeTruthy();
+            fireEvent.click(within(confirm).getByRole("button", { name: "やめる" }));
+            expect(onPlayFromPosition).not.toHaveBeenCalled();
+            fireEvent.click(within(actionGroup()).getByRole("button", { name: "ここから対局…" }));
+            fireEvent.click(screen.getByRole("button", { name: "対局の画面へ" }));
             expect(onPlayFromPosition).toHaveBeenCalledWith({
                 sfen: expect.any(String),
                 moves: ["7g7f"],
@@ -1742,13 +1747,12 @@ describe("StudyWorkspaceView", () => {
             view.unmount();
 
             render(<Harness initialDoc={createTestStudy().doc} />);
-            expect(screen.queryByRole("button", { name: "ここから対局" })).toBeNull();
+            expect(screen.queryByRole("button", { name: "ここから対局…" })).toBeNull();
         });
 
         it("編集できない間も、棋譜と局面は書き出せる（止めるのは盤と右の列）", () => {
             render(<Harness initialDoc={createTestStudy().doc} locked />);
             expect(kifuGroup().closest("[inert]")).toBeNull();
-            expect(positionGroup().closest("[inert]")).toBeNull();
             expect(
                 screen.getByRole("navigation", { name: "局面の移動" }).closest("[inert]"),
             ).not.toBeNull();
@@ -4397,7 +4401,7 @@ describe("StudyWorkspaceView: スマートフォン", () => {
             expect(within(sheet).getByRole("heading", { name: "ノート" })).toBeTruthy();
             // 開いたらフォーカスを中へ移す。
             await waitFor(() => expect(sheet.contains(document.activeElement)).toBe(true));
-            expect(within(sheet).getByRole("button", { name: "ここから対局" })).toBeTruthy();
+            expect(within(sheet).getByRole("button", { name: "ここから対局…" })).toBeTruthy();
             expect(
                 within(sheet).getByRole("button", { name: /公開設定・共有リンク/ }),
             ).toBeTruthy();
