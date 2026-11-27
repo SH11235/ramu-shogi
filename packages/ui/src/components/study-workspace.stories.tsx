@@ -179,6 +179,9 @@ function StoryHarness({
                 mate={currentMate}
                 message={message}
                 onMessageChange={setMessage}
+                onPlayFromPosition={() => {}}
+                onSaveKifuFile={() => {}}
+                shareDialog={{ open: false, onOpen: () => {} }}
             />
         </div>
     );
@@ -374,5 +377,35 @@ export const 保存を待っている: Story = {
     args: {
         doc: analyzed.doc,
         saveStatus: { state: "pending", reason: null, limit: null, retrying: false },
+    },
+};
+
+/** パスを含む手順（CSA にできないので、形式の切り替えで CSA を選べない）。 */
+export const CSAにできない手順: Story = {
+    args: {
+        doc: createStudyDocumentFromMoves({
+            id: "77777777-7777-4777-8777-777777777777",
+            title: "パス権の研究",
+            origin: { kind: "paste", ref: null },
+            startSfen: "startpos",
+            moves: ["7g7f", "pass", "2g2f"],
+            meta: {},
+        }),
+        initialPly: 2,
+    },
+};
+
+export const 閲覧のみ: Story = {
+    args: { doc: analyzed.doc, readOnly: true, initialPly: 3 },
+};
+
+/** 対局情報のあるノート（畳んだ「対局情報」は出典と同じ行に置き、盤の高さを変えない）。 */
+export const 対局情報つき: Story = {
+    args: {
+        doc: {
+            ...analyzed.doc,
+            meta: { ...analyzed.doc.meta, event: "テスト棋戦", timeControl: "10分" },
+        },
+        initialPly: 3,
     },
 };

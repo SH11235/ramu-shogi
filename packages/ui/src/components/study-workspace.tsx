@@ -46,6 +46,7 @@ import {
     type Message,
 } from "./shogi-match/types";
 import { boardToGrid } from "./shogi-match/utils/positionUtils";
+import { StudyActionBar } from "./study-workspace/StudyActionBar";
 import type { StudyAnalysisRunState } from "./study-workspace/StudyAnalysisRunControls";
 import { StudyAnalysisSettings } from "./study-workspace/StudyAnalysisSettings";
 import {
@@ -76,7 +77,7 @@ import {
     type StudyMobileTab,
     useStudyMobileMeasure,
 } from "./study-workspace/StudyMobileLayout";
-import { type StudyKifuFormat, StudyMoreMenu } from "./study-workspace/StudyMoreMenu";
+import { StudyMobileMenu } from "./study-workspace/StudyMobileMenu";
 import { StudyMoveList } from "./study-workspace/StudyMoveList";
 import { StudyNavBar } from "./study-workspace/StudyNavBar";
 import { StudyNotice } from "./study-workspace/StudyNotice";
@@ -98,7 +99,11 @@ import {
     exportStudyPositionToSfen,
     studyLineHasPass,
 } from "./study-workspace/studyExport";
-import { type StudyKifuFile, studyKifuFileName } from "./study-workspace/studyFile";
+import {
+    type StudyKifuFile,
+    type StudyKifuFormat,
+    studyKifuFileName,
+} from "./study-workspace/studyFile";
 import {
     deriveStudyPositionInsights,
     pickStudyBandResult,
@@ -322,9 +327,9 @@ export function StudyWorkspaceView({
     const [ownTitleDialogOpen, setOwnTitleDialogOpen] = useState(false);
     const isTitleDialogOpen = titleDialog?.open ?? ownTitleDialogOpen;
     const setIsTitleDialogOpen = titleDialog?.onOpenChange ?? setOwnTitleDialogOpen;
-    // 「その他の操作」を開いている間は、矢印キーで局面を動かさない（コピー・対局に渡す局面が、
+    // スマートフォンの「メニュー」を開いている間は、矢印キーで局面を動かさない（コピー・対局に渡す局面が、
     // メニューの中でのキー操作で変わってしまうため）。
-    const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isTreeOpen, setIsTreeOpen] = useState(false);
     const treeOpener = useRef<HTMLElement | null>(null);
     const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
@@ -421,7 +426,7 @@ export function StudyWorkspaceView({
             isSettingsOpen ||
             isTitleDialogOpen ||
             shareDialog?.open === true ||
-            isMoreMenuOpen ||
+            isMobileMenuOpen ||
             isTreeOpen,
         containerRef: boardSectionRef,
         enableWheelNavigation: displaySettings.enableWheelNavigation,
@@ -546,16 +551,26 @@ export function StudyWorkspaceView({
             evalMate: evalData?.scoreMate,
         });
     };
-    const copyText = (text: string, done: string, onCopied?: () => void): void => {
-        const failed = (): void =>
+    // PC の盤の下のボタンは押したボタンの文字で返すので、画面の上の通知は出さない（notify: false）。
+    // スマートフォンのメニューは押すと閉じるので、通知で返す。
+    const copyText = (
+        text: string,
+        done: string,
+        notify: boolean,
+        onCopied?: () => void,
+    ): Promise<boolean> => {
+        const failed = (): boolean => {
             onMessageChange({ text: "コピーできませんでした。", type: "error" });
+            return false;
+        };
         try {
-            void navigator.clipboard.writeText(text).then(() => {
-                onMessageChange({ text: done, type: "success" });
+            return navigator.clipboard.writeText(text).then(() => {
+                if (notify) onMessageChange({ text: done, type: "success" });
                 onCopied?.();
+                return true;
             }, failed);
         } catch {
-            failed();
+            return Promise.resolve(failed());
         }
     };
     const csaUnavailableReason = studyLineHasPass(tree, line)
@@ -567,15 +582,15 @@ export function StudyWorkspaceView({
             : exportStudyLineToKif(doc, tree, line);
     const kifuLabel = (format: StudyKifuFormat): string =>
         `${line.length > 1 ? `表示中の手順（${line.length - 1} 手）` : "開始局面"}を ${format.toUpperCase()} で`;
-    const copyKifu = (format: StudyKifuFormat): void => {
+    const copyKifu = (format: StudyKifuFormat, notify: boolean): Promise<boolean> => {
         let text: string;
         try {
             text = exportKifu(format);
         } catch {
             onMessageChange({ text: "棋譜を書き出せませんでした。", type: "error" });
-            return;
+            return Promise.resolve(false);
         }
-        copyText(text, `${kifuLabel(format)}コピーしました。`, () =>
+        return copyText(text, `${kifuLabel(format)}コピーしました。`, notify, () =>
             track("kifu_export", { format }),
         );
     };
@@ -593,10 +608,11 @@ export function StudyWorkspaceView({
               }
           }
         : undefined;
-    const copySfen = (): void =>
+    const copySfen = (notify: boolean): Promise<boolean> =>
         copyText(
             exportStudyPositionToSfen(tree.startSfen, movesToCurrent),
             "いま見ている局面を SFEN でコピーしました。",
+            notify,
         );
     const confirmDeleteVariation = (): void => {
         const targetId = deleteTargetId;
@@ -1441,7 +1457,8 @@ export function StudyWorkspaceView({
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1.5 text-xs text-muted-foreground">
             {playersLabel && <span className="truncate">{playersLabel}</span>}
             <span className="truncate">{originLink ?? studyOriginLabel(doc.origin)}</span>
-            <StudyGameInfo meta={doc.meta} className="order-last basis-full" />
+            {/* 畳んでいる間は出典と同じ行に置く（行を足すと、盤の高さの式に見込んだ表題の行の高さを超える）。 */}
+            <StudyGameInfo meta={doc.meta} className="open:order-last open:basis-full" />
             {/* スマートフォンで保存の状態の帯を出している間は、同じ案内をここに重ねない。 */}
             {readOnly && <span>閲覧のみ</span>}
             {!readOnly && !(isMobile && showsStudySaveStrip(saveStatus, localOnly)) && (
@@ -1454,16 +1471,19 @@ export function StudyWorkspaceView({
             )}
         </div>
     );
-    const moreMenu = (
-        <StudyMoreMenu
-            onOpenChange={setIsMoreMenuOpen}
+    const playFromPosition = onPlayFromPosition
+        ? () => onPlayFromPosition({ sfen: tree.startSfen, moves: movesToCurrent })
+        : undefined;
+    const passFromCurrent = editingDisabled ? undefined : () => void editing.passFromCurrent();
+    const openShare = shareDialog && !readOnly ? shareDialog.onOpen : undefined;
+    const mobileMenu = (
+        <StudyMobileMenu
+            onOpenChange={setIsMobileMenuOpen}
             // スマートフォンでは出典・保存先の行と、表題・解析の設定・盤の反転を画面に出さず、ここに置く。
-            info={isMobile ? metaRow : undefined}
-            extraItems={[
-                ...(shareDialog && !readOnly
-                    ? [{ label: "公開設定・共有リンク", run: shareDialog.onOpen }]
-                    : []),
-                ...(isMobile && !editingDisabled
+            info={metaRow}
+            noteItems={[
+                ...(openShare ? [{ label: "公開設定・共有リンク", run: openShare }] : []),
+                ...(!editingDisabled
                     ? [
                           { label: "表題を変更", run: () => setIsTitleDialogOpen(true) },
                           {
@@ -1473,29 +1493,28 @@ export function StudyWorkspaceView({
                           },
                       ]
                     : []),
-                ...(isMobile
-                    ? [
-                          {
-                              label: flipBoard ? "盤面を元に戻す" : "盤面を反転",
-                              run: () => setFlipBoard(!flipBoard),
-                          },
-                      ]
-                    : []),
+                {
+                    label: flipBoard ? "盤面を元に戻す" : "盤面を反転",
+                    run: () => setFlipBoard(!flipBoard),
+                },
             ]}
-            onPass={editingDisabled ? undefined : () => void editing.passFromCurrent()}
-            onCopyKifu={copyKifu}
+            onPass={passFromCurrent}
+            onCopyKifu={(format) => void copyKifu(format, true)}
             onSaveKifu={saveKifu}
             csaUnavailableReason={csaUnavailableReason}
-            onCopySfen={copySfen}
-            onPlayFromPosition={
-                onPlayFromPosition
-                    ? () =>
-                          onPlayFromPosition({
-                              sfen: tree.startSfen,
-                              moves: movesToCurrent,
-                          })
-                    : undefined
-            }
+            onCopySfen={() => void copySfen(true)}
+            onPlayFromPosition={playFromPosition}
+        />
+    );
+    const actionBar = (
+        <StudyActionBar
+            positionTitle={moveTitle}
+            onCopyKifu={(format) => copyKifu(format, false)}
+            onSaveKifu={saveKifu}
+            csaUnavailableReason={csaUnavailableReason}
+            onCopySfen={() => copySfen(false)}
+            onPlayFromPosition={playFromPosition}
+            onPass={passFromCurrent}
         />
     );
     const commitTitle = (value: string): void => void onApplyOps([{ type: "setTitle", value }]);
@@ -1529,14 +1548,14 @@ export function StudyWorkspaceView({
                     />
                 )}
                 {/* スマートフォンでは表題をパンくずに任せ、表題の行は出さない（狭い行に大きな表題を置くと
-                    ほとんど読めない）。その他の操作は、表示の切り替えの行に置く。 */}
+                    ほとんど読めない）。操作は、表示の切り替えの行の「メニュー」に置く。 */}
                 {!isMobile && (
                     <StudyWorkspaceHeader
                         title={doc.title}
                         locked={locked}
                         readOnly={readOnly}
                         onCommitTitle={commitTitle}
-                        moreMenu={moreMenu}
+                        onOpenShare={openShare}
                         settingsLabel={analysis.settingsLabel}
                         onOpenSettings={() => setIsSettingsOpen(true)}
                         metaRow={metaRow}
@@ -1583,24 +1602,17 @@ export function StudyWorkspaceView({
                     </div>
                 )}
 
-                {/* 編集できない間は、画面を残したまま操作だけを止める。 */}
-                {/* スマートフォンでは表示の切り替えと「その他の操作」を止めない（棋譜のコピーなど、
-                    編集できない間も中身を持ち出せるように）。止めるのは表示の場所だけ。 */}
-                <div
-                    inert={locked && !isMobile}
-                    className={cn(
-                        "flex flex-col gap-3",
-                        isMobile && "min-h-0 flex-1",
-                        locked && !isMobile && "opacity-70",
-                    )}
-                >
+                {/* 編集できない間は、画面を残したまま操作だけを止める。棋譜・局面の書き出し（PC は盤の下、
+                    スマートフォンは「メニュー」）は止めない（編集できない間も中身を持ち出せるように）。
+                    止める範囲は、それぞれの画面の組み立てで決める。 */}
+                <div className={cn("flex flex-col gap-3", isMobile && "min-h-0 flex-1")}>
                     {isMobile ? (
                         <StudyMobileLayout
                             tab={mobileTab}
                             onTabChange={setMobileTab}
                             measure={mobileMeasure}
                             locked={locked}
-                            moreMenu={moreMenu}
+                            menu={mobileMenu}
                             // この局面の読みは帯にラムが出るので、タブには帯に出ない読み（全体の解析・
                             // 詰み探索・別の局面の読み）だけを知らせる。
                             isReading={isReading && !bandShowsReading}
@@ -1663,6 +1675,8 @@ export function StudyWorkspaceView({
                         />
                     ) : (
                         <StudyDesktopLayout
+                            locked={locked}
+                            actionBar={actionBar}
                             isTablet={isTablet}
                             isWide={isWide}
                             boardStatus={boardStatus}

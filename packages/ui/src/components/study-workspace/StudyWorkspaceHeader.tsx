@@ -1,7 +1,11 @@
 import { STUDY_LIMITS } from "@shogi/app-core";
+import { cn } from "@shogi/design-system";
 import type { ReactElement, ReactNode } from "react";
 import { useState } from "react";
-import { SettingsIcon } from "./StudyIcons";
+import { SettingsIcon, ShareIcon } from "./StudyIcons";
+
+const HEADER_BUTTON_CLASS =
+    "flex h-10 shrink-0 items-center gap-2 rounded-md border border-wafuu-border bg-background px-3 text-sm text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40";
 
 function TitleInput({
     title,
@@ -48,14 +52,14 @@ function TitleInput({
     );
 }
 
-/** PC・タブレットの表題の行（表題・その他の操作・解析の設定）と、出典・保存先の行。 */
+/** PC・タブレットの表題の行（表題・共有・解析の設定）と、出典・保存先の行。 */
 export function StudyWorkspaceHeader({
     title,
     locked,
     readOnly,
     layerPicker,
     onCommitTitle,
-    moreMenu,
+    onOpenShare,
     settingsLabel,
     onOpenSettings,
     metaRow,
@@ -65,7 +69,8 @@ export function StudyWorkspaceHeader({
     readOnly: boolean;
     layerPicker?: ReactNode;
     onCommitTitle: (title: string) => void;
-    moreMenu: ReactNode;
+    /** 公開設定・共有リンクを開く。渡さなければ出さない（閲覧のみのノートなど）。 */
+    onOpenShare?: () => void;
     settingsLabel: string;
     onOpenSettings: () => void;
     metaRow: ReactNode;
@@ -85,7 +90,18 @@ export function StudyWorkspaceHeader({
                         onCommit={onCommitTitle}
                     />
                 )}
-                {moreMenu}
+                {onOpenShare && (
+                    <button
+                        type="button"
+                        onClick={onOpenShare}
+                        aria-haspopup="dialog"
+                        disabled={locked}
+                        className={HEADER_BUTTON_CLASS}
+                    >
+                        <ShareIcon />
+                        共有
+                    </button>
+                )}
                 {/* 解析に使う AI と 1 局面の時間は結果を大きく左右するので、アイコンだけにせず
                     いまの値を見せ、押せば変えられるようにする。 */}
                 {readOnly ? (
@@ -96,7 +112,7 @@ export function StudyWorkspaceHeader({
                         onClick={onOpenSettings}
                         aria-haspopup="dialog"
                         disabled={locked}
-                        className="flex h-10 max-w-[45%] shrink-0 items-center gap-2 rounded-md border border-wafuu-border bg-background px-3 text-sm text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
+                        className={cn(HEADER_BUTTON_CLASS, "max-w-[45%]")}
                     >
                         <SettingsIcon />
                         <span className="text-xs text-muted-foreground">解析の設定</span>

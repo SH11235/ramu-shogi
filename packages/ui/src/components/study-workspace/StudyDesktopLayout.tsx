@@ -1,5 +1,9 @@
 import { cn } from "@shogi/design-system";
-import type { ReactElement, ReactNode, RefObject } from "react";
+import type { CSSProperties, ReactElement, ReactNode, RefObject } from "react";
+import { useState } from "react";
+
+/** 盤の下の操作の行の高さ（1 段のとき）。測るまでの値。 */
+const ACTION_BAR_HEIGHT_PX = 55;
 
 /**
  * PC・タブレットの評価値グラフと、その上に重ねるコメント欄。
@@ -31,8 +35,31 @@ function GraphWithComment({
     );
 }
 
-/** PC（2〜3 列）とタブレットの縦持ち（2 列）の画面。 */
+/** 編集できない間に、操作を止めて薄くする範囲。 */
+function Lockable({
+    locked,
+    className,
+    children,
+}: {
+    locked: boolean;
+    className?: string;
+    children: ReactNode;
+}): ReactElement {
+    return (
+        <div inert={locked} className={cn(className, locked && "opacity-70")}>
+            {children}
+        </div>
+    );
+}
+
+/**
+ * PC（2〜3 列）とタブレットの縦持ち（2 列）の画面。
+ *
+ * 編集できない間は、盤の下の操作の行（棋譜・局面の書き出し）を除いて操作を止める。
+ */
 export function StudyDesktopLayout({
+    locked,
+    actionBar,
     isTablet,
     isWide,
     boardStatus,
@@ -47,6 +74,9 @@ export function StudyDesktopLayout({
     candidatesPanel,
     moveList,
 }: {
+    locked: boolean;
+    /** 盤の下（局面の移動の下）に置く、棋譜と、いまの局面の操作。 */
+    actionBar: ReactNode;
     isTablet: boolean;
     isWide: boolean;
     boardStatus: ReactNode;
@@ -63,6 +93,17 @@ export function StudyDesktopLayout({
     candidatesPanel: ReactNode;
     moveList: ReactNode;
 }): ReactElement {
+    // 盤の下の行は、盤の幅が足りないと 2 段に折り返して高くなる。その高さを測って盤の高さの式に入れる
+    // （折り返すと盤は縮み、縮めば幅はさらに狭くなるので、折り返したままで落ち着く）。
+    const [actionBarHeight, setActionBarHeight] = useState(ACTION_BAR_HEIGHT_PX);
+    const observeActionBar = (element: HTMLDivElement | null) => {
+        if (!element) return;
+        const update = () => setActionBarHeight(Math.ceil(element.getBoundingClientRect().height));
+        update();
+        const observer = new ResizeObserver(update);
+        observer.observe(element);
+        return () => observer.disconnect();
+    };
     const graphWithComment = (
         <GraphWithComment
             graphPanel={graphPanel}
@@ -76,20 +117,27 @@ export function StudyDesktopLayout({
             <div className="grid grid-cols-[22.5rem_minmax(0,1fr)] items-start gap-3">
                 <div className="flex min-w-0 flex-col gap-3">
                     <div className="flex flex-col items-center gap-2">
-                        {boardStatus}
-                        {fluidBoard}
-                        {navBar}
+                        <Lockable
+                            locked={locked}
+                            className="flex w-full flex-col items-center gap-2"
+                        >
+                            {boardStatus}
+                            {fluidBoard}
+                            {navBar}
+                        </Lockable>
+                        <div className="-mt-1 w-full">{actionBar}</div>
                     </div>
-                    {graphWithComment}
+                    <Lockable locked={locked}>{graphWithComment}</Lockable>
                 </div>
-                <div className="flex min-w-0 flex-col gap-3">
+                <Lockable locked={locked} className="flex min-w-0 flex-col gap-3">
                     {candidatesPanel}
                     {moveList}
-                </div>
+                </Lockable>
             </div>
         );
     }
-    // 盤の大きさは対局画面（PlayPCLayout）と揃える: 高さは同じ式で決め、横は右の列の
+    // 盤の大きさの決め方は対局画面（PlayPCLayout）に倣う: 高さは画面の高さから、表題の行・盤の上の行・
+    // 局面の移動の 267px と、盤の下の操作の行の高さを引いた残りで決める。横は右の列の
     // 幅（xl は 2 列で約 600px、lg は 1 列で約 330px）を残す分で抑える。盤と駒台の幅は
     // マスのおよそ 11.2 倍 + 56px。この分岐は PC だけで描くので、xl 未満の値は画面幅の
     // 条件を付けずに置く（lg の rem と isTablet の px が文字の大きさで食い違っても効くように）。
@@ -98,36 +146,53 @@ export function StudyDesktopLayout({
     return (
         <div
             className={cn(
-                "grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 [--shogi-cell-size:clamp(34px,min(calc((100dvh-300px)/9),calc((100vw-440px)/11.2)),72px)] xl:grid-cols-[auto_minmax(300px,1fr)_minmax(260px,300px)] xl:[--shogi-cell-size:clamp(34px,min(calc((100dvh-300px)/9),calc((min(100vw,1600px)-720px)/11.2)),72px)]",
+                "grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 [--shogi-cell-size:clamp(34px,min(calc((100dvh-267px-var(--study-action-bar-height))/9),calc((100vw-440px)/11.2)),72px)] xl:grid-cols-[auto_minmax(300px,1fr)_minmax(260px,300px)] xl:[--shogi-cell-size:clamp(34px,min(calc((100dvh-267px-var(--study-action-bar-height))/9),calc((min(100vw,1600px)-720px)/11.2)),72px)]",
                 isWide && "h-[calc(100dvh-9.75rem)] grid-rows-[auto_minmax(0,1fr)]",
             )}
+            style={{ "--study-action-bar-height": `${actionBarHeight}px` } as CSSProperties}
         >
             <div
                 ref={boardSectionRef}
                 // 持ち駒は対局画面と同じく盤の左右に置く（盤の上下を詰めて 1 画面に収める）。
                 className={cn("flex w-fit flex-col items-center gap-2", isWide && "row-span-2")}
             >
-                {boardStatus}
-                {board}
-                {navBar}
+                <Lockable locked={locked} className="flex flex-col items-center gap-2">
+                    {boardStatus}
+                    {board}
+                    {navBar}
+                </Lockable>
+                {/* 盤の下の行は、局面の移動に寄せて置く（盤の高さを 1px でも多く残す）。 */}
+                <div ref={observeActionBar} className="-mt-1 w-full">
+                    {actionBar}
+                </div>
             </div>
-            {isWide && <div className="col-span-2 min-w-0">{graphWithComment}</div>}
+            {isWide && (
+                <Lockable locked={locked} className="col-span-2 min-w-0">
+                    {graphWithComment}
+                </Lockable>
+            )}
             {/* 右の列は画面の高さに収め、溢れる分は列の中で送る。送る列の端で欄の影やフォーカスの
                 枠が切れないよう、内側に余白を取って外側の余白で打ち消す（xl 未満の上限は、画面の
                 高さから表題の行などの 10rem を引き、その余白の上下 0.5rem を足し戻した値。xl では
                 グラフの下の行いっぱいに伸ばす）。 */}
             <div
                 ref={sideColumnRef}
+                inert={locked}
                 className={cn(
                     "-m-1 flex min-w-0 flex-col gap-3 overflow-y-auto p-1",
                     isWide ? "min-h-0 self-stretch" : "max-h-[calc(100dvh-9.5rem)]",
+                    locked && "opacity-70",
                 )}
             >
                 {!isWide && <div className="shrink-0">{graphWithComment}</div>}
                 <div className="shrink-0">{candidatesPanel}</div>
                 {!isWide && <div className="shrink-0">{moveList}</div>}
             </div>
-            {isWide && <div className="flex min-h-0 min-w-0 flex-col self-stretch">{moveList}</div>}
+            {isWide && (
+                <Lockable locked={locked} className="flex min-h-0 min-w-0 flex-col self-stretch">
+                    {moveList}
+                </Lockable>
+            )}
         </div>
     );
 }
