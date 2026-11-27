@@ -2002,6 +2002,39 @@ describe("StudyWorkspaceView", () => {
             );
         });
 
+        it("棋譜から作るのを閉じて開き直したあとに失敗しても、取り込みの面に理由を出す", async () => {
+            let fail: (error: Error) => void = () => {};
+            const onImport = vi.fn(
+                () =>
+                    new Promise<void>((_resolve, reject) => {
+                        fail = reject;
+                    }),
+            );
+            render(
+                <Harness
+                    initialDoc={createTestStudy().doc}
+                    newNote={{ onCreateFromNote: vi.fn(), onImport }}
+                />,
+            );
+            let dialog = openDialog();
+            fireEvent.click(within(dialog).getByRole("tab", { name: "棋譜・局面を読む" }));
+            fireEvent.change(within(dialog).getByRole("textbox", { name: "棋譜のテキスト" }), {
+                target: { value: "position startpos moves 7g7f" },
+            });
+            fireEvent.click(within(dialog).getByRole("button", { name: "ノートを作る" }));
+            await waitFor(() => expect(onImport).toHaveBeenCalledTimes(1));
+            fireEvent.keyDown(dialog, { key: "Escape" });
+            await waitFor(() =>
+                expect(screen.queryByRole("dialog", { name: "新しい研究ノート" })).toBeNull(),
+            );
+            dialog = openDialog();
+            await act(async () => fail(new Error("取り込めませんでした")));
+            fireEvent.click(within(dialog).getByRole("tab", { name: "棋譜・局面を読む" }));
+            expect((await within(dialog).findByRole("alert")).textContent).toBe(
+                "取り込めませんでした",
+            );
+        });
+
         it("作れなかったら理由を出し、閉じない", async () => {
             render(
                 <Harness

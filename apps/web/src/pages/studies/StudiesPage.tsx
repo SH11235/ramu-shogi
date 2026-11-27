@@ -114,11 +114,15 @@ function ImportSection({
     isAuthenticated,
     busy,
     onBusyChange,
+    error,
+    onErrorChange,
 }: {
     onImport: (source: StudyKifuSource) => Promise<void>;
     isAuthenticated: boolean;
     busy: boolean;
     onBusyChange: (busy: boolean) => void;
+    error: string | null;
+    onErrorChange: (error: string | null) => void;
 }): ReactElement {
     const linkClass =
         "inline-flex h-10 items-center gap-2 rounded-md border border-input px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -131,6 +135,8 @@ function ImportSection({
                 onImport={onImport}
                 busy={busy}
                 onBusyChange={onBusyChange}
+                error={error}
+                onErrorChange={onErrorChange}
                 sideBySide
             />
             <div className="flex flex-col gap-2 border-t border-border pt-3">
@@ -310,6 +316,19 @@ export default function StudiesPage({ api, verifySession }: StudiesPageProps): R
     const [isImporting, setIsImporting] = useState(false);
     // ファイルを読んでいる間（保存の前）も、開き直したフォームから取り込ませない。
     const [isReadingFile, setIsReadingFile] = useState(false);
+    const readingFileRef = useRef(false);
+    const changeReadingFile = (reading: boolean): void => {
+        readingFileRef.current = reading;
+        setIsReadingFile(reading);
+    };
+    const [importError, setImportError] = useState<string | null>(null);
+    // ファイルを読んでいる間に「平手の盤から始める」を押すと、読み終えた棋譜の取り込みが黙って捨てられる。
+    const startFromHirate = (source: StudyKifuSource): Promise<void> =>
+        readingFileRef.current
+            ? Promise.reject(
+                  new Error("棋譜のファイルを読んでいます。読み終えてからお試しください。"),
+              )
+            : handleImport(source);
     const handleImport = async (source: StudyKifuSource): Promise<void> => {
         if (importingRef.current) return;
         importingRef.current = true;
@@ -425,7 +444,7 @@ export default function StudiesPage({ api, verifySession }: StudiesPageProps): R
                                 AI の読みと一緒に保存されます。
                             </p>
                             <StudyStartFromHirateButton
-                                onImport={handleImport}
+                                onImport={startFromHirate}
                                 className="sm:self-start"
                             />
                         </Section>
@@ -433,7 +452,9 @@ export default function StudiesPage({ api, verifySession }: StudiesPageProps): R
                             onImport={handleImport}
                             isAuthenticated={isAuthenticated}
                             busy={isImporting || isReadingFile}
-                            onBusyChange={setIsReadingFile}
+                            onBusyChange={changeReadingFile}
+                            error={importError}
+                            onErrorChange={setImportError}
                         />
                     </>
                 )}
@@ -443,7 +464,7 @@ export default function StudiesPage({ api, verifySession }: StudiesPageProps): R
                         <div className="flex items-center justify-between gap-3">
                             <p className="text-xs text-muted-foreground">{items.length} 件</p>
                             <div className="flex flex-wrap items-start justify-end gap-2">
-                                <StudyStartFromHirateButton onImport={handleImport} />
+                                <StudyStartFromHirateButton onImport={startFromHirate} />
                                 <button
                                     type="button"
                                     aria-expanded={isImportOpen}
@@ -459,7 +480,9 @@ export default function StudiesPage({ api, verifySession }: StudiesPageProps): R
                                 onImport={handleImport}
                                 isAuthenticated={isAuthenticated}
                                 busy={isImporting || isReadingFile}
-                                onBusyChange={setIsReadingFile}
+                                onBusyChange={changeReadingFile}
+                                error={importError}
+                                onErrorChange={setImportError}
                             />
                         )}
                         <ul className="grid gap-3">

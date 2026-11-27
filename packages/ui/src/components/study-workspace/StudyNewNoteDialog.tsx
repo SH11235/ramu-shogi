@@ -61,12 +61,16 @@ export function StudyNewNoteDialog({
     const [busy, setBusy] = useState(false);
     // 作れなかった理由も、開き直したフォームに出せるようここに持つ。
     const [createError, setCreateError] = useState<string | null>(null);
+    const [importError, setImportError] = useState<string | null>(null);
     const opener = useRef<HTMLElement | null>(null);
     return (
         <Dialog
             open={open}
             onOpenChange={(next) => {
-                if (!next && !busy) setCreateError(null);
+                if (!next && !busy) {
+                    setCreateError(null);
+                    setImportError(null);
+                }
                 onOpenChange(next);
             }}
         >
@@ -101,6 +105,8 @@ export function StudyNewNoteDialog({
                     onBusyChange={setBusy}
                     createError={createError}
                     onCreateErrorChange={setCreateError}
+                    importError={importError}
+                    onImportErrorChange={setImportError}
                     onDone={() => onOpenChange(false)}
                 />
             </DialogContent>
@@ -116,6 +122,8 @@ function NewNoteBody({
     onBusyChange,
     createError,
     onCreateErrorChange,
+    importError,
+    onImportErrorChange,
     onDone,
     ...noteProps
 }: Omit<StudyNewNoteDialogProps, "open" | "onOpenChange" | "fallbackFocusId"> & {
@@ -123,6 +131,8 @@ function NewNoteBody({
     onBusyChange: (busy: boolean) => void;
     createError: string | null;
     onCreateErrorChange: (error: string | null) => void;
+    importError: string | null;
+    onImportErrorChange: (error: string | null) => void;
     onDone: () => void;
 }): ReactElement {
     const [tab, setTab] = useState<NewNoteTab>("note");
@@ -204,6 +214,8 @@ function NewNoteBody({
                     }}
                     onBusyChange={onBusyChange}
                     busy={busy}
+                    error={importError}
+                    onErrorChange={onImportErrorChange}
                     submitLabel="ノートを作る"
                     storageNote={storageNote}
                 />

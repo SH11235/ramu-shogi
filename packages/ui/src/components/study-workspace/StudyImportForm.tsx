@@ -37,6 +37,12 @@ interface StudyImportFormProps {
      * （フォームの中の状態は開き直すと消えるので、呼び出し側が持つ）。
      */
     busy?: boolean;
+    /**
+     * 取り込めなかった理由を呼び出し側で持つとき（フォームを閉じて開き直しても理由を出すため）に渡す。
+     * 渡さなければフォームの中で持つ。
+     */
+    error?: string | null;
+    onErrorChange?: (error: string | null) => void;
     /** 貼り付けた棋譜で作るボタンの文言。 */
     submitLabel?: string;
     /** 広い画面で、貼り付けの欄とファイルの枠を横に並べる（狭い画面では縦に積む）。 */
@@ -52,12 +58,19 @@ export function StudyImportForm({
     storageNote = "読んだ棋譜は、このブラウザの中で研究ノートになります。",
     onBusyChange,
     busy = false,
+    error: errorProp,
+    onErrorChange,
     submitLabel = "研究ノートにする",
     sideBySide = false,
     className,
 }: StudyImportFormProps): ReactElement {
     const [text, setText] = useState("");
-    const [error, setError] = useState<string | null>(null);
+    const [ownError, setOwnError] = useState<string | null>(null);
+    const error = errorProp !== undefined ? errorProp : ownError;
+    const setError = (next: string | null): void => {
+        setOwnError(next);
+        onErrorChange?.(next);
+    };
     const [ownBusy, setIsBusy] = useState(false);
     const isBusy = ownBusy || busy;
     const [isDragOver, setIsDragOver] = useState(false);
