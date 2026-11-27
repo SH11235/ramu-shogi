@@ -1534,6 +1534,10 @@ describe("StudyWorkspaceView", () => {
                     within(positionGroup()).getByRole("button", { name: "局面をコピー（SFEN）" }),
                 );
                 expect(await within(positionGroup()).findByText("コピーしました")).toBeTruthy();
+                // 局面を進めたら、コピーしていない局面を「コピーしました」と言わない。
+                fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
+                expect(within(positionGroup()).queryByText("コピーしました")).toBeNull();
+                fireEvent.click(screen.getByRole("button", { name: "1 手戻る（←）" }));
                 await act(async () => {
                     vi.advanceTimersByTime(2100);
                 });

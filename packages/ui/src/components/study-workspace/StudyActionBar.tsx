@@ -46,17 +46,20 @@ function useStudyKifuFormat(): [StudyKifuFormat, (format: StudyKifuFormat) => vo
 
 function CopyButton({
     label,
+    copyKey,
     hint,
     onCopy,
 }: {
     /** 読み上げ用の、何をコピーするか（「棋譜をコピー（KIF）」など）。 */
     label: string;
+    /** コピーする中身の識別（形式・手順・局面）。 */
+    copyKey: string;
     hint?: string;
     onCopy: () => Promise<boolean>;
 }): ReactElement {
-    const { copied: copiedLabel, flash } = useCopiedFlash();
-    // コピーしたあとに形式を切り替えたら、コピーしていない形式を「コピーしました」と言わない。
-    const copied = copiedLabel === label;
+    const { copied: copiedKey, flash } = useCopiedFlash();
+    // コピーしたあとに形式・局面が変わったら、コピーしていない中身を「コピーしました」と言わない。
+    const copied = copiedKey === copyKey;
     return (
         <button
             type="button"
@@ -64,7 +67,7 @@ function CopyButton({
             className={BUTTON_CLASS}
             onClick={() => {
                 void onCopy().then((ok) => {
-                    if (ok) flash(label);
+                    if (ok) flash(copyKey);
                 });
             }}
         >
@@ -97,6 +100,8 @@ function Group({
 
 export function StudyActionBar({
     positionTitle,
+    positionKey,
+    lineKey,
     onCopyKifu,
     onSaveKifu,
     csaUnavailableReason,
@@ -106,6 +111,10 @@ export function StudyActionBar({
 }: {
     /** いまの局面の手数と指し手（「23手目 ☗2六歩(27)」）。 */
     positionTitle: string;
+    /** いまの局面の識別（ノードの ID）。 */
+    positionKey: string;
+    /** 表示中の手順の識別（手順の末端のノードの ID）。 */
+    lineKey: string;
     /** 書き出した棋譜を写す。写せたら true。 */
     onCopyKifu: (format: StudyKifuFormat) => Promise<boolean>;
     /** 渡さなければ「保存」を出さない（保存できない環境）。 */
@@ -155,6 +164,7 @@ export function StudyActionBar({
                 </fieldset>
                 <CopyButton
                     label={`棋譜をコピー（${formatLabel}）`}
+                    copyKey={`${format}:${lineKey}`}
                     onCopy={() => onCopyKifu(format)}
                 />
                 {onSaveKifu && (
@@ -171,7 +181,12 @@ export function StudyActionBar({
             </Group>
             <div aria-hidden="true" className="w-px self-stretch bg-border" />
             <Group heading={`いまの局面（${positionTitle}）`}>
-                <CopyButton label="局面をコピー（SFEN）" hint="SFEN" onCopy={onCopySfen} />
+                <CopyButton
+                    label="局面をコピー（SFEN）"
+                    copyKey={positionKey}
+                    hint="SFEN"
+                    onCopy={onCopySfen}
+                />
                 {onPlayFromPosition && (
                     <button type="button" className={BUTTON_CLASS} onClick={onPlayFromPosition}>
                         <PlayIcon />

@@ -4,7 +4,7 @@
  */
 
 import type { ReactElement, ReactNode } from "react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { BottomSheet } from "../shogi-match/components/BottomSheet";
 import { MenuIcon } from "./StudyIcons";
 import type { StudyKifuFormat } from "./studyFile";
@@ -50,14 +50,18 @@ export function StudyMobileMenu({
     const [open, setOpenState] = useState(false);
     // BottomSheet は開いたときに中へフォーカスを移さないので、描いたあとで最初の項目へ移す
     // （閉じたときは、Radix が「メニュー」へ戻す）。
+    // 中身の更新で描き直しても、開いたときの 1 回だけにする。
+    const focusOnMount = useRef(false);
     const focusFirstItem = (list: HTMLDivElement | null): void => {
-        if (!list) return;
+        if (!list || !focusOnMount.current) return;
+        focusOnMount.current = false;
         setTimeout(
             () => list.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus(),
             0,
         );
     };
     const setOpen = (next: boolean): void => {
+        focusOnMount.current = next;
         setOpenState(next);
         onOpenChange?.(next);
     };

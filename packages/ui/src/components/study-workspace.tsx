@@ -330,6 +330,10 @@ export function StudyWorkspaceView({
     // スマートフォンの「メニュー」を開いている間は、矢印キーで局面を動かさない（コピー・対局に渡す局面が、
     // メニューの中でのキー操作で変わってしまうため）。
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    // 開いたままスマートフォンの幅を離れると、メニューは閉じる知らせを出さずに外れる。
+    useEffect(() => {
+        if (!isMobile) setIsMobileMenuOpen(false);
+    }, [isMobile]);
     const [isTreeOpen, setIsTreeOpen] = useState(false);
     const treeOpener = useRef<HTMLElement | null>(null);
     const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
@@ -426,7 +430,7 @@ export function StudyWorkspaceView({
             isSettingsOpen ||
             isTitleDialogOpen ||
             shareDialog?.open === true ||
-            (isMobile && isMobileMenuOpen) ||
+            isMobileMenuOpen ||
             isTreeOpen,
         containerRef: boardSectionRef,
         enableWheelNavigation: displaySettings.enableWheelNavigation,
@@ -1509,6 +1513,8 @@ export function StudyWorkspaceView({
     const actionBar = (
         <StudyActionBar
             positionTitle={moveTitle}
+            positionKey={currentNodeId}
+            lineKey={line[line.length - 1] ?? currentNodeId}
             onCopyKifu={(format) => copyKifu(format, false)}
             onSaveKifu={saveKifu}
             csaUnavailableReason={csaUnavailableReason}
