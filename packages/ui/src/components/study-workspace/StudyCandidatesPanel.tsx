@@ -26,6 +26,7 @@ import {
     formatStudyScore,
     type StudyPositionResult,
     studyBestCandidate,
+    studyCandidateArrowPlan,
     studyFirstMoveLabel,
     studyScoreSide,
 } from "./studyView";
@@ -111,6 +112,12 @@ interface StudyCandidatesPanelProps {
     };
     /** 「自動で読む」のスイッチを欄の外（局面の帯）に置くので、ここには出さない。 */
     autoSwitchElsewhere?: boolean;
+    /** 盤の矢印（上から `count` 個の候補）。渡さなければスイッチも見本の矢印も出さない。 */
+    arrows?: {
+        enabled: boolean;
+        count: number;
+        onChange: (enabled: boolean) => void;
+    };
     /**
      * 読んでいる間、前に深く読んだ記録のほうが今の読みより深ければ、その結果（今の読みの見出しの下に
      * 1 行で添える）。帯に記録を出すスマートフォンでは渡さない。
@@ -320,15 +327,49 @@ function ElsewhereActivityLine({ activity }: { activity: StudyElsewhereActivity 
     );
 }
 
+/** 盤の矢印と同じ色・太さ・濃さの小さな矢印。どの矢印がどの候補かを示す。 */
+function ArrowSwatch({
+    emphasis,
+    side,
+}: {
+    emphasis: "primary" | "secondary";
+    side: "sente" | "gote";
+}): ReactElement {
+    const primary = emphasis === "primary";
+    return (
+        <svg
+            aria-hidden="true"
+            data-arrow-swatch={emphasis}
+            viewBox="0 0 20 10"
+            className={cn(
+                "h-2.5 w-5 shrink-0 self-center",
+                side === "sente" ? "fill-wafuu-shu" : "fill-wafuu-ai",
+            )}
+            fillOpacity={primary ? 0.8 : 0.45}
+        >
+            <path
+                d={
+                    primary
+                        ? "M0 3.4 L13 3.4 L13 0.5 L20 5 L13 9.5 L13 6.6 L0 6.6 Z"
+                        : "M0 4 L14 4 L14 1.6 L20 5 L14 8.4 L14 6 L0 6 Z"
+                }
+            />
+        </svg>
+    );
+}
+
 function CandidateRow({
     node,
     candidate,
     groupLabel,
+    arrowEmphasis,
     onPreviewPv,
     onAddPvAsVariation,
 }: {
     node: KifuNode;
     candidate: StudyCandidate;
+    /** 盤に矢印を出している候補なら、その太さ・濃さ（行に同じ見た目の小さな矢印を添える）。 */
+    arrowEmphasis?: "primary" | "secondary";
     /** ボタンの読み上げで、どの局面の候補かを区別するための言葉。 */
     groupLabel: string;
     onPreviewPv: (request: StudyPvRequest) => void;
@@ -347,6 +388,9 @@ function CandidateRow({
             </span>
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                    {arrowEmphasis && (
+                        <ArrowSwatch emphasis={arrowEmphasis} side={node.positionAfter.turn} />
+                    )}
                     <span className="truncate text-sm font-medium text-wafuu-sumi">
                         {firstLabel ?? "（読み筋なし）"}
                     </span>
@@ -451,6 +495,7 @@ export function StudyCandidatesPanel({
     live,
     autoAnalyze,
     autoSwitchElsewhere = false,
+    arrows,
     recordAhead = null,
     readingSoon = false,
     onStartDeepAfterPass,
@@ -464,6 +509,7 @@ export function StudyCandidatesPanel({
 }: StudyCandidatesPanelProps): ReactElement {
     const autoAnalyzeId = useId();
     const autoAnalyzeStatusId = useId();
+    const arrowSwitchId = useId();
     const autoOn = autoAnalyze?.enabled ?? false;
     const autoFinished = autoAnalyze?.reading === STUDY_AUTO_ANALYZE_FINISHED;
     const isDeepHere = live !== undefined;
@@ -474,6 +520,24 @@ export function StudyCandidatesPanel({
     const mainNote = mainResult
         ? `${deeperResult && isStudyAutoReadLayer(deeperResult.layer) ? "自動読み・" : ""}${resultNote(mainResult)}`
         : null;
+
+    const shownCandidates = live
+        ? (live.preview?.candidates ?? [])
+        : (mainResult?.result.candidates ?? []);
+    const arrowPlan =
+        arrows?.enabled === true
+            ? studyCandidateArrowPlan(node, shownCandidates, arrows.count)
+            : [];
+    const arrowEmphasisOf = (rank: number): "primary" | "secondary" | undefined =>
+        arrowPlan.find((entry) => entry.rank === rank)?.arrow.emphasis;
+    const arrowSwitch = arrows && shownCandidates.length > 0 && (
+        <div className="flex items-center justify-end gap-2 px-1">
+            <label htmlFor={arrowSwitchId} className="text-xs text-muted-foreground">
+                矢印を表示
+            </label>
+            <Switch id={arrowSwitchId} checked={arrows.enabled} onCheckedChange={arrows.onChange} />
+        </div>
+    );
 
     const controls = (
         <>
@@ -579,6 +643,7 @@ export function StudyCandidatesPanel({
                 <p className="px-1 text-xs text-muted-foreground">{STUDY_AUTO_ANALYZE_FINISHED}</p>
             )}
             {!controlsLast && controls}
+            {arrowSwitch}
             {/* 読んでいる途中の候補。満足したら「止める」で、その時点の結果を残せる。 */}
             {live && (
                 <div className="flex flex-col gap-1 rounded-lg bg-wafuu-washi px-2 py-2">
@@ -624,6 +689,7 @@ export function StudyCandidatesPanel({
                                     node={node}
                                     candidate={candidate}
                                     groupLabel="途中の"
+                                    arrowEmphasis={arrowEmphasisOf(candidate.rank)}
                                     onPreviewPv={onPreviewPv}
                                     onAddPvAsVariation={onAddPvAsVariation}
                                 />
@@ -655,6 +721,7 @@ export function StudyCandidatesPanel({
                                     node={node}
                                     candidate={candidate}
                                     groupLabel=""
+                                    arrowEmphasis={arrowEmphasisOf(candidate.rank)}
                                     onPreviewPv={onPreviewPv}
                                     onAddPvAsVariation={onAddPvAsVariation}
                                 />

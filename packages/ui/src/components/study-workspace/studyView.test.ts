@@ -20,6 +20,7 @@ import {
     pickStudyDeeperResult,
     pickStudyPositionResult,
     resolveStudyLine,
+    studyCandidateArrowPlan,
     studyDeletableBranchHead,
     studyLineEvalHistory,
     studyMainLineIds,
@@ -246,6 +247,53 @@ describe("studyMetaEntries", () => {
             { key: "result", label: "結果", value: "後手の勝ち" },
             { key: "timeControl", label: "持ち時間", value: "180秒" },
             { key: "custom", label: "custom", value: "x" },
+        ]);
+    });
+});
+
+describe("studyCandidateArrowPlan", () => {
+    const node = { positionAfter: { turn: "gote" } } as Parameters<
+        typeof studyCandidateArrowPlan
+    >[0];
+    const candidate = (rank: number, move: string) => ({
+        rank,
+        score: null,
+        depth: 10,
+        seldepth: null,
+        pv: [move],
+    });
+
+    it("欄に並べている順の上から数え、1 つ目を太い矢印、2 つ目を細い矢印にする", () => {
+        expect(
+            studyCandidateArrowPlan(
+                node,
+                [candidate(3, "8c8d+"), candidate(1, "B*3c"), candidate(2, "2c2d")],
+                2,
+            ),
+        ).toEqual([
+            { rank: 3, arrow: { from: "8c", to: "8d", side: "gote", emphasis: "primary" } },
+            {
+                rank: 1,
+                arrow: {
+                    from: null,
+                    to: "3c",
+                    side: "gote",
+                    emphasis: "secondary",
+                    dropPiece: "B",
+                },
+            },
+        ]);
+    });
+
+    it("表示数が 1 なら 1 つ目だけ。パスの候補は描かず、次の候補を太くもしない", () => {
+        expect(
+            studyCandidateArrowPlan(node, [candidate(1, "2c2d"), candidate(2, "4c4d")], 1),
+        ).toHaveLength(1);
+        expect(studyCandidateArrowPlan(node, [candidate(1, "7g7g")], 1)).toEqual([]);
+        expect(
+            studyCandidateArrowPlan(node, [candidate(1, "pass"), candidate(2, "4c4d")], 2),
+        ).toEqual([
+            { rank: 2, arrow: { from: "4c", to: "4d", side: "gote", emphasis: "secondary" } },
         ]);
     });
 });

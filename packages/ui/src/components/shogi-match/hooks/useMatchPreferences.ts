@@ -1,6 +1,7 @@
 import type { Player } from "@shogi/app-core";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { ENGINE_THREADS_STORAGE_KEY } from "../constants";
+import { normalizeCandidateArrowSettings } from "../displaySettingsFields";
 import {
     AI_MATCH_TIME_CHOICES,
     AI_TIME_CHOICES,
@@ -27,7 +28,12 @@ import { DEFAULT_ENGINE_SEARCH_LIMITS, normalizeEngineSearchLimits } from "../ut
 import { isSameTimeSettings, normalizeTimeSettings } from "../utils/timeSettings";
 import { DISPLAY_SETTINGS_STORAGE_KEY } from "./useBoardPattern";
 import type { ClockSettings } from "./useClockManager";
-import { type UseLocalStorageReturn, useLocalStorage } from "./useLocalStorage";
+import {
+    dispatchLocalStorageSyncEvent,
+    type UseLocalStorageReturn,
+    useLocalStorage,
+    useStoredString,
+} from "./useLocalStorage";
 import { useNormalizedSettings } from "./useNormalizedSettings";
 
 const MATCH_SIDES_KEY = "shogi-match-sides";
@@ -109,6 +115,42 @@ const normalizeEngineThreads = (stored: EngineThreadSettings | number): EngineTh
 };
 
 type Setter<T> = UseLocalStorageReturn<T>[1];
+
+/**
+ * 候補手の矢印は研究ノートの盤に出すもので、研究ノートは通常の表示設定のキーを読む。観戦の表示設定は
+ * 別のキーに保存するので、矢印の項目だけは通常のキーから読み、通常のキーへ書く。
+ */
+function parseSharedArrowSettings(stored: string | null) {
+    try {
+        return normalizeCandidateArrowSettings(stored === null ? null : JSON.parse(stored));
+    } catch {
+        return normalizeCandidateArrowSettings(null);
+    }
+}
+
+/** 変えた矢印の項目だけを通常の表示設定に書く（変えていない項目は、別のタブで変えた値を残す）。 */
+function writeSharedArrowSettings(
+    changes: Partial<Pick<DisplaySettings, "showCandidateArrows" | "candidateArrowCount">>,
+): void {
+    if (Object.keys(changes).length === 0) return;
+    let base: unknown = null;
+    try {
+        base = JSON.parse(localStorage.getItem(DISPLAY_SETTINGS_STORAGE_KEY) ?? "null");
+    } catch {
+        // 壊れた値は捨てて既定値から書き直す（矢印の設定を変えられなくならないように）。
+    }
+    const merged = {
+        ...DEFAULT_DISPLAY_SETTINGS,
+        ...(typeof base === "object" && base !== null ? base : {}),
+        ...changes,
+    };
+    try {
+        localStorage.setItem(DISPLAY_SETTINGS_STORAGE_KEY, JSON.stringify(merged));
+        dispatchLocalStorageSyncEvent(DISPLAY_SETTINGS_STORAGE_KEY, "user");
+    } catch (error) {
+        console.warn("Failed to save the candidate arrow settings:", error);
+    }
+}
 
 interface UseMatchPreferencesOptions {
     screen: "play" | undefined;
@@ -245,6 +287,42 @@ export function useMatchPreferences({
         displaySettingsDefaults,
     );
 
+    // 観戦では、研究ノートが読む通常のキーの矢印の設定を購読する（別のタブで変えても追従する）。
+    const sharedDisplaySettings = useStoredString(DISPLAY_SETTINGS_STORAGE_KEY);
+    const displaySettings: DisplaySettings = {
+        ...displaySettingsDefaults,
+        ...storedDisplaySettings,
+        ...(spectateMode
+            ? parseSharedArrowSettings(sharedDisplaySettings)
+            : normalizeCandidateArrowSettings(storedDisplaySettings)),
+    };
+    const sharedArrows = parseSharedArrowSettings(sharedDisplaySettings);
+    const setSpectateDisplaySettings: Setter<DisplaySettings> = (next, source) => {
+        // 関数での更新は、同じバッチの前の更新に重ねられるよう、そのまま保存の仕組みに渡す。
+        // 矢印の項目を変える画面（表示設定の欄）は値で渡すので、共有のキーへ書くのは値のときだけでよい。
+        if (typeof next === "function") {
+            setDisplaySettings(
+                (previous) => next({ ...displaySettingsDefaults, ...previous, ...sharedArrows }),
+                source,
+            );
+            return;
+        }
+        const value = next;
+        const arrows = normalizeCandidateArrowSettings(value);
+        // 矢印を操作したときだけ書く。ほかの項目の変更で、画面に残っている古い矢印の値を研究ノート側へ
+        // 書き戻さないため。「なし」はスイッチだけを切り（数は別のタブで変えた値を残す）、数を選んだら
+        // スイッチと数の両方を書く。
+        if (
+            arrows.showCandidateArrows !== displaySettings.showCandidateArrows ||
+            arrows.candidateArrowCount !== displaySettings.candidateArrowCount
+        ) {
+            writeSharedArrowSettings(
+                arrows.showCandidateArrows ? arrows : { showCandidateArrows: false },
+            );
+        }
+        setDisplaySettings(value, source);
+    };
+
     // 古い localStorage データに後から足したフィールドが無くても、既定値で補う。
     const [storedAnalysisSettings, setAnalysisSettings] = useLocalStorage<AnalysisSettings>(
         "shogi-analysis-settings",
@@ -290,8 +368,8 @@ export function useMatchPreferences({
         setTimeSettings,
         hintMultiPv: normalizeHintMultiPv(storedHintMultiPv),
         setHintMultiPv,
-        displaySettings: { ...displaySettingsDefaults, ...storedDisplaySettings },
-        setDisplaySettings,
+        displaySettings,
+        setDisplaySettings: spectateMode ? setSpectateDisplaySettings : setDisplaySettings,
         analysisSettings: { ...DEFAULT_ANALYSIS_SETTINGS, ...storedAnalysisSettings },
         setAnalysisSettings,
         analysisEngineId,
