@@ -34,9 +34,10 @@ import { type HandInfo, MobileBoardSection } from "./shogi-match/components/Mobi
 import { PCBoardContent } from "./shogi-match/components/PCBoardContent";
 import { PvPreviewDialog } from "./shogi-match/components/PvPreviewDialog";
 import { TOOLTIP_DELAY_DURATION_MS } from "./shogi-match/constants";
+import { normalizeCandidateArrowSettings } from "./shogi-match/displaySettingsFields";
 import { DISPLAY_SETTINGS_STORAGE_KEY } from "./shogi-match/hooks/useBoardPattern";
 import { useKifuKeyboardNavigation } from "./shogi-match/hooks/useKifuKeyboardNavigation";
-import { useLocalStorage } from "./shogi-match/hooks/useLocalStorage";
+import { readStoredValue, useLocalStorage } from "./shogi-match/hooks/useLocalStorage";
 import { useIsMobile, useMediaQuery } from "./shogi-match/hooks/useMediaQuery";
 import { useMoveShadow } from "./shogi-match/hooks/useMoveShadow";
 import {
@@ -120,7 +121,7 @@ import {
     pickStudyPositionResult,
     type StudyStructureTree,
     studyBestCandidate,
-    studyCandidateArrows,
+    studyCandidateArrowPlan,
     studyFirstMoveLabel,
     studyLimitsLabel,
     studyMoveLabel,
@@ -314,7 +315,11 @@ export function StudyWorkspaceView({
         DISPLAY_SETTINGS_STORAGE_KEY,
         DEFAULT_DISPLAY_SETTINGS,
     );
-    const displaySettings = { ...DEFAULT_DISPLAY_SETTINGS, ...storedDisplaySettings };
+    const displaySettings = {
+        ...DEFAULT_DISPLAY_SETTINGS,
+        ...storedDisplaySettings,
+        ...normalizeCandidateArrowSettings(storedDisplaySettings),
+    };
 
     const [flipBoard, setFlipBoard] = useState(false);
     const [mobileTab, setMobileTab] = useState<StudyMobileTab>("candidates");
@@ -1267,11 +1272,11 @@ export function StudyWorkspaceView({
         getLegalSet,
     });
     const candidateArrows = displaySettings.showCandidateArrows
-        ? studyCandidateArrows(
+        ? studyCandidateArrowPlan(
               currentNode,
               studyShownCandidates(insights.positionResult, insights.deeperResult, liveHere),
               displaySettings.candidateArrowCount,
-          )
+          ).map(({ arrow }) => arrow)
         : [];
     const boardProps = {
         grid,
@@ -1410,8 +1415,12 @@ export function StudyWorkspaceView({
             arrows={{
                 enabled: displaySettings.showCandidateArrows,
                 count: displaySettings.candidateArrowCount,
+                // 別のタブで変えた表示設定を書き戻さないよう、保存してある最新の値に重ねる。
                 onChange: (enabled) =>
-                    setStoredDisplaySettings({ ...displaySettings, showCandidateArrows: enabled }),
+                    setStoredDisplaySettings((previous) => ({
+                        ...readStoredValue(DISPLAY_SETTINGS_STORAGE_KEY, previous),
+                        showCandidateArrows: enabled,
+                    })),
             }}
             // スマートフォンは帯に記録を出すので、ここには添えない。
             recordAhead={isMobile ? null : recordAhead}

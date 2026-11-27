@@ -26,6 +26,7 @@ import {
     formatStudyScore,
     type StudyPositionResult,
     studyBestCandidate,
+    studyCandidateArrowPlan,
     studyFirstMoveLabel,
     studyScoreSide,
 } from "./studyView";
@@ -523,18 +524,12 @@ export function StudyCandidatesPanel({
     const shownCandidates = live
         ? (live.preview?.candidates ?? [])
         : (mainResult?.result.candidates ?? []);
-    // 盤の矢印は、出している候補の上から数える（順位の番号が飛んでいても、上の 2 つに付ける）。
-    const arrowRanks =
+    const arrowPlan =
         arrows?.enabled === true
-            ? [...shownCandidates]
-                  .map((candidate) => candidate.rank)
-                  .sort((a, b) => a - b)
-                  .slice(0, arrows.count)
+            ? studyCandidateArrowPlan(node, shownCandidates, arrows.count)
             : [];
-    const arrowEmphasisOf = (rank: number): "primary" | "secondary" | undefined => {
-        const index = arrowRanks.indexOf(rank);
-        return index < 0 ? undefined : index === 0 ? "primary" : "secondary";
-    };
+    const arrowEmphasisOf = (rank: number): "primary" | "secondary" | undefined =>
+        arrowPlan.find((entry) => entry.rank === rank)?.arrow.emphasis;
     const arrowSwitch = arrows && shownCandidates.length > 0 && (
         <div className="flex items-center justify-end gap-2 px-1">
             <label htmlFor={arrowSwitchId} className="text-xs text-muted-foreground">

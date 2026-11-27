@@ -1,0 +1,50 @@
+import { act, renderHook } from "@testing-library/react";
+import { beforeEach, describe, expect, it } from "vitest";
+import { DISPLAY_SETTINGS_STORAGE_KEY } from "./useBoardPattern";
+import { useMatchPreferences } from "./useMatchPreferences";
+
+const options = (spectateMode: boolean) => ({
+    screen: undefined,
+    spectateMode,
+    defaultSides: {
+        sente: { role: "human" as const },
+        gote: { role: "human" as const },
+    },
+    initialMainTimeMs: 0,
+    initialByoyomiMs: 0,
+    engineOptions: [],
+});
+
+describe("useMatchPreferences の候補手の矢印", () => {
+    beforeEach(() => localStorage.clear());
+
+    it("観戦の設定で変えた矢印の表示数は、研究ノートが読む通常の表示設定に書く", () => {
+        localStorage.setItem(
+            DISPLAY_SETTINGS_STORAGE_KEY,
+            JSON.stringify({ showBoardLabels: false, candidateArrowCount: 2 }),
+        );
+        const { result } = renderHook(() => useMatchPreferences(options(true)));
+        expect(result.current.displaySettings.candidateArrowCount).toBe(2);
+
+        act(() => {
+            result.current.setDisplaySettings({
+                ...result.current.displaySettings,
+                candidateArrowCount: 1,
+            });
+        });
+
+        const shared = JSON.parse(localStorage.getItem(DISPLAY_SETTINGS_STORAGE_KEY) ?? "{}");
+        expect(shared).toMatchObject({ showBoardLabels: false, candidateArrowCount: 1 });
+        expect(result.current.displaySettings.candidateArrowCount).toBe(1);
+    });
+
+    it("保存してある矢印の値が壊れていれば既定値で読む", () => {
+        localStorage.setItem(
+            DISPLAY_SETTINGS_STORAGE_KEY,
+            JSON.stringify({ showCandidateArrows: "yes", candidateArrowCount: 3 }),
+        );
+        const { result } = renderHook(() => useMatchPreferences(options(false)));
+        expect(result.current.displaySettings.showCandidateArrows).toBe(true);
+        expect(result.current.displaySettings.candidateArrowCount).toBe(2);
+    });
+});

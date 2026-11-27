@@ -27,6 +27,16 @@ function parseStoredValue<T>(key: string, stored: string | null, defaultValue: T
     }
 }
 
+/** 保存してある最新の値（無い・読めない・使えないときは `fallback`）。 */
+export function readStoredValue<T>(key: string, fallback: T): T {
+    if (typeof window === "undefined") return fallback;
+    try {
+        return parseStoredValue(key, localStorage.getItem(key), fallback);
+    } catch {
+        return fallback;
+    }
+}
+
 function isSameStoredValue<T>(left: T, right: T): boolean {
     return JSON.stringify(left) === JSON.stringify(right);
 }

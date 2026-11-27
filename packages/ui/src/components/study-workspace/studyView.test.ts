@@ -20,7 +20,7 @@ import {
     pickStudyDeeperResult,
     pickStudyPositionResult,
     resolveStudyLine,
-    studyCandidateArrows,
+    studyCandidateArrowPlan,
     studyDeletableBranchHead,
     studyLineEvalHistory,
     studyMainLineIds,
@@ -251,8 +251,10 @@ describe("studyMetaEntries", () => {
     });
 });
 
-describe("studyCandidateArrows", () => {
-    const node = { positionAfter: { turn: "gote" } } as Parameters<typeof studyCandidateArrows>[0];
+describe("studyCandidateArrowPlan", () => {
+    const node = { positionAfter: { turn: "gote" } } as Parameters<
+        typeof studyCandidateArrowPlan
+    >[0];
     const candidate = (rank: number, move: string) => ({
         rank,
         score: null,
@@ -261,24 +263,36 @@ describe("studyCandidateArrows", () => {
         pv: [move],
     });
 
-    it("順位の上から数え、1 つ目を太い矢印、2 つ目を細い矢印にする", () => {
-        const arrows = studyCandidateArrows(
-            node,
-            [candidate(3, "2c2d"), candidate(2, "B*3c"), candidate(1, "8c8d+")],
-            2,
-        );
-        expect(arrows).toEqual([
-            { from: "8c", to: "8d", side: "gote", emphasis: "primary" },
-            { from: null, to: "3c", side: "gote", emphasis: "secondary", dropPiece: "B" },
+    it("欄に並べている順の上から数え、1 つ目を太い矢印、2 つ目を細い矢印にする", () => {
+        expect(
+            studyCandidateArrowPlan(
+                node,
+                [candidate(3, "8c8d+"), candidate(1, "B*3c"), candidate(2, "2c2d")],
+                2,
+            ),
+        ).toEqual([
+            { rank: 3, arrow: { from: "8c", to: "8d", side: "gote", emphasis: "primary" } },
+            {
+                rank: 1,
+                arrow: {
+                    from: null,
+                    to: "3c",
+                    side: "gote",
+                    emphasis: "secondary",
+                    dropPiece: "B",
+                },
+            },
         ]);
     });
 
-    it("表示数が 1 なら第一候補だけ、パスの候補は描かない", () => {
+    it("表示数が 1 なら 1 つ目だけ。パスの候補は描かず、次の候補を太くもしない", () => {
         expect(
-            studyCandidateArrows(node, [candidate(1, "2c2d"), candidate(2, "4c4d")], 1),
+            studyCandidateArrowPlan(node, [candidate(1, "2c2d"), candidate(2, "4c4d")], 1),
         ).toHaveLength(1);
-        expect(studyCandidateArrows(node, [candidate(1, "pass"), candidate(2, "4c4d")], 2)).toEqual(
-            [{ from: "4c", to: "4d", side: "gote", emphasis: "secondary" }],
-        );
+        expect(
+            studyCandidateArrowPlan(node, [candidate(1, "pass"), candidate(2, "4c4d")], 2),
+        ).toEqual([
+            { rank: 2, arrow: { from: "4c", to: "4d", side: "gote", emphasis: "secondary" } },
+        ]);
     });
 });

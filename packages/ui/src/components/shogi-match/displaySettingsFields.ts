@@ -22,9 +22,24 @@ export const CANDIDATE_ARROW_OPTIONS: ReadonlyArray<{ value: "0" | "1" | "2"; la
     { value: "2", label: "2" },
 ];
 
+type CandidateArrowSettings = Pick<DisplaySettings, "showCandidateArrows" | "candidateArrowCount">;
+
+/** 保存してあった矢印の設定を、壊れた値・古いデータでも使える値にする。 */
+export function normalizeCandidateArrowSettings(stored: unknown): CandidateArrowSettings {
+    const value = (typeof stored === "object" && stored !== null ? stored : {}) as Partial<
+        Record<keyof CandidateArrowSettings, unknown>
+    >;
+    return {
+        showCandidateArrows:
+            typeof value.showCandidateArrows === "boolean" ? value.showCandidateArrows : true,
+        candidateArrowCount: value.candidateArrowCount === 1 ? 1 : 2,
+    };
+}
+
 /** 「矢印の表示数」の選択肢の値。スイッチを切っていれば「なし」。 */
 export function candidateArrowOption(settings: DisplaySettings): "0" | "1" | "2" {
-    return settings.showCandidateArrows ? (String(settings.candidateArrowCount) as "1" | "2") : "0";
+    const { showCandidateArrows, candidateArrowCount } = normalizeCandidateArrowSettings(settings);
+    return showCandidateArrows ? (String(candidateArrowCount) as "1" | "2") : "0";
 }
 
 /**

@@ -247,6 +247,24 @@ describe("StudyWorkspaceView", () => {
         });
     });
 
+    it("「矢印を表示」は、別のタブで保存した表示設定を書き戻さない", () => {
+        const { doc, ids } = createTestStudy();
+        const analyzed = applyStudyOps(doc, [
+            { type: "ensureLayer", spec: TEST_LAYER_SPEC, display: { label: "テスト" } },
+            putScoreOp(ids[0], cp(30), { pv: ["7g7f", "3c3d"] }),
+        ]);
+        render(<Harness initialDoc={analyzed} />);
+        // 別のタブが着手音を切った（この画面にはまだ届いていない）。
+        localStorage.setItem("shogi-display-settings", JSON.stringify({ enableSound: false }));
+
+        fireEvent.click(screen.getByRole("switch", { name: "矢印を表示" }));
+
+        expect(JSON.parse(localStorage.getItem("shogi-display-settings") ?? "{}")).toMatchObject({
+            enableSound: false,
+            showCandidateArrows: false,
+        });
+    });
+
     it("未解析のノートでは「全体を解析」が主操作として出る", () => {
         const analysis = createAnalysis();
         render(<Harness initialDoc={createTestStudy().doc} analysis={analysis} />);
