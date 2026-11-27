@@ -441,3 +441,20 @@ export async function createStudyFromKifuTree(
             }).doc,
     });
 }
+
+/**
+ * 研究ノートから写した文書（`copyStudyDocument`）を、新しいノートとして保存する。
+ * 写した文書の ID は使わず、新しく振り直す（同じ文書を 2 回保存しても別のノートになる）。
+ */
+export function createStudyFromDocument(
+    doc: StudyDocument,
+    deps: StudyEntryDeps,
+): Promise<OpenOrCreateStudyResult> {
+    return openOrCreateStudy({
+        sync: deps.sync,
+        api: deps.api,
+        onUnauthorized: deps.onUnauthorized,
+        origin: { kind: "paste", ref: null },
+        build: (id) => ({ ...doc, id, origin: { kind: "paste", ref: null } }),
+    });
+}

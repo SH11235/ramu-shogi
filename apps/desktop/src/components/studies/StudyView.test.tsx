@@ -82,6 +82,7 @@ const renderView = (sync: StudySync, studyId = STUDY_ID) =>
             engineOptions={engineOptions}
             onBackToList={vi.fn()}
             onBackToLocal={vi.fn()}
+            onOpenStudy={vi.fn()}
             onPlayFromPosition={vi.fn()}
         />,
     );
@@ -193,6 +194,7 @@ describe("StudyView（Desktop の研究ノートの画面）", () => {
                 engineOptions={engineOptions}
                 onBackToList={onBackToList}
                 onBackToLocal={vi.fn()}
+                onOpenStudy={vi.fn()}
                 onPlayFromPosition={vi.fn()}
             />,
         );

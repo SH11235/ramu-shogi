@@ -123,7 +123,7 @@ function ImportSection({
             <p className="text-sm text-muted-foreground">
                 棋譜を取り込んで全体を解析すると、見直すべき手が自動で並びます。解析結果・変化・コメントは自動で保存されます。
             </p>
-            <StudyImportForm onImport={onImport} />
+            <StudyImportForm onImport={onImport} sideBySide />
             <div className="flex flex-col gap-2 border-t border-border pt-3">
                 <p className="text-sm text-muted-foreground">ほかの棋譜から作る</p>
                 <div className="flex flex-col gap-2 sm:flex-row">

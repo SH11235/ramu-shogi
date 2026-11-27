@@ -125,6 +125,7 @@ export function StudiesView({
                 </p>
                 <StudyImportForm
                     onImport={handleImport}
+                    sideBySide
                     storageNote="読んだ棋譜は、この端末の中で研究ノートになります。"
                 />
             </section>

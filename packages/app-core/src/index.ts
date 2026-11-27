@@ -265,6 +265,14 @@ export {
     createStudyLayerRef,
     STUDY_ALTERNATIVE_PV_LENGTH,
 } from "./study/analysis";
+// study/copy
+export type {
+    StudyCopyOptions,
+    StudyCopyRange,
+    StudyCopySelection,
+    StudyCopySummary,
+} from "./study/copy";
+export { copyStudyDocument, summarizeStudyCopy } from "./study/copy";
 // study/doc-diff
 export { diffStudyDocuments } from "./study/doc-diff";
 // study/highlights

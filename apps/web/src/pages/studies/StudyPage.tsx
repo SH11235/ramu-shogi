@@ -12,6 +12,7 @@ import type {
     StudyWorkspaceViewState,
 } from "@shogi/ui";
 import { downloadTextFile, NnueLibraryDialog, StudyWorkspace } from "@shogi/ui";
+import type { StudyKifuSource } from "@shogi/ui/components/study-workspace/studyImport";
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import type { ReactElement, ReactNode } from "react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
@@ -29,6 +30,7 @@ import {
     readStudyCommentDrafts,
     removeStudyCommentDrafts,
 } from "../../lib/studyDrafts";
+import { createStudyFromDocument, createStudyFromKifuSource } from "../../lib/studyEntry";
 import { ensureStudySession, getStudySync } from "../../lib/studySync";
 import { createWebWasmEngineClient } from "../../platform/wasm-engine-client";
 import { StudyShareDialog } from "./StudyShareDialog";
@@ -158,6 +160,17 @@ export default function StudyPage(): ReactElement {
     const { studyId } = routeApi.useParams();
     const navigate = useNavigate();
     const playFromPosition = usePlayFromPosition();
+    // 閲覧のみのノート（他の人の公開ノート）からも作れる。作ったノートは自分のノートになる。
+    const newNote = {
+        onCreateFromNote: async (doc: StudyDocument): Promise<void> => {
+            const { studyId: created } = await createStudyFromDocument(doc, { sync });
+            await navigate({ to: "/studies/$studyId", params: { studyId: created } });
+        },
+        onImport: async (source: StudyKifuSource): Promise<void> => {
+            const { studyId: created } = await createStudyFromKifuSource(source, { sync });
+            await navigate({ to: "/studies/$studyId", params: { studyId: created } });
+        },
+    };
     const { session, isLoadingSession, sessionError, refreshSession } = useAuthSession();
     // 取り直しに失敗して前の値が残っているだけのときは、その値を同期エンジンへ伝え直さない。
     const sessionConfirmed = sessionError === null;
@@ -719,6 +732,7 @@ export default function StudyPage(): ReactElement {
                         key={studyId}
                         doc={state.doc}
                         readOnly
+                        newNote={newNote}
                         onApplyOps={() => Promise.resolve(false)}
                         saveStatus={saveStatus}
                         originLink={renderOriginLink(state.doc.origin)}
@@ -745,6 +759,7 @@ export default function StudyPage(): ReactElement {
                             open: shareStudyId === studyId,
                             onOpen: () => setShareStudyId(studyId),
                         }}
+                        newNote={newNote}
                         originLink={renderOriginLink(state.doc.origin)}
                         onPlayFromPosition={playFromPosition}
                         onSaveKifuFile={downloadTextFile}

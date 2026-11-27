@@ -17,6 +17,10 @@ import type {
 } from "@shogi/ui";
 import { NnueLibraryDialog, StudyWorkspace } from "@shogi/ui";
 import { Button } from "@shogi/ui/components/button";
+import {
+    createStudyFromDocument,
+    createStudyFromKifuSource,
+} from "@shogi/ui/components/study-workspace/studyEntry";
 import type { ReactElement } from "react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { desktopSpeedSupport } from "../../platform/engineClient";
@@ -29,6 +33,8 @@ interface Props {
     engineOptions: EngineOption[];
     onBackToList: () => void;
     onBackToLocal: () => void;
+    /** 作った研究ノートを開く（「新しいノート」）。 */
+    onOpenStudy: (studyId: string) => void;
     /** 「この局面から対局」。いま見ている局面を、ローカル対局へ引き継ぐ。 */
     onPlayFromPosition: (position: PlayFromPosition) => void;
     /** 同期エンジンの差し替え（テスト用）。省略時はアプリのもの。 */
@@ -83,6 +89,7 @@ export function StudyView({
     engineOptions,
     onBackToList,
     onBackToLocal,
+    onOpenStudy,
     onPlayFromPosition,
     sync = getDesktopStudySync(),
 }: Props): ReactElement {
@@ -281,6 +288,22 @@ export function StudyView({
                         saveStatus={saveStatus}
                         onRetrySave={() => void sync.retry(studyId).catch(() => undefined)}
                         onPlayFromPosition={onPlayFromPosition}
+                        newNote={{
+                            onCreateFromNote: async (doc) => {
+                                const { studyId: created } = await createStudyFromDocument(doc, {
+                                    sync,
+                                });
+                                onOpenStudy(created);
+                            },
+                            onImport: async (source) => {
+                                const { studyId: created } = await createStudyFromKifuSource(
+                                    source,
+                                    { sync },
+                                );
+                                onOpenStudy(created);
+                            },
+                            storageNote: "読んだ棋譜は、この端末の中で研究ノートになります。",
+                        }}
                         // 保存先はこの端末だけ（ログインの仕組みが無い）。
                         localOnly
                         fetchLegalMoves={(sfen, moves, options) =>

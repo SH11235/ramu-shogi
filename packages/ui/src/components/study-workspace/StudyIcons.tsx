@@ -103,6 +103,15 @@ export function ShareIcon({ className }: IconProps): ReactElement {
     );
 }
 
+/** 足す（十字）。 */
+export function PlusIcon({ className }: IconProps): ReactElement {
+    return (
+        <StrokeIcon className={className}>
+            <path d="M12 5v14M5 12h14" />
+        </StrokeIcon>
+    );
+}
+
 /** メニュー（3 本線）。 */
 export function MenuIcon({ className }: IconProps): ReactElement {
     return (
