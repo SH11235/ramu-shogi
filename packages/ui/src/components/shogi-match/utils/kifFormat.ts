@@ -8,6 +8,7 @@ import type { BoardState, Piece, PieceType, Player, PositionState, Square } from
 import {
     applyMoveAllowingStudyPass,
     canPromoteOnMove,
+    dropNeedsMarker,
     relativeMoveNotation,
 } from "@shogi/app-core";
 import { parseSfen } from "./kifParser";
@@ -380,7 +381,9 @@ export function formatMoveSimple(
         const to = usiMove.slice(2, 4);
         const toSimple = squareToSimple(to);
         const pieceName = PIECE_NAMES[pieceChar] ?? pieceChar;
-        return `${mark}${toSimple}${pieceName}打`;
+        // 連盟の表記に合わせ、盤上の同じ駒もそこへ動けるときだけ「打」を書く（KIF の書き出しは常に書く）。
+        const dropText = dropNeedsMarker(board, pieceChar, turn, to as Square) ? "打" : "";
+        return `${mark}${toSimple}${pieceName}${dropText}`;
     }
 
     // 通常移動: "7g7f" or "7g7f+"

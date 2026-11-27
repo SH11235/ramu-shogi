@@ -192,7 +192,7 @@ describe("評価値つき CSA の取り込み (実フックの結合)", () => {
             ].join("\n"),
         );
 
-        expect(kifuRows()).toEqual(["1|☖5五角打|-35|3秒|2e2d", "2|☗2四歩(25)|+60|4秒|"]);
+        expect(kifuRows()).toEqual(["1|☖5五角|-35|3秒|2e2d", "2|☗2四歩(25)|+60|4秒|"]);
         expect(graphData()).toEqual([
             [0, null, 0, null],
             [1, "gote", -35, null],

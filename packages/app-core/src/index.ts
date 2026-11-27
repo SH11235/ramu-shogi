@@ -102,7 +102,7 @@ export {
     truncateFromCurrent,
 } from "./game/kifu-tree";
 // game/move-notation
-export { canPromoteOnMove, relativeMoveNotation } from "./game/move-notation";
+export { canPromoteOnMove, dropNeedsMarker, relativeMoveNotation } from "./game/move-notation";
 // game/position-service
 export type {
     BoardStateJson,

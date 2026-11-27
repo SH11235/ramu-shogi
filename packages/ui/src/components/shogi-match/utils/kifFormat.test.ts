@@ -185,10 +185,10 @@ describe("formatMoveSimple", () => {
         expect(formatMoveSimple("8h2b+", "sente", board)).toBe("☗2二角成(88)");
     });
 
-    it("駒打ちを変換する", () => {
+    it("盤上の同じ駒が動けない升への駒打ちには打を付けない（連盟の表記）", () => {
         const board = createEmptyBoard();
-        expect(formatMoveSimple("P*5e", "sente", board)).toBe("☗5五歩打");
-        expect(formatMoveSimple("G*4b", "gote", board)).toBe("☖4二金打");
+        expect(formatMoveSimple("P*5e", "sente", board)).toBe("☗5五歩");
+        expect(formatMoveSimple("G*4b", "gote", board)).toBe("☖4二金");
     });
 
     it("同の表記を使用する", () => {
@@ -234,6 +234,7 @@ describe("formatMoveSimple", () => {
     it("盤上の駒が動ける升への駒打ちは打、盤上の駒の移動には何も付けない", () => {
         const board = placePiece(createEmptyBoard(), "8d", "sente", "S");
         expect(formatMoveSimple("S*7e", "sente", board)).toBe("☗7五銀打");
+        expect(formatMoveSimple("S*7d", "sente", board)).toBe("☗7四銀");
         expect(formatMoveSimple("8d7e", "sente", board)).toBe("☗7五銀(84)");
     });
 });

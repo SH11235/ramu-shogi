@@ -5,21 +5,57 @@
  * - まず動きの向き（上・寄・引）だけで決まるならそれを使う。
  * - 決まらなければ左・右（金・銀・成駒がまっすぐ上がる手は直）を使う。
  * - それでも決まらなければ、同じ向きに動く駒の中での左・右と向きを組み合わせる（「右上」など）。
- * - 飛・角・竜・馬は直を使わず、左右と向きを組み合わせない（2 枚の左右の位置で決める）。
+ * - 竜・馬は直を使わず、左右と向きを組み合わせない（2 枚の左右の位置で決める）。連盟の表記に
+ *   記述の無い飛・角も同じ扱いにする。
  * - 左右・上下は指す側から見る（後手は盤の向きと逆）。
  *
  * 動ける駒は、指した後に自玉へ利きが残らない手だけで数える（ピンされた駒は数えない）。
  * `parseKifPv` が移動元なしの読み筋を解決するときの数え方と揃えている。
  */
 
-import { BOARD_FILES, BOARD_RANKS, type BoardState, type Square } from "./board";
-import { canMoveOnBoard } from "./csa-move";
+import {
+    BOARD_FILES,
+    BOARD_RANKS,
+    type BoardState,
+    type PieceType,
+    type Player,
+    type Square,
+} from "./board";
+import { canMoveOnBoard, isSquare } from "./csa-move";
 
 const fileOf = (square: Square): number => Number(square[0]);
 const rankOf = (square: Square): number =>
     BOARD_RANKS.indexOf(square[1] as (typeof BOARD_RANKS)[number]) + 1;
 
 type Vertical = "上" | "寄" | "引";
+
+/**
+ * 持ち駒を `to` へ打つ手に「打」を書くか。連盟の表記では、盤上の同じ駒も `to` へ動けて
+ * 区別が要るときだけ書く。
+ */
+export function dropNeedsMarker(
+    board: BoardState,
+    type: PieceType,
+    owner: Player,
+    to: Square,
+): boolean {
+    if (!isSquare(to)) return false;
+    for (const file of BOARD_FILES) {
+        for (const rank of BOARD_RANKS) {
+            const square = `${file}${rank}` as Square;
+            const piece = board[square];
+            if (
+                piece?.owner === owner &&
+                piece.type === type &&
+                !piece.promoted &&
+                canMoveOnBoard(board, square, to)
+            ) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
 
 /** `from` → `to` の盤上の移動で成ることができるか（成らない手に「不成」を書くかどうかの判定）。 */
 export function canPromoteOnMove(board: BoardState, from: Square, to: Square): boolean {
@@ -32,6 +68,7 @@ export function canPromoteOnMove(board: BoardState, from: Square, to: Square): b
 
 /** 盤上の駒の移動 `from` → `to` に付ける相対表記。区別が要らなければ空文字列。 */
 export function relativeMoveNotation(board: BoardState, from: Square, to: Square): string {
+    if (!isSquare(from) || !isSquare(to)) return "";
     const piece = board[from];
     if (!piece) return "";
     const sente = piece.owner === "sente";
@@ -75,7 +112,10 @@ export function relativeMoveNotation(board: BoardState, from: Square, to: Square
 
     if (piece.type === "R" || piece.type === "B") return horizontalAmong(candidates) ?? "";
 
-    if (vertical === "上" && fileOf(from) === fileOf(to) && piece.type !== "N") return "直";
+    // 直は金・銀と成駒の手。成っていない桂はまっすぐ上がれない。
+    if (vertical === "上" && fileOf(from) === fileOf(to) && (piece.type !== "N" || promoted)) {
+        return "直";
+    }
     const horizontal = horizontalAmong(candidates);
     if (horizontal) return horizontal;
     const combined = horizontalAmong(sameVertical);
