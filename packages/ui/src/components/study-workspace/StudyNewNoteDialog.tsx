@@ -10,7 +10,7 @@ import {
 } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "../button";
 import {
     Dialog,
@@ -135,7 +135,11 @@ function NewNoteBody({
     onImportErrorChange: (error: string | null) => void;
     onDone: () => void;
 }): ReactElement {
-    const [tab, setTab] = useState<NewNoteTab>("note");
+    // 取り込みに失敗していれば、理由の出る面から始める（閉じている間に失敗したときも見えるように）。
+    const [tab, setTab] = useState<NewNoteTab>(importError ? "import" : "note");
+    useEffect(() => {
+        if (importError) setTab("import");
+    }, [importError]);
     const tabsId = useId();
     const tabRefs = useRef<Record<NewNoteTab, HTMLButtonElement | null>>({
         note: null,

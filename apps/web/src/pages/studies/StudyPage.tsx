@@ -160,15 +160,30 @@ export default function StudyPage(): ReactElement {
     const { studyId } = routeApi.useParams();
     const navigate = useNavigate();
     const playFromPosition = usePlayFromPosition();
+    // 作り終えたときに、作り始めたノートをまだ開いていれば、新しいノートへ移る（保存を待つ間に
+    // 別の画面へ移っていたら、そこから勝手に動かさない）。
+    const shownStudyRef = useRef<string | null>(studyId);
+    useEffect(() => {
+        shownStudyRef.current = studyId;
+        return () => {
+            shownStudyRef.current = null;
+        };
+    }, [studyId]);
+    const openCreated = async (startedFrom: string, created: string): Promise<void> => {
+        if (shownStudyRef.current !== startedFrom) return;
+        await navigate({ to: "/studies/$studyId", params: { studyId: created } });
+    };
     // 閲覧のみのノート（他の人の公開ノート）からも作れる。作ったノートは自分のノートになる。
     const newNote = {
         onCreateFromNote: async (doc: StudyDocument): Promise<void> => {
+            const startedFrom = studyId;
             const { studyId: created } = await createStudyFromDocument(doc, { sync });
-            await navigate({ to: "/studies/$studyId", params: { studyId: created } });
+            await openCreated(startedFrom, created);
         },
         onImport: async (source: StudyKifuSource): Promise<void> => {
+            const startedFrom = studyId;
             const { studyId: created } = await createStudyFromKifuSource(source, { sync });
-            await navigate({ to: "/studies/$studyId", params: { studyId: created } });
+            await openCreated(startedFrom, created);
         },
     };
     const { session, isLoadingSession, sessionError, refreshSession } = useAuthSession();

@@ -96,6 +96,17 @@ export function StudyView({
     const [state, setState] = useState<LoadState>({ status: "loading" });
     const [notice, setNotice] = useState<{ id: number; text: string; type: "error" } | null>(null);
     const [isNnueLibraryOpen, setIsNnueLibraryOpen] = useState(false);
+    // 作り終えたときに、作り始めたノートをまだ開いていれば、新しいノートへ移る。
+    const shownStudyRef = useRef<string | null>(studyId);
+    useEffect(() => {
+        shownStudyRef.current = studyId;
+        return () => {
+            shownStudyRef.current = null;
+        };
+    }, [studyId]);
+    const openCreated = (startedFrom: string, created: string): void => {
+        if (shownStudyRef.current === startedFrom) onOpenStudy(created);
+    };
     const saveStatus = useSyncExternalStore(
         (listener) => sync.subscribeStatus(studyId, listener),
         () => sync.getStatus(studyId),
@@ -290,17 +301,19 @@ export function StudyView({
                         onPlayFromPosition={onPlayFromPosition}
                         newNote={{
                             onCreateFromNote: async (doc) => {
+                                const startedFrom = studyId;
                                 const { studyId: created } = await createStudyFromDocument(doc, {
                                     sync,
                                 });
-                                onOpenStudy(created);
+                                openCreated(startedFrom, created);
                             },
                             onImport: async (source) => {
+                                const startedFrom = studyId;
                                 const { studyId: created } = await createStudyFromKifuSource(
                                     source,
                                     { sync },
                                 );
-                                onOpenStudy(created);
+                                openCreated(startedFrom, created);
                             },
                             storageNote: "読んだ棋譜は、この端末の中で研究ノートになります。",
                         }}

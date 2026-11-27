@@ -1521,7 +1521,9 @@ export function StudyWorkspaceView({
         : undefined;
     const passFromCurrent = editingDisabled ? undefined : () => void editing.passFromCurrent();
     const openShare = shareDialog && !readOnly ? shareDialog.onOpen : undefined;
-    const openNewNote = newNote ? () => setIsNewNoteOpen(true) : undefined;
+    // ログインが切れている間は出さない（持ち主を確かめられないノートを、このあとログインする別の
+    // アカウントのノートとして写させない）。
+    const openNewNote = newNote && !locked ? () => setIsNewNoteOpen(true) : undefined;
     const mobileMenu = (
         <StudyMobileMenu
             onOpenChange={setIsMobileMenuOpen}
@@ -1756,7 +1758,7 @@ export function StudyWorkspaceView({
 
             <StudyNotice message={message} onDismiss={() => onMessageChange(null)} />
 
-            {newNote && (
+            {newNote && !locked && (
                 <StudyNewNoteDialog
                     open={isNewNoteOpen}
                     onOpenChange={setIsNewNoteOpen}

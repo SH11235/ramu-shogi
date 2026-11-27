@@ -2075,7 +2075,7 @@ describe("StudyWorkspaceView", () => {
             ]);
         });
 
-        it("閲覧のみのノートからも作れる。渡されなければ出さない", () => {
+        it("閲覧のみのノートからも作れる。編集できない間と、渡されなければ出さない", () => {
             const view = render(
                 <Harness
                     initialDoc={createTestStudy().doc}
@@ -2085,6 +2085,16 @@ describe("StudyWorkspaceView", () => {
             );
             expect(openDialog()).toBeTruthy();
             view.unmount();
+            // ログインが切れている間は出さない（持ち主を確かめられないノートを写させない）。
+            const lockedView = render(
+                <Harness
+                    initialDoc={createTestStudy().doc}
+                    locked
+                    newNote={{ onCreateFromNote: vi.fn(), onImport: vi.fn() }}
+                />,
+            );
+            expect(screen.queryByRole("button", { name: "新しいノート" })).toBeNull();
+            lockedView.unmount();
             render(<Harness initialDoc={createTestStudy().doc} />);
             expect(screen.queryByRole("button", { name: "新しいノート" })).toBeNull();
         });
