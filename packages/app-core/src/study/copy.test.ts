@@ -86,7 +86,6 @@ describe("copyStudyDocument", () => {
             [...main.slice(0, 4), ...earlyVariation].sort(),
         );
         expect(copied.tree.nodes[lateVariation]).toBeUndefined();
-        // 本譜はこの局面まで。
         expect(copied.tree.nodes[main[3]].children).toEqual([]);
         // 解析結果は入れた局面の分だけ、コメントも写す。
         expect(Object.keys(copied.layers[0].results).sort()).toEqual(main.slice(0, 4).sort());
@@ -152,6 +151,22 @@ describe("copyStudyDocument", () => {
         });
         expect(bare.layers).toEqual([]);
         expect(bare.tree.nodes[rootId].comment).toBe("");
+    });
+
+    it("この局面だけ: 対局時の評価値（source）も新しいルートに付け替える", () => {
+        const { doc, main } = fixture();
+        const source = {
+            kind: "csa",
+            score: { kind: "cp" as const, value: 120 },
+            pv: null,
+            elapsedMs: 3000,
+        };
+        const withSource = applyStudyOps(doc, [
+            { type: "setSource", nodeId: main[2], value: source },
+        ]);
+        const copied = copy(withSource, { nodeId: main[2], line: main, range: "here" });
+        expect(copied.tree.nodes[copied.tree.rootId].source).toEqual(source);
+        expect(() => validateStudyDocument(copied)).not.toThrow();
     });
 
     it("元の文書は変えない", () => {

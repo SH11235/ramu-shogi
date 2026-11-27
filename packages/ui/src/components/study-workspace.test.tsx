@@ -2,6 +2,7 @@ import {
     applyStudyOps,
     buildStudyLayerSpec,
     createStudyDocumentFromMoves,
+    STUDY_LIMITS,
     type StudyDocument,
     type StudyOp,
     type StudyScore,
@@ -1869,6 +1870,69 @@ describe("StudyWorkspaceView", () => {
                     }) as HTMLInputElement
                 ).value,
             ).toBe("テストのノート（写し）");
+        });
+
+        it("閉じて開き直すと、最初の面と既定の選び方に戻る", async () => {
+            render(
+                <Harness
+                    initialDoc={createTestStudy().doc}
+                    newNote={{ onCreateFromNote: vi.fn(), onImport: vi.fn() }}
+                />,
+            );
+            let dialog = openDialog();
+            fireEvent.click(within(dialog).getByRole("radio", { name: /この局面だけ/ }));
+            fireEvent.click(within(dialog).getByRole("tab", { name: "棋譜・局面を読む" }));
+            fireEvent.keyDown(dialog, { key: "Escape" });
+            await waitFor(() =>
+                expect(screen.queryByRole("dialog", { name: "新しい研究ノート" })).toBeNull(),
+            );
+            dialog = openDialog();
+            expect(
+                within(dialog)
+                    .getByRole("tab", { name: "いまのノートから" })
+                    .getAttribute("aria-selected"),
+            ).toBe("true");
+            expect(
+                (
+                    within(dialog).getByRole("radio", {
+                        name: /開始局面からこの局面まで/,
+                    }) as HTMLInputElement
+                ).checked,
+            ).toBe(true);
+        });
+
+        it("左右の矢印キーで面を移る", () => {
+            render(
+                <Harness
+                    initialDoc={createTestStudy().doc}
+                    newNote={{ onCreateFromNote: vi.fn(), onImport: vi.fn() }}
+                />,
+            );
+            const dialog = openDialog();
+            const first = within(dialog).getByRole("tab", { name: "いまのノートから" });
+            fireEvent.keyDown(first, { key: "ArrowRight" });
+            const second = within(dialog).getByRole("tab", { name: "棋譜・局面を読む" });
+            expect(second.getAttribute("aria-selected")).toBe("true");
+            expect(document.activeElement).toBe(second);
+        });
+
+        it("長い表題でも、範囲の印は切り詰めで落とさない", async () => {
+            const { doc } = createTestStudy();
+            const long = "長".repeat(STUDY_LIMITS.titleLength);
+            const onCreateFromNote = vi.fn(async (_doc: StudyDocument) => {});
+            render(
+                <Harness
+                    initialDoc={{ ...doc, title: long }}
+                    newNote={{ onCreateFromNote, onImport: vi.fn() }}
+                />,
+            );
+            const dialog = openDialog();
+            fireEvent.click(within(dialog).getByRole("radio", { name: /ノートまるごと/ }));
+            fireEvent.click(within(dialog).getByRole("button", { name: "ノートを作る" }));
+            await waitFor(() => expect(onCreateFromNote).toHaveBeenCalledTimes(1));
+            const title = onCreateFromNote.mock.calls[0][0].title;
+            expect(title.endsWith("（写し）")).toBe(true);
+            expect(Array.from(title)).toHaveLength(STUDY_LIMITS.titleLength);
         });
 
         it("作れなかったら理由を出し、閉じない", async () => {

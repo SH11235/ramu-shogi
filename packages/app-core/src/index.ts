@@ -295,6 +295,7 @@ export {
 // study/import
 export type { StudyImportAnnotation } from "./study/import";
 export {
+    clampStudyTitle,
     createStudyDocumentFromCsa,
     createStudyDocumentFromKifuTree,
     createStudyDocumentFromMoves,

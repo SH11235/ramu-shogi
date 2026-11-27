@@ -19,6 +19,29 @@ describe("StudyImportForm", () => {
         expect(onImport.mock.calls[0][0]).toMatchObject({ kind: "csa" });
     });
 
+    it("読み込み・保存の途中にもう一度落としても、1 回だけ取り込む", async () => {
+        let finish: () => void = () => {};
+        const onImport = vi.fn(
+            () =>
+                new Promise<void>((resolve) => {
+                    finish = resolve;
+                }),
+        );
+        render(<StudyImportForm onImport={onImport} />);
+        const csa = "V2.2\nPI\n+\n+7776FU\n";
+        dropFile("a.csa", csa);
+        dropFile("b.csa", csa);
+        await waitFor(() => expect(onImport).toHaveBeenCalledTimes(1));
+        dropFile("c.csa", csa);
+        finish();
+        await waitFor(() =>
+            expect(
+                screen.getByRole<HTMLButtonElement>("button", { name: "ファイルを選ぶ" }).disabled,
+            ).toBe(false),
+        );
+        expect(onImport).toHaveBeenCalledTimes(1);
+    });
+
     it("読めないファイルを落としたら理由を出す", async () => {
         const onImport = vi.fn().mockResolvedValue(undefined);
         render(<StudyImportForm onImport={onImport} />);

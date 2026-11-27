@@ -197,7 +197,8 @@ export function copyStudyDocument(doc: StudyDocument, options: StudyCopyOptions)
                         children: [],
                         comment: options.includeAnalysis ? source.comment : "",
                         bookmarked: false,
-                        source: null,
+                        // 対局時の評価値・読み筋はこの局面のものなので、新しいルートに付け替える。
+                        source: options.includeAnalysis ? source.source : null,
                     },
                 },
             },

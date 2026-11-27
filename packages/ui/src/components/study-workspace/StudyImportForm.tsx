@@ -30,6 +30,8 @@ interface StudyImportFormProps {
     onImport: (source: StudyKifuSource) => Promise<void>;
     /** 取り込んだ棋譜がどこに保存されるかの説明（既定は、ブラウザの中）。 */
     storageNote?: string;
+    /** 取り込み中かどうかを知らせる（呼び出し側で、ほかの作り方を止めるのに使う）。 */
+    onBusyChange?: (busy: boolean) => void;
     /** 貼り付けた棋譜で作るボタンの文言。 */
     submitLabel?: string;
     /** 広い画面で、貼り付けの欄とファイルの枠を横に並べる（狭い画面では縦に積む）。 */
@@ -43,6 +45,7 @@ const ACCEPT_LABEL = STUDY_FILE_ACCEPT.split(",").join(" ");
 export function StudyImportForm({
     onImport,
     storageNote = "読んだ棋譜は、このブラウザの中で研究ノートになります。",
+    onBusyChange,
     submitLabel = "研究ノートにする",
     sideBySide = false,
     className,
@@ -53,37 +56,46 @@ export function StudyImportForm({
     const [isDragOver, setIsDragOver] = useState(false);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-    const submit = async (input: string, sourceName?: string): Promise<void> => {
-        if (isBusy) return;
+    // 同じ時点の連続の操作（2 回のドロップなど）でも 1 回だけにするため、state でなく ref で見る。
+    const busyRef = useRef(false);
+    const runExclusive = async (task: () => Promise<void>): Promise<void> => {
+        if (busyRef.current) return;
+        busyRef.current = true;
         setIsBusy(true);
+        onBusyChange?.(true);
         setError(null);
         try {
-            await onImport(parseKifuTextForStudy(input, sourceName));
+            await task();
         } catch (failure) {
             setError(failure instanceof Error ? failure.message : "取り込みに失敗しました");
         } finally {
+            busyRef.current = false;
             setIsBusy(false);
+            onBusyChange?.(false);
         }
     };
 
-    const readFile = async (file: File): Promise<void> => {
-        if (isBusy) return;
-        const maxBytes = /\.jsonl$/i.test(file.name) ? MAX_JSONL_FILE_BYTES : MAX_KIFU_FILE_BYTES;
-        if (file.size > maxBytes) {
-            setError(`ファイルが大きすぎます（上限 ${maxBytes / (1024 * 1024)}MB）`);
-            return;
-        }
-        let content: string;
-        try {
-            content = decodeKifuFileBytes(await file.arrayBuffer());
-        } catch (failure) {
-            setError(
-                `ファイルを読み込めませんでした: ${failure instanceof Error ? failure.message : String(failure)}`,
-            );
-            return;
-        }
-        await submit(content, file.name);
-    };
+    const submit = (input: string, sourceName?: string): Promise<void> =>
+        runExclusive(() => onImport(parseKifuTextForStudy(input, sourceName)));
+
+    const readFile = (file: File): Promise<void> =>
+        runExclusive(async () => {
+            const maxBytes = /\.jsonl$/i.test(file.name)
+                ? MAX_JSONL_FILE_BYTES
+                : MAX_KIFU_FILE_BYTES;
+            if (file.size > maxBytes) {
+                throw new Error(`ファイルが大きすぎます（上限 ${maxBytes / (1024 * 1024)}MB）`);
+            }
+            let content: string;
+            try {
+                content = decodeKifuFileBytes(await file.arrayBuffer());
+            } catch (failure) {
+                throw new Error(
+                    `ファイルを読み込めませんでした: ${failure instanceof Error ? failure.message : String(failure)}`,
+                );
+            }
+            await onImport(parseKifuTextForStudy(content, file.name));
+        });
 
     const dropFile = (event: DragEvent<HTMLFieldSetElement>): void => {
         event.preventDefault();

@@ -1,10 +1,8 @@
-/**
- * 「新しい研究ノート」のモーダル。いまのノートから範囲を選んで写すか、棋譜・局面を読んで作る。
- */
-
 import {
+    clampStudyTitle,
     copyStudyDocument,
     generateStudyId,
+    STUDY_LIMITS,
     type StudyCopyRange,
     type StudyCopySummary,
     type StudyDocument,
@@ -12,7 +10,7 @@ import {
 } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { Button } from "../button";
 import {
     Dialog,
@@ -45,36 +43,42 @@ interface StudyNewNoteDialogProps {
     storageNote?: string;
 }
 
+const TABS: ReadonlyArray<{ id: NewNoteTab; label: string }> = [
+    { id: "note", label: "いまのノートから" },
+    { id: "import", label: "棋譜・局面を読む" },
+];
+
 export function StudyNewNoteDialog({
     open,
     onOpenChange,
-    storageNote,
-    onImport,
-    ...noteProps
+    ...bodyProps
 }: StudyNewNoteDialogProps): ReactElement {
-    const [tab, setTab] = useState<NewNoteTab>("note");
-    const tabsId = useId();
-    const tabButton = (id: NewNoteTab, label: string): ReactElement => (
-        <button
-            type="button"
-            role="tab"
-            id={`${tabsId}-${id}`}
-            aria-selected={tab === id}
-            aria-controls={`${tabsId}-${id}-panel`}
-            onClick={() => setTab(id)}
-            className={cn(
-                "flex-1 border-r border-wafuu-border px-2 py-2 text-sm text-wafuu-sumi-light transition-colors last:border-r-0 hover:bg-muted/60 focus-visible:relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-                tab === id && "bg-wafuu-kin/20 font-bold text-wafuu-sumi hover:bg-wafuu-kin/20",
-            )}
-        >
-            {label}
-        </button>
-    );
+    // 作っている間は閉じさせない（閉じて開き直すと、保存を待たずに別のノートを作り始められる）。
+    const [busy, setBusy] = useState(false);
+    const opener = useRef<HTMLElement | null>(null);
     return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
+        <Dialog
+            open={open}
+            onOpenChange={(next) => {
+                if (!next && busy) return;
+                onOpenChange(next);
+            }}
+        >
             <DialogContent
                 className="flex max-h-[calc(100dvh-24px)] w-[min(560px,calc(100%-24px))] flex-col gap-4 overflow-y-auto"
                 hasDescription
+                // 開くボタンは Radix の Trigger ではないので、閉じたら開く前のフォーカスへ戻す。
+                onOpenAutoFocus={() => {
+                    opener.current =
+                        document.activeElement instanceof HTMLElement
+                            ? document.activeElement
+                            : null;
+                }}
+                onCloseAutoFocus={(event) => {
+                    if (!opener.current?.isConnected) return;
+                    event.preventDefault();
+                    opener.current.focus();
+                }}
             >
                 <DialogHeader>
                     <DialogTitle>新しい研究ノート</DialogTitle>
@@ -82,43 +86,117 @@ export function StudyNewNoteDialog({
                         いまのノートから範囲を選んで写すか、棋譜・局面を読んで、新しいノートを作ります。
                     </DialogDescription>
                 </DialogHeader>
-                <div
-                    role="tablist"
-                    aria-label="作り方"
-                    className="flex shrink-0 overflow-hidden rounded-md border border-wafuu-border"
-                >
-                    {tabButton("note", "いまのノートから")}
-                    {tabButton("import", "棋譜・局面を読む")}
-                </div>
-                {/* 開くたびに既定の選び方から始める。 */}
-                {open && tab === "note" && (
-                    <div
-                        role="tabpanel"
-                        id={`${tabsId}-note-panel`}
-                        aria-labelledby={`${tabsId}-note`}
-                    >
-                        <FromNoteForm {...noteProps} onDone={() => onOpenChange(false)} />
-                    </div>
-                )}
-                {open && tab === "import" && (
-                    <div
-                        role="tabpanel"
-                        id={`${tabsId}-import-panel`}
-                        aria-labelledby={`${tabsId}-import`}
-                    >
-                        <StudyImportForm
-                            onImport={async (source) => {
-                                await onImport(source);
-                                onOpenChange(false);
-                            }}
-                            submitLabel="ノートを作る"
-                            storageNote={storageNote}
-                        />
-                    </div>
-                )}
+                <NewNoteBody
+                    {...bodyProps}
+                    busy={busy}
+                    onBusyChange={setBusy}
+                    onDone={() => onOpenChange(false)}
+                />
             </DialogContent>
         </Dialog>
     );
+}
+
+/** モーダルの中身。閉じるとアンマウントされるので、開くたびに最初の面・既定の選び方から始まる。 */
+function NewNoteBody({
+    storageNote,
+    onImport,
+    busy,
+    onBusyChange,
+    onDone,
+    ...noteProps
+}: Omit<StudyNewNoteDialogProps, "open" | "onOpenChange"> & {
+    busy: boolean;
+    onBusyChange: (busy: boolean) => void;
+    onDone: () => void;
+}): ReactElement {
+    const [tab, setTab] = useState<NewNoteTab>("note");
+    const tabsId = useId();
+    const tabRefs = useRef<Record<NewNoteTab, HTMLButtonElement | null>>({
+        note: null,
+        import: null,
+    });
+    const moveTab = (step: number): void => {
+        const index = TABS.findIndex((item) => item.id === tab);
+        const next = TABS[(index + step + TABS.length) % TABS.length].id;
+        setTab(next);
+        tabRefs.current[next]?.focus();
+    };
+    return (
+        <>
+            <div
+                role="tablist"
+                aria-label="作り方"
+                className="flex shrink-0 overflow-hidden rounded-md border border-wafuu-border"
+            >
+                {TABS.map((item) => (
+                    <button
+                        key={item.id}
+                        ref={(element) => {
+                            tabRefs.current[item.id] = element;
+                        }}
+                        type="button"
+                        role="tab"
+                        id={`${tabsId}-${item.id}`}
+                        aria-selected={tab === item.id}
+                        aria-controls={`${tabsId}-${item.id}-panel`}
+                        tabIndex={tab === item.id ? 0 : -1}
+                        disabled={busy && tab !== item.id}
+                        onClick={() => setTab(item.id)}
+                        onKeyDown={(event) => {
+                            if (busy) return;
+                            if (event.key === "ArrowRight") moveTab(1);
+                            else if (event.key === "ArrowLeft") moveTab(-1);
+                            else return;
+                            event.preventDefault();
+                        }}
+                        className={cn(
+                            "flex-1 border-r border-wafuu-border px-2 py-2 text-sm text-wafuu-sumi-light transition-colors last:border-r-0 hover:bg-muted/60 focus-visible:relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+                            tab === item.id &&
+                                "bg-wafuu-kin/20 font-bold text-wafuu-sumi hover:bg-wafuu-kin/20",
+                        )}
+                    >
+                        {item.label}
+                    </button>
+                ))}
+            </div>
+            <div
+                role="tabpanel"
+                id={`${tabsId}-note-panel`}
+                aria-labelledby={`${tabsId}-note`}
+                hidden={tab !== "note"}
+            >
+                <FromNoteForm
+                    {...noteProps}
+                    busy={busy}
+                    onBusyChange={onBusyChange}
+                    onDone={onDone}
+                />
+            </div>
+            <div
+                role="tabpanel"
+                id={`${tabsId}-import-panel`}
+                aria-labelledby={`${tabsId}-import`}
+                hidden={tab !== "import"}
+            >
+                <StudyImportForm
+                    onImport={async (source) => {
+                        await onImport(source);
+                        onDone();
+                    }}
+                    onBusyChange={onBusyChange}
+                    submitLabel="ノートを作る"
+                    storageNote={storageNote}
+                />
+            </div>
+        </>
+    );
+}
+
+/** 元の表題に範囲の印を付ける。長い表題は、印が切り詰めで落ちないよう元の表題の側を削る。 */
+function defaultTitle(title: string, suffix: string): string {
+    const room = STUDY_LIMITS.titleLength - Array.from(suffix).length;
+    return `${Array.from(clampStudyTitle(title)).slice(0, room).join("")}${suffix}`;
 }
 
 const RANGE_TITLE_SUFFIX: Record<StudyCopyRange, (ply: number) => string> = {
@@ -133,8 +211,12 @@ function FromNoteForm({
     line,
     positionTitle,
     onCreateFromNote,
+    busy,
+    onBusyChange,
     onDone,
 }: Omit<StudyNewNoteDialogProps, "open" | "onOpenChange" | "onImport" | "storageNote"> & {
+    busy: boolean;
+    onBusyChange: (busy: boolean) => void;
     onDone: () => void;
 }): ReactElement {
     const [range, setRange] = useState<StudyCopyRange>("upto");
@@ -142,17 +224,16 @@ function FromNoteForm({
     const [includeAnalysis, setIncludeAnalysis] = useState(true);
     const [editedTitle, setEditedTitle] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
-    const [isBusy, setIsBusy] = useState(false);
     const radioName = useId();
     const selection = { nodeId, line, range, includeVariations };
     const summary = summarizeStudyCopy(doc, selection);
     const ply = summary.currentPly;
-    const title = editedTitle ?? `${doc.title}${RANGE_TITLE_SUFFIX[range](ply)}`;
+    const title = editedTitle ?? defaultTitle(doc.title, RANGE_TITLE_SUFFIX[range](ply));
     const here = ply === 0 ? "開始局面" : `${ply} 手目`;
 
     const create = async (): Promise<void> => {
-        if (isBusy) return;
-        setIsBusy(true);
+        if (busy) return;
+        onBusyChange(true);
         setError(null);
         try {
             const copied = copyStudyDocument(doc, {
@@ -166,7 +247,7 @@ function FromNoteForm({
         } catch (failure) {
             setError(failure instanceof Error ? failure.message : "ノートを作れませんでした");
         } finally {
-            setIsBusy(false);
+            onBusyChange(false);
         }
     };
 
@@ -301,12 +382,12 @@ function FromNoteForm({
             )}
             <div className="flex justify-end gap-2">
                 <DialogClose asChild>
-                    <Button type="button" variant="outline">
+                    <Button type="button" variant="outline" disabled={busy}>
                         やめる
                     </Button>
                 </DialogClose>
-                <Button type="submit" disabled={isBusy || title.trim() === ""}>
-                    {isBusy ? "作成中…" : "ノートを作る"}
+                <Button type="submit" disabled={busy || title.trim() === ""}>
+                    {busy ? "作成中…" : "ノートを作る"}
                 </Button>
             </div>
         </form>
