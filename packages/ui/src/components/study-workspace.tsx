@@ -62,7 +62,6 @@ import {
     type StudyCommentDraftChange,
 } from "./study-workspace/StudyCommentBox";
 import { StudyDeleteVariationDialog } from "./study-workspace/StudyDeleteVariationDialog";
-import { StudyPlayFromPositionDialog } from "./study-workspace/StudyPlayFromPositionDialog";
 import { StudyDesktopLayout } from "./study-workspace/StudyDesktopLayout";
 import {
     buildStudyEvalGraph,
@@ -84,6 +83,7 @@ import { StudyMoveList } from "./study-workspace/StudyMoveList";
 import { StudyNavBar } from "./study-workspace/StudyNavBar";
 import { StudyNewNoteDialog, type StudyNewNoteOptions } from "./study-workspace/StudyNewNoteDialog";
 import { StudyNotice } from "./study-workspace/StudyNotice";
+import { StudyPlayFromPositionDialog } from "./study-workspace/StudyPlayFromPositionDialog";
 import { type StudyBandLine, StudyPositionBand } from "./study-workspace/StudyPositionBand";
 import { buildStudyReviewItems, StudyReviewList } from "./study-workspace/StudyReviewList";
 import {
@@ -361,6 +361,9 @@ export function StudyWorkspaceView({
     const treeOpener = useRef<HTMLElement | null>(null);
     const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
     const [isPlayConfirmOpen, setIsPlayConfirmOpen] = useState(false);
+    // 確認を開いたボタンと、スマートフォンの「メニュー」。閉じたときのフォーカスの戻り先に使う。
+    const playConfirmOpenerRef = useRef<HTMLElement | null>(null);
+    const mobileMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
     const comments = useStudyCommentDrafts({
         initialDrafts: initialCommentDrafts,
         onDraftChange: onCommentDraftChange,
@@ -1524,7 +1527,13 @@ export function StudyWorkspaceView({
         ? () => onPlayFromPosition({ sfen: tree.startSfen, moves: movesToCurrent })
         : undefined;
     // 押すとページを移るので、確認を挟む。
-    const requestPlayFromPosition = playFromPosition ? () => setIsPlayConfirmOpen(true) : undefined;
+    const requestPlayFromPosition = playFromPosition
+        ? () => {
+              playConfirmOpenerRef.current =
+                  document.activeElement instanceof HTMLElement ? document.activeElement : null;
+              setIsPlayConfirmOpen(true);
+          }
+        : undefined;
     const passFromCurrent = editingDisabled ? undefined : () => void editing.passFromCurrent();
     const openShare = shareDialog && !readOnly ? shareDialog.onOpen : undefined;
     // ログインが切れている間は出さない（持ち主を確かめられないノートを、このあとログインする別の
@@ -1532,6 +1541,7 @@ export function StudyWorkspaceView({
     const openNewNote = newNote && !locked ? () => setIsNewNoteOpen(true) : undefined;
     const mobileMenu = (
         <StudyMobileMenu
+            triggerRef={mobileMenuTriggerRef}
             onOpenChange={setIsMobileMenuOpen}
             triggerId={mobileMenuTriggerId}
             // スマートフォンでは出典・保存先の行と、表題・解析の設定・盤の反転を画面に出さず、ここに置く。
@@ -1833,6 +1843,11 @@ export function StudyWorkspaceView({
                 open={isPlayConfirmOpen && playFromPosition !== undefined}
                 positionTitle={moveTitle}
                 turnLabel={position.turn === "sente" ? "☗先手番" : "☖後手番"}
+                returnFocusTo={() => {
+                    const opener = playConfirmOpenerRef.current;
+                    // スマートフォンでは開いた項目がメニューごと消えているので、「メニュー」へ戻す。
+                    return opener?.isConnected ? opener : mobileMenuTriggerRef.current;
+                }}
                 onCancel={() => setIsPlayConfirmOpen(false)}
                 onConfirm={() => {
                     setIsPlayConfirmOpen(false);

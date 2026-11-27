@@ -12,12 +12,13 @@ import {
 
 /**
  * 「ここから対局」の前の確認。押すとページを移るので、どの局面から始まるか・移った先で何を選べるか・
- * ノートは残ることを知らせてから移る。
+ * ノートに戻れることを知らせてから移る。
  */
 export function StudyPlayFromPositionDialog({
     open,
     positionTitle,
     turnLabel,
+    returnFocusTo,
     onCancel,
     onConfirm,
 }: {
@@ -26,6 +27,11 @@ export function StudyPlayFromPositionDialog({
     positionTitle: string;
     /** 「☗先手番」「☖後手番」。 */
     turnLabel: string;
+    /**
+     * 閉じたときにフォーカスを戻す先。開いたボタンには Radix の Trigger を付けていない（スマートフォンでは
+     * メニューの中の項目で、閉じるころには消えている）ので、呼び出し側が決める。
+     */
+    returnFocusTo: () => HTMLElement | null;
     onCancel: () => void;
     onConfirm: () => void;
 }): ReactElement {
@@ -36,15 +42,29 @@ export function StudyPlayFromPositionDialog({
                 if (!next) onCancel();
             }}
         >
-            <AlertDialogContent>
+            <AlertDialogContent
+                onCloseAutoFocus={(event) => {
+                    const target = returnFocusTo();
+                    if (!target) return;
+                    event.preventDefault();
+                    target.focus();
+                }}
+            >
                 <AlertDialogHeader>
                     <AlertDialogTitle>この局面から対局しますか？</AlertDialogTitle>
-                    <div className="flex items-baseline gap-2 rounded-md border border-border bg-muted px-3 py-2">
-                        <span className="font-semibold text-wafuu-sumi">{positionTitle}</span>
-                        <span className="text-xs text-muted-foreground">{turnLabel}</span>
-                    </div>
-                    <AlertDialogDescription>
-                        対局の画面に移ります。先後・相手・持ち時間は、そこで選べます。このノートには、あとで戻れます。
+                    {/* 局面と手番も説明に含め、開いたときに読み上げで伝わるようにする。 */}
+                    <AlertDialogDescription asChild>
+                        <div className="flex flex-col gap-2">
+                            <span className="flex items-baseline gap-2 rounded-md border border-border bg-muted px-3 py-2">
+                                <span className="font-semibold text-wafuu-sumi">
+                                    {positionTitle}
+                                </span>
+                                <span className="text-xs">{turnLabel}</span>
+                            </span>
+                            <span>
+                                対局の画面に移ります。先後・相手・持ち時間は、そこで選べます。このノートには、あとで戻れます。
+                            </span>
+                        </div>
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>

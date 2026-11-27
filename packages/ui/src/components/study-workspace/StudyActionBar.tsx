@@ -8,7 +8,7 @@
 
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "../button";
 import { useLocalStorage } from "../shogi-match/hooks/useLocalStorage";
 import { CheckIcon, CopyIcon, DownloadIcon, PlayIcon } from "./StudyIcons";
@@ -122,6 +122,7 @@ export function StudyActionBar({
     const format: StudyKifuFormat = csaUnavailableReason !== undefined ? "kif" : storedFormat;
     const formatLabel = format.toUpperCase();
     const hasPositionActions = onPlayFromPosition !== undefined || onPass !== undefined;
+    const csaReasonId = useId();
     return (
         <div className="flex w-full flex-wrap items-center justify-center gap-x-4 gap-y-1.5 border-t border-border pt-1.5">
             <div
@@ -129,7 +130,10 @@ export function StudyActionBar({
                 aria-label="書き出す（棋譜は表示中の手順を評価値とコメントつきで）"
                 className="flex flex-wrap items-center justify-center gap-1"
             >
-                <fieldset className="m-0 inline-flex h-8 overflow-hidden rounded-md border border-border p-0">
+                <fieldset
+                    aria-describedby={csaUnavailableReason ? csaReasonId : undefined}
+                    className="m-0 inline-flex h-8 overflow-hidden rounded-md border border-border p-0"
+                >
                     <legend className="sr-only">棋譜の形式</legend>
                     {(["kif", "csa"] as const).map((option) => {
                         const disabled = option === "csa" && csaUnavailableReason !== undefined;
@@ -219,7 +223,7 @@ export function StudyActionBar({
                 </>
             )}
             {csaUnavailableReason && (
-                <p className="basis-full text-center text-xs text-status-warning">
+                <p id={csaReasonId} className="basis-full text-center text-xs text-status-warning">
                     {csaUnavailableReason}
                 </p>
             )}

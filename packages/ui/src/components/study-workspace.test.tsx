@@ -1723,7 +1723,7 @@ describe("StudyWorkspaceView", () => {
             }
         });
 
-        it("「ここから対局」は、開始局面といま見ている局面までの手順を渡す。渡し先が無ければ出さない", () => {
+        it("「ここから対局」は確認のあとで、開始局面といま見ている局面までの手順を渡す。渡し先が無ければ出さない", async () => {
             const onPlayFromPosition = vi.fn();
             const view = render(
                 <Harness
@@ -1732,12 +1732,17 @@ describe("StudyWorkspaceView", () => {
                 />,
             );
             fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
-            fireEvent.click(within(actionGroup()).getByRole("button", { name: "ここから対局…" }));
-            // ページを移る前に確認を出す。やめれば移らない。
+            const playButton = within(actionGroup()).getByRole("button", { name: "ここから対局…" });
+            playButton.focus();
+            fireEvent.click(playButton);
+            // ページを移る前に確認を出す。開いている間は矢印キーで局面を動かさず、やめれば移らない。
             const confirm = screen.getByRole("alertdialog", { name: "この局面から対局しますか？" });
+            expect(within(confirm).getByText("1手目 ☗7六歩(77)")).toBeTruthy();
+            fireEvent.keyDown(document, { key: "ArrowRight" });
             expect(within(confirm).getByText("1手目 ☗7六歩(77)")).toBeTruthy();
             fireEvent.click(within(confirm).getByRole("button", { name: "やめる" }));
             expect(onPlayFromPosition).not.toHaveBeenCalled();
+            await waitFor(() => expect(document.activeElement).toBe(playButton));
             fireEvent.click(within(actionGroup()).getByRole("button", { name: "ここから対局…" }));
             fireEvent.click(screen.getByRole("button", { name: "対局の画面へ" }));
             expect(onPlayFromPosition).toHaveBeenCalledWith({
