@@ -332,6 +332,7 @@ export default function StudiesPage({ api, verifySession }: StudiesPageProps): R
     const [isReadingFile, setIsReadingFile] = useState(false);
     const readingFileRef = useRef(false);
     const changeReadingFile = (reading: boolean): void => {
+        if (reading) leftRef.current = false;
         readingFileRef.current = reading;
         setIsReadingFile(reading);
     };
@@ -346,6 +347,8 @@ export default function StudiesPage({ api, verifySession }: StudiesPageProps): R
     const handleImport = async (source: StudyKifuSource): Promise<void> => {
         if (importingRef.current) return;
         importingRef.current = true;
+        // 移らないのは、この作成を始めたあとに離れたときだけ（ファイルは読み始めた時点から数える）。
+        if (!readingFileRef.current) leftRef.current = false;
         setIsImporting(true);
         try {
             if (sessionKnown) await ensureStudySession(userId, { confirmed: sessionConfirmed });
