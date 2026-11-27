@@ -137,10 +137,19 @@ function writeSharedArrowSettings(settings: DisplaySettings): void {
     ) {
         return;
     }
+    let base: unknown = null;
     try {
-        const stored = localStorage.getItem(DISPLAY_SETTINGS_STORAGE_KEY);
-        const base = stored === null ? DEFAULT_DISPLAY_SETTINGS : JSON.parse(stored);
-        localStorage.setItem(DISPLAY_SETTINGS_STORAGE_KEY, JSON.stringify({ ...base, ...arrows }));
+        base = JSON.parse(localStorage.getItem(DISPLAY_SETTINGS_STORAGE_KEY) ?? "null");
+    } catch {
+        // 壊れた値は捨てて既定値から書き直す（矢印の設定を変えられなくならないように）。
+    }
+    const merged = {
+        ...DEFAULT_DISPLAY_SETTINGS,
+        ...(typeof base === "object" && base !== null ? base : {}),
+        ...arrows,
+    };
+    try {
+        localStorage.setItem(DISPLAY_SETTINGS_STORAGE_KEY, JSON.stringify(merged));
         dispatchLocalStorageSyncEvent(DISPLAY_SETTINGS_STORAGE_KEY, "user");
     } catch (error) {
         console.warn("Failed to save the candidate arrow settings:", error);
@@ -291,7 +300,14 @@ export function useMatchPreferences({
     };
     const setSpectateDisplaySettings: Setter<DisplaySettings> = (next, source) => {
         const value = typeof next === "function" ? next(displaySettings) : next;
-        writeSharedArrowSettings(value);
+        // 矢印を操作したときだけ書く。ほかの項目の変更で、画面に残っている古い矢印の値を
+        // 研究ノート側へ書き戻さないため。
+        if (
+            value.showCandidateArrows !== displaySettings.showCandidateArrows ||
+            value.candidateArrowCount !== displaySettings.candidateArrowCount
+        ) {
+            writeSharedArrowSettings(value);
+        }
         setDisplaySettings(value, source);
     };
 

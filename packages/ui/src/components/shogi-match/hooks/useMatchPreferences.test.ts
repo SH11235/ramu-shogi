@@ -47,4 +47,38 @@ describe("useMatchPreferences の候補手の矢印", () => {
         expect(result.current.displaySettings.showCandidateArrows).toBe(true);
         expect(result.current.displaySettings.candidateArrowCount).toBe(2);
     });
+
+    it("観戦で矢印以外の項目を変えても、研究ノート側の矢印の設定は書き戻さない", () => {
+        localStorage.setItem(
+            DISPLAY_SETTINGS_STORAGE_KEY,
+            JSON.stringify({ showCandidateArrows: true }),
+        );
+        const { result } = renderHook(() => useMatchPreferences(options(true)));
+        // 別のタブ（研究ノート）が矢印を切った。観戦の画面には古い値が残っている。
+        localStorage.setItem(
+            DISPLAY_SETTINGS_STORAGE_KEY,
+            JSON.stringify({ showCandidateArrows: false }),
+        );
+        act(() => {
+            result.current.setDisplaySettings({
+                ...result.current.displaySettings,
+                enableSound: false,
+            });
+        });
+        expect(
+            JSON.parse(localStorage.getItem(DISPLAY_SETTINGS_STORAGE_KEY) ?? "{}"),
+        ).toMatchObject({ showCandidateArrows: false });
+    });
+
+    it("通常の表示設定が壊れていても、観戦から矢印の表示数を変えられる", () => {
+        localStorage.setItem(DISPLAY_SETTINGS_STORAGE_KEY, "{broken");
+        const { result } = renderHook(() => useMatchPreferences(options(true)));
+        act(() => {
+            result.current.setDisplaySettings({
+                ...result.current.displaySettings,
+                candidateArrowCount: 1,
+            });
+        });
+        expect(result.current.displaySettings.candidateArrowCount).toBe(1);
+    });
 });
