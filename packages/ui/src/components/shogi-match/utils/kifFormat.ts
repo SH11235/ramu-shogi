@@ -5,7 +5,11 @@
  */
 
 import type { BoardState, Piece, PieceType, Player, PositionState, Square } from "@shogi/app-core";
-import { applyMoveAllowingStudyPass, relativeMoveNotation } from "@shogi/app-core";
+import {
+    applyMoveAllowingStudyPass,
+    canPromoteOnMove,
+    relativeMoveNotation,
+} from "@shogi/app-core";
 import { parseSfen } from "./kifParser";
 
 /** 手数不明の詰みを表す evalMate センチネル。符号は勝つ側を先手視点で表す。 */
@@ -331,8 +335,8 @@ export function formatMoveToKif(
     // 駒名を取得（移動前の状態で判定）
     const pieceName = getPieceName(piece.type, piece.promoted ?? false);
 
-    // 成り表記
-    const promoteText = promotes ? "成" : "";
+    // 成れる手で成らなかったときは「不成」と書く（日本将棋連盟の表記・KIF とも）。
+    const promoteText = promotes ? "成" : canPromoteOnMove(board, from, to) ? "不成" : "";
 
     // 移動元座標
     const fromDigits = squareToDigits(from);
@@ -396,8 +400,8 @@ export function formatMoveSimple(
     // 駒名を取得（移動前の状態で判定）
     const pieceName = getPieceName(piece.type, piece.promoted ?? false);
 
-    // 成り表記
-    const promoteText = promotes ? "成" : "";
+    // 成れる手で成らなかったときは「不成」と書く（日本将棋連盟の表記・KIF とも）。
+    const promoteText = promotes ? "成" : canPromoteOnMove(board, from, to) ? "不成" : "";
 
     // 移動元座標
     const fromDigits = squareToDigits(from);
@@ -812,8 +816,8 @@ function formatMoveForKifFile(
     // 駒名を取得
     const pieceName = getPieceName(piece.type, piece.promoted ?? false);
 
-    // 成り表記
-    const promoteText = promotes ? "成" : "";
+    // 成れる手で成らなかったときは「不成」と書く（日本将棋連盟の表記・KIF とも）。
+    const promoteText = promotes ? "成" : canPromoteOnMove(board, from, to) ? "不成" : "";
 
     // 移動元を数字で表示
     const fromDigits = squareToDigits(from);

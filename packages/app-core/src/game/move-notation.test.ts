@@ -3,7 +3,7 @@ import { parseStudySfen } from "../study/sfen";
 import { BOARD_FILES, BOARD_RANKS, type PositionState, type Square } from "./board";
 import { canMoveOnBoard } from "./csa-move";
 import { parseKifPv } from "./kif-pv";
-import { relativeMoveNotation } from "./move-notation";
+import { canPromoteOnMove, relativeMoveNotation } from "./move-notation";
 
 const notationOf = (sfen: string, move: string): string =>
     relativeMoveNotation(
@@ -137,6 +137,24 @@ const roundTrip = (state: PositionState, from: Square, to: Square): string[] => 
     const text = `${mark}${square}${name}${relativeMoveNotation(state.board, from, to)}不成`;
     return parseKifPv(state, text, null);
 };
+
+describe("canPromoteOnMove", () => {
+    it("敵陣に入る・敵陣の中で動く・敵陣から出る手は成れる", () => {
+        const board = parseStudySfen("4k4/9/9/2S6/9/9/2s3B2/9/4K4 b - 1").board;
+        expect(canPromoteOnMove(board, "7d", "7c")).toBe(true);
+        expect(canPromoteOnMove(board, "7d", "7e")).toBe(false);
+        // 後手の銀は 7段目以降が敵陣。
+        expect(canPromoteOnMove(board, "7g", "7h")).toBe(true);
+        expect(canPromoteOnMove(board, "3g", "1e")).toBe(false);
+        expect(canPromoteOnMove(board, "3g", "6d")).toBe(false);
+    });
+
+    it("金・玉・成駒は成れない", () => {
+        const board = parseStudySfen("4k4/9/3G1+S3/9/9/9/9/9/4K4 b - 1").board;
+        expect(canPromoteOnMove(board, "6c", "6b")).toBe(false);
+        expect(canPromoteOnMove(board, "4c", "4b")).toBe(false);
+    });
+});
 
 describe("relativeMoveNotation と parseKifPv の往復", () => {
     it.each([

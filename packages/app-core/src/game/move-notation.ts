@@ -21,6 +21,15 @@ const rankOf = (square: Square): number =>
 
 type Vertical = "上" | "寄" | "引";
 
+/** `from` → `to` の盤上の移動で成ることができるか（成らない手に「不成」を書くかどうかの判定）。 */
+export function canPromoteOnMove(board: BoardState, from: Square, to: Square): boolean {
+    const piece = board[from];
+    if (!piece || piece.promoted || piece.type === "K" || piece.type === "G") return false;
+    const inZone = (square: Square) =>
+        piece.owner === "sente" ? rankOf(square) <= 3 : rankOf(square) >= 7;
+    return inZone(from) || inZone(to);
+}
+
 /** 盤上の駒の移動 `from` → `to` に付ける相対表記。区別が要らなければ空文字列。 */
 export function relativeMoveNotation(board: BoardState, from: Square, to: Square): string {
     const piece = board[from];

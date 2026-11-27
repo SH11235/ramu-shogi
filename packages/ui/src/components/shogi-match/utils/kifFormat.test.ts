@@ -220,6 +220,17 @@ describe("formatMoveSimple", () => {
         expect(formatMoveSimple("8d9c+", "sente", board, "9c" as Square)).toBe("☗同　銀右上成(84)");
     });
 
+    it("成れる手で成らなかったときは不成を付け、成れない手には付けない", () => {
+        const board = placePiece(createEmptyBoard(), "3d", "sente", "S");
+        expect(formatMoveSimple("3d2c", "sente", board)).toBe("☗2三銀不成(34)");
+        expect(formatMoveSimple("3d2c+", "sente", board)).toBe("☗2三銀成(34)");
+        expect(formatMoveSimple("3d3e", "sente", board)).toBe("☗3五銀(34)");
+        const gote = placePiece(createEmptyBoard(), "7f", "gote", "S");
+        expect(formatMoveSimple("7f8g", "gote", gote)).toBe("☖8七銀不成(76)");
+        const gold = placePiece(createEmptyBoard(), "3d", "sente", "G");
+        expect(formatMoveSimple("3d3c", "sente", gold)).toBe("☗3三金(34)");
+    });
+
     it("盤上の駒が動ける升への駒打ちは打、盤上の駒の移動には何も付けない", () => {
         const board = placePiece(createEmptyBoard(), "8d", "sente", "S");
         expect(formatMoveSimple("S*7e", "sente", board)).toBe("☗7五銀打");
