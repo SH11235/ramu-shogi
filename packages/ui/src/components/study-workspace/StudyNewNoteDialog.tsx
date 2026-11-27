@@ -77,6 +77,13 @@ export function StudyNewNoteDialog({
     useEffect(() => {
         if (!open) closedCount.current += 1;
     }, [open]);
+    // モーダルごと消えた（別の画面へ移った・ログインが切れた）ときも、閉じたのと同じに扱う。
+    useEffect(
+        () => () => {
+            closedCount.current += 1;
+        },
+        [],
+    );
     return (
         <Dialog
             open={open}
