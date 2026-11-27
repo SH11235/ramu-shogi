@@ -5,7 +5,7 @@
  */
 
 import type { BoardState, Piece, PieceType, Player, PositionState, Square } from "@shogi/app-core";
-import { applyMoveAllowingStudyPass } from "@shogi/app-core";
+import { applyMoveAllowingStudyPass, relativeMoveNotation } from "@shogi/app-core";
 import { parseSfen } from "./kifParser";
 
 /** 手数不明の詰みを表す evalMate センチネル。符号は勝つ側を先手視点で表す。 */
@@ -402,7 +402,10 @@ export function formatMoveSimple(
     // 移動元座標
     const fromDigits = squareToDigits(from);
 
-    return `${mark}${toSimple}${pieceName}${promoteText}(${fromDigits})`;
+    // 移動元の (69) を省いて見せる場所があるので、どの駒が動いたかを相対表記（左・右・上など）でも示す。
+    const relative = relativeMoveNotation(board, from, to);
+
+    return `${mark}${toSimple}${pieceName}${relative}${promoteText}(${fromDigits})`;
 }
 
 /**

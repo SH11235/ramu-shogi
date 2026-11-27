@@ -205,6 +205,26 @@ describe("formatMoveSimple", () => {
         const board = createEmptyBoard();
         expect(formatMoveSimple("7g7f", "sente", board)).toBe("☗7g7f");
     });
+
+    it("同じ移動先へ同じ駒が動けるときは、相対表記を移動元の前に付ける", () => {
+        const board = createInitialBoard();
+        expect(formatMoveSimple("6i5h", "sente", board)).toBe("☗5八金左(69)");
+        expect(formatMoveSimple("4i5h", "sente", board)).toBe("☗5八金右(49)");
+        expect(formatMoveSimple("6i7h", "sente", board)).toBe("☗7八金(69)");
+    });
+
+    it("相対表記は「同」や成りとも並ぶ", () => {
+        let board = placePiece(createEmptyBoard(), "9d", "sente", "S");
+        board = placePiece(board, "8d", "sente", "S");
+        board = placePiece(board, "8b", "sente", "S");
+        expect(formatMoveSimple("8d9c+", "sente", board, "9c" as Square)).toBe("☗同　銀右上成(84)");
+    });
+
+    it("盤上の駒が動ける升への駒打ちは打、盤上の駒の移動には何も付けない", () => {
+        const board = placePiece(createEmptyBoard(), "8d", "sente", "S");
+        expect(formatMoveSimple("S*7e", "sente", board)).toBe("☗7五銀打");
+        expect(formatMoveSimple("8d7e", "sente", board)).toBe("☗7五銀(84)");
+    });
 });
 
 describe("formatEval", () => {

@@ -159,6 +159,20 @@ const isKingAttacked = (board: BoardState, owner: Player): boolean => {
     return false;
 };
 
+/**
+ * `from` の駒が `to` へ、駒の動きとして行けて、指した後に自玉へ利きが残らないか。
+ * 成る・成らないで利きは変わらないので、成りは区別しない。
+ */
+export function canMoveOnBoard(board: BoardState, from: Square, to: Square): boolean {
+    const piece = board[from];
+    if (!piece) return false;
+    const target = board[to];
+    if (target && (target.owner === piece.owner || target.type === "K")) return false;
+    if (!canReach(board, from, to, piece)) return false;
+    const next = { ...board, [from]: null, [to]: piece };
+    return !isKingAttacked(next, piece.owner);
+}
+
 const CSA_MOVE_PATTERN = /^([+-])(\d{2})(\d{2})([A-Z]{2})$/;
 
 const SQUARES = BOARD_RANKS.flatMap((rank) =>
