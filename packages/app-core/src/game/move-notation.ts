@@ -59,6 +59,7 @@ export function dropNeedsMarker(
 
 /** `from` → `to` の盤上の移動で成ることができるか（成らない手に「不成」を書くかどうかの判定）。 */
 export function canPromoteOnMove(board: BoardState, from: Square, to: Square): boolean {
+    if (!isSquare(from) || !isSquare(to)) return false;
     const piece = board[from];
     if (!piece || piece.promoted || piece.type === "K" || piece.type === "G") return false;
     const inZone = (square: Square) =>

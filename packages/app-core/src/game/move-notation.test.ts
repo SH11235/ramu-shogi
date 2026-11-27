@@ -207,6 +207,11 @@ describe("canPromoteOnMove", () => {
         expect(canPromoteOnMove(board, "3g", "6d")).toBe(false);
     });
 
+    it("盤の外を指す座標では成れないとする", () => {
+        const board = parseStudySfen("4k4/9/9/9/8R/9/9/9/4K4 b - 1").board;
+        expect(canPromoteOnMove(board, "1e", "1x" as Square)).toBe(false);
+    });
+
     it("金・玉・成駒は成れない", () => {
         const board = parseStudySfen("4k4/9/3G1+S3/9/9/9/9/9/4K4 b - 1").board;
         expect(canPromoteOnMove(board, "6c", "6b")).toBe(false);

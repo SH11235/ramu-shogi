@@ -336,8 +336,8 @@ export function formatMoveToKif(
     // 駒名を取得（移動前の状態で判定）
     const pieceName = getPieceName(piece.type, piece.promoted ?? false);
 
-    // 成れる手で成らなかったときは「不成」と書く（日本将棋連盟の表記・KIF とも）。
-    const promoteText = promotes ? "成" : canPromoteOnMove(board, from, to) ? "不成" : "";
+    // KIF（柿木形式）は不成を書かない。書くと cshogi など外部のツールが読み飛ばす。
+    const promoteText = promotes ? "成" : "";
 
     // 移動元座標
     const fromDigits = squareToDigits(from);
@@ -819,8 +819,8 @@ function formatMoveForKifFile(
     // 駒名を取得
     const pieceName = getPieceName(piece.type, piece.promoted ?? false);
 
-    // 成れる手で成らなかったときは「不成」と書く（日本将棋連盟の表記・KIF とも）。
-    const promoteText = promotes ? "成" : canPromoteOnMove(board, from, to) ? "不成" : "";
+    // KIF（柿木形式）は不成を書かない。書くと cshogi など外部のツールが読み飛ばす。
+    const promoteText = promotes ? "成" : "";
 
     // 移動元を数字で表示
     const fromDigits = squareToDigits(from);

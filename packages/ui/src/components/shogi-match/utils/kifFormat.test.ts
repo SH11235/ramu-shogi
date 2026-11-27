@@ -145,6 +145,11 @@ describe("formatMoveToKif", () => {
         expect(formatMoveToKif("8h2b+", "sente", board)).toBe("▲２二角成(88)");
     });
 
+    it("KIF では成らない手に不成を書かない（柿木形式）", () => {
+        const board = placePiece(createEmptyBoard(), "8h", "sente", "B");
+        expect(formatMoveToKif("8h2b", "sente", board)).toBe("▲２二角(88)");
+    });
+
     it("駒打ちを変換する", () => {
         const board = createEmptyBoard();
         expect(formatMoveToKif("P*5e", "sente", board)).toBe("▲５五歩打");
