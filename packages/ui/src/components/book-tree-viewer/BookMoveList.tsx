@@ -64,7 +64,7 @@ export function BookMoveList({
             ) : (
                 <table className="w-full text-sm text-wafuu-sumi">
                     <thead className="sticky top-0 bg-wafuu-washi text-xs text-wafuu-sumi-light">
-                        <tr className="border-b border-wafuu-border">
+                        <tr className="border-b border-border">
                             <th className="px-2 py-1 text-left font-medium">手</th>
                             <th className="px-2 py-1 text-right font-medium">評価値</th>
                             {showDepth && (
@@ -78,7 +78,7 @@ export function BookMoveList({
                             return (
                                 <tr
                                     key={child.id}
-                                    className="border-b border-wafuu-border/60 last:border-b-0"
+                                    className="border-b border-border/60 last:border-b-0"
                                 >
                                     <td className="p-0">
                                         <button

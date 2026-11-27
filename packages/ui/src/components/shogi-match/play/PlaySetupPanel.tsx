@@ -230,7 +230,7 @@ const TEXT_LINK_CLASS = PLAY_TEXT_LINK;
  * 背の低いスマホ（375x553 など）では、駒落ちの「〜から指し始めます」やダウンロードの注記が足されても
  * 1 画面に収まるよう、行の上下の余白を詰める（押せる高さは選択欄の min-h-10 のまま）。 */
 const ROW_CLASS =
-    "items-center gap-x-2 gap-y-0.5 border-b border-wafuu-border py-1 [@media(max-height:600px)]:py-0.5";
+    "items-center gap-x-2 gap-y-0.5 border-b border-border py-1 [@media(max-height:600px)]:py-0.5";
 const ROW_LABEL_CLASS = "w-14 shrink-0 text-xs font-medium text-wafuu-sumi-light max-[359px]:w-12";
 /** AI の行（AI・強さ・考慮時間を横に並べる）。スマホの幅でも 1 行に収まるよう、選択欄の余白を詰める。 */
 const AI_ROW_CONTROLS_CLASS = "flex min-w-0 flex-1 items-center gap-1.5 md:gap-2";

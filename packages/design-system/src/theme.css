@@ -30,17 +30,18 @@
         color-scheme: light;
         --background: 0 0% 100%;
         --foreground: 222.2 47.4% 11.2%;
-        --muted: 210 40% 96.1%;
+        /* 中立の面・枠は和紙の系統の値を指す（同じ役割に 2 系統の色を持たない）。 */
+        --muted: var(--wafuu-washi);
         --muted-foreground: 215.4 16.3% 46.9%;
         --popover: 0 0% 100%;
         --popover-foreground: 222.2 47.4% 11.2%;
-        --border: 214.3 31.8% 91.4%;
-        --input: 214.3 31.8% 91.4%;
+        --border: var(--wafuu-border);
+        --input: var(--wafuu-border);
         --card: 0 0% 100%;
         --primary: 15 86% 55%;
         --primary-foreground: 355.7 100% 97.3%;
-        --secondary: 210 40% 96.1%;
-        --secondary-foreground: 222.2 47.4% 11.2%;
+        --secondary: var(--wafuu-washi-warm);
+        --secondary-foreground: var(--wafuu-sumi);
         --accent: 37 94% 50%;
         --destructive: 0 72% 51%;
         --destructive-foreground: 0 0% 100%;
@@ -92,9 +93,6 @@
 
         /* 接続状態・成功状態 */
         --overlay: 0 0% 0%; /* モーダルの幕 */
-        --status-online: 140 50% 38%; /* オンライン - 落ち着いた緑 */
-        --status-online-bg: 140 45% 93%; /* オンライン背景 */
-        --status-online-border: 140 35% 78%; /* オンラインボーダー */
         --status-success: 140 50% 38%; /* 成功 - 落ち着いた緑 */
         --status-success-fg: 140 40% 95%; /* 成功前景 */
         --status-success-bg: 140 45% 93%; /* 成功背景 */

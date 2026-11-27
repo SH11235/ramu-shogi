@@ -11,7 +11,7 @@ export const PLAY_PRIMARY_BUTTON =
 
 /** 副ボタン。 */
 export const PLAY_OUTLINE_BUTTON =
-    "min-h-10 border-wafuu-border bg-background text-wafuu-sumi hover:bg-wafuu-washi-warm hover:text-wafuu-sumi";
+    "min-h-10 border-border bg-background text-wafuu-sumi hover:bg-wafuu-washi-warm hover:text-wafuu-sumi";
 
 /** 画面の見出し（設定・局面編集・終局の結果）。 */
 export const PLAY_HEADING = "font-display text-2xl font-semibold text-wafuu-sumi";

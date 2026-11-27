@@ -89,7 +89,7 @@ const formatResultSummary = (game: RshogiGameSummary): string => {
 };
 
 const EVENT_TAG_CLASS =
-    "inline-flex min-h-7 max-w-full items-center rounded-full border border-wafuu-border bg-background px-2.5 py-0.5 text-xs text-wafuu-sumi";
+    "inline-flex min-h-7 max-w-full items-center rounded-full border border-border bg-background px-2.5 py-0.5 text-xs text-wafuu-sumi";
 
 /** イベントタグ。`onSelect` があれば押して絞り込めるボタンにする。 */
 function RshogiEventTag({
@@ -133,13 +133,13 @@ export function RshogiCsaGameList({
     return (
         <div className="flex flex-col gap-3">
             {empty && !isLoading && (
-                <div className="rounded-lg border border-wafuu-border bg-wafuu-washi-warm p-4 text-sm text-muted-foreground">
+                <div className="rounded-lg border border-border bg-wafuu-washi-warm p-4 text-sm text-muted-foreground">
                     {emptyMessage ?? "棋譜がまだありません。"}
                 </div>
             )}
 
             {empty && isLoading && (
-                <div className="rounded-lg border border-wafuu-border bg-wafuu-washi-warm p-4 text-sm text-muted-foreground">
+                <div className="rounded-lg border border-border bg-wafuu-washi-warm p-4 text-sm text-muted-foreground">
                     読み込み中...
                 </div>
             )}
@@ -149,7 +149,7 @@ export function RshogiCsaGameList({
                     {games.map((game) => (
                         <li
                             key={game.gameId}
-                            className="relative flex flex-col gap-1 rounded-lg border border-wafuu-border bg-wafuu-washi-warm p-3 transition-colors hover:bg-wafuu-kincha/10"
+                            className="relative flex flex-col gap-1 rounded-lg border border-border bg-wafuu-washi-warm p-3 transition-colors hover:bg-wafuu-kincha/10"
                         >
                             {/* カード全体を押せるよう、ボタンの ::after をカードいっぱいに広げる。
                                 イベントタグは別のボタンとして手前 (z-10) に置き、入れ子にしない。 */}
@@ -195,7 +195,7 @@ export function RshogiCsaGameList({
                         type="button"
                         onClick={onLoadMore}
                         disabled={isLoading}
-                        className="rounded-md border border-wafuu-border px-4 py-1.5 text-sm text-wafuu-sumi transition-colors hover:bg-wafuu-kincha/10 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="rounded-md border border-border px-4 py-1.5 text-sm text-wafuu-sumi transition-colors hover:bg-wafuu-kincha/10 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                         {isLoading ? "読み込み中..." : "もっと読み込む"}
                     </button>

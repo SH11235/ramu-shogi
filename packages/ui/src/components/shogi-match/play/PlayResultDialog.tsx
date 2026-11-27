@@ -88,7 +88,7 @@ export function PlayResultDialog({ variant }: PlayResultDialogProps): ReactEleme
                     onCloseAutoFocus={focusHeading}
                     overlayClassName="bg-overlay-light backdrop-blur-none"
                     // 対局の条件と読みのまとめで縦に長くなるので、低い画面では中でスクロールさせる。
-                    className="max-h-[calc(100dvh-32px)] w-[min(400px,calc(100%-32px))] overflow-y-auto border-wafuu-border bg-background p-5 motion-reduce:animate-none"
+                    className="max-h-[calc(100dvh-32px)] w-[min(400px,calc(100%-32px))] overflow-y-auto border-border bg-background p-5 motion-reduce:animate-none"
                 >
                     {body}
                 </DialogContent>
@@ -105,13 +105,10 @@ export function PlayResultDialog({ variant }: PlayResultDialogProps): ReactEleme
                     aria-describedby={undefined}
                     onOpenAutoFocus={focusPrimary}
                     onCloseAutoFocus={focusHeading}
-                    className="fixed inset-x-0 bottom-0 z-modal max-h-[calc(100dvh-16px)] overflow-y-auto rounded-t-2xl border-t border-wafuu-border bg-background px-4 pb-[max(env(safe-area-inset-bottom),16px)] pt-2 text-foreground shadow-modal outline-none duration-300 data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom motion-reduce:animate-none"
+                    className="fixed inset-x-0 bottom-0 z-modal max-h-[calc(100dvh-16px)] overflow-y-auto rounded-t-2xl border-t border-border bg-background px-4 pb-[max(env(safe-area-inset-bottom),16px)] pt-2 text-foreground shadow-modal outline-none duration-300 data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom motion-reduce:animate-none"
                 >
                     <div className="flex flex-col gap-2">
-                        <div
-                            aria-hidden
-                            className="h-1 w-9 self-center rounded-full bg-wafuu-border"
-                        />
+                        <div aria-hidden className="h-1 w-9 self-center rounded-full bg-border" />
                         {body}
                     </div>
                 </DialogPrimitive.Content>

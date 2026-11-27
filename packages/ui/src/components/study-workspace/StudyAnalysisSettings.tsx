@@ -92,7 +92,7 @@ function SettingsBody({
                                     // 選んでいる項目は墨で示す（朱・藍は先手・後手の色に取っておく）。
                                     selected
                                         ? "border-wafuu-sumi bg-wafuu-washi-warm ring-1 ring-inset ring-wafuu-sumi"
-                                        : "border-wafuu-border hover:bg-wafuu-washi-warm",
+                                        : "border-border hover:bg-wafuu-washi-warm",
                                 )}
                             >
                                 <input

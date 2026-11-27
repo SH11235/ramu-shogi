@@ -410,7 +410,7 @@ function App() {
 
                 {/* エンジン管理パネル（シンプルな折りたたみ表示） */}
                 {isEngineManagerOpen && (
-                    <div className="bg-wafuu-washi-warm border border-wafuu-border rounded-xl p-4">
+                    <div className="bg-wafuu-washi-warm border border-border rounded-xl p-4">
                         <div className="flex items-center justify-between mb-3">
                             <span className="text-sm font-semibold text-wafuu-sumi">
                                 外部エンジン管理

@@ -56,7 +56,6 @@ const preset: Omit<Config, "content"> = {
                     kincha: "hsl(var(--wafuu-kincha))",
                     washi: "hsl(var(--wafuu-washi))",
                     "washi-warm": "hsl(var(--wafuu-washi-warm))",
-                    border: "hsl(var(--wafuu-border))",
                 },
                 // ラム（トイプードル）の毛色
                 ram: {
@@ -67,9 +66,6 @@ const preset: Omit<Config, "content"> = {
                 },
                 // 接続状態・成功状態
                 status: {
-                    online: "hsl(var(--status-online))",
-                    "online-bg": "hsl(var(--status-online-bg))",
-                    "online-border": "hsl(var(--status-online-border))",
                     success: "hsl(var(--status-success))",
                     "success-fg": "hsl(var(--status-success-fg))",
                     "success-bg": "hsl(var(--status-success-bg))",

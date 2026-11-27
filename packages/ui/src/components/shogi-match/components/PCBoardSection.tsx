@@ -135,7 +135,7 @@ export function PCBoardSection({ candidateNote, hideClock }: PCBoardSectionProps
                         <button
                             type="button"
                             onClick={() => onFlipBoardChange(!flipBoard)}
-                            className={`flex items-center gap-1 px-2 py-1 rounded-md border border-wafuu-border cursor-pointer text-[13px] whitespace-nowrap ${
+                            className={`flex items-center gap-1 px-2 py-1 rounded-md border border-border cursor-pointer text-[13px] whitespace-nowrap ${
                                 flipBoard ? "bg-wafuu-kin/20" : "bg-card"
                             }`}
                             title="盤面を反転"

@@ -5,7 +5,7 @@ import { useState } from "react";
 import { SettingsIcon, ShareIcon } from "./StudyIcons";
 
 const HEADER_BUTTON_CLASS =
-    "flex h-10 shrink-0 items-center gap-2 rounded-md border border-wafuu-border bg-background px-3 text-sm text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40";
+    "flex h-10 shrink-0 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40";
 
 function TitleInput({
     title,
@@ -47,7 +47,7 @@ function TitleInput({
                     event.currentTarget.blur();
                 }
             }}
-            className="min-w-0 flex-1 truncate rounded-md border border-transparent bg-transparent px-1.5 py-0.5 font-display text-lg font-bold text-wafuu-sumi transition-colors hover:border-wafuu-border focus:border-wafuu-border focus:bg-background focus:outline-none focus:ring-2 focus:ring-ring md:text-xl"
+            className="min-w-0 flex-1 truncate rounded-md border border-transparent bg-transparent px-1.5 py-0.5 font-display text-lg font-bold text-wafuu-sumi transition-colors hover:border-border focus:border-border focus:bg-background focus:outline-none focus:ring-2 focus:ring-ring md:text-xl"
         />
     );
 }

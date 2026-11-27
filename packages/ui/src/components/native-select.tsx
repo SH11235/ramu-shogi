@@ -3,7 +3,7 @@ import type { ComponentPropsWithRef, ReactElement } from "react";
 import { ChevronIcon } from "./chevron-icon";
 
 const selectControlClassName =
-    "w-full min-w-0 rounded-lg border border-wafuu-border bg-wafuu-washi py-2 pl-3 pr-10 text-xs text-wafuu-sumi focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
+    "w-full min-w-0 rounded-lg border border-border bg-wafuu-washi py-2 pl-3 pr-10 text-xs text-wafuu-sumi focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 /**
  * 共通の外観を持つネイティブセレクト。iOS Safari のフォーカス時の拡大は、指で操作する端末で

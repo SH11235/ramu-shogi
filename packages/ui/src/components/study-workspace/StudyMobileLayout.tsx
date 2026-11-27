@@ -161,7 +161,7 @@ export function StudyMobileLayout({
                 <div
                     role="tablist"
                     aria-label="表示の切り替え"
-                    className="grid min-w-0 flex-1 grid-cols-3 gap-1 rounded-lg border border-wafuu-border bg-wafuu-washi-warm p-1"
+                    className="grid min-w-0 flex-1 grid-cols-3 gap-1 rounded-lg border border-border bg-wafuu-washi-warm p-1"
                 >
                     {MOBILE_TABS.map((item) => (
                         <button
@@ -257,7 +257,7 @@ export function StudyMobileLayout({
                                     type="button"
                                     aria-label="本譜に戻る"
                                     onClick={onBackToMainLine}
-                                    className="flex h-10 w-[3.25rem] items-center justify-center rounded-md border border-wafuu-border bg-card text-xs min-[375px]:w-[3.75rem] font-medium text-wafuu-ai transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                    className="flex h-10 w-[3.25rem] items-center justify-center rounded-md border border-border bg-card text-xs min-[375px]:w-[3.75rem] font-medium text-wafuu-ai transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                 >
                                     本譜へ
                                 </button>

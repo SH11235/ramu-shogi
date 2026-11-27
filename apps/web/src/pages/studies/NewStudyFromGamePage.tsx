@@ -116,7 +116,7 @@ export default function NewStudyFromGamePage(): ReactElement {
                 <div
                     role="tablist"
                     aria-label="棋譜の種類"
-                    className="grid grid-cols-2 gap-1 rounded-lg border border-wafuu-border bg-wafuu-washi-warm p-1 sm:max-w-md"
+                    className="grid grid-cols-2 gap-1 rounded-lg border border-border bg-wafuu-washi-warm p-1 sm:max-w-md"
                 >
                     {SOURCES.map((item) => (
                         <button
@@ -147,7 +147,7 @@ export default function NewStudyFromGamePage(): ReactElement {
                         {isBusy ? (
                             <output
                                 aria-live="polite"
-                                className="rounded-lg border border-wafuu-border bg-card px-4 py-2 text-sm text-wafuu-sumi shadow-panel"
+                                className="rounded-lg border border-border bg-card px-4 py-2 text-sm text-wafuu-sumi shadow-panel"
                             >
                                 研究ノートを用意しています…
                             </output>

@@ -132,7 +132,7 @@ export function StudyReviewList({
                                             {STUDY_KIND_BADGE[item.kind].label}
                                         </span>
                                     ) : (
-                                        <span className="shrink-0 rounded border border-wafuu-border px-1 text-xs text-muted-foreground">
+                                        <span className="shrink-0 rounded border border-border px-1 text-xs text-muted-foreground">
                                             コメント
                                         </span>
                                     )}

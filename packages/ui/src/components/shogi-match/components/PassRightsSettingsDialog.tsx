@@ -28,7 +28,7 @@ export function PassRightsSettingsDialog({
                 </DialogHeader>
                 <div className="flex flex-col gap-4 pt-2">
                     {/* パス権セクション */}
-                    <div className="flex flex-col gap-3 p-3 rounded-lg border border-wafuu-border bg-wafuu-washi/50">
+                    <div className="flex flex-col gap-3 p-3 rounded-lg border border-border bg-wafuu-washi/50">
                         <div className="flex items-center justify-between">
                             <label htmlFor="pass-rights-toggle" className="text-sm font-medium">
                                 パス権

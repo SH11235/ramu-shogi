@@ -20,7 +20,7 @@ const MAX_MINUTES = 1_440;
 const MAX_SECONDS = 86_400;
 
 const NUMBER_INPUT_CLASS =
-    "h-10 w-20 rounded-md border border-wafuu-border bg-background px-2 text-right text-base tabular-nums text-wafuu-sumi focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+    "h-10 w-20 rounded-md border border-border bg-background px-2 text-right text-base tabular-nums text-wafuu-sumi focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 type RuleMode = "byoyomi" | "increment";
 

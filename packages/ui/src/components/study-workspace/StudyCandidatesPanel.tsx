@@ -543,7 +543,7 @@ export function StudyCandidatesPanel({
         <>
             {/* 入れたままにする設定なので、押すと始まる操作ボタンの列とは段を分ける。 */}
             {autoAnalyze && !autoSwitchElsewhere && (
-                <div className="flex items-center gap-3 rounded-lg border border-wafuu-border bg-wafuu-washi px-3 py-2">
+                <div className="flex items-center gap-3 rounded-lg border border-border bg-wafuu-washi px-3 py-2">
                     <div className="flex min-w-0 flex-1 items-center gap-2">
                         <label
                             htmlFor={autoAnalyzeId}

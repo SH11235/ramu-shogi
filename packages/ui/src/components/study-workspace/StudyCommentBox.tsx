@@ -481,7 +481,7 @@ export function StudyCommentBox({
                         type="button"
                         onClick={finish}
                         disabled={isClosing}
-                        className="min-h-10 shrink-0 rounded-md border border-wafuu-border bg-card px-4 text-sm font-medium text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60 md:min-h-8"
+                        className="min-h-10 shrink-0 rounded-md border border-border bg-card px-4 text-sm font-medium text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60 md:min-h-8"
                     >
                         {isClosing ? "保存しています…" : "完了"}
                     </button>

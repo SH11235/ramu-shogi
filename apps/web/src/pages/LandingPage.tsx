@@ -26,7 +26,7 @@ function EntryCard({ to, heading, children }: EntryCardProps): ReactElement {
     return (
         <Link
             to={to}
-            className="group flex flex-col gap-2 border-t-2 border-wafuu-border pt-4 transition-colors hover:border-wafuu-shu focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-background"
+            className="group flex flex-col gap-2 border-t-2 border-border pt-4 transition-colors hover:border-wafuu-shu focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-background"
         >
             <h2 className="font-display text-xl font-semibold text-wafuu-sumi transition-colors group-hover:text-wafuu-shu">
                 {heading}
@@ -96,7 +96,7 @@ export default function LandingPage(): ReactElement {
                             </Link>
                             <Link
                                 to="/studies"
-                                className="inline-flex items-center gap-2 rounded-lg border border-wafuu-border bg-background px-5 py-3 text-sm font-semibold text-wafuu-sumi transition-colors hover:border-wafuu-ai/50 hover:text-wafuu-ai focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                                className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-5 py-3 text-sm font-semibold text-wafuu-sumi transition-colors hover:border-wafuu-ai/50 hover:text-wafuu-ai focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                             >
                                 棋譜を調べる
                             </Link>
@@ -104,7 +104,7 @@ export default function LandingPage(): ReactElement {
                                 type="button"
                                 onClick={handleStartClick}
                                 disabled={isPreparing}
-                                className="inline-flex items-center gap-2 rounded-lg border border-wafuu-border bg-background px-5 py-3 text-sm font-semibold text-wafuu-sumi transition-colors enabled:hover:border-wafuu-ai/50 enabled:hover:text-wafuu-ai disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                                className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-5 py-3 text-sm font-semibold text-wafuu-sumi transition-colors enabled:hover:border-wafuu-ai/50 enabled:hover:text-wafuu-ai disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                             >
                                 {isPreparing ? "用意しています…" : "盤で検討する"}
                             </button>

@@ -322,7 +322,7 @@ export function PlayBoardTools({
                 aria-label="盤面を反転"
                 title="盤面を反転"
                 className={cn(
-                    "flex shrink-0 items-center justify-center rounded-md border border-wafuu-border text-wafuu-sumi transition-colors hover:bg-wafuu-washi-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    "flex shrink-0 items-center justify-center rounded-md border border-border text-wafuu-sumi transition-colors hover:bg-wafuu-washi-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     flipSize.button,
                     flipBoard ? "bg-wafuu-kin/20" : "bg-card",
                 )}

@@ -47,7 +47,7 @@ function PreviewStatusBadge({ status }: { status: PreviewSessionStatus }): React
                 <span className="text-xs text-wafuu-kincha animate-pulse">エンジン起動中...</span>
             );
         case "ready":
-            return <span className="text-xs text-status-online">接続済み</span>;
+            return <span className="text-xs text-status-success">接続済み</span>;
         case "error":
             return <span className="text-xs text-destructive">エラー: {status.error}</span>;
     }
@@ -295,7 +295,7 @@ export function EngineManagerPanel({
 
             {/* Options for selected engine */}
             {selectedEngine && (
-                <div className="border-t border-wafuu-border pt-3 flex flex-col gap-2">
+                <div className="border-t border-border pt-3 flex flex-col gap-2">
                     <div className="flex items-center gap-2">
                         <Input
                             type="text"
@@ -311,7 +311,7 @@ export function EngineManagerPanel({
                                     handleRename(selectedEngine, editName);
                                 }
                             }}
-                            className="text-sm font-semibold border border-wafuu-border bg-wafuu-washi"
+                            className="text-sm font-semibold border border-border bg-wafuu-washi"
                         />
                     </div>
                     <div className="flex items-center gap-2">

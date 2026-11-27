@@ -278,7 +278,7 @@ function RshogiGameMetaPanel({
     return (
         <section
             aria-label="対局情報"
-            className="flex flex-col gap-2 rounded-lg border border-wafuu-border bg-wafuu-washi-warm p-3 text-sm text-wafuu-sumi"
+            className="flex flex-col gap-2 rounded-lg border border-border bg-wafuu-washi-warm p-3 text-sm text-wafuu-sumi"
         >
             {/* 対局 ID はページ上部のパンくずに出ているので、ここには出さない。 */}
             {meta.source && (

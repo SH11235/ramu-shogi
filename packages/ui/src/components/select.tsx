@@ -51,7 +51,7 @@ const SelectContent = forwardRef<
         <SelectPrimitive.Portal>
             <SelectPrimitive.Content
                 className={cn(
-                    "relative z-popover max-h-96 min-w-[8rem] overflow-hidden rounded-lg border border-wafuu-border bg-wafuu-washi shadow-popover",
+                    "relative z-popover max-h-96 min-w-[8rem] overflow-hidden rounded-lg border border-border bg-wafuu-washi shadow-popover",
                     "data-[state=open]:animate-in data-[state=open]:motion-reduce:animate-none data-[state=closed]:animate-out data-[state=closed]:motion-reduce:animate-none",
                     "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
                     "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
@@ -87,7 +87,7 @@ const SelectItem = forwardRef<
         <SelectPrimitive.Item
             className={cn(
                 "relative flex w-full cursor-default select-none items-center rounded-md py-1.5 pl-8 pr-2 text-xs outline-none",
-                "focus:bg-wafuu-border focus:text-wafuu-sumi",
+                "focus:bg-border focus:text-wafuu-sumi",
                 "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
                 className,
             )}

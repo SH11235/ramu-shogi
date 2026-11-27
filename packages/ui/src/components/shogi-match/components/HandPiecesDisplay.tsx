@@ -285,7 +285,7 @@ export function HandPiecesDisplay({
                 className={cn(
                     "w-full",
                     RESERVED_ROW_HEIGHT[frame],
-                    frame === "outline" && "rounded-md border border-dashed border-wafuu-border",
+                    frame === "outline" && "rounded-md border border-dashed border-border",
                 )}
             />
         );
@@ -296,7 +296,7 @@ export function HandPiecesDisplay({
             className={cn(
                 "rounded-md border",
                 frame === "outline"
-                    ? "border-wafuu-border bg-transparent"
+                    ? "border-border bg-transparent"
                     : "border-border/50 bg-muted/30",
                 vertical
                     ? cn(

@@ -354,7 +354,7 @@ function GraphNodes({
                                 "absolute flex items-center gap-1 rounded border px-1.5 text-left text-xs text-wafuu-sumi transition-colors hover:border-wafuu-sumi focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                                 node.inBook === false
                                     ? "border-dashed border-wafuu-kincha bg-background"
-                                    : "border-wafuu-border bg-wafuu-washi-warm",
+                                    : "border-border bg-wafuu-washi-warm",
                                 // 選んでいる手は盤の最後の一手と同じ金色で塗る（枠の太さだけでは見分けにくいので）。
                                 id === keep &&
                                     "border-solid border-wafuu-sumi bg-wafuu-kin font-semibold",
@@ -564,8 +564,8 @@ function DockedPosition({
             className={cn(
                 "flex shrink-0 flex-col gap-1 bg-background p-2",
                 overlay
-                    ? "absolute bottom-2 left-2 z-20 rounded-lg border border-wafuu-border shadow-popover"
-                    : "items-center border-t border-wafuu-border",
+                    ? "absolute bottom-2 left-2 z-20 rounded-lg border border-border shadow-popover"
+                    : "items-center border-t border-border",
             )}
         >
             <div className="flex items-center gap-2 self-stretch">
@@ -1155,7 +1155,7 @@ export function BookTreeGraph({
             {/* 開始局面でも出す（選び直すたびに木の上端が動かないように）。 */}
             <div
                 className={cn(
-                    "flex shrink-0 items-center gap-1 border-b border-wafuu-border px-2 py-1 text-xs",
+                    "flex shrink-0 items-center gap-1 border-b border-border px-2 py-1 text-xs",
                     // 盤の画面では、右上の「全画面」ボタンの下に入らないようにする。
                     !explore && "pr-20",
                 )}
@@ -1199,7 +1199,7 @@ export function BookTreeGraph({
                             aria-pressed={bookmarked}
                             onClick={toggleBookmark}
                             className={cn(
-                                "shrink-0 rounded border border-wafuu-border px-1.5 py-0.5 hover:bg-wafuu-washi-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                "shrink-0 rounded border border-border px-1.5 py-0.5 hover:bg-wafuu-washi-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                                 bookmarked && "border-wafuu-kincha bg-wafuu-kin/40 font-semibold",
                             )}
                         >
@@ -1211,7 +1211,7 @@ export function BookTreeGraph({
                             aria-expanded={jumpOpen}
                             onClick={() => setJumpOpen((open) => !open)}
                             className={cn(
-                                "shrink-0 rounded border border-wafuu-border px-1.5 py-0.5 hover:bg-wafuu-washi-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                "shrink-0 rounded border border-border px-1.5 py-0.5 hover:bg-wafuu-washi-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                                 jumpOpen && "bg-wafuu-washi-warm",
                             )}
                         >
@@ -1256,7 +1256,7 @@ export function BookTreeGraph({
                         <div className="absolute top-0 left-0" style={{ width, height, zoom }}>
                             <div
                                 aria-hidden="true"
-                                className="sticky top-0 z-10 border-b border-wafuu-border bg-wafuu-washi/95"
+                                className="sticky top-0 z-10 border-b border-border bg-wafuu-washi/95"
                                 style={{ width, height: HEADER_HEIGHT }}
                             >
                                 {!compact &&
@@ -1322,7 +1322,7 @@ export function BookTreeGraph({
                     </div>
                 </section>
                 {explore && (
-                    <div className="absolute right-2 bottom-2 z-20 flex items-center gap-1 rounded-md border border-wafuu-border bg-background/90 p-1 text-xs shadow-popover">
+                    <div className="absolute right-2 bottom-2 z-20 flex items-center gap-1 rounded-md border border-border bg-background/90 p-1 text-xs shadow-popover">
                         <Button
                             variant="ghost"
                             size="sm"

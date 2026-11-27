@@ -11,7 +11,7 @@ import { handleMenuKeyDown } from "../utils/menuKeyNavigation";
 type SoundMode = SoundVoice | "off";
 
 const BUTTON_BASE_CLASS =
-    "flex shrink-0 cursor-pointer items-center justify-center rounded-md border border-wafuu-border bg-card text-wafuu-sumi transition-colors hover:bg-wafuu-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+    "flex shrink-0 cursor-pointer items-center justify-center rounded-md border border-border bg-card text-wafuu-sumi transition-colors hover:bg-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 const SIZE_CLASS = {
     md: { button: "h-8 w-8", icon: "h-5 w-5" },
@@ -154,7 +154,7 @@ export function SoundToggle({ size = "md" }: { size?: "md" | "lg" }): ReactEleme
                     type="button"
                     aria-label={`着手音: ${current?.label}`}
                     title={`着手音: ${current?.label}（クリックで変更）`}
-                    className={cn(buttonClass, "data-[state=open]:bg-wafuu-border")}
+                    className={cn(buttonClass, "data-[state=open]:bg-border")}
                 >
                     <SoundIcon mode={mode} className={sizeClass.icon} />
                 </button>
