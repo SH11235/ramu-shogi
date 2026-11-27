@@ -1501,10 +1501,14 @@ describe("StudyWorkspaceView", () => {
                 expect(writeText.mock.calls[0][0]).toContain("先手：先手太郎");
                 expect(writeText.mock.calls[0][0]).toContain("８四歩");
                 expect(
-                    await within(kifuGroup()).findByRole("button", {
-                        name: "棋譜をコピー（KIF）しました",
-                    }),
+                    await within(kifuGroup()).findByRole("button", { name: "コピーしました" }),
                 ).toBeTruthy();
+                // コピーしたあとに形式を切り替えたら、コピーしていない形式を「コピーしました」と言わない。
+                fireEvent.click(within(kifuGroup()).getByRole("radio", { name: "CSA" }));
+                expect(
+                    within(kifuGroup()).getByRole("button", { name: "棋譜をコピー（CSA）" }),
+                ).toBeTruthy();
+                fireEvent.click(within(kifuGroup()).getByRole("radio", { name: "KIF" }));
                 // 画面の上の通知は出さない（ボタンの文字と二重に知らせない）。
                 expect(screen.queryByText(/KIF でコピーしました/)).toBeNull();
 
@@ -1711,6 +1715,18 @@ describe("StudyWorkspaceView", () => {
             fireEvent.click(screen.getByRole("button", { name: "共有" }));
             expect(onOpen).toHaveBeenCalledTimes(1);
             view.unmount();
+
+            // 編集できない間も開ける（共有できない理由はダイアログの中で知らせる）。
+            const lockedView = render(
+                <Harness
+                    initialDoc={createTestStudy().doc}
+                    locked
+                    shareDialog={{ open: false, onOpen }}
+                />,
+            );
+            fireEvent.click(screen.getByRole("button", { name: "共有" }));
+            expect(onOpen).toHaveBeenCalledTimes(2);
+            lockedView.unmount();
 
             render(
                 <Harness
@@ -3948,11 +3964,15 @@ describe("StudyWorkspaceView: スマートフォン", () => {
                     shareDialog={{ open: false, onOpen: () => {} }}
                 />,
             );
-            fireEvent.click(screen.getByRole("button", { name: "メニュー" }));
+            const menuButton = screen.getByRole("button", { name: "メニュー" });
+            menuButton.focus();
+            fireEvent.click(menuButton);
             const sheet = screen.getByRole("dialog", { name: "メニュー" });
-            expect(within(sheet).getByText(/^書き出す/)).toBeTruthy();
-            expect(within(sheet).getByText("この局面で")).toBeTruthy();
-            expect(within(sheet).getByText("ノート")).toBeTruthy();
+            expect(within(sheet).getByRole("heading", { name: /^書き出す/ })).toBeTruthy();
+            expect(within(sheet).getByRole("heading", { name: "この局面で" })).toBeTruthy();
+            expect(within(sheet).getByRole("heading", { name: "ノート" })).toBeTruthy();
+            // 開いたらフォーカスを中へ移す。
+            await waitFor(() => expect(sheet.contains(document.activeElement)).toBe(true));
             expect(within(sheet).getByRole("button", { name: "ここから対局" })).toBeTruthy();
             expect(
                 within(sheet).getByRole("button", { name: /公開設定・共有リンク/ }),
@@ -3961,6 +3981,8 @@ describe("StudyWorkspaceView: スマートフォン", () => {
             await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
             expect(await screen.findByText(/を KIF でコピーしました/)).toBeTruthy();
             expect(screen.queryByRole("dialog", { name: "メニュー" })).toBeNull();
+            // 閉じたらフォーカスを「メニュー」に戻す。
+            await waitFor(() => expect(document.activeElement).toBe(menuButton));
         } finally {
             vi.unstubAllGlobals();
         }

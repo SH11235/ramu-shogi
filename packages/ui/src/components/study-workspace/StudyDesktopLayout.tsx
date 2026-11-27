@@ -40,13 +40,15 @@ function Lockable({
     locked,
     className,
     children,
+    ref,
 }: {
     locked: boolean;
     className?: string;
     children: ReactNode;
+    ref?: RefObject<HTMLDivElement | null>;
 }): ReactElement {
     return (
-        <div inert={locked} className={cn(className, locked && "opacity-70")}>
+        <div ref={ref} inert={locked} className={cn(className, locked && "opacity-70")}>
             {children}
         </div>
     );
@@ -152,11 +154,16 @@ export function StudyDesktopLayout({
             style={{ "--study-action-bar-height": `${actionBarHeight}px` } as CSSProperties}
         >
             <div
-                ref={boardSectionRef}
                 // 持ち駒は対局画面と同じく盤の左右に置く（盤の上下を詰めて 1 画面に収める）。
                 className={cn("flex w-fit flex-col items-center gap-2", isWide && "row-span-2")}
             >
-                <Lockable locked={locked} className="flex flex-col items-center gap-2">
+                {/* ホイールでの局面の移動は盤と局面の移動の上だけにする（書き出しの行の上で回して、
+                    コピーする局面が変わらないように）。 */}
+                <Lockable
+                    ref={boardSectionRef}
+                    locked={locked}
+                    className="flex flex-col items-center gap-2"
+                >
                     {boardStatus}
                     {board}
                     {navBar}

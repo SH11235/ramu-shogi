@@ -426,7 +426,7 @@ export function StudyWorkspaceView({
             isSettingsOpen ||
             isTitleDialogOpen ||
             shareDialog?.open === true ||
-            isMobileMenuOpen ||
+            (isMobile && isMobileMenuOpen) ||
             isTreeOpen,
         containerRef: boardSectionRef,
         enableWheelNavigation: displaySettings.enableWheelNavigation,

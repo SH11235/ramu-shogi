@@ -18,9 +18,8 @@ const COPIED_LABEL_MS = 2000;
 const BUTTON_CLASS =
     "inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-wafuu-border bg-background px-2.5 text-sm text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40";
 
-/** 押したボタンの文字を、しばらく「コピーしました」に変える。 */
-function useCopiedFlash(): { copied: boolean; flash: () => void } {
-    const [copied, setCopied] = useState(false);
+function useCopiedFlash(): { copied: string | null; flash: (label: string) => void } {
+    const [copied, setCopied] = useState<string | null>(null);
     const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
     useEffect(
         () => () => {
@@ -28,12 +27,12 @@ function useCopiedFlash(): { copied: boolean; flash: () => void } {
         },
         [],
     );
-    const flash = (): void => {
+    const flash = (label: string): void => {
         if (timer.current !== null) clearTimeout(timer.current);
-        setCopied(true);
+        setCopied(label);
         timer.current = setTimeout(() => {
             timer.current = null;
-            setCopied(false);
+            setCopied(null);
         }, COPIED_LABEL_MS);
     };
     return { copied, flash };
@@ -55,15 +54,17 @@ function CopyButton({
     hint?: string;
     onCopy: () => Promise<boolean>;
 }): ReactElement {
-    const { copied, flash } = useCopiedFlash();
+    const { copied: copiedLabel, flash } = useCopiedFlash();
+    // コピーしたあとに形式を切り替えたら、コピーしていない形式を「コピーしました」と言わない。
+    const copied = copiedLabel === label;
     return (
         <button
             type="button"
-            aria-label={copied ? `${label}しました` : label}
+            aria-label={copied ? undefined : label}
             className={BUTTON_CLASS}
             onClick={() => {
                 void onCopy().then((ok) => {
-                    if (ok) flash();
+                    if (ok) flash(label);
                 });
             }}
         >

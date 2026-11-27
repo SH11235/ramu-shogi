@@ -15,6 +15,7 @@ import {
     DialogDescription,
     DialogHeader,
     DialogTitle,
+    DialogTrigger,
 } from "../../dialog";
 
 interface BottomSheetProps {
@@ -34,6 +35,8 @@ interface BottomSheetProps {
     overlay?: "dim" | "transparent";
     /** シートの見た目 */
     surface?: "solid" | "glass";
+    /** 開くボタン。渡すと、閉じたときにフォーカスをこのボタンへ戻す。 */
+    trigger?: ReactNode;
 }
 
 const heightClassName: Record<NonNullable<BottomSheetProps["height"]>, string> = {
@@ -60,6 +63,7 @@ export function BottomSheet({
     height = "auto",
     overlay = "dim",
     surface = "solid",
+    trigger,
 }: BottomSheetProps): ReactElement {
     const overlayClassName =
         overlay === "transparent" ? "bg-transparent backdrop-blur-none" : undefined;
@@ -67,6 +71,7 @@ export function BottomSheet({
         surface === "glass" ? "bg-background/[0.05] backdrop-blur-[1px]" : "bg-background";
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
+            {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
             <DialogContent
                 // 説明を渡したときだけ関連付ける（渡さない呼び出しは、これまでどおり）。
                 hasDescription={description !== undefined}

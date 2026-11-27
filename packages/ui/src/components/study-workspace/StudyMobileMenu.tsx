@@ -34,7 +34,7 @@ const ITEM_CLASS =
     "flex min-h-11 w-full items-center justify-between gap-2 rounded-md px-3 text-left text-sm text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 const FORMAT_BUTTON_CLASS =
     "h-9 min-w-12 rounded-md border border-wafuu-border bg-card px-2 text-xs font-medium text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-card";
-const HEADING_CLASS = "px-3 pb-0.5 pt-2 text-xs text-muted-foreground";
+const HEADING_CLASS = "px-3 pb-0.5 pt-2 text-xs font-normal text-muted-foreground";
 
 export function StudyMobileMenu({
     onCopyKifu,
@@ -48,6 +48,15 @@ export function StudyMobileMenu({
     noteItems = [],
 }: StudyMobileMenuProps): ReactElement {
     const [open, setOpenState] = useState(false);
+    // BottomSheet は開いたときに中へフォーカスを移さないので、描いたあとで最初の項目へ移す
+    // （閉じたときは、Radix が「メニュー」へ戻す）。
+    const focusFirstItem = (list: HTMLDivElement | null): void => {
+        if (!list) return;
+        setTimeout(
+            () => list.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus(),
+            0,
+        );
+    };
     const setOpen = (next: boolean): void => {
         setOpenState(next);
         onOpenChange?.(next);
@@ -80,75 +89,77 @@ export function StudyMobileMenu({
         </div>
     );
     return (
-        <>
-            <button
-                type="button"
-                aria-haspopup="dialog"
-                aria-expanded={open}
-                onClick={() => setOpen(true)}
-                className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-md border border-wafuu-border bg-background px-2.5 text-sm text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-                <MenuIcon />
-                メニュー
-            </button>
-            <BottomSheet open={open} onOpenChange={setOpen} title="メニュー" height="auto">
-                <div className="-mx-1 flex flex-col">
-                    {info && <div className="mb-1 border-b border-border px-1 pb-2">{info}</div>}
-                    <p className={HEADING_CLASS}>書き出す（表示中の手順・評価値とコメントつき）</p>
-                    {formatRow("棋譜をコピー", onCopyKifu)}
-                    {onSaveKifu && formatRow("棋譜をファイルに保存", onSaveKifu)}
-                    {csaUnavailableReason && (
-                        <p className="px-3 pb-1 text-xs text-muted-foreground">
-                            {csaUnavailableReason}
-                        </p>
-                    )}
-                    <button type="button" className={ITEM_CLASS} onClick={run(onCopySfen)}>
-                        局面をコピー（SFEN）
-                    </button>
-                    {(onPlayFromPosition || onPass) && (
-                        <>
-                            <p className={HEADING_CLASS}>この局面で</p>
-                            {onPlayFromPosition && (
-                                <button
-                                    type="button"
-                                    className={ITEM_CLASS}
-                                    onClick={run(onPlayFromPosition)}
-                                >
-                                    ここから対局
-                                </button>
-                            )}
-                            {onPass && (
-                                <button type="button" className={ITEM_CLASS} onClick={run(onPass)}>
-                                    <span>パスを指す</span>
-                                    <span className="text-xs text-muted-foreground">
-                                        パス権の研究用
+        <BottomSheet
+            open={open}
+            onOpenChange={setOpen}
+            title="メニュー"
+            height="auto"
+            trigger={
+                <button
+                    type="button"
+                    className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-md border border-wafuu-border bg-background px-2.5 text-sm text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                    <MenuIcon />
+                    メニュー
+                </button>
+            }
+        >
+            <div ref={focusFirstItem} className="-mx-1 flex flex-col">
+                {info && <div className="mb-1 border-b border-border px-1 pb-2">{info}</div>}
+                <h3 className={HEADING_CLASS}>書き出す（表示中の手順・評価値とコメントつき）</h3>
+                {formatRow("棋譜をコピー", onCopyKifu)}
+                {onSaveKifu && formatRow("棋譜をファイルに保存", onSaveKifu)}
+                {csaUnavailableReason && (
+                    <p className="px-3 pb-1 text-xs text-muted-foreground">
+                        {csaUnavailableReason}
+                    </p>
+                )}
+                <button type="button" className={ITEM_CLASS} onClick={run(onCopySfen)}>
+                    局面をコピー（SFEN）
+                </button>
+                {(onPlayFromPosition || onPass) && (
+                    <>
+                        <h3 className={HEADING_CLASS}>この局面で</h3>
+                        {onPlayFromPosition && (
+                            <button
+                                type="button"
+                                className={ITEM_CLASS}
+                                onClick={run(onPlayFromPosition)}
+                            >
+                                ここから対局
+                            </button>
+                        )}
+                        {onPass && (
+                            <button type="button" className={ITEM_CLASS} onClick={run(onPass)}>
+                                <span>パスを指す</span>
+                                <span className="text-xs text-muted-foreground">
+                                    パス権の研究用
+                                </span>
+                            </button>
+                        )}
+                    </>
+                )}
+                {noteItems.length > 0 && (
+                    <>
+                        <h3 className={HEADING_CLASS}>ノート</h3>
+                        {noteItems.map((item) => (
+                            <button
+                                key={item.label}
+                                type="button"
+                                className={ITEM_CLASS}
+                                onClick={run(item.run)}
+                            >
+                                <span>{item.label}</span>
+                                {item.note && (
+                                    <span className="truncate text-xs text-muted-foreground">
+                                        {item.note}
                                     </span>
-                                </button>
-                            )}
-                        </>
-                    )}
-                    {noteItems.length > 0 && (
-                        <>
-                            <p className={HEADING_CLASS}>ノート</p>
-                            {noteItems.map((item) => (
-                                <button
-                                    key={item.label}
-                                    type="button"
-                                    className={ITEM_CLASS}
-                                    onClick={run(item.run)}
-                                >
-                                    <span>{item.label}</span>
-                                    {item.note && (
-                                        <span className="truncate text-xs text-muted-foreground">
-                                            {item.note}
-                                        </span>
-                                    )}
-                                </button>
-                            ))}
-                        </>
-                    )}
-                </div>
-            </BottomSheet>
-        </>
+                                )}
+                            </button>
+                        ))}
+                    </>
+                )}
+            </div>
+        </BottomSheet>
     );
 }

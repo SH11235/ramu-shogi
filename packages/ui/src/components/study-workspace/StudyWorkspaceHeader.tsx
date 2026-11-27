@@ -95,7 +95,6 @@ export function StudyWorkspaceHeader({
                         type="button"
                         onClick={onOpenShare}
                         aria-haspopup="dialog"
-                        disabled={locked}
                         className={HEADER_BUTTON_CLASS}
                     >
                         <ShareIcon />
