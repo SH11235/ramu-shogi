@@ -82,15 +82,18 @@ export function StudiesView({
     // 棋譜のファイルを読み始めてから保存し終えるまでは、ほかの作り方（平手から）を断る
     // （両方が保存され、終わった順に開くノートが切り替わらないように）。
     const busyRef = useRef(false);
+    const [isCreating, setIsCreating] = useState(false);
     const handleImport = async (source: StudyKifuSource): Promise<void> => {
         if (busyRef.current)
             throw new Error("ほかの棋譜を取り込んでいます。終わってからお試しください。");
         busyRef.current = true;
+        setIsCreating(true);
         try {
             const { studyId } = await createStudyFromKifuSource(source, { sync });
             onOpenStudy(studyId);
         } finally {
             busyRef.current = false;
+            setIsCreating(false);
         }
     };
     // フォームはファイルを読み始めた時点から取り込み中になる（保存はまだ始まっていない）。
@@ -143,6 +146,7 @@ export function StudiesView({
                 </p>
                 <StudyImportForm
                     onImport={handleImport}
+                    busy={isCreating}
                     onBusyChange={(busy) => {
                         formBusyRef.current = busy;
                     }}

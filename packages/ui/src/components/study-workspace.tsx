@@ -661,6 +661,7 @@ export function StudyWorkspaceView({
         if (!locked) return;
         setIsSettingsOpen(false);
         setIsTitleDialogOpen(false);
+        setIsNewNoteOpen(false);
         setDeleteTargetId(null);
     }, [locked, setIsTitleDialogOpen]);
     const settingsOpen = isSettingsOpen && !editingDisabled;
