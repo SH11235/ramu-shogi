@@ -16,11 +16,16 @@ import { useMatchSettings } from "../contexts/MatchSettingsContext";
 import { useMatchState } from "../contexts/MatchStateContext";
 import {
     BOARD_PATTERN_LABEL,
+    CANDIDATE_ARROW_HINT,
+    CANDIDATE_ARROW_LABEL,
+    CANDIDATE_ARROW_OPTIONS,
+    candidateArrowOption,
     DISPLAY_TOGGLE_CHECKBOX_CLASS,
     DISPLAY_TOGGLE_LABELS,
     type DisplayToggleKey,
     SQUARE_NOTATION_LABEL,
     SQUARE_NOTATION_OPTIONS,
+    withCandidateArrowOption,
 } from "../displaySettingsFields";
 import { useBoardPattern } from "../hooks/useBoardPattern";
 import { useShogiMatchConfig } from "../ShogiMatchContext";
@@ -491,6 +496,28 @@ export function PlayAdvancedSettings({
                         className="min-h-10 text-sm"
                     >
                         {BOARD_PATTERN_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                            </option>
+                        ))}
+                    </NativeSelect>
+                </label>
+                <label
+                    className="flex items-center justify-between gap-3 text-sm"
+                    title={CANDIDATE_ARROW_HINT}
+                >
+                    {CANDIDATE_ARROW_LABEL}
+                    <NativeSelect
+                        value={candidateArrowOption(displaySettings)}
+                        onChange={(event) =>
+                            onDisplaySettingsChange(
+                                withCandidateArrowOption(displaySettings, event.target.value),
+                            )
+                        }
+                        wrapperClassName="w-40"
+                        className="min-h-10 text-sm"
+                    >
+                        {CANDIDATE_ARROW_OPTIONS.map((opt) => (
                             <option key={opt.value} value={opt.value}>
                                 {opt.label}
                             </option>
