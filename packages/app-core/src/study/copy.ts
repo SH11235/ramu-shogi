@@ -54,7 +54,8 @@ function pathTo(doc: StudyDocument, nodeId: string): string[] {
     let id: string | null = nodeId;
     while (id !== null) {
         const node: StudyNode | undefined = doc.tree.nodes[id];
-        if (!node) throw new Error("局面がノートにありません");
+        // 親をたどって輪になる壊れた文書でも、止まらずに回り続けないようにする。
+        if (!node || path.includes(id)) throw new Error("局面がノートにありません");
         path.unshift(id);
         id = node.parentId;
     }

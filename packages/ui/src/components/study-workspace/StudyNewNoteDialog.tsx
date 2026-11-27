@@ -423,11 +423,10 @@ function FromNoteForm({
                 />
             </label>
 
-            {error && (
-                <p role="alert" className="text-sm text-destructive">
-                    {error}
-                </p>
-            )}
+            {/* 失敗の理由が出入りしても「ノートを作る」が動かないよう、1 行ぶんの高さを取っておく。 */}
+            <p role={error ? "alert" : undefined} className="min-h-5 text-sm text-destructive">
+                {error}
+            </p>
             <div className="flex justify-end gap-2">
                 <DialogClose asChild>
                     <Button type="button" variant="outline">
