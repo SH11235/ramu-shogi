@@ -10,6 +10,7 @@ import {
     canonicalJSON,
     type KifuNode,
     type KifuTree,
+    type PieceType,
     type Player,
     type Square,
     type StudyAnalysisResult,
@@ -22,6 +23,7 @@ import {
     studyResultToKifuEvals,
     studyScoreToKifuEval,
 } from "@shogi/app-core";
+import type { ShogiBoardArrow } from "../shogi-board-arrows";
 import {
     type EvalHistory,
     formatEval,
@@ -264,6 +266,48 @@ export function studyFirstMoveLabel(node: KifuNode, pv: readonly string[]): stri
     if (move === undefined) return null;
     const prevTo: Square | undefined = node.usiMove ? parseToSquare(node.usiMove) : undefined;
     return formatMoveSimple(move, node.positionAfter.turn, node.positionAfter.board, prevTo);
+}
+
+/**
+ * 候補手の欄に出している候補のうち、上から `count` 個の最初の手を盤の矢印にする。
+ * パスと読めない手は描かない。
+ */
+export function studyCandidateArrows(
+    node: KifuNode,
+    candidates: readonly StudyCandidate[],
+    count: number,
+): ShogiBoardArrow[] {
+    const side = node.positionAfter.turn;
+    const arrows: ShogiBoardArrow[] = [];
+    const shown = [...candidates].sort((a, b) => a.rank - b.rank).slice(0, count);
+    for (const [index, candidate] of shown.entries()) {
+        const move = candidate.pv[0];
+        const emphasis = index === 0 ? "primary" : "secondary";
+        const drop = move ? /^([PLNSGBR])\*([1-9][a-i])$/.exec(move) : null;
+        if (drop) {
+            arrows.push({
+                from: null,
+                to: drop[2],
+                side,
+                emphasis,
+                dropPiece: drop[1] as PieceType,
+            });
+            continue;
+        }
+        const board = move ? /^([1-9][a-i])([1-9][a-i])\+?$/.exec(move) : null;
+        if (board) arrows.push({ from: board[1], to: board[2], side, emphasis });
+    }
+    return arrows;
+}
+
+/** 候補手の欄に出す候補（読んでいる途中ならその候補、そうでなければ深く読んだ結果を優先）。 */
+export function studyShownCandidates(
+    positionResult: StudyPositionResult | null,
+    deeperResult: StudyPositionResult | null,
+    live: { preview: StudyAnalysisResult | null } | undefined,
+): readonly StudyCandidate[] {
+    if (live) return live.preview?.candidates ?? [];
+    return (deeperResult ?? positionResult)?.result.candidates ?? [];
 }
 
 /** 手順の評価値の列（評価値グラフ用）。添字 0 が開始局面。 */

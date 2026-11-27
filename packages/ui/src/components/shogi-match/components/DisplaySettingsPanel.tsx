@@ -3,12 +3,17 @@ import { BOARD_PATTERN_OPTIONS, type BoardPattern } from "../../board-appearance
 import { NativeSelect } from "../../native-select";
 import {
     BOARD_PATTERN_LABEL,
+    CANDIDATE_ARROW_HINT,
+    CANDIDATE_ARROW_LABEL,
+    CANDIDATE_ARROW_OPTIONS,
+    candidateArrowOption,
     DISPLAY_TOGGLE_CHECKBOX_CLASS,
     DISPLAY_TOGGLE_HINTS,
     DISPLAY_TOGGLE_LABELS,
     type DisplayToggleKey,
     SQUARE_NOTATION_LABEL,
     SQUARE_NOTATION_OPTIONS,
+    withCandidateArrowOption,
 } from "../displaySettingsFields";
 import { useBoardPattern } from "../hooks/useBoardPattern";
 import type { DisplaySettings } from "../types";
@@ -62,6 +67,21 @@ export function DisplaySettingsPanel({
                     onChange={(event) => setBoardPattern(event.target.value as BoardPattern)}
                 >
                     {BOARD_PATTERN_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                        </option>
+                    ))}
+                </NativeSelect>
+            </label>
+            <label className="flex flex-col gap-2 text-sm" title={CANDIDATE_ARROW_HINT}>
+                <span>{CANDIDATE_ARROW_LABEL}</span>
+                <NativeSelect
+                    value={candidateArrowOption(settings)}
+                    onChange={(event) =>
+                        onChange(withCandidateArrowOption(settings, event.target.value))
+                    }
+                >
+                    {CANDIDATE_ARROW_OPTIONS.map((opt) => (
                         <option key={opt.value} value={opt.value}>
                             {opt.label}
                         </option>

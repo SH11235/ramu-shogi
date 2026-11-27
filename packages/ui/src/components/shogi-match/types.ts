@@ -54,6 +54,10 @@ export interface DisplaySettings {
     showEngineReading: boolean;
     /** マウスホイールで棋譜をナビゲート */
     enableWheelNavigation: boolean;
+    /** 研究ノートの盤に候補手の矢印を出すか */
+    showCandidateArrows: boolean;
+    /** 矢印を出す候補手の数（上から） */
+    candidateArrowCount: 1 | 2;
     /** サウンドフィードバック */
     enableSound: boolean;
     /** CPU 戦の着手音（人どうしの対局では常に通常の駒音） */
@@ -69,6 +73,8 @@ export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
     showSearchInfo: false,
     showEngineReading: true,
     enableWheelNavigation: true,
+    showCandidateArrows: true,
+    candidateArrowCount: 2,
     enableSound: true,
     cpuSoundVoice: "dog",
 };

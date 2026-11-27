@@ -13,6 +13,36 @@ export const SQUARE_NOTATION_OPTIONS: ReadonlyArray<{ value: SquareNotation; lab
 
 export const BOARD_PATTERN_LABEL = "盤の模様";
 
+export const CANDIDATE_ARROW_LABEL = "矢印の表示数";
+export const CANDIDATE_ARROW_HINT = "研究ノートの盤に、候補手を上から矢印で示します。";
+
+export const CANDIDATE_ARROW_OPTIONS: ReadonlyArray<{ value: "0" | "1" | "2"; label: string }> = [
+    { value: "0", label: "なし" },
+    { value: "1", label: "1" },
+    { value: "2", label: "2" },
+];
+
+/** 「矢印の表示数」の選択肢の値。スイッチを切っていれば「なし」。 */
+export function candidateArrowOption(settings: DisplaySettings): "0" | "1" | "2" {
+    return settings.showCandidateArrows ? (String(settings.candidateArrowCount) as "1" | "2") : "0";
+}
+
+/**
+ * 「矢印の表示数」を選び直した設定。「なし」はスイッチを切るだけにし、数は残す
+ * （研究ノートのスイッチで入れ直したときに前の数に戻すため）。
+ */
+export function withCandidateArrowOption(
+    settings: DisplaySettings,
+    option: string,
+): DisplaySettings {
+    if (option === "0") return { ...settings, showCandidateArrows: false };
+    return {
+        ...settings,
+        showCandidateArrows: true,
+        candidateArrowCount: option === "1" ? 1 : 2,
+    };
+}
+
 /** 表示設定の欄にチェックボックスで出す項目（音や AI の読みは別の欄で扱う） */
 export type DisplayToggleKey = Extract<
     keyof DisplaySettings,

@@ -10,11 +10,16 @@ import { NativeSelect } from "../../native-select";
 import { Switch } from "../../switch";
 import {
     BOARD_PATTERN_LABEL,
+    CANDIDATE_ARROW_HINT,
+    CANDIDATE_ARROW_LABEL,
+    CANDIDATE_ARROW_OPTIONS,
+    candidateArrowOption,
     DISPLAY_TOGGLE_CHECKBOX_CLASS,
     DISPLAY_TOGGLE_LABELS,
     type DisplayToggleKey,
     SQUARE_NOTATION_LABEL,
     SQUARE_NOTATION_OPTIONS,
+    withCandidateArrowOption,
 } from "../displaySettingsFields";
 import { useBoardPattern } from "../hooks/useBoardPattern";
 import type { ClockSettings } from "../hooks/useClockManager";
@@ -892,6 +897,27 @@ export function MobileSettingsSheet({
                             </option>
                         ))}
                     </NativeSelect>
+                </label>
+
+                <label htmlFor="mobile-candidate-arrows" className={labelClassName}>
+                    <span className="text-xs text-muted-foreground">{CANDIDATE_ARROW_LABEL}</span>
+                    <NativeSelect
+                        id="mobile-candidate-arrows"
+                        value={candidateArrowOption(displaySettings)}
+                        onChange={(e) =>
+                            onDisplaySettingsChange(
+                                withCandidateArrowOption(displaySettings, e.target.value),
+                            )
+                        }
+                        className="text-sm"
+                    >
+                        {CANDIDATE_ARROW_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                            </option>
+                        ))}
+                    </NativeSelect>
+                    <span className="text-xs text-muted-foreground">{CANDIDATE_ARROW_HINT}</span>
                 </label>
 
                 {/* チェックボックス設定 */}

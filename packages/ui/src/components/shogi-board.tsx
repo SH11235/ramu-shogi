@@ -3,6 +3,7 @@ import { cn } from "@shogi/design-system";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { useRef } from "react";
 import { type BoardPattern, useBoardPatternContext } from "./board-appearance";
+import { type ShogiBoardArrow, ShogiBoardArrows } from "./shogi-board-arrows";
 import type { SquareNotation } from "./shogi-match/types";
 import { getPieceImagePath, PIECE_LABELS } from "./shogi-match/utils/constants";
 import { formatSquare, getBoardLabels } from "./shogi-match/utils/coordinateFormat";
@@ -76,6 +77,8 @@ interface ShogiBoardProps {
     moveShadow?: ShogiBoardMoveShadow | null;
     /** ヒントとして示す手（動かす駒のマスと行き先。打つ手は行き先だけ）。枠で示す。 */
     hintMove?: { from?: string | null; to: string; side?: ShogiBoardOwner } | null;
+    /** マス目の上に重ねる矢印（候補手など）。 */
+    arrows?: readonly ShogiBoardArrow[];
     /** 盤の上に重ねて出すもの（終局の判子など）。盤の枠いっぱいの位置の基準で置く */
     overlay?: ReactNode;
     /** マス目の模様。省略時は BoardPatternProvider の値（アプリの設定） */
@@ -100,6 +103,7 @@ export function ShogiBoard({
     showBoardLabels = false,
     moveShadow = null,
     hintMove = null,
+    arrows,
     overlay,
     pattern,
 }: ShogiBoardProps): ReactElement {
@@ -151,7 +155,7 @@ export function ShogiBoard({
                 {/* 角は直角にする。丸めると、隅のマスの駒が角で欠ける。外周は outline を足して内側の線より太く見せる。
                     列の幅は --shogi-cell-size を上限にし、置き場が狭ければ 9 列そろって縮める。マスは列の幅に合わせる
                     （マスの幅を固定すると、縮んだ列より広いマスが隣の列に重なり、隣のマスの地が縦の線を隠す）。 */}
-                <div className="grid min-w-0 grid-cols-[repeat(9,minmax(0,var(--shogi-cell-size,48px)))] border-l border-t border-shogi-border outline outline-1 outline-shogi-border">
+                <div className="relative grid min-w-0 grid-cols-[repeat(9,minmax(0,var(--shogi-cell-size,48px)))] border-l border-t border-shogi-border outline outline-1 outline-shogi-border">
                     {grid.map((row, rowIndex) =>
                         row.map((cell, columnIndex) => {
                             const isSelected = selectedSquare === cell.id;
@@ -361,6 +365,9 @@ export function ShogiBoard({
                                 </div>
                             );
                         }),
+                    )}
+                    {arrows && arrows.length > 0 && (
+                        <ShogiBoardArrows arrows={arrows} flipBoard={flipBoard} />
                     )}
                 </div>
                 {/* 盤外ラベル: 段（右） */}

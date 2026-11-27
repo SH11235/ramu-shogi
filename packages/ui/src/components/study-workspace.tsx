@@ -120,12 +120,14 @@ import {
     pickStudyPositionResult,
     type StudyStructureTree,
     studyBestCandidate,
+    studyCandidateArrows,
     studyFirstMoveLabel,
     studyLimitsLabel,
     studyMoveLabel,
     studyOriginLabel,
     studyPathTo,
     studyPlayersLabel,
+    studyShownCandidates,
     studyStructureKey,
 } from "./study-workspace/studyView";
 import {
@@ -308,7 +310,7 @@ export function StudyWorkspaceView({
     // Tailwind の xl（80rem）と同じ単位で判定する（px だと、ブラウザの文字の大きさを変えたときに
     // 棋譜の欄を置く列が CSS のグリッドと食い違う）。
     const isWide = useMediaQuery("(min-width: 80rem)");
-    const [storedDisplaySettings] = useLocalStorage<DisplaySettings>(
+    const [storedDisplaySettings, setStoredDisplaySettings] = useLocalStorage<DisplaySettings>(
         DISPLAY_SETTINGS_STORAGE_KEY,
         DEFAULT_DISPLAY_SETTINGS,
     );
@@ -1264,9 +1266,17 @@ export function StudyWorkspaceView({
         positionKey: `${tree.startSfen}|${movesToCurrent.join(" ")}`,
         getLegalSet,
     });
+    const candidateArrows = displaySettings.showCandidateArrows
+        ? studyCandidateArrows(
+              currentNode,
+              studyShownCandidates(insights.positionResult, insights.deeperResult, liveHere),
+              displaySettings.candidateArrowCount,
+          )
+        : [];
     const boardProps = {
         grid,
         flipBoard,
+        arrows: candidateArrows,
         lastMove: lastMoveOf(currentNode.usiMove),
         selection,
         moveShadow,
@@ -1397,6 +1407,12 @@ export function StudyWorkspaceView({
             }
             // スマートフォンではスイッチを局面の帯に置く（どの表示からでも止められるように）。
             autoSwitchElsewhere={isMobile}
+            arrows={{
+                enabled: displaySettings.showCandidateArrows,
+                count: displaySettings.candidateArrowCount,
+                onChange: (enabled) =>
+                    setStoredDisplaySettings({ ...displaySettings, showCandidateArrows: enabled }),
+            }}
             // スマートフォンは帯に記録を出すので、ここには添えない。
             recordAhead={isMobile ? null : recordAhead}
             readingSoon={bandShowsReading && liveHere === undefined}
