@@ -62,24 +62,26 @@ function CopyButton({
     // コピーしたあとに形式・局面が変わったら、コピーしていない中身を「コピーしました」と言わない。
     const copied = copiedKey === copyKey;
     return (
-        <button
-            type="button"
-            aria-label={copied ? COPIED_LABEL : label}
-            className={BUTTON_CLASS}
-            onClick={() => {
-                void onCopy().then((ok) => {
-                    if (ok) flash(copyKey);
-                });
-            }}
-        >
-            {/* 結果はアイコンだけで返し、文字と幅は変えない。幅が変わると行が折り返し、盤の大きさまで変わる。 */}
-            {copied ? <CheckIcon className="text-status-success" /> : <CopyIcon />}
-            コピー
-            {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
-            <span aria-live="polite" className="sr-only">
+        <>
+            <button
+                type="button"
+                aria-label={label}
+                className={BUTTON_CLASS}
+                onClick={() => {
+                    void onCopy().then((ok) => {
+                        if (ok) flash(copyKey);
+                    });
+                }}
+            >
+                {/* 結果はアイコンだけで返し、文字と幅は変えない。幅が変わると行が折り返し、盤の大きさまで変わる。 */}
+                {copied ? <CheckIcon className="text-status-success" /> : <CopyIcon />}
+                コピー
+                {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
+            </button>
+            <span role="status" className="sr-only">
                 {copied ? COPIED_LABEL : ""}
             </span>
-        </button>
+        </>
     );
 }
 
