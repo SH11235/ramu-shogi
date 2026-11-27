@@ -32,6 +32,7 @@ import {
     dispatchLocalStorageSyncEvent,
     type UseLocalStorageReturn,
     useLocalStorage,
+    useStoredString,
 } from "./useLocalStorage";
 import { useNormalizedSettings } from "./useNormalizedSettings";
 
@@ -119,9 +120,8 @@ type Setter<T> = UseLocalStorageReturn<T>[1];
  * 候補手の矢印は研究ノートの盤に出すもので、研究ノートは通常の表示設定のキーを読む。観戦の表示設定は
  * 別のキーに保存するので、矢印の項目だけは通常のキーから読み、通常のキーへ書く。
  */
-function readSharedArrowSettings() {
+function parseSharedArrowSettings(stored: string | null) {
     try {
-        const stored = localStorage.getItem(DISPLAY_SETTINGS_STORAGE_KEY);
         return normalizeCandidateArrowSettings(stored === null ? null : JSON.parse(stored));
     } catch {
         return normalizeCandidateArrowSettings(null);
@@ -287,11 +287,13 @@ export function useMatchPreferences({
         displaySettingsDefaults,
     );
 
+    // 観戦では、研究ノートが読む通常のキーの矢印の設定を購読する（別のタブで変えても追従する）。
+    const sharedDisplaySettings = useStoredString(DISPLAY_SETTINGS_STORAGE_KEY);
     const displaySettings: DisplaySettings = {
         ...displaySettingsDefaults,
         ...storedDisplaySettings,
         ...(spectateMode
-            ? readSharedArrowSettings()
+            ? parseSharedArrowSettings(sharedDisplaySettings)
             : normalizeCandidateArrowSettings(storedDisplaySettings)),
     };
     const setSpectateDisplaySettings: Setter<DisplaySettings> = (next, source) => {

@@ -1,6 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { DISPLAY_SETTINGS_STORAGE_KEY } from "./useBoardPattern";
+import { dispatchLocalStorageSyncEvent } from "./useLocalStorage";
 import { useMatchPreferences } from "./useMatchPreferences";
 
 const options = (spectateMode: boolean) => ({
@@ -123,5 +124,21 @@ describe("useMatchPreferences の候補手の矢印", () => {
         expect(
             JSON.parse(localStorage.getItem(DISPLAY_SETTINGS_STORAGE_KEY) ?? "{}"),
         ).toMatchObject({ showCandidateArrows: true, candidateArrowCount: 2 });
+    });
+
+    it("観戦は、研究ノート側で変えた矢印の設定に追従する", () => {
+        localStorage.setItem(
+            DISPLAY_SETTINGS_STORAGE_KEY,
+            JSON.stringify({ candidateArrowCount: 2 }),
+        );
+        const { result } = renderHook(() => useMatchPreferences(options(true)));
+        act(() => {
+            localStorage.setItem(
+                DISPLAY_SETTINGS_STORAGE_KEY,
+                JSON.stringify({ candidateArrowCount: 1 }),
+            );
+            dispatchLocalStorageSyncEvent(DISPLAY_SETTINGS_STORAGE_KEY);
+        });
+        expect(result.current.displaySettings.candidateArrowCount).toBe(1);
     });
 });

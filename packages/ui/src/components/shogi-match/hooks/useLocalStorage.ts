@@ -3,7 +3,7 @@
 // 場合は vite.config.ts の該当ルールも必ず更新すること。放置すると本 util が
 // shogi-match chunk に取り込まれ、eager path 全体が ~440KB の shogi-match を
 // 引き込む回帰になる (ビルドエラーにはならずサイレントに劣化する)。
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 export const LOCAL_STORAGE_SYNC_EVENT = "shogi-local-storage-sync";
 
@@ -25,6 +25,37 @@ function parseStoredValue<T>(key: string, stored: string | null, defaultValue: T
         console.warn(`Failed to parse localStorage key "${key}":`, error);
         return defaultValue;
     }
+}
+
+/**
+ * キーの保存値（文字列のまま）を読むだけで購読する。書き込みはしない（別の画面が持つキーを
+ * 覗くときに、既定値で上書きしないため）。
+ */
+export function useStoredString(key: string): string | null {
+    return useSyncExternalStore(
+        (onChange) => {
+            const handleLocalSync = (event: Event): void => {
+                if ((event as CustomEvent<LocalStorageSyncDetail>).detail?.key === key) onChange();
+            };
+            const handleStorage = (event: StorageEvent): void => {
+                if (event.key === null || event.key === key) onChange();
+            };
+            window.addEventListener("storage", handleStorage);
+            window.addEventListener(LOCAL_STORAGE_SYNC_EVENT, handleLocalSync);
+            return () => {
+                window.removeEventListener("storage", handleStorage);
+                window.removeEventListener(LOCAL_STORAGE_SYNC_EVENT, handleLocalSync);
+            };
+        },
+        () => {
+            try {
+                return localStorage.getItem(key);
+            } catch {
+                return null;
+            }
+        },
+        () => null,
+    );
 }
 
 /** 保存してある最新の値（無い・読めない・使えないときは `fallback`）。 */
