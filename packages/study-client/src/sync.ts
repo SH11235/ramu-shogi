@@ -107,7 +107,7 @@ export type StudySyncEvent =
  */
 export type StudyPullState = "not_needed" | "pending" | "done";
 
-type StudySyncErrorCode = "not_found" | "merged" | "already_exists";
+type StudySyncErrorCode = "not_found" | "merged" | "already_exists" | "owner_mismatch";
 
 export class StudySyncError extends Error {
     readonly code: StudySyncErrorCode;
@@ -189,8 +189,13 @@ export interface StudySync {
      * 確かめ、そのユーザーを持ち主にする（違っていれば `setSession` で伝え直されたときと同じく
      * 切り替え、`unauthorized` のイベントで画面に取り直しを促す）。確かめられなければ匿名で作る
      * （次の `adoptAnonymousStudies` で、そのとき確かめられたアカウントに引き継がれる）。
+     *
+     * `requiredOwner` を渡すと、そのユーザーのノートとしてしか作らない（別のノートの写しを、元の
+     * ノートを読めないアカウントや匿名で作らない）。持ち主がそのユーザーにならなければ何も書かず
+     * `StudySyncError("owner_mismatch")`。サーバーに確かめられなかっただけで、伝えられている
+     * ログインがそのユーザーなら、そのユーザーのノートとして作る（そのユーザーにしか見えない）。
      */
-    createStudy(doc: StudyDocument): Promise<StoredStudy>;
+    createStudy(doc: StudyDocument, options?: { requiredOwner?: string }): Promise<StoredStudy>;
     /**
      * ノートを開く。ローカルにあればそれを返し、裏でサーバーの変更を取り込む。
      * ローカルに無ければ（ログイン中なら）サーバーから取得して保存する。
@@ -1752,7 +1757,8 @@ export function createStudySync(options: StudySyncOptions): StudySync {
             return unauthorized;
         },
 
-        createStudy(doc) {
+        createStudy(doc, createOptions) {
+            const requiredOwner = createOptions?.requiredOwner;
             // 持ち主を確かめる間も、同じノートへの後続の書き込みや `flush` を先に進めない
             // （呼んだ順に適用するため）。
             const created = enqueueWrite(doc.id, async () => {
@@ -1766,7 +1772,20 @@ export function createStudySync(options: StudySyncOptions): StudySync {
                     }
                     // 持ち主を決めてから書くまでの間にログイン状態が変わっていたら、匿名にして
                     // 引き継ぎに任せる（変わったあとのアカウントから見えなくしないため）。
-                    const settled = (session?.userId ?? null) === basis ? owner : null;
+                    const claimed = session?.userId ?? null;
+                    const settled = claimed === basis ? owner : null;
+                    if (requiredOwner !== undefined) {
+                        const unverifiedButClaimed =
+                            owner === null && basis === requiredOwner && claimed === requiredOwner;
+                        if (settled !== requiredOwner && !unverifiedButClaimed) {
+                            throw new StudySyncError(
+                                "owner_mismatch",
+                                "ログインしているアカウントが、元のノートの持ち主と違います",
+                            );
+                        }
+                        const fresh = newStoredStudy(doc, requiredOwner, null);
+                        return { study: fresh, result: fresh };
+                    }
                     const fresh = newStoredStudy(doc, settled, null);
                     return { study: fresh, result: fresh };
                 });

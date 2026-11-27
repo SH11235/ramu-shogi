@@ -34,7 +34,8 @@ interface StudyEntrySync {
     findLocalByOrigin(origin: StudyOrigin): Promise<string | null>;
     /** ログイン中のセッション。未ログインなら null。 */
     getSession(): unknown;
-    createStudy(doc: StudyDocument): Promise<unknown>;
+    /** `requiredOwner` を渡したら、そのユーザーのノートとしてしか作らない（できなければ例外）。 */
+    createStudy(doc: StudyDocument, options?: { requiredOwner?: string }): Promise<unknown>;
     /**
      * 何局もまとめて作る取り込みが途中で失敗したとき、作ったノートを消すのに使う。
      * 1 件ずつ開く・作る入口では要らないので省略できる。無ければ、作ったノートは消せずに残り、その件数を知らせる。
@@ -63,6 +64,8 @@ export interface StudyEntryDeps {
 
 interface OpenOrCreateStudyOptions extends StudyEntryDeps {
     origin: StudyOrigin;
+    /** 作るノートの持ち主をこのユーザーに限る（別のノートの写しを、別のアカウントに渡さない）。 */
+    requiredOwner?: string;
     /** 新しく作るときだけ呼ばれる。渡された ID で文書を作る。 */
     build: (studyId: string) => StudyDocument;
 }
@@ -86,6 +89,7 @@ export async function openOrCreateStudy({
     sync,
     api,
     onUnauthorized,
+    requiredOwner,
 }: OpenOrCreateStudyOptions): Promise<OpenOrCreateStudyResult> {
     if (origin.kind !== "paste" && origin.ref !== null) {
         const localId = await sync.findLocalByOrigin(origin);
@@ -104,7 +108,7 @@ export async function openOrCreateStudy({
     }
     const doc = build(generateStudyId());
     explainLimits(doc);
-    await sync.createStudy(doc);
+    await sync.createStudy(doc, requiredOwner !== undefined ? { requiredOwner } : undefined);
     return { studyId: doc.id, existing: false };
 }
 
@@ -448,12 +452,13 @@ export async function createStudyFromKifuTree(
  */
 export function createStudyFromDocument(
     doc: StudyDocument,
-    deps: StudyEntryDeps,
+    deps: StudyEntryDeps & { requiredOwner?: string },
 ): Promise<OpenOrCreateStudyResult> {
     return openOrCreateStudy({
         sync: deps.sync,
         api: deps.api,
         onUnauthorized: deps.onUnauthorized,
+        requiredOwner: deps.requiredOwner,
         origin: { kind: "paste", ref: null },
         build: (id) => ({ ...doc, id, origin: { kind: "paste", ref: null } }),
     });

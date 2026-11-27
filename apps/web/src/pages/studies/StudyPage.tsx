@@ -3,6 +3,7 @@ import {
     createStudyApiClient,
     isStudyAnalysisOp,
     type StoredStudy,
+    StudySyncError,
     toStudyDocument,
 } from "@shogi/study-client";
 import type {
@@ -177,15 +178,22 @@ export default function StudyPage(): ReactElement {
     const newNote = {
         onCreateFromNote: async (doc: StudyDocument): Promise<void> => {
             const startedFrom = studyId;
+            // アカウントのノートの写しは、そのアカウントのノートとしてしか作らない（別のタブでアカウントを
+            // 切り替えた直後などに、元のノートを読めないアカウントへ中身を渡さない）。
             const sourceOwner = state.status === "ready" ? state.ownerId : null;
-            const { studyId: created } = await createStudyFromDocument(doc, { sync });
-            // 写しの持ち主は保存の時点のログインで決まる。別のタブでアカウントを切り替えた直後などで
-            // 元のノートの持ち主と違えば、元のノートを読めないアカウントに中身を渡さないよう消す。
-            if (sourceOwner !== null && (await sync.load(created))?.owner !== sourceOwner) {
-                await sync.deleteStudy(created).catch(() => undefined);
-                throw new Error(
-                    "ログインしているアカウントが、このノートの持ち主と違います。ログインし直してからお試しください。",
-                );
+            let created: string;
+            try {
+                ({ studyId: created } = await createStudyFromDocument(doc, {
+                    sync,
+                    ...(sourceOwner !== null ? { requiredOwner: sourceOwner } : {}),
+                }));
+            } catch (error) {
+                if (error instanceof StudySyncError && error.code === "owner_mismatch") {
+                    throw new Error(
+                        "ログインしているアカウントが、このノートの持ち主と違います。ログインし直してからお試しください。",
+                    );
+                }
+                throw error;
             }
             await openCreated(startedFrom, created);
         },

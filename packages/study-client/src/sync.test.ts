@@ -2681,6 +2681,41 @@ describe.each(STORES)("同期エンジン（保存層: $name）", ({ create }) =
             { label: "別のアカウントへの切り替え", other: USER_B },
             { label: "ログアウト", other: null },
         ])(
+            "持ち主を指定して作るとき、画面が知らないまま $label していたら何も書かずに断る",
+            async ({ other }) => {
+                const harness = createVerifyingHarness();
+                harness.login(USER_A);
+                harness.switchCookie(other);
+                await expect(
+                    harness.sync.createStudy(doc, { requiredOwner: USER_A }),
+                ).rejects.toMatchObject({ code: "owner_mismatch" });
+                expect(await harness.sync.load(TEST_STUDY_ID)).toBeNull();
+                await harness.advance(0);
+                expect(harness.server.calls.filter((call) => call.method === "create")).toEqual([]);
+            },
+        );
+
+        it("持ち主を指定して作るとき、サーバーに確かめられなくても伝えられているログインがその人なら、その人のノートにする", async () => {
+            const harness = createHarness({
+                verifySession: async () => {
+                    throw new Error("offline");
+                },
+            });
+            harness.login(USER_A);
+            const created = await harness.sync.createStudy(doc, { requiredOwner: USER_A });
+            expect(created.owner).toBe(USER_A);
+            await expect(
+                harness.sync.createStudy(
+                    { ...doc, id: "c2b2c0c4-1e6f-4f79-9b8a-6c3c0a1e2f3d" },
+                    { requiredOwner: USER_B },
+                ),
+            ).rejects.toMatchObject({ code: "owner_mismatch" });
+        });
+
+        it.each([
+            { label: "別のアカウントへの切り替え", other: USER_B },
+            { label: "ログアウト", other: null },
+        ])(
             "画面が $label を知らないまま作ったノートは、サーバーから見たユーザーのものにする",
             async ({ other }) => {
                 const harness = createVerifyingHarness();

@@ -75,7 +75,7 @@ export function createStudyFromKifuTree(
 /** 研究ノートから写した文書を、新しいノートとして保存する。 */
 export function createStudyFromDocument(
     doc: StudyDocument,
-    deps: Partial<StudyEntryDeps> = {},
+    deps: Partial<StudyEntryDeps> & { requiredOwner?: string } = {},
 ): Promise<OpenOrCreateStudyResult> {
     return createFromDocument(doc, withDefaults(deps)).then(reportStudyCreated);
 }
