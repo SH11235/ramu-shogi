@@ -253,9 +253,9 @@ const SCENES: Scene[] = [
         name: "study-analysis-settings",
         open: async (page) => {
             await openStudyAtEnd(page);
-            // スマホでは「その他の操作」の中にある。
-            const more = page.getByRole("button", { name: "その他の操作" });
-            if ((page.viewportSize()?.width ?? 0) < 768) await more.click();
+            // スマホでは「メニュー」の中にある。
+            const menu = page.getByRole("button", { name: "メニュー" });
+            if ((page.viewportSize()?.width ?? 0) < 768) await menu.click();
             await page.getByRole("button", { name: /^解析の設定/ }).click();
             await page.getByRole("dialog").waitFor();
         },

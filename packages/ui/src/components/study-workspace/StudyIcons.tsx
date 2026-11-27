@@ -72,13 +72,42 @@ export function SettingsIcon({ className }: IconProps): ReactElement {
     );
 }
 
-/** その他の操作（三点）。 */
-export function MoreIcon({ className }: IconProps): ReactElement {
+/** コピー（重ねた紙）。 */
+export function CopyIcon({ className }: IconProps): ReactElement {
     return (
-        <StrokeIcon className={className} filled>
-            <circle cx="5" cy="12" r="1.5" />
-            <circle cx="12" cy="12" r="1.5" />
-            <circle cx="19" cy="12" r="1.5" />
+        <StrokeIcon className={className}>
+            <rect x="8" y="8" width="12" height="13" rx="2" />
+            <path d="M4 16V5a2 2 0 0 1 2-2h9" />
+        </StrokeIcon>
+    );
+}
+
+/** ファイルに保存（下向きの矢印）。 */
+export function DownloadIcon({ className }: IconProps): ReactElement {
+    return (
+        <StrokeIcon className={className}>
+            <path d="M12 3v12M7 10l5 5 5-5M4 20h16" />
+        </StrokeIcon>
+    );
+}
+
+/** 共有（つながった 3 点）。 */
+export function ShareIcon({ className }: IconProps): ReactElement {
+    return (
+        <StrokeIcon className={className}>
+            <circle cx="6" cy="12" r="2.5" />
+            <circle cx="18" cy="6" r="2.5" />
+            <circle cx="18" cy="18" r="2.5" />
+            <path d="M8.2 10.9l7.6-3.8M8.2 13.1l7.6 3.8" />
+        </StrokeIcon>
+    );
+}
+
+/** メニュー（3 本線）。 */
+export function MenuIcon({ className }: IconProps): ReactElement {
+    return (
+        <StrokeIcon className={className}>
+            <path d="M4 6h16M4 12h16M4 18h16" />
         </StrokeIcon>
     );
 }

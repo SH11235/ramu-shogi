@@ -123,6 +123,7 @@ interface HarnessProps {
     deepRead?: StudyDeepReadRef | null;
     onPlayFromPosition?: (position: { sfen: string; moves: string[] }) => void;
     onSaveKifuFile?: (file: { fileName: string; text: string }) => void;
+    shareDialog?: { open: boolean; onOpen: () => void };
     mate?: StudyMateController;
 }
 
@@ -149,6 +150,7 @@ function Harness({
     deepRead,
     onPlayFromPosition,
     onSaveKifuFile,
+    shareDialog,
     mate,
 }: HarnessProps) {
     const [doc, setDoc] = useState(initialDoc);
@@ -190,6 +192,7 @@ function Harness({
             deepRead={deepRead}
             onPlayFromPosition={onPlayFromPosition}
             onSaveKifuFile={onSaveKifuFile}
+            shareDialog={shareDialog}
             analysis={analysis}
             mate={mate}
             message={message}
@@ -1471,12 +1474,16 @@ describe("StudyWorkspaceView", () => {
         ).toBeTruthy();
     });
 
-    describe("その他の操作（書き出しと、この局面から対局）", () => {
-        const openMenu = (): void => {
-            fireEvent.click(screen.getByRole("button", { name: "その他の操作" }));
-        };
+    describe("盤の下の操作（棋譜の書き出しと、いまの局面）", () => {
+        const kifuGroup = () =>
+            screen.getByRole("group", { name: /^棋譜（表示中の手順・評価値とコメントつき）/ });
+        const positionGroup = () => screen.getByRole("group", { name: /^いまの局面（/ });
 
-        it("表示中の手順を KIF で、いま見ている局面までを SFEN でコピーする", async () => {
+        afterEach(() => {
+            localStorage.clear();
+        });
+
+        it("表示中の手順を KIF で、いま見ている局面までを SFEN でコピーし、押したボタンの文字で知らせる", async () => {
             const writeText = vi.fn(async (_text: string) => {});
             vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
             try {
@@ -1484,17 +1491,30 @@ describe("StudyWorkspaceView", () => {
                 // 2 手目まで進める。
                 fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
                 fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
+                expect(within(positionGroup()).getByText(/2手目 ☖3四歩\(33\)/)).toBeTruthy();
 
-                openMenu();
-                fireEvent.click(screen.getByRole("button", { name: "コピー（KIF）" }));
+                fireEvent.click(
+                    within(kifuGroup()).getByRole("button", { name: "棋譜をコピー（KIF）" }),
+                );
                 await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
                 // KIF は、見ている局面より先も含めた、表示中の手順の全体。
                 expect(writeText.mock.calls[0][0]).toContain("先手：先手太郎");
                 expect(writeText.mock.calls[0][0]).toContain("８四歩");
-                expect(await screen.findByText(/4 手）を KIF でコピーしました/)).toBeTruthy();
+                expect(
+                    await within(kifuGroup()).findByRole("button", { name: "コピーしました" }),
+                ).toBeTruthy();
+                // コピーしたあとに形式を切り替えたら、コピーしていない形式を「コピーしました」と言わない。
+                fireEvent.click(within(kifuGroup()).getByRole("radio", { name: "CSA" }));
+                expect(
+                    within(kifuGroup()).getByRole("button", { name: "棋譜をコピー（CSA）" }),
+                ).toBeTruthy();
+                fireEvent.click(within(kifuGroup()).getByRole("radio", { name: "KIF" }));
+                // 画面の上の通知は出さない（ボタンの文字と二重に知らせない）。
+                expect(screen.queryByText(/KIF でコピーしました/)).toBeNull();
 
-                openMenu();
-                fireEvent.click(screen.getByRole("button", { name: /局面をコピー（SFEN）/ }));
+                fireEvent.click(
+                    within(positionGroup()).getByRole("button", { name: "局面をコピー（SFEN）" }),
+                );
                 await waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
                 expect(writeText.mock.calls[1][0]).toBe("position startpos moves 7g7f 3c3d");
             } finally {
@@ -1502,24 +1522,60 @@ describe("StudyWorkspaceView", () => {
             }
         });
 
-        it("CSA でもコピーでき、ファイルに保存すると表題の名前で KIF・CSA を渡す", async () => {
+        it("「コピーしました」は 2 秒ほどで「コピー」に戻る", async () => {
+            vi.useFakeTimers({ shouldAdvanceTime: true });
+            vi.stubGlobal("navigator", {
+                ...navigator,
+                clipboard: { writeText: async () => {} },
+            });
+            try {
+                render(<Harness initialDoc={createTestStudy().doc} />);
+                fireEvent.click(
+                    within(positionGroup()).getByRole("button", { name: "局面をコピー（SFEN）" }),
+                );
+                expect(await within(positionGroup()).findByText("コピーしました")).toBeTruthy();
+                // 局面を進めたら、コピーしていない局面を「コピーしました」と言わない。
+                fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
+                expect(within(positionGroup()).queryByText("コピーしました")).toBeNull();
+                fireEvent.click(screen.getByRole("button", { name: "1 手戻る（←）" }));
+                await act(async () => {
+                    vi.advanceTimersByTime(2100);
+                });
+                expect(within(positionGroup()).queryByText("コピーしました")).toBeNull();
+                expect(within(positionGroup()).getByText("コピー")).toBeTruthy();
+            } finally {
+                vi.useRealTimers();
+                vi.unstubAllGlobals();
+            }
+        });
+
+        it("形式の切り替えで CSA を選ぶとコピー・保存が CSA になり、選んだ形式を覚える", async () => {
             const writeText = vi.fn(async (_text: string) => {});
             vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
             try {
                 const onSaveKifuFile = vi.fn();
-                render(
+                const view = render(
                     <Harness initialDoc={createTestStudy().doc} onSaveKifuFile={onSaveKifuFile} />,
                 );
-                openMenu();
-                fireEvent.click(screen.getByRole("button", { name: "コピー（CSA）" }));
+                // 「保存」だけだと、ノートの保存（クラウドに保存済み）と紛れる。
+                expect(within(kifuGroup()).getByText("ファイルに保存")).toBeTruthy();
+                fireEvent.click(
+                    within(kifuGroup()).getByRole("button", {
+                        name: "棋譜をファイルに保存（KIF）",
+                    }),
+                );
+                fireEvent.click(within(kifuGroup()).getByRole("radio", { name: "CSA" }));
+                fireEvent.click(
+                    within(kifuGroup()).getByRole("button", { name: "棋譜をコピー（CSA）" }),
+                );
                 await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
                 expect(writeText.mock.calls[0][0]).toContain("N+先手太郎");
                 expect(writeText.mock.calls[0][0]).toContain("-8384FU");
-
-                openMenu();
-                fireEvent.click(screen.getByRole("button", { name: "ファイルに保存（KIF）" }));
-                openMenu();
-                fireEvent.click(screen.getByRole("button", { name: "ファイルに保存（CSA）" }));
+                fireEvent.click(
+                    within(kifuGroup()).getByRole("button", {
+                        name: "棋譜をファイルに保存（CSA）",
+                    }),
+                );
                 expect(onSaveKifuFile.mock.calls.map(([file]) => file.fileName)).toEqual([
                     "テストのノート.kif",
                     "テストのノート.csa",
@@ -1527,12 +1583,20 @@ describe("StudyWorkspaceView", () => {
                 expect(onSaveKifuFile.mock.calls[0][0].text).toContain("先手：先手太郎");
                 expect(onSaveKifuFile.mock.calls[1][0].text).toContain("+7776FU");
                 expect(await screen.findByText(/4 手）を CSA で保存しました/)).toBeTruthy();
+                view.unmount();
+
+                render(<Harness initialDoc={createTestStudy().doc} />);
+                expect(
+                    (within(kifuGroup()).getByRole("radio", { name: "CSA" }) as HTMLInputElement)
+                        .checked,
+                ).toBe(true);
             } finally {
                 vi.unstubAllGlobals();
             }
         });
 
-        it("保存の口が無い環境では「ファイルに保存」を出さず、パスを含む手順では CSA を押せない", () => {
+        it("保存の口が無い環境では「保存」を出さず、パスを含む手順では CSA を選べず理由を添える", () => {
+            localStorage.setItem("shogi:studyKifuFormat", JSON.stringify("csa"));
             const doc = createStudyDocumentFromMoves({
                 id: "77777777-7777-4777-8777-777777777777",
                 title: "パス",
@@ -1542,33 +1606,18 @@ describe("StudyWorkspaceView", () => {
                 meta: {},
             });
             render(<Harness initialDoc={doc} />);
-            openMenu();
-            expect(screen.queryByRole("button", { name: /ファイルに保存/ })).toBeNull();
+            expect(within(kifuGroup()).queryByRole("button", { name: /保存/ })).toBeNull();
+            const csa = within(kifuGroup()).getByRole("radio", { name: "CSA" }) as HTMLInputElement;
+            expect(csa.disabled).toBe(true);
+            // 覚えている形式が CSA でも、書き出せない手順では KIF で書き出す。
             expect(
-                (screen.getByRole("button", { name: "コピー（CSA）" }) as HTMLButtonElement)
-                    .disabled,
+                (within(kifuGroup()).getByRole("radio", { name: "KIF" }) as HTMLInputElement)
+                    .checked,
             ).toBe(true);
-            expect(screen.getByText("パスを含む手順は CSA にできません")).toBeTruthy();
-        });
-
-        it("開いている間は、矢印キーで局面が動かない（コピーする局面が変わらない）", async () => {
-            const writeText = vi.fn(async (_text: string) => {});
-            vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
-            try {
-                render(<Harness initialDoc={createTestStudy().doc} />);
-                openMenu();
-                const item = screen.getByRole("button", { name: /局面をコピー（SFEN）/ });
-                fireEvent.keyDown(item, { key: "ArrowDown" });
-                fireEvent.keyDown(item, { key: "ArrowRight" });
-                fireEvent.click(item);
-                await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
-                expect(writeText.mock.calls[0][0]).toBe("position startpos");
-                // 閉じたあとは、矢印キーで動く。
-                fireEvent.keyDown(document.body, { key: "ArrowRight" });
-                expect(currentMove()).toContain("☗7六歩(77)");
-            } finally {
-                vi.unstubAllGlobals();
-            }
+            expect(
+                within(kifuGroup()).getByRole("button", { name: "棋譜をコピー（KIF）" }),
+            ).toBeTruthy();
+            expect(within(kifuGroup()).getByText("パスを含む手順は CSA にできません")).toBeTruthy();
         });
 
         it("「パスを指す」は、いまの局面にパスの手を足してその手へ移る。編集できないときは出さない", async () => {
@@ -1578,8 +1627,7 @@ describe("StudyWorkspaceView", () => {
             const view = render(
                 <Harness initialDoc={doc} onOps={onOps} fetchLegalMoves={fetchLegalMoves} />,
             );
-            openMenu();
-            fireEvent.click(screen.getByRole("button", { name: /パスを指す/ }));
+            fireEvent.click(within(positionGroup()).getByRole("button", { name: "パスを指す" }));
             await waitFor(() =>
                 expect(onOps).toHaveBeenCalledWith([
                     { type: "addMoves", parentId: ids[0], moves: ["pass"] },
@@ -1595,8 +1643,9 @@ describe("StudyWorkspaceView", () => {
             view.unmount();
 
             render(<Harness initialDoc={doc} locked />);
-            openMenu();
-            expect(screen.queryByRole("button", { name: /パスを指す/ })).toBeNull();
+            expect(
+                within(positionGroup()).queryByRole("button", { name: "パスを指す" }),
+            ).toBeNull();
         });
 
         it("パスできない局面（合法手にパスが無い。王手がかかっている、など）では、手を足さずに知らせる", async () => {
@@ -1608,28 +1657,29 @@ describe("StudyWorkspaceView", () => {
                     fetchLegalMoves={async () => ["7g7f"]}
                 />,
             );
-            openMenu();
-            fireEvent.click(screen.getByRole("button", { name: /パスを指す/ }));
+            fireEvent.click(within(positionGroup()).getByRole("button", { name: "パスを指す" }));
             expect(await screen.findByText(/この局面ではパスできません/)).toBeTruthy();
             expect(onOps).not.toHaveBeenCalled();
         });
 
-        it("コピーできなかったら、そう知らせる", async () => {
+        it("コピーできなかったら、そう知らせ、ボタンの文字は変えない", async () => {
             vi.stubGlobal("navigator", {
                 ...navigator,
                 clipboard: { writeText: () => Promise.reject(new Error("denied")) },
             });
             try {
                 render(<Harness initialDoc={createTestStudy().doc} />);
-                openMenu();
-                fireEvent.click(screen.getByRole("button", { name: /局面をコピー（SFEN）/ }));
+                fireEvent.click(
+                    within(positionGroup()).getByRole("button", { name: "局面をコピー（SFEN）" }),
+                );
                 expect(await screen.findByText("コピーできませんでした。")).toBeTruthy();
+                expect(within(positionGroup()).queryByText("コピーしました")).toBeNull();
             } finally {
                 vi.unstubAllGlobals();
             }
         });
 
-        it("「この局面から対局」は、開始局面といま見ている局面までの手順を渡す。渡し先が無ければ出さない", () => {
+        it("「ここから対局」は、開始局面といま見ている局面までの手順を渡す。渡し先が無ければ出さない", () => {
             const onPlayFromPosition = vi.fn();
             const view = render(
                 <Harness
@@ -1638,8 +1688,7 @@ describe("StudyWorkspaceView", () => {
                 />,
             );
             fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
-            openMenu();
-            fireEvent.click(screen.getByRole("button", { name: "対局する" }));
+            fireEvent.click(within(positionGroup()).getByRole("button", { name: "ここから対局" }));
             expect(onPlayFromPosition).toHaveBeenCalledWith({
                 sfen: expect.any(String),
                 moves: ["7g7f"],
@@ -1647,8 +1696,52 @@ describe("StudyWorkspaceView", () => {
             view.unmount();
 
             render(<Harness initialDoc={createTestStudy().doc} />);
-            openMenu();
-            expect(screen.queryByRole("button", { name: "対局する" })).toBeNull();
+            expect(screen.queryByRole("button", { name: "ここから対局" })).toBeNull();
+        });
+
+        it("編集できない間も、棋譜と局面は書き出せる（止めるのは盤と右の列）", () => {
+            render(<Harness initialDoc={createTestStudy().doc} locked />);
+            expect(kifuGroup().closest("[inert]")).toBeNull();
+            expect(positionGroup().closest("[inert]")).toBeNull();
+            expect(
+                screen.getByRole("navigation", { name: "局面の移動" }).closest("[inert]"),
+            ).not.toBeNull();
+            expect(moveList().closest("[inert]")).not.toBeNull();
+        });
+
+        it("表題の行の「共有」で公開設定を開く。閲覧のみのノートでは出さない", () => {
+            const onOpen = vi.fn();
+            const view = render(
+                <Harness
+                    initialDoc={createTestStudy().doc}
+                    shareDialog={{ open: false, onOpen }}
+                />,
+            );
+            expect(screen.queryByRole("button", { name: "その他の操作" })).toBeNull();
+            fireEvent.click(screen.getByRole("button", { name: "共有" }));
+            expect(onOpen).toHaveBeenCalledTimes(1);
+            view.unmount();
+
+            // 編集できない間も開ける（共有できない理由はダイアログの中で知らせる）。
+            const lockedView = render(
+                <Harness
+                    initialDoc={createTestStudy().doc}
+                    locked
+                    shareDialog={{ open: false, onOpen }}
+                />,
+            );
+            fireEvent.click(screen.getByRole("button", { name: "共有" }));
+            expect(onOpen).toHaveBeenCalledTimes(2);
+            lockedView.unmount();
+
+            render(
+                <Harness
+                    initialDoc={createTestStudy().doc}
+                    readOnly
+                    shareDialog={{ open: false, onOpen }}
+                />,
+            );
+            expect(screen.queryByRole("button", { name: "共有" })).toBeNull();
         });
     });
 
@@ -3830,10 +3923,10 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         expect(backToMain()).toBeNull();
     });
 
-    it("表題は「その他の操作」から変える", async () => {
+    it("表題は「メニュー」から変える", async () => {
         const onOps = vi.fn();
         render(<Harness initialDoc={createTestStudy().doc} onOps={onOps} />);
-        fireEvent.click(screen.getByRole("button", { name: "その他の操作" }));
+        fireEvent.click(screen.getByRole("button", { name: "メニュー" }));
         fireEvent.click(screen.getByRole("button", { name: /表題を変更/ }));
         fireEvent.change(screen.getByRole("textbox", { name: "研究ノートの表題" }), {
             target: { value: "新しい表題" },
@@ -3847,7 +3940,7 @@ describe("StudyWorkspaceView: スマートフォン", () => {
     it("表題のダイアログを開いたまま編集できなくなったら閉じ、戻っても開き直さない", () => {
         const doc = createTestStudy().doc;
         const view = render(<Harness initialDoc={doc} />);
-        fireEvent.click(screen.getByRole("button", { name: "その他の操作" }));
+        fireEvent.click(screen.getByRole("button", { name: "メニュー" }));
         fireEvent.click(screen.getByRole("button", { name: /表題を変更/ }));
         expect(screen.getByRole("textbox", { name: "研究ノートの表題" })).toBeTruthy();
 
@@ -3856,13 +3949,65 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         expect(screen.queryByRole("textbox", { name: "研究ノートの表題" })).toBeNull();
     });
 
-    it("編集できない間も、「その他の操作」から棋譜を持ち出せる（止めるのは表示の場所だけ）", () => {
+    it("編集できない間も、「メニュー」から棋譜を持ち出せる（止めるのは表示の場所だけ）", () => {
         render(<Harness initialDoc={createTestStudy().doc} locked />);
-        const menuButton = screen.getByRole("button", { name: "その他の操作" });
+        const menuButton = screen.getByRole("button", { name: "メニュー" });
         expect(menuButton.closest("[inert]")).toBeNull();
         expect(screen.getByRole("tabpanel").hasAttribute("inert")).toBe(true);
         fireEvent.click(menuButton);
-        expect(screen.getByRole("button", { name: "コピー（KIF）" })).toBeTruthy();
+        expect(screen.getByRole("button", { name: "棋譜をコピー（KIF）" })).toBeTruthy();
         expect(screen.queryByRole("button", { name: /表題を変更/ })).toBeNull();
+    });
+
+    it("「メニュー」は見出し「書き出す」「この局面で」「ノート」で分け、コピーしたら通知で知らせる", async () => {
+        const writeText = vi.fn(async (_text: string) => {});
+        vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+        try {
+            render(
+                <Harness
+                    initialDoc={createTestStudy().doc}
+                    onPlayFromPosition={() => {}}
+                    shareDialog={{ open: false, onOpen: () => {} }}
+                />,
+            );
+            const menuButton = screen.getByRole("button", { name: "メニュー" });
+            menuButton.focus();
+            fireEvent.click(menuButton);
+            const sheet = screen.getByRole("dialog", { name: "メニュー" });
+            expect(within(sheet).getByRole("heading", { name: /^書き出す/ })).toBeTruthy();
+            expect(within(sheet).getByRole("heading", { name: "この局面で" })).toBeTruthy();
+            expect(within(sheet).getByRole("heading", { name: "ノート" })).toBeTruthy();
+            // 開いたらフォーカスを中へ移す。
+            await waitFor(() => expect(sheet.contains(document.activeElement)).toBe(true));
+            expect(within(sheet).getByRole("button", { name: "ここから対局" })).toBeTruthy();
+            expect(
+                within(sheet).getByRole("button", { name: /公開設定・共有リンク/ }),
+            ).toBeTruthy();
+            fireEvent.click(within(sheet).getByRole("button", { name: "棋譜をコピー（KIF）" }));
+            await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+            expect(await screen.findByText(/を KIF でコピーしました/)).toBeTruthy();
+            expect(screen.queryByRole("dialog", { name: "メニュー" })).toBeNull();
+            // 閉じたらフォーカスを「メニュー」に戻す。
+            await waitFor(() => expect(document.activeElement).toBe(menuButton));
+        } finally {
+            vi.unstubAllGlobals();
+        }
+    });
+
+    it("「メニュー」を開いている間は、矢印キーで局面が動かない（コピーする局面が変わらない）", async () => {
+        const writeText = vi.fn(async (_text: string) => {});
+        vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+        try {
+            render(<Harness initialDoc={createTestStudy().doc} />);
+            fireEvent.click(screen.getByRole("button", { name: "メニュー" }));
+            const item = screen.getByRole("button", { name: /局面をコピー（SFEN）/ });
+            fireEvent.keyDown(item, { key: "ArrowDown" });
+            fireEvent.keyDown(item, { key: "ArrowRight" });
+            fireEvent.click(item);
+            await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+            expect(writeText.mock.calls[0][0]).toBe("position startpos");
+        } finally {
+            vi.unstubAllGlobals();
+        }
     });
 });

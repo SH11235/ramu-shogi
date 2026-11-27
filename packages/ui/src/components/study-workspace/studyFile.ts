@@ -1,6 +1,7 @@
 /** 棋譜をファイルに保存するときの、ファイル名と保存のしかた。 */
 
-import type { StudyKifuFormat } from "./StudyMoreMenu";
+/** 棋譜を書き出す形式。 */
+export type StudyKifuFormat = "kif" | "csa";
 
 /** 保存する棋譜のファイル（中身は UTF-8 の文字列）。 */
 export interface StudyKifuFile {

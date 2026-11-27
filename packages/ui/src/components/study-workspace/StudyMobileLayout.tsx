@@ -81,7 +81,7 @@ export function StudyMobileLayout({
     onTabChange,
     measure,
     locked,
-    moreMenu,
+    menu,
     isReading,
     saveStrip,
     board,
@@ -101,7 +101,7 @@ export function StudyMobileLayout({
     onTabChange: (tab: StudyMobileTab) => void;
     measure: StudyMobileMeasure;
     locked: boolean;
-    moreMenu: ReactNode;
+    menu: ReactNode;
     /**
      * 読んでいる（CPU を使っている）か。読んでいる様子と止める操作は候補手の欄にあるので、ほかの表示を
      * 開いている間は「候補手」のタブに走るラムを出して知らせる。
@@ -194,7 +194,7 @@ export function StudyMobileLayout({
                 </div>
                 {/* 手送りの行には手送りだけを置くので、コメントはどの表示でも出るこの行に置く。 */}
                 {commentButton}
-                {moreMenu}
+                {menu}
             </div>
             {saveStrip}
             <div
