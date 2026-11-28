@@ -31,7 +31,7 @@ export function StudyIconButton({
                     aria-pressed={pressed}
                     className={cn(
                         "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-transparent text-wafuu-sumi-light transition-colors hover:bg-muted/60 hover:text-wafuu-sumi focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40",
-                        pressed && "border-wafuu-border bg-wafuu-kin/20 text-wafuu-sumi",
+                        pressed && "border-border bg-wafuu-kin/20 text-wafuu-sumi",
                         className,
                     )}
                     {...props}

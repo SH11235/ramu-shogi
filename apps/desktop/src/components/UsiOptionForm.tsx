@@ -133,7 +133,7 @@ function OptionRow({
                                 onOptionChange(opt.name, Math.max(opt.min, Math.min(opt.max, n)));
                             }
                         }}
-                        className="w-24 text-xs border border-wafuu-border bg-wafuu-washi"
+                        className="w-24 text-xs border border-border bg-wafuu-washi"
                     />
                 </div>
             );
@@ -169,7 +169,7 @@ function OptionRow({
                         type="text"
                         value={current}
                         onChange={(e) => onOptionChange(opt.name, e.target.value)}
-                        className="w-40 text-xs border border-wafuu-border bg-wafuu-washi"
+                        className="w-40 text-xs border border-border bg-wafuu-washi"
                     />
                 </div>
             );
@@ -185,7 +185,7 @@ function OptionRow({
                             type="text"
                             value={current}
                             onChange={(e) => onOptionChange(opt.name, e.target.value)}
-                            className="w-40 text-xs border border-wafuu-border bg-wafuu-washi"
+                            className="w-40 text-xs border border-border bg-wafuu-washi"
                         />
                         <Button
                             variant="outline"

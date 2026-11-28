@@ -568,7 +568,7 @@ export function RshogiCsaGameBrowser({
                             onClick={() => setIsDetailOpen(!isDetailOpen)}
                             aria-expanded={isDetailOpen}
                             aria-controls="rshogi-search-detail"
-                            className="h-9 rounded-md border border-wafuu-border px-3 text-sm text-wafuu-sumi"
+                            className="h-9 rounded-md border border-border px-3 text-sm text-wafuu-sumi"
                         >
                             詳細条件
                             {detailCount > 0 ? `（${detailCount}）` : ""}
@@ -596,7 +596,7 @@ export function RshogiCsaGameBrowser({
                         hidden={!isDetailOpen}
                         className={
                             isDetailOpen
-                                ? "grid gap-2 rounded-lg border border-wafuu-border bg-wafuu-washi-warm p-3 sm:grid-cols-2 lg:grid-cols-4"
+                                ? "grid gap-2 rounded-lg border border-border bg-wafuu-washi-warm p-3 sm:grid-cols-2 lg:grid-cols-4"
                                 : undefined
                         }
                     >
@@ -735,7 +735,7 @@ export function RshogiCsaGameBrowser({
                                 type="button"
                                 onClick={() => handleSearchPage(searchPage.page - 1)}
                                 disabled={searchPage.page <= 1 || isSearchLoading}
-                                className="rounded-md border border-wafuu-border px-4 py-1.5 text-sm text-wafuu-sumi disabled:cursor-not-allowed disabled:opacity-50"
+                                className="rounded-md border border-border px-4 py-1.5 text-sm text-wafuu-sumi disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 前へ
                             </button>
@@ -743,7 +743,7 @@ export function RshogiCsaGameBrowser({
                                 type="button"
                                 onClick={() => handleSearchPage(searchPage.page + 1)}
                                 disabled={rangeEnd >= searchPage.totalCount || isSearchLoading}
-                                className="rounded-md border border-wafuu-border px-4 py-1.5 text-sm text-wafuu-sumi disabled:cursor-not-allowed disabled:opacity-50"
+                                className="rounded-md border border-border px-4 py-1.5 text-sm text-wafuu-sumi disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 次へ
                             </button>

@@ -706,7 +706,7 @@ export function RshogiLiveScoreboard({
                 ownEvalCp={toOwnEval("sente", senteEvalCp)}
                 clockHidden={clocks === null}
             />
-            <div className="flex flex-row items-center justify-between gap-3 border-y border-wafuu-border bg-wafuu-washi px-4 py-2 sm:min-w-[7.5rem] sm:flex-col sm:justify-center sm:gap-1 sm:border-x sm:border-y-0">
+            <div className="flex flex-row items-center justify-between gap-3 border-y border-border bg-wafuu-washi px-4 py-2 sm:min-w-[7.5rem] sm:flex-col sm:justify-center sm:gap-1 sm:border-x sm:border-y-0">
                 <span className="text-xl font-bold tabular-nums leading-none text-wafuu-sumi">
                     {moveCount}
                     <span className="ml-0.5 text-xs font-semibold text-muted-foreground">手</span>
@@ -862,7 +862,7 @@ export function RshogiLiveMetaPanel({
     return (
         <section
             aria-label="観戦情報"
-            className="flex flex-col gap-3 rounded-lg border border-wafuu-border bg-wafuu-washi-warm p-3 text-sm text-wafuu-sumi"
+            className="flex flex-col gap-3 rounded-lg border border-border bg-wafuu-washi-warm p-3 text-sm text-wafuu-sumi"
         >
             <div className="flex flex-col gap-1">
                 <span className="text-[11px] uppercase tracking-wider text-muted-foreground">

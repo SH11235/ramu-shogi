@@ -385,7 +385,7 @@ describe("HandPiecesDisplay: 選択の枠", () => {
                 />,
             );
             const frame = container.firstElementChild;
-            expect(frame?.className).toContain("border-wafuu-border");
+            expect(frame?.className).toContain("border-border");
             expect(frame?.className).not.toContain("bg-muted");
         });
 

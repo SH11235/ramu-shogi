@@ -148,7 +148,7 @@ export default function RshogiPlayerDetailPage(): ReactElement {
                 {errorMessage && <StatusBanner variant="error">{errorMessage}</StatusBanner>}
                 {isLoading && !detail && (
                     <div
-                        className="rounded-xl border border-wafuu-border bg-wafuu-washi-warm px-5 py-16 text-center text-sm text-muted-foreground"
+                        className="rounded-xl border border-border bg-wafuu-washi-warm px-5 py-16 text-center text-sm text-muted-foreground"
                         aria-live="polite"
                     >
                         対局記録を読み込み中…
@@ -188,7 +188,7 @@ export default function RshogiPlayerDetailPage(): ReactElement {
                                             ← レーティングへ戻る
                                         </Link>
                                     </div>
-                                    <div className="flex flex-col justify-center gap-1 border-t border-wafuu-border px-6 py-7 lg:border-l lg:border-t-0">
+                                    <div className="flex flex-col justify-center gap-1 border-t border-border px-6 py-7 lg:border-l lg:border-t-0">
                                         <span className="text-xs tracking-[0.2em] text-muted-foreground">
                                             ELO RATING
                                         </span>
@@ -200,7 +200,7 @@ export default function RshogiPlayerDetailPage(): ReactElement {
                                         </span>
                                     </div>
                                 </div>
-                                <dl className="grid grid-cols-4 divide-x divide-wafuu-border border-t border-wafuu-border">
+                                <dl className="grid grid-cols-4 divide-x divide-border border-t border-border">
                                     {[
                                         ["対局", player.games],
                                         ["勝", player.wins],
@@ -248,7 +248,7 @@ export default function RshogiPlayerDetailPage(): ReactElement {
                         )}
 
                         <section className="flex flex-col gap-3">
-                            <div className="flex items-end justify-between gap-4 border-b border-wafuu-border pb-2">
+                            <div className="flex items-end justify-between gap-4 border-b border-border pb-2">
                                 <div>
                                     <p className="text-[11px] font-semibold tracking-[0.2em] text-wafuu-shu">
                                         GAME ARCHIVE
@@ -278,14 +278,14 @@ export default function RshogiPlayerDetailPage(): ReactElement {
                             />
                             {totalPages > 1 && (
                                 <nav
-                                    className="flex items-center justify-between border-t border-wafuu-border pt-3"
+                                    className="flex items-center justify-between border-t border-border pt-3"
                                     aria-label="対局記録ページ"
                                 >
                                     <button
                                         type="button"
                                         onClick={() => requestPage(Math.max(1, displayedPage - 1))}
                                         disabled={displayedPage <= 1 || isLoading}
-                                        className="rounded-md border border-wafuu-border px-4 py-1.5 text-sm text-wafuu-sumi transition-colors hover:bg-wafuu-kincha/10 disabled:opacity-40"
+                                        className="rounded-md border border-border px-4 py-1.5 text-sm text-wafuu-sumi transition-colors hover:bg-wafuu-kincha/10 disabled:opacity-40"
                                     >
                                         ← 新しい対局
                                     </button>
@@ -298,7 +298,7 @@ export default function RshogiPlayerDetailPage(): ReactElement {
                                             requestPage(Math.min(totalPages, displayedPage + 1))
                                         }
                                         disabled={displayedPage >= totalPages || isLoading}
-                                        className="rounded-md border border-wafuu-border px-4 py-1.5 text-sm text-wafuu-sumi transition-colors hover:bg-wafuu-kincha/10 disabled:opacity-40"
+                                        className="rounded-md border border-border px-4 py-1.5 text-sm text-wafuu-sumi transition-colors hover:bg-wafuu-kincha/10 disabled:opacity-40"
                                     >
                                         古い対局 →
                                     </button>

@@ -230,7 +230,7 @@ export function StudyMoveList({
                                 className={cn(
                                     rowGrid,
                                     "min-h-10 w-full content-center rounded-md border border-transparent px-2 py-1 text-left text-sm transition-colors md:min-h-0 hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                                    isCurrent && "border-wafuu-border bg-wafuu-kin/20",
+                                    isCurrent && "border-border bg-wafuu-kin/20",
                                 )}
                             >
                                 <span className="text-right font-mono text-xs tabular-nums text-muted-foreground">

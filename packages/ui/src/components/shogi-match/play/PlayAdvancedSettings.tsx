@@ -52,7 +52,7 @@ const MAX_SECONDS = 86_400;
 
 function Group({ title, children }: { title: string; children: ReactNode }): ReactElement {
     return (
-        <section className="flex flex-col gap-2.5 border-t border-wafuu-border pt-4 first:border-t-0 first:pt-0">
+        <section className="flex flex-col gap-2.5 border-t border-border pt-4 first:border-t-0 first:pt-0">
             <h3 className="text-sm font-semibold text-wafuu-sumi">{title}</h3>
             {children}
         </section>
@@ -60,7 +60,7 @@ function Group({ title, children }: { title: string; children: ReactNode }): Rea
 }
 
 const NUMBER_INPUT_CLASS =
-    "h-10 w-20 rounded-md border border-wafuu-border bg-background px-2 text-right text-sm tabular-nums text-wafuu-sumi focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50";
+    "h-10 w-20 rounded-md border border-border bg-background px-2 text-right text-sm tabular-nums text-wafuu-sumi focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50";
 
 const ROW_BUTTON_CLASS = cn(
     "flex min-h-10 w-full items-center justify-between gap-3 rounded-md border px-3 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",

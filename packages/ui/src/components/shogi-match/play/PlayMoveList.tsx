@@ -84,7 +84,7 @@ export function PlayMoveList({
             <div
                 className={cn(
                     rowGrid,
-                    "sticky top-0 z-10 border-b border-wafuu-border bg-wafuu-washi-warm px-1 pb-1 text-[11px] text-wafuu-sumi-light",
+                    "sticky top-0 z-10 border-b border-border bg-wafuu-washi-warm px-1 pb-1 text-[11px] text-wafuu-sumi-light",
                 )}
                 aria-hidden="true"
             >

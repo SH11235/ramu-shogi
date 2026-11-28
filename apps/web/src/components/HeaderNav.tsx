@@ -62,7 +62,7 @@ function PrimaryLinks(): ReactElement {
                     )}
                 </Link>
             ))}
-            <span aria-hidden className="mx-1 h-4 w-px bg-wafuu-border" />
+            <span aria-hidden className="mx-1 h-4 w-px bg-border" />
         </div>
     );
 }

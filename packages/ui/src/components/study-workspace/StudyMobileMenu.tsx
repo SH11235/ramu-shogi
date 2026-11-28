@@ -33,7 +33,7 @@ interface StudyMobileMenuProps {
 const ITEM_CLASS =
     "flex min-h-11 w-full items-center justify-between gap-2 rounded-md px-3 text-left text-sm text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 const FORMAT_BUTTON_CLASS =
-    "h-9 min-w-12 rounded-md border border-wafuu-border bg-card px-2 text-xs font-medium text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-card";
+    "h-9 min-w-12 rounded-md border border-border bg-card px-2 text-xs font-medium text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-card";
 const HEADING_CLASS = "px-3 pb-0.5 pt-2 text-xs font-normal text-muted-foreground";
 
 export function StudyMobileMenu({
@@ -101,7 +101,7 @@ export function StudyMobileMenu({
             trigger={
                 <button
                     type="button"
-                    className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-md border border-wafuu-border bg-background px-2.5 text-sm text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-sm text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                     <MenuIcon />
                     メニュー

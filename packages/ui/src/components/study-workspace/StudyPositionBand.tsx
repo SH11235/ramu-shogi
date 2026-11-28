@@ -80,7 +80,7 @@ export function StudyPositionBand({
         />
     );
     return (
-        <div className="flex h-14 items-center rounded-lg border border-wafuu-border bg-wafuu-washi-warm text-sm">
+        <div className="flex h-14 items-center rounded-lg border border-border bg-wafuu-washi-warm text-sm">
             {/* 読んでいる間に何度も変わるので、読み上げの領域にはしない（帯全体が繰り返し読み上げられて
                 しまう）。 */}
             <output
@@ -107,7 +107,7 @@ export function StudyPositionBand({
                 // 名前とスイッチの全体を押せる範囲にする（指で押しやすいように）。
                 <label
                     htmlFor={switchId}
-                    className="flex h-full shrink-0 cursor-pointer items-center gap-1.5 border-l border-wafuu-border pl-2 pr-2.5 max-[359px]:gap-1 max-[359px]:px-1.5"
+                    className="flex h-full shrink-0 cursor-pointer items-center gap-1.5 border-l border-border pl-2 pr-2.5 max-[359px]:gap-1 max-[359px]:px-1.5"
                 >
                     <span className="text-xs font-medium text-wafuu-sumi">自動読み</span>
                     <Switch

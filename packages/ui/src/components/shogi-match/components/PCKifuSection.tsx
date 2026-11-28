@@ -248,7 +248,7 @@ export function PCKifuSection(): ReactElement {
                                             className={`px-2 py-1 rounded text-xs transition-colors ${
                                                 analysisSettings.parallelWorkers === opt.value
                                                     ? "bg-wafuu-kincha text-white"
-                                                    : "bg-wafuu-washi text-wafuu-sumi hover:bg-wafuu-border"
+                                                    : "bg-wafuu-washi text-wafuu-sumi hover:bg-border"
                                             }`}
                                         >
                                             {opt.value === 0
@@ -275,7 +275,7 @@ export function PCKifuSection(): ReactElement {
                                         className={`px-2 py-1 rounded text-xs transition-colors ${
                                             analysisSettings.batchAnalysisTimeMs === opt.value
                                                 ? "bg-wafuu-kincha text-white"
-                                                : "bg-wafuu-washi text-wafuu-sumi hover:bg-wafuu-border"
+                                                : "bg-wafuu-washi text-wafuu-sumi hover:bg-border"
                                         }`}
                                     >
                                         {opt.label}

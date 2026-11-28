@@ -74,7 +74,7 @@ function TitleForm({
                 aria-label="研究ノートの表題"
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
-                className="h-10 rounded-md border border-wafuu-border bg-background px-3 text-base text-wafuu-sumi focus:outline-none focus:ring-2 focus:ring-ring"
+                className="h-10 rounded-md border border-border bg-background px-3 text-base text-wafuu-sumi focus:outline-none focus:ring-2 focus:ring-ring"
             />
             <DialogFooter className="flex-row justify-end gap-2">
                 <DialogClose asChild>

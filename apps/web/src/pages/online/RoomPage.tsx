@@ -90,7 +90,7 @@ function PlayersStatusSection({
                             )}
                         </span>
                         {snapshotPlayers.b?.online && (
-                            <span className="text-xs text-status-online">● オンライン</span>
+                            <span className="text-xs text-status-success">● オンライン</span>
                         )}
                     </div>
                     <div className="flex items-center justify-between">
@@ -101,7 +101,7 @@ function PlayersStatusSection({
                             )}
                         </span>
                         {snapshotPlayers.w?.online && (
-                            <span className="text-xs text-status-online">● オンライン</span>
+                            <span className="text-xs text-status-success">● オンライン</span>
                         )}
                     </div>
                 </div>
@@ -572,7 +572,7 @@ export default function RoomPage(): ReactElement {
                 )}
 
                 {joined && (
-                    <div className="rounded-lg border border-status-online-border bg-status-online-bg p-4 text-sm text-status-online">
+                    <div className="rounded-lg border border-status-success-border bg-status-success-bg p-4 text-sm text-status-success">
                         接続しました。対局開始を待っています...
                     </div>
                 )}

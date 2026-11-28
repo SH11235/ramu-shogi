@@ -46,7 +46,7 @@ export function RshogiCsaLiveGamesSection({
                         type="button"
                         onClick={refresh}
                         disabled={isLoading}
-                        className="rounded-md border border-wafuu-border px-3 py-1 text-xs text-wafuu-sumi transition-colors hover:bg-wafuu-kincha/10 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="rounded-md border border-border px-3 py-1 text-xs text-wafuu-sumi transition-colors hover:bg-wafuu-kincha/10 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                         {isLoading ? "更新中..." : "更新"}
                     </button>

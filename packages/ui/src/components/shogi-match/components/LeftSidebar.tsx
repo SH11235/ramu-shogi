@@ -18,7 +18,7 @@ const EVAL_FILE_MANAGER_LABEL = "AI（評価関数）";
 const SETTINGS_LOCKED_MESSAGE = "対局中は変更不可";
 const sectionClassName = "flex flex-col gap-3";
 const labelClassName = "flex flex-col gap-1 text-xs text-muted-foreground";
-const inputClassName = "border border-wafuu-border bg-wafuu-washi text-sm text-xs";
+const inputClassName = "border border-border bg-wafuu-washi text-sm text-xs";
 
 /**
  * 左サイドバーコンポーネント
@@ -370,7 +370,7 @@ export function LeftSidebar({
     };
 
     return (
-        <div className="w-96 max-h-[calc(100dvh-5rem)] self-center overflow-y-auto bg-wafuu-washi-warm border border-wafuu-border rounded-xl p-4 flex flex-col gap-6">
+        <div className="w-96 max-h-[calc(100dvh-5rem)] self-center overflow-y-auto bg-wafuu-washi-warm border border-border rounded-xl p-4 flex flex-col gap-6">
             {/* 対局設定 */}
             <div className={sectionClassName}>
                 {/* 先手/後手ラベル + 入替ボタン */}
@@ -416,7 +416,7 @@ export function LeftSidebar({
                     onClick={onOpenPassRightsSettings}
                     disabled={settingsLocked}
                     title={settingsLocked ? SETTINGS_LOCKED_MESSAGE : "変則ルール設定を開く"}
-                    className="w-full text-left px-3 py-2 rounded-lg text-sm text-wafuu-sumi bg-wafuu-washi border-2 border-wafuu-border shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-wafuu-kincha transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-sm disabled:hover:translate-y-0 disabled:hover:border-wafuu-border flex items-center gap-2"
+                    className="w-full text-left px-3 py-2 rounded-lg text-sm text-wafuu-sumi bg-wafuu-washi border-2 border-border shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-wafuu-kincha transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-sm disabled:hover:translate-y-0 disabled:hover:border-border flex items-center gap-2"
                 >
                     <span>🎲</span>
                     <span>
@@ -452,7 +452,7 @@ export function LeftSidebar({
             <button
                 type="button"
                 onClick={onOpenNnueManager}
-                className="w-full text-left px-3 py-2 rounded-lg text-sm text-wafuu-sumi bg-wafuu-washi border-2 border-wafuu-border shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-wafuu-kincha transition-all flex items-center gap-2"
+                className="w-full text-left px-3 py-2 rounded-lg text-sm text-wafuu-sumi bg-wafuu-washi border-2 border-border shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-wafuu-kincha transition-all flex items-center gap-2"
             >
                 <span>📁</span>
                 <span>{EVAL_FILE_MANAGER_LABEL}</span>
@@ -463,7 +463,7 @@ export function LeftSidebar({
                 <button
                     type="button"
                     onClick={onOpenEngineManager}
-                    className="w-full text-left px-3 py-2 rounded-lg text-sm text-wafuu-sumi bg-wafuu-washi border-2 border-wafuu-border shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-wafuu-kincha transition-all flex items-center gap-2"
+                    className="w-full text-left px-3 py-2 rounded-lg text-sm text-wafuu-sumi bg-wafuu-washi border-2 border-border shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-wafuu-kincha transition-all flex items-center gap-2"
                 >
                     <span>⚙️</span>
                     <span>外部エンジンを管理</span>
@@ -485,7 +485,7 @@ export function LeftSidebar({
                                 key={`engine-settings-${side}`}
                                 type="button"
                                 onClick={() => onOpenEngineSettings(side)}
-                                className="w-full text-left px-3 py-2 rounded-lg text-sm text-wafuu-sumi bg-wafuu-washi border-2 border-wafuu-border shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-wafuu-kincha transition-all flex items-center gap-2"
+                                className="w-full text-left px-3 py-2 rounded-lg text-sm text-wafuu-sumi bg-wafuu-washi border-2 border-border shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-wafuu-kincha transition-all flex items-center gap-2"
                             >
                                 <span>{side === "sente" ? "☗" : "☖"}</span>
                                 <span>
@@ -501,7 +501,7 @@ export function LeftSidebar({
                             <button
                                 type="button"
                                 onClick={() => onOpenEngineSettings("analysis")}
-                                className="w-full text-left px-3 py-2 rounded-lg text-sm text-wafuu-sumi bg-wafuu-washi border-2 border-wafuu-border shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-wafuu-kincha transition-all flex items-center gap-2"
+                                className="w-full text-left px-3 py-2 rounded-lg text-sm text-wafuu-sumi bg-wafuu-washi border-2 border-border shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-wafuu-kincha transition-all flex items-center gap-2"
                             >
                                 <span>🔍</span>
                                 <span>解析 {aEngine.label} 設定</span>
@@ -512,13 +512,13 @@ export function LeftSidebar({
             )}
 
             {/* 表示設定 */}
-            <div className="overflow-hidden rounded-lg border-2 border-wafuu-border bg-wafuu-washi shadow-sm">
+            <div className="overflow-hidden rounded-lg border-2 border-border bg-wafuu-washi shadow-sm">
                 <button
                     type="button"
                     onClick={onDisplaySettingsToggle ?? onOpenDisplaySettings}
                     aria-expanded={displaySettingsOpen}
                     aria-controls="board-display-settings"
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-wafuu-sumi transition-colors hover:bg-wafuu-border"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-wafuu-sumi transition-colors hover:bg-border"
                 >
                     <span aria-hidden="true">👁️</span>
                     <span className="flex-1">表示設定</span>

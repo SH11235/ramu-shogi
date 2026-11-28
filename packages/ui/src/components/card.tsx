@@ -16,9 +16,9 @@ export const cardVariants = cva("border", {
         variant: {
             default: "rounded-xl border-border bg-card",
             // 研究ノートの欄。白地に和風の枠線。
-            wafuu: "rounded-xl border-wafuu-border bg-card",
+            wafuu: "rounded-xl border-border bg-card",
             // 対局画面の補足情報（棋譜・ヒント）。和紙の地。
-            washi: "rounded-xl border-wafuu-border bg-wafuu-washi-warm",
+            washi: "rounded-xl border-border bg-wafuu-washi-warm",
             inset: "rounded-md border-border bg-background",
         },
         elevation: {

@@ -1404,7 +1404,7 @@ export function ShogiMatch({
         <div className="flex flex-col gap-1 border-t border-border pt-3">
             <button
                 type="button"
-                className="w-full rounded-md border border-wafuu-border bg-wafuu-washi py-2 text-sm font-medium text-wafuu-sumi transition-colors hover:bg-wafuu-washi-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="w-full rounded-md border border-border bg-wafuu-washi py-2 text-sm font-medium text-wafuu-sumi transition-colors hover:bg-wafuu-washi-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => {
                     onOpenAsStudy?.(navigation.tree, {
                         players: playersFor(startSfen, navigation.getMainLineMoves()),

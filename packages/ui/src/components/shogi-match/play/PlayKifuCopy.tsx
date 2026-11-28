@@ -135,7 +135,7 @@ export function KifuCopySheetButton({ className }: { className?: string }): Reac
                                 type="button"
                                 disabled={disabled}
                                 onClick={() => copy(format.id)}
-                                className="flex min-h-12 items-center gap-3 rounded-md border border-wafuu-border bg-background px-3 text-left text-sm text-wafuu-sumi disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                className="flex min-h-12 items-center gap-3 rounded-md border border-border bg-background px-3 text-left text-sm text-wafuu-sumi disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             >
                                 <span className="w-10 shrink-0 font-semibold">{format.label}</span>
                                 <span className="min-w-0 flex-1 text-xs text-wafuu-sumi-light">

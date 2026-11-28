@@ -219,7 +219,7 @@ export function PlayBarReading({ owner }: { owner: Player }): ReactElement | nul
     return (
         <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-            <PopoverContent align="end" className="w-80 border-wafuu-border bg-background">
+            <PopoverContent align="end" className="w-80 border-border bg-background">
                 {detail}
             </PopoverContent>
         </Popover>
@@ -309,7 +309,7 @@ export function PlayKifuReading({ className }: { className?: string }): ReactEle
         <section
             aria-label="AI の読み"
             className={cn(
-                "flex flex-col gap-1.5 rounded-lg bg-wafuu-border/40 px-3 py-2.5 text-sm text-wafuu-sumi",
+                "flex flex-col gap-1.5 rounded-lg bg-border/40 px-3 py-2.5 text-sm text-wafuu-sumi",
                 className,
             )}
         >
@@ -417,7 +417,7 @@ export function PlayGameReadingSummary({ className }: { className?: string }): R
     return (
         <section
             aria-label="この対局の AI の読み"
-            className={cn("flex flex-col gap-1 rounded-lg bg-wafuu-border/40 px-3 py-2", className)}
+            className={cn("flex flex-col gap-1 rounded-lg bg-border/40 px-3 py-2", className)}
         >
             <div className="flex items-baseline justify-between gap-2">
                 <h3 className="text-xs font-semibold text-wafuu-sumi">評価値の推移</h3>
@@ -441,7 +441,7 @@ export function PlayGameReadingSummary({ className }: { className?: string }): R
                     x2={GRAPH_WIDTH}
                     y1={GRAPH_HEIGHT / 2}
                     y2={GRAPH_HEIGHT / 2}
-                    className="stroke-wafuu-border"
+                    className="stroke-border"
                     strokeWidth={1}
                 />
                 <polyline

@@ -117,7 +117,7 @@ export function PlayMatchConditions(): ReactElement | null {
     const rows = useConditionRows();
     if (rows.length === 0) return null;
     return (
-        <dl className="m-0 grid grid-cols-[4.5rem_minmax(0,1fr)] items-baseline gap-x-3 gap-y-1 border-t border-wafuu-border pt-2">
+        <dl className="m-0 grid grid-cols-[4.5rem_minmax(0,1fr)] items-baseline gap-x-3 gap-y-1 border-t border-border pt-2">
             {rows.map((row) => (
                 <Fragment key={row.id}>
                     <dt className="text-xs text-wafuu-sumi-light">{row.label}</dt>

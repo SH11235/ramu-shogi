@@ -486,7 +486,7 @@ export function BookTreeViewer({
                     setSelected(id);
                     closeFullscreen();
                 }}
-                className="flex-1 rounded-lg border border-wafuu-border bg-wafuu-washi"
+                className="flex-1 rounded-lg border border-border bg-wafuu-washi"
             />
             {!fullscreen && (
                 <Button
@@ -555,7 +555,7 @@ export function BookTreeViewer({
                         <summary className="cursor-pointer">
                             警告 {book.data.warnings.length} 件
                         </summary>
-                        <ul className="absolute z-20 mt-1 max-w-md rounded-md border border-wafuu-border bg-background p-2 shadow-md">
+                        <ul className="absolute z-20 mt-1 max-w-md rounded-md border border-border bg-background p-2 shadow-md">
                             {book.data.warnings.slice(0, 10).map((warning) => (
                                 <li key={warning.line}>
                                     {warning.line} 行目: {warning.message}
@@ -584,7 +584,7 @@ export function BookTreeViewer({
                                     setSelected(0);
                                     skipped.current = null;
                                 }}
-                                className="rounded border border-wafuu-border bg-background px-1 py-0.5 text-xs text-wafuu-sumi"
+                                className="rounded border border-border bg-background px-1 py-0.5 text-xs text-wafuu-sumi"
                             >
                                 {roots.map((key, index) => (
                                     <option key={key} value={key}>
@@ -630,7 +630,7 @@ export function BookTreeViewer({
                 {!book ? (
                     <div
                         className={cn(
-                            "flex flex-1 flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-wafuu-border p-6 text-center text-sm",
+                            "flex flex-1 flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border p-6 text-center text-sm",
                             dragging && "border-wafuu-sumi bg-wafuu-washi-warm",
                         )}
                     >
@@ -655,15 +655,13 @@ export function BookTreeViewer({
                                     book={book.data}
                                     nodeId={selected}
                                     onSelect={setSelected}
-                                    className="w-0 min-w-full flex-1 rounded-lg border border-wafuu-border bg-background"
+                                    className="w-0 min-w-full flex-1 rounded-lg border border-border bg-background"
                                 />
                             )}
                         </div>
                         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
                             {controlsBesideTree && controls}
-                            {treePane || (
-                                <div className="flex-1 rounded-lg border border-wafuu-border" />
-                            )}
+                            {treePane || <div className="flex-1 rounded-lg border border-border" />}
                         </div>
                     </div>
                 ) : (
@@ -685,7 +683,7 @@ export function BookTreeViewer({
                                 book={book.data}
                                 nodeId={selected}
                                 onSelect={setSelected}
-                                className="min-h-0 flex-1 rounded-lg border border-wafuu-border bg-background"
+                                className="min-h-0 flex-1 rounded-lg border border-border bg-background"
                             />
                         ) : (
                             treePane

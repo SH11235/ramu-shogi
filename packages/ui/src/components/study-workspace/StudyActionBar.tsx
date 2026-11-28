@@ -17,7 +17,7 @@ const COPIED_LABEL_MS = 2000;
 const COPIED_LABEL = "コピーしました";
 
 const BUTTON_CLASS =
-    "inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-wafuu-border bg-background px-2.5 text-sm text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40";
+    "inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-border bg-background px-2.5 text-sm text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40";
 
 function useCopiedFlash(): { copied: string | null; flash: (label: string) => void } {
     const [copied, setCopied] = useState<string | null>(null);
@@ -140,7 +140,7 @@ export function StudyActionBar({
     return (
         <div className="flex w-full flex-wrap items-start justify-center gap-x-4 gap-y-1 border-t border-border pt-1">
             <Group heading="棋譜（表示中の手順・評価値とコメントつき）" note={csaUnavailableReason}>
-                <fieldset className="m-0 inline-flex h-8 overflow-hidden rounded-md border border-wafuu-border p-0">
+                <fieldset className="m-0 inline-flex h-8 overflow-hidden rounded-md border border-border p-0">
                     <legend className="sr-only">書き出す形式</legend>
                     {(["kif", "csa"] as const).map((option) => {
                         const disabled = option === "csa" && csaUnavailableReason !== undefined;
@@ -149,7 +149,7 @@ export function StudyActionBar({
                                 key={option}
                                 title={disabled ? csaUnavailableReason : undefined}
                                 className={cn(
-                                    "flex min-w-11 cursor-pointer items-center justify-center border-r border-wafuu-border px-2.5 text-xs font-medium text-wafuu-sumi-light transition-colors last:border-r-0 hover:bg-muted/60 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-inset has-[:focus-visible]:ring-ring",
+                                    "flex min-w-11 cursor-pointer items-center justify-center border-r border-border px-2.5 text-xs font-medium text-wafuu-sumi-light transition-colors last:border-r-0 hover:bg-muted/60 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-inset has-[:focus-visible]:ring-ring",
                                     format === option &&
                                         "bg-wafuu-kin/20 font-bold text-wafuu-sumi hover:bg-wafuu-kin/20",
                                     disabled &&

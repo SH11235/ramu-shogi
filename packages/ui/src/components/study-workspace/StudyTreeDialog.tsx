@@ -105,7 +105,7 @@ export function StudyTreeDialog({
                             select(index);
                             onOpenChange(false);
                         }}
-                        className="flex-1 rounded-lg border border-wafuu-border bg-wafuu-washi"
+                        className="flex-1 rounded-lg border border-border bg-wafuu-washi"
                     />
                 )}
             </DialogContent>

@@ -21,7 +21,7 @@ const choiceButtonVariants = cva(
             // 選んでいる項目は墨で示す。朱・藍は先手・後手の色に取っておくので、選択には使わない。
             selected: {
                 true: "border-wafuu-sumi bg-wafuu-washi-warm font-semibold ring-1 ring-inset ring-wafuu-sumi",
-                false: "border-wafuu-border bg-background hover:bg-wafuu-washi-warm",
+                false: "border-border bg-background hover:bg-wafuu-washi-warm",
             },
         },
     },

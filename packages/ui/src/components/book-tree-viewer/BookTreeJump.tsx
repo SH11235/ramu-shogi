@@ -191,7 +191,7 @@ export function BookTreeJump({
                 // 矢印キーは一覧の中で使う（木の選択を動かす窓のキー操作へ渡さない）。
                 if (event.key.startsWith("Arrow")) event.stopPropagation();
             }}
-            className="absolute top-1 right-2 z-30 flex max-h-[70%] w-80 max-w-[calc(100%-1rem)] flex-col gap-2 rounded-md border border-wafuu-border bg-background p-2 text-xs text-wafuu-sumi shadow-popover"
+            className="absolute top-1 right-2 z-30 flex max-h-[70%] w-80 max-w-[calc(100%-1rem)] flex-col gap-2 rounded-md border border-border bg-background p-2 text-xs text-wafuu-sumi shadow-popover"
         >
             <form
                 className="flex gap-1"
@@ -210,7 +210,7 @@ export function BookTreeJump({
                 <button
                     type="submit"
                     disabled={query.trim() === ""}
-                    className="rounded border border-wafuu-border px-2 py-1 hover:bg-wafuu-washi-warm disabled:opacity-50"
+                    className="rounded border border-border px-2 py-1 hover:bg-wafuu-washi-warm disabled:opacity-50"
                 >
                     探す
                 </button>
@@ -257,7 +257,7 @@ export function BookTreeJump({
                 <button
                     type="button"
                     onClick={() => setLimit((current) => current + LIST_PAGE)}
-                    className="rounded border border-wafuu-border px-2 py-1 hover:bg-wafuu-washi-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="rounded border border-border px-2 py-1 hover:bg-wafuu-washi-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                     続きを出す（ほか {(nodes.length - limit).toLocaleString("ja-JP")} 件）
                 </button>

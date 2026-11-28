@@ -37,7 +37,7 @@ export function PageHeader({ items, right }: PageHeaderProps): ReactElement {
     useDocumentTitle(items.at(-1)?.label);
     return (
         // 横向きの iPhone では本文（#root）が左右のノッチを避けているので、帯の背景だけは画面の端まで伸ばす。
-        <header className="-ml-[env(safe-area-inset-left)] -mr-[env(safe-area-inset-right)] border-b border-wafuu-border bg-wafuu-washi-warm pr-[calc(1rem+env(safe-area-inset-right))] pl-[calc(1rem+env(safe-area-inset-left))]">
+        <header className="-ml-[env(safe-area-inset-left)] -mr-[env(safe-area-inset-right)] border-b border-border bg-wafuu-washi-warm pr-[calc(1rem+env(safe-area-inset-right))] pl-[calc(1rem+env(safe-area-inset-left))]">
             <div className="flex h-10 items-center justify-between gap-2 text-sm">
                 <div className="flex min-w-0 items-center gap-2">
                     <NavDrawer />
@@ -66,7 +66,7 @@ export function PageHeader({ items, right }: PageHeaderProps): ReactElement {
                                     {i > 0 && (
                                         <span
                                             className={cn(
-                                                "mx-0.5 shrink-0 select-none text-wafuu-border",
+                                                "mx-0.5 shrink-0 select-none text-border",
                                                 firstOnMobile && "hidden sm:inline",
                                             )}
                                         >

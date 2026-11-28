@@ -76,13 +76,13 @@ export function RshogiCsaLiveGameList({
     return (
         <div className="flex flex-col gap-3">
             {empty && !isLoading && (
-                <div className="rounded-lg border border-wafuu-border bg-wafuu-washi-warm p-4 text-sm text-muted-foreground">
+                <div className="rounded-lg border border-border bg-wafuu-washi-warm p-4 text-sm text-muted-foreground">
                     {emptyMessage ?? "進行中の対局はありません。"}
                 </div>
             )}
 
             {empty && isLoading && (
-                <div className="rounded-lg border border-wafuu-border bg-wafuu-washi-warm p-4 text-sm text-muted-foreground">
+                <div className="rounded-lg border border-border bg-wafuu-washi-warm p-4 text-sm text-muted-foreground">
                     読み込み中...
                 </div>
             )}
@@ -94,7 +94,7 @@ export function RshogiCsaLiveGameList({
                             <button
                                 type="button"
                                 onClick={() => onSelectGame(game.gameId)}
-                                className="flex w-full flex-col gap-1 rounded-lg border border-wafuu-border bg-wafuu-washi-warm p-3 text-left transition-colors hover:bg-wafuu-kincha/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wafuu-shu"
+                                className="flex w-full flex-col gap-1 rounded-lg border border-border bg-wafuu-washi-warm p-3 text-left transition-colors hover:bg-wafuu-kincha/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wafuu-shu"
                             >
                                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                                     <span className="text-sm font-semibold text-wafuu-sumi">
@@ -126,7 +126,7 @@ export function RshogiCsaLiveGameList({
                         type="button"
                         onClick={onLoadMore}
                         disabled={isLoading}
-                        className="rounded-md border border-wafuu-border px-4 py-1.5 text-sm text-wafuu-sumi transition-colors hover:bg-wafuu-kincha/10 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="rounded-md border border-border px-4 py-1.5 text-sm text-wafuu-sumi transition-colors hover:bg-wafuu-kincha/10 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                         {isLoading ? "読み込み中..." : "もっと読み込む"}
                     </button>

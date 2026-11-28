@@ -20,7 +20,7 @@ import {
 import { PLAY_OUTLINE_BUTTON, PLAY_PRIMARY_BUTTON } from "./playStyles";
 
 const NUMBER_INPUT_CLASS =
-    "h-10 w-36 rounded-md border border-wafuu-border bg-background px-2 text-right text-base tabular-nums text-wafuu-sumi focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+    "h-10 w-36 rounded-md border border-border bg-background px-2 text-right text-base tabular-nums text-wafuu-sumi focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 interface PlaySearchLimitDialogProps {
     open: boolean;
