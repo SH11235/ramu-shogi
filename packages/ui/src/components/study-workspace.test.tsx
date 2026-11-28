@@ -486,16 +486,16 @@ describe("StudyWorkspaceView", () => {
         expect(analysis.cancel).not.toHaveBeenCalled();
     });
 
-    it("続きから読めずに読み終えたら、自動で読むを入れたまま読み直し続けず、終わったことを出す", async () => {
+    it("続きから読めない読みが深さの上限に届いて読み終えたら、読み直し続けず、終わったことを出す", async () => {
         localStorage.setItem("shogi:studyReadMode", '"read"');
         const { doc } = createTestStudy();
         const reading = createAnalysis({
             mode: "deep",
             live: {
                 nodeId: doc.tree.rootId,
-                depth: 18,
+                depth: 64,
                 startedAt: null,
-                budgetMs: 30_000,
+                budgetMs: null,
                 preview: null,
             },
         });
@@ -2937,6 +2937,24 @@ describe("StudyWorkspaceView", () => {
         fireEvent.click(within(panel).getByRole("button", { name: "その局面へ" }));
         expect(currentMove()).toContain("☗2六歩(27)");
         expect(panel.textContent).not.toContain("を読んでいます（");
+    });
+
+    it("止めるまで読み続ける読みは、別の局面で読んでいる間も残りの時間を出さない", () => {
+        const { doc, ids } = createTestStudy();
+        const analysis = createAnalysis({
+            mode: "deep",
+            live: {
+                nodeId: ids[3],
+                depth: 12,
+                startedAt: Date.now() - 10_000,
+                budgetMs: null,
+                preview: null,
+            },
+        });
+        render(<Harness initialDoc={doc} analysis={analysis} />);
+        const panel = screen.getByRole("region", { name: "候補手" });
+        expect(panel.textContent).toContain("3手目を読んでいます");
+        expect(panel.textContent).not.toContain("残り");
     });
 
     it("別の局面の深く解析が終わったら、行を消さずに知らせに替え、局面を移ると消す", () => {

@@ -9,6 +9,7 @@
 import {
     buildStudyLayerRefFromNnue,
     createDefaultNnueSelection,
+    createStudyAnalysisCollector,
     DEFAULT_PRESET_KEY,
     type KifuTree,
     type NnueMeta,
@@ -16,6 +17,7 @@ import {
     type PresetConfig,
     type ResolvedNnue,
     STUDY_LIMITS,
+    type StudyAnalysisCollector,
     type StudyAnalysisCompletion,
     type StudyAnalysisResult,
     type StudyDocument,
@@ -45,7 +47,12 @@ import { sidesWithoutKing } from "../shogi-match/utils/boardUtils";
 import { collectTreeAnalysisJobs } from "../shogi-match/utils/branchTreeUtils";
 import { resolveBatchWorkerCount, resolveThreadCount } from "../shogi-match/utils/threadOptions";
 import { countStudyUnanalyzed, studyPathTo } from "./studyView";
-import { useStudyDeepSearch } from "./useStudyDeepSearch";
+import {
+    PREVIEW_INTERVAL_MS,
+    PROGRESS_INTERVAL_MS,
+    progressKeyOf,
+    useStudyDeepSearch,
+} from "./useStudyDeepSearch";
 
 /**
  * 「この局面を深く解析」の探索時間（ミリ秒）。続きから読めるエンジンでは、「続けて読む」のたびに
@@ -54,6 +61,11 @@ import { useStudyDeepSearch } from "./useStudyDeepSearch";
 export const STUDY_DEEP_TIME_MS = 30_000;
 /** 「この局面を深く解析」の探索深さの上限（時間で止まる前提の大きめの値）。 */
 const STUDY_DEEP_DEPTH = 64;
+/**
+ * 続きから読めないエンジンで「読む」ときの探索時間。区切って読み足せないので、1 回の探索で、止めるか
+ * 局面を移るまで読み続ける（解析の部品は深さの上限と時間で探索を指定するので、時間をごく長くする）。
+ */
+const STUDY_UNBOUNDED_READ_TIME_MS = 24 * 60 * 60 * 1000;
 /** 「読む」（1 局面の読み）の結果を保存する設定か。 */
 export function isStudyAutoReadLayer(layer: Pick<StudyLayer, "spec">): boolean {
     return (
@@ -121,8 +133,8 @@ export interface StudyLiveSearch {
     depth: number | null;
     /** 読みを始めた時刻（`Date.now()`）。読む時間の上限と合わせて、残りの時間を出す。 */
     startedAt: number | null;
-    /** 1 回の読みの上限（ミリ秒）。 */
-    budgetMs: number;
+    /** 1 回の読みの上限（ミリ秒）。止めるまで読み続ける読みは null（残りの時間を出さない）。 */
+    budgetMs: number | null;
     /** 読んでいる途中の候補（取れる探索だけ）。 */
     preview: StudyAnalysisResult | null;
     /** 結果を保存する設定。最初の保存より前から、どの AI の読みかを見分けるのに使う。 */
@@ -169,8 +181,8 @@ export interface StudyAnalysisController {
     /** 全体解析の進み具合。 */
     progress: { completed: number; total: number } | null;
     /**
-     * 全体の解析（Desktop の 1 回だけの深い読みも）を最後まで読み終えた回数。止めた・エンジンが
-     * 変わった・保存できずに止めた・読めなかった局面があった、などで終わった回は数えない。
+     * 全体の解析（続きから読めないエンジンの深い読みが深さの上限に届いたときも）を最後まで読み終えた回数。
+     * 止めた・エンジンが変わった・保存できずに止めた・読めなかった局面があった、などで終わった回は数えない。
      */
     completedRuns: number;
     /** 深く解析している途中経過。 */
@@ -322,6 +334,22 @@ export function useStudyAnalysis({
     const runFailedRef = useRef(false);
     /** 解析の部品（`useEnginePool`）でいま回している解析の種類。1 局面の読みの結果だけを知らせるのに使う。 */
     const runModeRef = useRef<"full" | "deep" | null>(null);
+    /**
+     * 続きから読めないエンジンで、止めるまで読んでいる 1 局面。解析の部品は読み終えたときにしか結果を
+     * 渡さないので、途中の候補を画面に出し、数秒ごとに保存するために、届いた info をここでも集める。
+     */
+    const unboundedReadRef = useRef<{
+        nodeId: string;
+        layer: StudyLayerRef;
+        /** 途中の結果と、止めたときの結果に付ける ID（同じ探索の結果として比べるため）。 */
+        runId: string;
+        collector: StudyAnalysisCollector;
+        /** 最初の info が届いた時刻。エンジンの用意にかかった時間を、読んだ時間に数えない。 */
+        firstInfoAt: number | null;
+        previewAt: number;
+        progressAt: number;
+        progressKey: string | null;
+    } | null>(null);
 
     // 解析は非同期に進むので、結果が届いた時点の最新の文書・コールバックを参照する。
     const latestRef = useRef({ doc, tree, onApplyOps, onFlush, onDeepResult });
@@ -369,6 +397,39 @@ export function useStudyAnalysis({
         }
     };
 
+    /**
+     * 読んでいる途中の結果を保存する。保存できなかったときに止めるのは、`isReading` がまだこの読みを
+     * 続けていると答えるときだけ（別の局面の読みを始めていたら、世代が進んでいる）。
+     */
+    const saveReadingProgress = (
+        layer: StudyLayerRef,
+        nodeId: string,
+        result: StudyAnalysisResult,
+        isReading: () => boolean,
+    ): void => {
+        const generation = generationRef.current;
+        const outcome = latestRef.current.onApplyOps(
+            [
+                { type: "ensureLayer", spec: layer.spec, display: layer.display },
+                { type: "putAnalysis", layerId: layer.layerId, nodeId, result },
+            ],
+            { syncDelayMs: READING_SYNC_DELAY_MS },
+        );
+        latestRef.current.onDeepResult(layer.layerId, nodeId);
+        if (outcome instanceof Promise) {
+            void outcome.then((saved) => {
+                if (
+                    !saved &&
+                    mountedRef.current &&
+                    generationRef.current === generation &&
+                    isReading()
+                ) {
+                    void cancelRef.current();
+                }
+            });
+        }
+    };
+
     const handlePositionAnalyzed = (completion: StudyAnalysisCompletion): void => {
         const { layer, runtimeNodeId, result } = completion;
         if (!layer || runtimeNodeId === null) return;
@@ -385,7 +446,15 @@ export function useStudyAnalysis({
             result,
         });
         if (buffer.timer === null) {
-            buffer.timer = setTimeout(flushResults, RESULT_FLUSH_INTERVAL_MS);
+            // 止めている途中・止めたあとに保存が失敗しても、止めたあとに始める解析は止めない。
+            const generation = generationRef.current;
+            buffer.timer = setTimeout(
+                () =>
+                    flushResults(
+                        () => generationRef.current === generation && stoppingRef.current === null,
+                    ),
+                RESULT_FLUSH_INTERVAL_MS,
+            );
         }
     };
 
@@ -411,7 +480,28 @@ export function useStudyAnalysis({
         ),
         releaseWorkersAfterRun: engineOption?.batch !== undefined,
         nnueId: isExternalEngine ? undefined : analysisNnueId,
-        onPositionAnalyzed: (completion) => {
+        onPositionAnalyzed: (analyzed) => {
+            let completion = analyzed;
+            const read = unboundedReadRef.current;
+            if (read && runModeRef.current === "deep" && analyzed.runtimeNodeId === read.nodeId) {
+                unboundedReadRef.current = null;
+                // 続きから読める探索と同じく、区切りの時間より長く読んでから止めた結果は「済んだ」とする。
+                // 最後の info の時間は止めた時刻より前なので、届き始めてからの時間とも比べる。
+                const { result } = analyzed;
+                const readMs = Math.max(
+                    result.timeMs ?? 0,
+                    read.firstInfoAt === null ? 0 : Date.now() - read.firstInfoAt,
+                );
+                const completed = result.completion === "aborted" && readMs >= STUDY_DEEP_TIME_MS;
+                completion = {
+                    ...analyzed,
+                    result: {
+                        ...result,
+                        runId: read.runId,
+                        ...(completed ? { completion: "completed" as const } : {}),
+                    },
+                };
+            }
             handlePositionAnalyzed(completion);
             const { layer, runtimeNodeId } = completion;
             if (runModeRef.current === "deep" && layer && runtimeNodeId !== null) {
@@ -427,17 +517,48 @@ export function useStudyAnalysis({
                 event.scoreMate !== undefined ||
                 event.nodes !== undefined;
             if (!hasProgress) return;
+            let preview: StudyAnalysisResult | null = null;
+            const read = unboundedReadRef.current;
+            if (read && read.nodeId === nodeId) {
+                read.collector.push(event);
+                const now = Date.now();
+                read.firstInfoAt ??= now;
+                const showsPreview = now - read.previewAt >= PREVIEW_INTERVAL_MS;
+                const reportsProgress = now - read.progressAt >= PROGRESS_INTERVAL_MS;
+                const result =
+                    showsPreview || reportsProgress ? read.collector.finish("aborted") : null;
+                if (result && showsPreview) {
+                    read.previewAt = now;
+                    preview = result;
+                }
+                if (result && reportsProgress) {
+                    read.progressAt = now;
+                    const key = progressKeyOf(result);
+                    if (key !== read.progressKey) {
+                        read.progressKey = key;
+                        saveReadingProgress(
+                            read.layer,
+                            nodeId,
+                            result,
+                            () => unboundedReadRef.current === read,
+                        );
+                    }
+                }
+            }
             setLive((previous) => {
                 if (!previous || previous.nodeId !== nodeId) return previous;
                 // 深さの無い info もあるので、届いた深さは次の深さが届くまで残す（読み始めたかの判定にも使う）。
                 const depth = event.depth ?? previous.depth;
-                return previous.depth !== depth || previous.hasInfo !== true
-                    ? { ...previous, depth, hasInfo: true }
+                return previous.depth !== depth || previous.hasInfo !== true || preview
+                    ? { ...previous, depth, hasInfo: true, preview: preview ?? previous.preview }
                     : previous;
             });
         },
         onComplete: () => {
-            flushResults();
+            unboundedReadRef.current = null;
+            // 保存を待たずに終えるので、そのあとに始めた解析は、この保存の失敗で止めない。
+            const generation = generationRef.current;
+            flushResults(() => generationRef.current === generation);
             if (!runFailedRef.current) setCompletedRuns((count) => count + 1);
             setMode(null);
             setLive(null);
@@ -459,7 +580,8 @@ export function useStudyAnalysis({
     });
 
     // 止めても続きから読める探索は、局面ごとに 1 つの読みを専有するエンジンが要る。外部の USI エンジンは
-    // 再開できず、Desktop の内蔵エンジン（同時に 1 つ）は解析の部品と共有するので、1 回だけの読みにする。
+    // 再開できず、Desktop の内蔵エンジン（同時に 1 つ）は解析の部品と共有するので、止めるまで読み続ける
+    // 1 回の探索にする。
     const canResumeDeep =
         engineOption !== undefined &&
         engineOption.kind !== "external" &&
@@ -483,38 +605,9 @@ export function useStudyAnalysis({
             latestRef.current.onFlush?.();
         },
         onProgress: (request, result) => {
-            const generation = generationRef.current;
-            const outcome = latestRef.current.onApplyOps(
-                [
-                    {
-                        type: "ensureLayer",
-                        spec: request.layer.spec,
-                        display: request.layer.display,
-                    },
-                    {
-                        type: "putAnalysis",
-                        layerId: request.layer.layerId,
-                        nodeId: request.nodeId,
-                        result,
-                    },
-                ],
-                { syncDelayMs: READING_SYNC_DELAY_MS },
+            saveReadingProgress(request.layer, request.nodeId, result, () =>
+                deep.isReading(request),
             );
-            latestRef.current.onDeepResult(request.layer.layerId, request.nodeId);
-            if (outcome instanceof Promise) {
-                void outcome.then((saved) => {
-                    // 止めるのは、この読みをまだ続けているときだけ（別の局面の読みを始めていたら、
-                    // 世代が進んでいる）。
-                    if (
-                        !saved &&
-                        mountedRef.current &&
-                        generationRef.current === generation &&
-                        deep.isReading(request)
-                    ) {
-                        void cancelRef.current();
-                    }
-                });
-            }
         },
         onError: (message) => {
             console.error("[study] 深く解析できませんでした:", message);
@@ -643,10 +736,13 @@ export function useStudyAnalysis({
         // 設定（レイヤー）は、ここでは文書に作らない。最初の結果を反映するときに一緒に作る
         // （`handlePositionAnalyzed`）。始めてすぐ中止したときに、結果が 1 件も無い設定が
         // 一覧に残らないようにするため。結果を保存できなかったら `flushResults` が解析を止める。
-        if (nextMode === "full") onLayerStarted(layer.layerId);
+        if (nextMode === "full") {
+            onLayerStarted(layer.layerId);
+            unboundedReadRef.current = null;
+        }
         runModeRef.current = nextMode;
         setMode(nextMode);
-        // 全体解析は一括、深い解析（続きから読めないときの 1 回だけの読み）は 1 局面として数える
+        // 全体解析は一括、深い解析（続きから読めないときの、止めるまで読み続ける読み）は 1 局面として数える
         track("analysis_start", { kind: nextMode === "full" ? "batch" : "single" });
         runFailedRef.current = false;
         pool.start(jobs, {
@@ -911,14 +1007,37 @@ export function useStudyAnalysis({
                         track("analysis_start", { kind: "single" });
                         return;
                     }
-                    // 続きから読める探索が使えないと分かったら、1 回だけの読みに切り替える。
+                    // 続きから読める探索が使えないと分かったら、止めるまで読み続ける 1 回の探索に切り替える。
                     if (!isCurrent() || lockedRef.current) return;
                 }
+                const startedAt = Date.now();
+                const runId = crypto.randomUUID();
+                unboundedReadRef.current = {
+                    nodeId,
+                    layer: prepared.layer,
+                    runId,
+                    collector: createStudyAnalysisCollector({
+                        runId,
+                        sideToMove: node.positionAfter.turn,
+                        execution: {
+                            threads: resolveThreadCount(
+                                settings.deepAnalysisThreads,
+                                engineOption?.maxThreads,
+                            ),
+                            parallelWorkers: 1,
+                        },
+                    }),
+                    firstInfoAt: null,
+                    // 最初の候補は待たずに出す（読み始めの欄が空のままにならないように）。
+                    previewAt: Number.NEGATIVE_INFINITY,
+                    progressAt: startedAt,
+                    progressKey: null,
+                };
                 setLive({
                     nodeId,
                     depth: null,
-                    startedAt: Date.now(),
-                    budgetMs: limits.timeMs,
+                    startedAt,
+                    budgetMs: null,
                     preview: null,
                     layer: prepared.layer,
                 });
@@ -928,7 +1047,7 @@ export function useStudyAnalysis({
                             ply: node.ply,
                             sfen: current.tree.startSfen,
                             moves,
-                            timeMs: limits.timeMs,
+                            timeMs: STUDY_UNBOUNDED_READ_TIME_MS,
                             depth: limits.depth,
                             nodeId,
                             sideToMove: node.positionAfter.turn,
@@ -973,6 +1092,7 @@ export function useStudyAnalysis({
             await deep.stop();
             // 止めた探索は、そこまでの結果が「中断」として `onPositionAnalyzed` に届く。
             await pool.cancel();
+            unboundedReadRef.current = null;
             // 止めている途中なので、保存できなくても止め直さない（止め直すと、このあとに始める読みを
             // 取り消してしまう）。
             flushResults(() => false);
