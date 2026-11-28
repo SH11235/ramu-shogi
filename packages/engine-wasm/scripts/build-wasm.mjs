@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -28,6 +28,13 @@ const threadedCargoTargetDir = process.env.ENGINE_WASM_THREADED_TARGET_DIR
 const outDir = path.resolve(__dirname, "../pkg");
 const threadedOutDir = path.resolve(__dirname, "../pkg-threaded");
 const threadedTarget = path.resolve(rustRoot, "targets", "wasm32-unknown-unknown.json");
+
+// 探索スレッドのスタック（バイト）。探索は手数 MAX_PLY (246) で潜るのをやめるので、1 手ごとの
+// search_node（約 5.3 KB）と probcut（約 5 KB）が毎手重なっても約 2.5 MB に収まる。wasm の既定
+// （本体 1 MiB・補助スレッド 2 MiB）では深く読み続けると足りず、本体は `memory access out of bounds`
+// で落ち、補助スレッドはヒープを壊す。スレッド版の本体の値は targets/wasm32-unknown-unknown.json の
+// `stack-size` と同じにする（verifyStackSize で確かめる）。
+const SEARCH_STACK_BYTES = 4 * 1024 * 1024;
 
 function run(cmd, args, cwd = process.cwd(), extraEnv = {}) {
     const fullCommand = `${cmd} ${args.join(" ")}`;
@@ -68,6 +75,87 @@ function run(cmd, args, cwd = process.cwd(), extraEnv = {}) {
     if (result.status !== 0) {
         throw new Error(`Command failed: ${fullCommand}`);
     }
+}
+
+/** wasm の最初の内部グローバル（`__stack_pointer`）の初期値。`--stack-first` ではスタックの大きさと同じ。 */
+function readStackPointerInit(wasmPath) {
+    const bytes = readFileSync(wasmPath);
+    let offset = 8;
+    const readUleb = () => {
+        let result = 0;
+        let shift = 0;
+        let byte;
+        do {
+            byte = bytes[offset++];
+            result += (byte & 0x7f) * 2 ** shift;
+            shift += 7;
+        } while (byte & 0x80);
+        return result;
+    };
+    const readSleb32 = () => {
+        let result = 0;
+        let shift = 0;
+        let byte;
+        do {
+            byte = bytes[offset++];
+            result |= (byte & 0x7f) << shift;
+            shift += 7;
+        } while (byte & 0x80);
+        if (shift < 32 && byte & 0x40) result |= -1 << shift;
+        return result;
+    };
+    while (offset < bytes.length) {
+        const id = bytes[offset++];
+        const size = readUleb();
+        const end = offset + size;
+        if (id === 6) {
+            readUleb();
+            const valueType = bytes[offset++];
+            const mutable = bytes[offset++];
+            const opcode = bytes[offset++];
+            // i32・可変・i32.const で初期化されたものだけを __stack_pointer とみなす
+            if (valueType === 0x7f && mutable === 1 && opcode === 0x41) return readSleb32();
+            return null;
+        }
+        offset = end;
+    }
+    return null;
+}
+
+function verifyStackSize(wasmPath) {
+    const stackBytes = readStackPointerInit(wasmPath);
+    if (stackBytes === null || stackBytes < SEARCH_STACK_BYTES) {
+        throw new Error(
+            `${wasmPath} の探索スタックが ${stackBytes} バイトしかありません（${SEARCH_STACK_BYTES} 以上が必要）`,
+        );
+    }
+}
+
+/**
+ * wasm-bindgen-rayon は補助スレッドの初期化に `thread_stack_size` を渡さず、wasm-bindgen の既定
+ * （2 MiB）になる。生成された workerHelpers.js の初期化の引数に足す。
+ */
+function setRayonThreadStackSize(outputDir) {
+    const snippetsDir = path.join(outputDir, "snippets");
+    const helper = readdirSync(snippetsDir, { recursive: true })
+        .map((entry) => path.join(snippetsDir, String(entry)))
+        .find((entry) => path.basename(entry) === "workerHelpers.js");
+    if (!helper) throw new Error(`workerHelpers.js not found under ${snippetsDir}`);
+    const source = readFileSync(helper, "utf8");
+    const original = "init: { module_or_path: module, memory },";
+    if (!source.includes(original)) {
+        throw new Error(
+            `${helper} の補助スレッドの初期化が想定と違います（thread_stack_size を足せません）`,
+        );
+    }
+    writeFileSync(
+        helper,
+        source.replace(
+            original,
+            `init: { module_or_path: module, memory, thread_stack_size: ${SEARCH_STACK_BYTES} },`,
+        ),
+        "utf8",
+    );
 }
 
 function ensureWasmBindgen() {
@@ -136,6 +224,8 @@ function buildWasm({
 
     // wasm-opt は不使用（Cargo LTO で十分最適化済み、wasm-opt は逆効果: -8〜12% NPS低下）
 
+    verifyStackSize(path.join(outputDir, `${artifactName}_bg.wasm`));
+
     if (emitThreadWorker) {
         const workerPath = path.join(outputDir, `${artifactName}_worker.js`);
         const workerSource = [
@@ -150,6 +240,7 @@ function buildWasm({
             "",
         ].join("\n");
         writeFileSync(workerPath, workerSource, "utf8");
+        setRayonThreadStackSize(outputDir);
     }
 
     console.log(`Wrote wasm bindings to ${outputDir}`);
@@ -192,7 +283,7 @@ try {
         label: "single",
         cargoArgs: [],
         outDir,
-        rustflags: "-C target-feature=+simd128",
+        rustflags: `-C target-feature=+simd128 -C link-arg=-zstack-size=${SEARCH_STACK_BYTES}`,
     });
 
     buildWasm({
