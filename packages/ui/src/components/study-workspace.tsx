@@ -695,11 +695,14 @@ export function StudyWorkspaceView({
     const analysisBlocked = analysis.isPreparing || mateRunning;
     const startFull = (): void => {
         if (locked || mateRunning) return;
+        // 確かめている途中の「パス」は取りやめる（全体の解析のほうを優先する）。
+        cancelPendingPass();
         void analysis.startFull(fullStartOptions());
     };
     /** 表示中の設定の未解析分を、その設定で解析する。表示中の結果が無ければ全体の解析。 */
     const resumeDisplayLayer = (): void => {
         if (locked || mateRunning) return;
+        cancelPendingPass();
         if (displayLayerId === null) {
             startFull();
             return;
@@ -729,6 +732,8 @@ export function StudyWorkspaceView({
         STUDY_READ_MODE_STORAGE_KEY,
         initialReadMode,
     );
+    /** 別のタブで読み方を選び直した回数。待っている操作が、その選択を上書きしないために見る。 */
+    const readModeChangedElsewhereRef = useRef(0);
     /** このタブで最後に書いた読み方。別のタブで選び直されたのを見分けるのに使う。 */
     const lastWrittenReadModeRef = useRef<StoredReadMode | null>(null);
     const writeReadMode = (update: (previous: StoredReadMode) => StoredReadMode): void =>
@@ -749,8 +754,8 @@ export function StudyWorkspaceView({
      * この局面にいる間だけ「パス」と出す。別の局面へ移ったら「読む」になる。
      */
     const [passNodeId, setPassNodeId] = useState<string | null>(null);
-    /** 「パス」を選んで、パスできるかを確かめている途中。この間も「パス」と出し、選び直せば取りやめる。 */
-    const [passPending, setPassPending] = useState(false);
+    /** 「パス」を押して、パスできるかを確かめている局面。この間も「パス」と出し、選び直せば取りやめる。 */
+    const [passPendingNodeId, setPassPendingNodeId] = useState<string | null>(null);
     /** このタブで最後に書いた「読む」の値。別のタブで書き換えられたのを見分けるのに使う。 */
     const localAutoAnalyzeRef = useRef<boolean | null>(null);
     const setAutoAnalyzeHere = (enabled: boolean): void => {
@@ -784,12 +789,14 @@ export function StudyWorkspaceView({
         }
         let request = 0;
         let enabledCount = 0;
+        let changedElsewhere = 0;
         const isWanted = (): boolean =>
             actionSerialRef.current === request && autoEnabledCountRef.current === enabledCount;
         return {
             onCommit: () => {
                 request = ++actionSerialRef.current;
                 enabledCount = autoEnabledCountRef.current;
+                changedElsewhere = readModeChangedElsewhereRef.current;
                 setAutoAnalyzeHere(false);
             },
             isWanted,
@@ -797,6 +804,8 @@ export function StudyWorkspaceView({
             // 始められなかったら（AI のダウンロードを断った、など）、切った「読む」を戻して読み直す。
             onNotStarted: () => {
                 if (!isWanted()) return;
+                // 待つ間に別のタブで読み方を選んでいたら、それを上書きしない。
+                if (readModeChangedElsewhereRef.current !== changedElsewhere) return;
                 autoStartedNodeRef.current = null;
                 setAutoAnalyzeHere(true);
             },
@@ -846,13 +855,13 @@ export function StudyWorkspaceView({
         const isWanted = (): boolean =>
             passRequestRef.current === request && isSamePositionAs(pressed);
         passingRef.current = true;
-        setPassPending(true);
+        setPassPendingNodeId(currentNodeId);
         let addedNodeId: string | null;
         try {
             addedNodeId = await editing.passFromCurrent(isWanted);
         } finally {
             passingRef.current = false;
-            setPassPending(false);
+            setPassPendingNodeId(null);
         }
         // パスを足せなかった・確かめる間に読み方を選び直したら、読み方は変えない（足したあとは
         // パスの局面へ移っているので、局面は比べない）。
@@ -890,7 +899,7 @@ export function StudyWorkspaceView({
     /** 確かめている途中の「パス」を取りやめる。 */
     const cancelPendingPass = (): void => {
         passRequestRef.current += 1;
-        setPassPending(false);
+        setPassPendingNodeId(null);
     };
     useEffect(
         () => () => {
@@ -900,6 +909,7 @@ export function StudyWorkspaceView({
     );
     // 別のタブで読み方を選び直したら、このタブの「パス」は取りやめ、「パス」と出すのもやめる。
     const onReadModeChangedElsewhere = useEffectEvent((): void => {
+        readModeChangedElsewhereRef.current += 1;
         cancelPendingPass();
         setPassNodeId(null);
     });
@@ -1094,6 +1104,8 @@ export function StudyWorkspaceView({
         cancelPendingPass();
         const request = ++actionSerialRef.current;
         shortestStartingRef.current = true;
+        // 読みを止めるので、求め終えたとき（取りやめたときも）に同じ局面の続きを読み直す。
+        autoStartedNodeRef.current = null;
         try {
             if (analysis.mode === "deep" || analysis.isPreparing) {
                 await analysis.cancel();
@@ -1103,8 +1115,6 @@ export function StudyWorkspaceView({
             if (!isSamePositionAs(pressed)) return;
             // 読み方の「詰み」が同じ局面を調べ直さないよう、この局面は調べ始めたことにする。
             if (mateMode) mateStartedNodeRef.current = node.id;
-            // 求め終えたら、同じ局面の続きを読み直す。
-            autoStartedNodeRef.current = null;
             stopMate();
             mate.startShortest(node);
         } finally {
@@ -1163,16 +1173,18 @@ export function StudyWorkspaceView({
         return () => clearTimeout(timer);
     }, [currentNodeId, mateMode, locked, analysis.mode, analysis.isPreparing]);
     /** 選んでいる読み方。 */
-    const readMode: StudyReadMode = passPending
-        ? "pass"
-        : autoAnalyze
-          ? passNodeId !== null &&
-            (passNodeId === currentNodeId || pendingPassDeepNodeId === passNodeId)
-              ? "pass"
-              : "read"
-          : mateMode
-            ? "mate"
-            : "stop";
+    // 確かめている途中の「パス」は、押した局面にいる間だけ「パス」と出す（移ったら取りやめになる）。
+    const readMode: StudyReadMode =
+        passPendingNodeId === currentNodeId
+            ? "pass"
+            : autoAnalyze
+              ? passNodeId !== null &&
+                (passNodeId === currentNodeId || pendingPassDeepNodeId === passNodeId)
+                  ? "pass"
+                  : "read"
+              : mateMode
+                ? "mate"
+                : "stop";
     /** 読み方を選び直す。選んだ読み方は、利用者が選び直すまで変えない（パスの局面から移ったときを除く）。 */
     const selectReadMode = (next: StudyReadMode): void => {
         if (next === readMode) return;

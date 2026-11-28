@@ -2558,6 +2558,33 @@ describe("StudyWorkspaceView", () => {
         expect(isSelected(readModeButton("停止"))).toBe(true);
     });
 
+    it("「パス」の合法手の確認を待つ間に全体を解析を押したら、パスは足さない", async () => {
+        const { doc } = createTestStudy();
+        const onOps = vi.fn();
+        const analysis = createAnalysis();
+        let answerLegalMoves = (_moves: string[]): void => {};
+        render(
+            <Harness
+                initialDoc={doc}
+                analysis={analysis}
+                onOps={onOps}
+                fetchLegalMoves={() =>
+                    new Promise<string[]>((resolve) => {
+                        answerLegalMoves = resolve;
+                    })
+                }
+            />,
+        );
+
+        fireEvent.click(readModeButton("パス"));
+        fireEvent.click(within(graphRegion()).getByRole("button", { name: "全体を解析" }));
+        await act(async () => {
+            answerLegalMoves(["3c3d", "pass"]);
+        });
+        expect(analysis.startFull).toHaveBeenCalled();
+        expect(onOps).not.toHaveBeenCalled();
+    });
+
     it("別のタブで「詰み」から「停止」にしたら、このタブの詰み探索も止める", async () => {
         localStorage.setItem("shogi:studyReadMode", '"mate"');
         const { doc } = createTestStudy();
