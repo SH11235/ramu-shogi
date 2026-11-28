@@ -126,7 +126,7 @@ export function StudyMobileLayout({
     showsComment: boolean;
     /** 変化を見ているときの「本譜に戻る」。本譜にいる間は null。 */
     onBackToMainLine: (() => void) | null;
-    /** この局面の最善手・評価値と「自動で読む」のスイッチ。どの表示でも局面の移動の下に出す。 */
+    /** この局面の最善手・評価値と、読み方のグループ。どの表示でも局面の移動の下に出す。 */
     positionBand: ReactNode;
     graphPanel: ReactNode;
     /** グラフの下に並べる、見直す手の一覧。 */

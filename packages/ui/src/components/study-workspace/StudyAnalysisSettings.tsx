@@ -266,7 +266,7 @@ function SettingsBody({
                         </NativeSelect>
                     </label>
                     <label className="flex items-center justify-between gap-3 text-sm text-wafuu-sumi">
-                        自動で読む
+                        読む・パス
                         <NativeSelect
                             value={String(
                                 clampThreads(form.settings.deepAnalysisThreads, maxThreads),

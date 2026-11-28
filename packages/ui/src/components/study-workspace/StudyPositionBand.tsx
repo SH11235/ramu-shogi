@@ -38,7 +38,7 @@ export function StudyPositionBand({
     record: StudyBandLine | null;
     /** この局面を読んでいる（読み始めるところも含む）。 */
     reading: boolean;
-    /** 今の読みの段にラムを出す（自動で読む読みだけ。ほかの読みは「いま」と書く）。 */
+    /** 今の読みの段にラムを出す（「読む」読みだけ。ほかの読みは「いま」と書く）。 */
     showRam: boolean;
     /** 読み始めたが、最初の読みがまだ届いていない（AI の読み込み・エンジンの起動を待っている）。 */
     awaitingFirstReading?: boolean;

@@ -2,7 +2,7 @@ import type { Preview } from "@storybook/react-vite";
 import "./storybook.css";
 
 // staging では Storybook がアプリと同じオリジン（`/storybook/`）で動くので、story が書く設定
-// （自動で読む、など）がアプリの localStorage に入ると、開いているアプリの動作が変わる。story からの
+// （「読む」、など）がアプリの localStorage に入ると、開いているアプリの動作が変わる。story からの
 // 読み書きは別の名前の下に分ける。
 // sessionStorage は分けない（Storage.prototype は両方で共有なので、localStorage のときだけ付ける）。
 const STORY_KEY_PREFIX = "storybook:";

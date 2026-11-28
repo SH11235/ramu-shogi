@@ -65,7 +65,6 @@ import { StudyDeleteVariationDialog } from "./study-workspace/StudyDeleteVariati
 import { StudyDesktopLayout } from "./study-workspace/StudyDesktopLayout";
 import {
     buildStudyEvalGraph,
-    STUDY_AUTO_READ_LABEL,
     StudyEvalGraphPanel,
     type StudyGraphRead,
     type StudyGraphSeries,
@@ -158,10 +157,18 @@ import { useStudyNodeNavigation } from "./study-workspace/useStudyNodeNavigation
 import { TooltipProvider } from "./tooltip";
 
 /**
- * 読み方（端末ごとに覚える）。`true` が「読む」（「パス」の間も入れておき、開いている局面を読み続ける）、
- * `"mate"` が「詰み」、`false` が「停止」。1 つのキーにまとめ、別のタブとも 1 つの値で揃える。
+ * 読み方（端末ごとに覚える）。「パス」の間は `read` を入れておき、開いている局面を読み続ける。
+ * 1 つのキーにまとめ、別のタブとも 1 つの値で揃える。
  */
-const STUDY_AUTO_ANALYZE_STORAGE_KEY = "shogi:studyAutoAnalyze";
+const STUDY_READ_MODE_STORAGE_KEY = "shogi:studyReadMode";
+type StoredReadMode = "read" | "mate" | "stop";
+/** 読み方を選ぶ前に「自動で読む」のスイッチを入れていた端末は、「読む」から始める。 */
+const LEGACY_AUTO_ANALYZE_STORAGE_KEY = "shogi:studyAutoAnalyze";
+const legacyStoredReadMode = (): StoredReadMode =>
+    typeof window !== "undefined" &&
+    localStorage.getItem(LEGACY_AUTO_ANALYZE_STORAGE_KEY) === "true"
+        ? "read"
+        : "stop";
 
 const AUTO_ANALYZE_OFF_NOTICE: Message = {
     text: "読み方を「停止」にしました（読んだ分は残っています）。",
@@ -267,7 +274,7 @@ interface StudyWorkspaceViewProps extends StudyWorkspaceCommonProps {
     initialNodeId?: string | null;
     /** 見ている局面が変わった。 */
     onCurrentNodeChange?: (nodeId: string) => void;
-    /** 1 局面の読み（自動で読む）で、直近に結果を書いた局面と設定（レイヤー）。 */
+    /** 1 局面の読み（「読む」）で、直近に結果を書いた局面と設定（レイヤー）。 */
     deepRead?: StudyDeepReadRef | null;
     /** 詰み探索。渡さなければ出さない。 */
     mate?: StudyMateController;
@@ -377,10 +384,10 @@ export function StudyWorkspaceView({
         initialDrafts: initialCommentDrafts,
         onDraftChange: onCommentDraftChange,
     });
-    /** 自動で読むが、続きを読めずに読み終えた局面（局面を離れると消す）。 */
+    /** 「読む」が、続きを読めずに読み終えた局面（局面を離れると消す）。 */
     const [autoFinishedNodeId, setAutoFinishedNodeId] = useState<string | null>(null);
     /**
-     * 自動で読むが、読み始めるかを最後に決めた局面。決めるのは 1 拍おいてからなので、局面を移った・入れた
+     * 「読む」が、読み始めるかを最後に決めた局面。決めるのは 1 拍おいてからなので、局面を移った・入れた
      * 直後はいまの局面と食い違う。帯にその間だけ「未解析」を出さないのに使う。
      */
     const [autoDecidedNodeId, setAutoDecidedNodeId] = useState<string | null>(null);
@@ -507,18 +514,18 @@ export function StudyWorkspaceView({
     const isOtherAi = (layer: Pick<StudyLayer, "spec">): boolean =>
         displayLayer !== undefined && !isSameStudyAi(layer, displayLayer);
     const isAutoReadLayer = isStudyAutoReadLayer;
-    /** 別の AI の設定の名前（例: `簡易AI（駒得）・自動読み`）。時間は保存の区切りなので出さない。 */
+    /**
+     * 別の AI の設定の名前（例: `簡易AI（駒得）・1 秒`）。読み方の「読む」で読んだ結果は、設定の時間が
+     * 保存の区切りで読んだ長さではないので、AI の名前だけにする。
+     */
     const otherAiLabel = (layer: Pick<StudyLayer, "spec" | "display">): string =>
-        isAutoReadLayer(layer)
-            ? layer.display.label.replace(/・[^・]*$/, `・${STUDY_AUTO_READ_LABEL}`)
-            : layer.display.label;
-    // 自動読みの結果が表示中の設定になっていても（未解析のノートを自動で読んだとき）、保存の区切りの
-    // 時間ではなく「自動読み」と呼ぶ。
+        isAutoReadLayer(layer) ? layer.display.label.replace(/・[^・]*$/, "") : layer.display.label;
+    // 読み方の「読む」で読んだ結果には、どの読みかの名前を付けない（深さ・秒数で、どれだけ読んだかは分かる）。
     const graphReadLabel = (layer: Pick<StudyLayer, "spec" | "display">): string =>
         isOtherAi(layer)
             ? otherAiLabel(layer)
             : isAutoReadLayer(layer)
-              ? STUDY_AUTO_READ_LABEL
+              ? ""
               : studyLimitsLabel(layer.spec.limits);
     /** いまの局面を自動で読んでいる設定。 */
     const liveLayer = analysis.mode === "deep" ? (liveHere?.layer ?? undefined) : undefined;
@@ -541,7 +548,7 @@ export function StudyWorkspaceView({
         // 全体の解析の途中の値は表示中の設定の値で、保存されたら線に入るので、ここでは足さない。
         if (nodeId === currentNodeId && analysis.mode === "deep" && liveHere?.preview) {
             const read = {
-                label: liveLayer ? graphReadLabel(liveLayer) : STUDY_AUTO_READ_LABEL,
+                label: liveLayer ? graphReadLabel(liveLayer) : "",
                 result: liveHere.preview,
             };
             if (liveLayer && isOtherAi(liveLayer)) {
@@ -716,21 +723,27 @@ export function StudyWorkspaceView({
         },
         [],
     );
-    // 自動で読む: 入れている間は、見ている局面を読み続ける（局面を移ればその局面を）。切ると止まる。
-    // 読んでいるかどうかはスイッチそのものが表すので、自動で読む専用の止めるボタンは置かない。
-    const [storedReadMode, setStoredReadMode] = useLocalStorage<boolean | "mate">(
-        STUDY_AUTO_ANALYZE_STORAGE_KEY,
-        false,
+    // 読み方の「読む」: 選んでいる間は、見ている局面を読み続ける（局面を移ればその局面を）。「停止」で止まる。
+    const [initialReadMode] = useState(legacyStoredReadMode);
+    const [storedReadMode, setStoredReadMode] = useLocalStorage<StoredReadMode>(
+        STUDY_READ_MODE_STORAGE_KEY,
+        initialReadMode,
     );
-    const autoAnalyze = !readOnly && storedReadMode === true;
+    /** このタブで最後に書いた読み方。別のタブで選び直されたのを見分けるのに使う。 */
+    const lastWrittenReadModeRef = useRef<StoredReadMode | null>(null);
+    const writeReadMode = (update: (previous: StoredReadMode) => StoredReadMode): void =>
+        setStoredReadMode((previous) => {
+            const next = update(previous);
+            lastWrittenReadModeRef.current = next;
+            return next;
+        });
+    const autoAnalyze = !readOnly && storedReadMode === "read";
     const setAutoAnalyze = (enabled: boolean): void =>
-        setStoredReadMode((previous) => (enabled ? true : previous === "mate" ? "mate" : false));
+        writeReadMode((previous) => (enabled ? "read" : previous === "mate" ? "mate" : "stop"));
     /** 読み方が「詰み」か。 */
     const mateMode = !readOnly && mate?.supported === true && storedReadMode === "mate";
     const setStoredMateMode = (enabled: boolean): void =>
-        setStoredReadMode((previous) =>
-            enabled ? "mate" : previous === "mate" ? false : previous,
-        );
+        writeReadMode((previous) => (enabled ? "mate" : previous === "mate" ? "stop" : previous));
     /**
      * 読み方の「パス」で足したパスの局面。読み方は「読む」と同じく入れておき（開いている局面を読み続ける）、
      * この局面にいる間だけ「パス」と出す。別の局面へ移ったら「読む」になる。
@@ -738,13 +751,13 @@ export function StudyWorkspaceView({
     const [passNodeId, setPassNodeId] = useState<string | null>(null);
     /** 「パス」を選んで、パスできるかを確かめている途中。この間も「パス」と出し、選び直せば取りやめる。 */
     const [passPending, setPassPending] = useState(false);
-    /** このタブで最後に書いた自動で読むの値。別のタブで書き換えられたのを見分けるのに使う。 */
+    /** このタブで最後に書いた「読む」の値。別のタブで書き換えられたのを見分けるのに使う。 */
     const localAutoAnalyzeRef = useRef<boolean | null>(null);
     const setAutoAnalyzeHere = (enabled: boolean): void => {
         localAutoAnalyzeRef.current = enabled;
         setAutoAnalyze(enabled);
     };
-    /** 自動で読むを切って、読みを止めている途中か。止め終わる前に入れ直したとき、止めている読みを取り込まない。 */
+    /** 「読む」を切って、読みを止めている途中か。止め終わる前に入れ直したとき、止めている読みを取り込まない。 */
     const stoppingAutoRef = useRef(false);
     const stopAutoReading = (): void => {
         actionSerialRef.current += 1;
@@ -754,12 +767,12 @@ export function StudyWorkspaceView({
         });
     };
     /**
-     * 全体の解析（残りを解析も）を始めるときの指定。自動で読むは、始められる設定と分かってから切り、
+     * 全体の解析（残りを解析も）を始めるときの指定。「読む」は、始められる設定と分かってから切り、
      * そのあと始められずに終わったら（AI のダウンロードを断った、など）入れ直す。読みを止め終わるのを
      * 待つ間に別の操作（スイッチを入れ直すなど）をしたら始めない。切った知らせは、始めるときに出す。
      */
     const fullStartOptions = (): StudyFullStartOptions => {
-        // 別のタブで自動で読むを入れたときは操作の番号が進まないので、入れた回数も見る。
+        // 別のタブで「読む」を入れたときは操作の番号が進まないので、入れた回数も見る。
         if (!autoAnalyze) {
             const request = ++actionSerialRef.current;
             const enabledCount = autoEnabledCountRef.current;
@@ -781,7 +794,7 @@ export function StudyWorkspaceView({
             },
             isWanted,
             notice: AUTO_ANALYZE_OFF_NOTICE,
-            // 始められなかったら（AI のダウンロードを断った、など）、切った自動で読むを戻して読み直す。
+            // 始められなかったら（AI のダウンロードを断った、など）、切った「読む」を戻して読み直す。
             onNotStarted: () => {
                 if (!isWanted()) return;
                 autoStartedNodeRef.current = null;
@@ -789,7 +802,7 @@ export function StudyWorkspaceView({
             },
         };
     };
-    /** 自動で読むが入った回数（別のタブでの切り替えも数える）。待っている解析の開始が見る。 */
+    /** 「読む」が入った回数（別のタブでの切り替えも数える）。待っている解析の開始が見る。 */
     const autoEnabledCountRef = useRef(0);
     useEffect(() => {
         if (autoAnalyze) autoEnabledCountRef.current += 1;
@@ -826,9 +839,12 @@ export function StudyWorkspaceView({
     const startDeepAfterPass = async (): Promise<void> => {
         if (locked || deepBlocked || passingRef.current) return;
         actionSerialRef.current += 1;
-        // 取りやめるのは読み方を選び直したとき（自動で続きを読むなど、利用者の操作でないものでは取りやめない）。
+        // 取りやめるのは、読み方を選び直した（別のタブでも）・局面を移った・画面を離れたとき（自動で続きを
+        // 読むなど、利用者の操作でないものでは取りやめない）。
         const request = ++passRequestRef.current;
-        const isWanted = (): boolean => passRequestRef.current === request;
+        const pressed = { nodeId: currentNodeId, leaveCount: leaveCountRef.current };
+        const isWanted = (): boolean =>
+            passRequestRef.current === request && isSamePositionAs(pressed);
         passingRef.current = true;
         setPassPending(true);
         let addedNodeId: string | null;
@@ -838,8 +854,9 @@ export function StudyWorkspaceView({
             passingRef.current = false;
             setPassPending(false);
         }
-        // パスを足せなかった・確かめる間に読み方を選び直したら、読み方は変えない。
-        if (addedNodeId === null || !isWanted()) return;
+        // パスを足せなかった・確かめる間に読み方を選び直したら、読み方は変えない（足したあとは
+        // パスの局面へ移っているので、局面は比べない）。
+        if (addedNodeId === null || passRequestRef.current !== request) return;
         setStoredMateMode(false);
         stopMate();
         setPassNodeId(addedNodeId);
@@ -859,7 +876,7 @@ export function StudyWorkspaceView({
             return;
         }
         if (!tree.nodes.has(pendingPassDeepNodeId)) return;
-        // 読み方は「読む」と同じく入れてあるので、待つのをやめれば自動で読むがパスの局面を読み始める。
+        // 読み方は「読む」と同じく入れてあるので、待つのをやめれば「読む」がパスの局面を読み始める。
         setPendingPassDeepNodeId(null);
     });
     // パスの局面から移ったら、「パス」と出すのをやめる（「読む」になる）。読み方を外している間は
@@ -875,6 +892,30 @@ export function StudyWorkspaceView({
         passRequestRef.current += 1;
         setPassPending(false);
     };
+    useEffect(
+        () => () => {
+            passRequestRef.current += 1;
+        },
+        [],
+    );
+    // 別のタブで読み方を選び直したら、このタブの「パス」は取りやめ、「パス」と出すのもやめる。
+    const onReadModeChangedElsewhere = useEffectEvent((): void => {
+        cancelPendingPass();
+        setPassNodeId(null);
+    });
+    const previousReadModeRef = useRef(storedReadMode);
+    useEffect(() => {
+        if (previousReadModeRef.current === storedReadMode) return;
+        previousReadModeRef.current = storedReadMode;
+        if (lastWrittenReadModeRef.current === storedReadMode) return;
+        onReadModeChangedElsewhere();
+    }, [storedReadMode]);
+    /** 最短手順を求めるために読みを止めている途中。止め終わるまで、読み方の「読む」で読み直さない。 */
+    const shortestStartingRef = useRef(false);
+    /** この局面で最短手順を求めている（求め終えるまで、読み方の「読む」は読まずに待つ）。 */
+    const isShortestHere = (nodeId: string): boolean =>
+        shortestStartingRef.current ||
+        (mate?.runningKind === "shortest" && mate.runningNodeId === nodeId);
     const onAutoAnalyzeTarget = useEffectEvent(
         (
             nodeId: string,
@@ -883,6 +924,7 @@ export function StudyWorkspaceView({
             isPreparing: boolean,
             mode: StudyAnalysisController["mode"],
             pendingPassNodeId: string | null,
+            shortestHere: boolean,
         ): void => {
             // 編集できない間は、準備中の解析も取りやめになる。戻ったら同じ局面から読み直す。
             if (!enabled || isLocked) {
@@ -891,6 +933,7 @@ export function StudyWorkspaceView({
             }
             // パスを足して解析するのを待っている間は、そちらに任せる。
             if (isPreparing || mode === "full" || pendingPassNodeId !== null) return;
+            if (shortestHere || shortestStartingRef.current) return;
             if (autoStartedNodeRef.current === nodeId) return;
             // 別の局面を読み始めた後に残っている live は、止め終わるのを待っている前の読みで、止め終わると
             // 予約した局面の読みが始まる。取り込まずに読み直す（読み直しで予約は取りやめになる）。
@@ -915,13 +958,13 @@ export function StudyWorkspaceView({
     const onAutoAnalyzePaused = useEffectEvent((nodeId: string | null): void => {
         if (!autoAnalyze || locked || nodeId === null) return;
         if (nodeId !== currentNodeId || autoStartedNodeRef.current !== nodeId) return;
-        if (analysis.mode !== null || analysis.isPreparing) return;
+        if (analysis.mode !== null || analysis.isPreparing || isShortestHere(nodeId)) return;
         continueDeep();
     });
     useEffect(() => {
         onAutoAnalyzePaused(analysis.continuableDeepNodeId);
     }, [analysis.continuableDeepNodeId]);
-    // 別のタブで自動で読むを切ったときも、このタブの読みを止める（このタブで切ったときは、切った操作の
+    // 別のタブで「読む」を切ったときも、このタブの読みを止める（このタブで切ったときは、切った操作の
     // ほうで止める。全体の解析を始めるために切ったときに止めると、待っている開始を取り消してしまう）。
     const onAutoAnalyzeChange = useEffectEvent((enabled: boolean): void => {
         const local = localAutoAnalyzeRef.current === enabled;
@@ -975,7 +1018,7 @@ export function StudyWorkspaceView({
         onAutoAnalyzeSettled(analysis.mode);
     }, [analysis.mode]);
     const changeAutoAnalyze = (enabled: boolean): void => {
-        // 自動で読むを切って始めようと待っている操作があれば、スイッチの操作のほうを優先して取りやめる。
+        // 「読む」を切って始めようと待っている操作があれば、スイッチの操作のほうを優先して取りやめる。
         actionSerialRef.current += 1;
         setAutoAnalyzeHere(enabled);
         setAutoDecidedNodeId(null);
@@ -988,7 +1031,7 @@ export function StudyWorkspaceView({
             if (analysis.mode === "deep" || analysis.isPreparing) stopAutoReading();
             return;
         }
-        // 入れたら、動いている全体の解析より自動で読むを優先する（詰み探索は読み始めるときに止まる）。
+        // 入れたら、動いている全体の解析より「読む」を優先する（詰み探索は読み始めるときに止まる）。
         if (analysis.mode === "full") {
             cancelAnalysis();
             onMessageChange({
@@ -1000,6 +1043,9 @@ export function StudyWorkspaceView({
     // 準備中・全体の解析中で始められなかった局面は、それが終わったときに始める。
     // 付けた直後に始めると、StrictMode の付け直しで `useStudyAnalysis` の準備が宙に浮くので、
     // 1 拍おいてから始め、その前に外れたら取りやめる。
+    // 最短手順を求め終えたら、読み方の「読む」で続きを読む。
+    const shortestRunningHere =
+        mate?.runningKind === "shortest" && mate.runningNodeId === currentNodeId;
     useEffect(() => {
         const timer = setTimeout(() => {
             setAutoDecidedNodeId(currentNodeId);
@@ -1010,6 +1056,7 @@ export function StudyWorkspaceView({
                 analysis.isPreparing,
                 analysis.mode,
                 pendingPassDeepNodeId,
+                shortestRunningHere,
             );
         }, 0);
         return () => clearTimeout(timer);
@@ -1020,6 +1067,7 @@ export function StudyWorkspaceView({
         analysis.isPreparing,
         analysis.mode,
         pendingPassDeepNodeId,
+        shortestRunningHere,
     ]);
     const continueDeep = (): void => {
         if (locked) return;
@@ -1036,29 +1084,32 @@ export function StudyWorkspaceView({
         mate?.stop();
     };
     /**
-     * 詰みのある局面の最短手順を 1 回だけ求める。読み方は「詰み」にしない。「読む」「パス」の間は
-     * 読みと同時には動かせないので「停止」にする（読んでいる読みは止める。そこまでの結果は残る）。
+     * 詰みのある局面の最短手順を 1 回だけ求める。読み方は変えない。読んでいる読みは、求め終えるまで
+     * 止めておき（そこまでの結果は残る）、求め終えたら読み方の「読む」で続きを読む。
      */
     const startShortest = async (): Promise<void> => {
         if (!mate || deepBlocked) return;
         const node = currentNode;
         const pressed = { nodeId: currentNodeId, leaveCount: leaveCountRef.current };
         cancelPendingPass();
-        if (autoAnalyze) {
-            setPassNodeId(null);
-            changeAutoAnalyze(false);
-        }
         const request = ++actionSerialRef.current;
-        if (analysis.mode === "deep" || analysis.isPreparing) {
-            await analysis.cancel();
-            if (actionSerialRef.current !== request) return;
+        shortestStartingRef.current = true;
+        try {
+            if (analysis.mode === "deep" || analysis.isPreparing) {
+                await analysis.cancel();
+                if (actionSerialRef.current !== request) return;
+            }
+            // 止め終わるのを待つ間に局面を移ったら、押した局面の探索は始めない。
+            if (!isSamePositionAs(pressed)) return;
+            // 読み方の「詰み」が同じ局面を調べ直さないよう、この局面は調べ始めたことにする。
+            if (mateMode) mateStartedNodeRef.current = node.id;
+            // 求め終えたら、同じ局面の続きを読み直す。
+            autoStartedNodeRef.current = null;
+            stopMate();
+            mate.startShortest(node);
+        } finally {
+            shortestStartingRef.current = false;
         }
-        // 止め終わるのを待つ間に局面を移ったら、押した局面の探索は始めない。
-        if (!isSamePositionAs(pressed)) return;
-        // 読み方の「詰み」が同じ局面を調べ直さないよう、この局面は調べ始めたことにする。
-        if (mateMode) mateStartedNodeRef.current = node.id;
-        stopMate();
-        mate.startShortest(node);
     };
     // 読み方の「詰み」: 開いている局面の詰み・詰めろを調べる（局面を移れば移った先を）。調べ終えた局面は
     // 調べ直さない。解析の途中・準備中は待ち、終わってから始める。
@@ -1089,9 +1140,11 @@ export function StudyWorkspaceView({
             const node = tree.nodes.get(nodeId);
             if (!node) return;
             mateStartedNodeRef.current = nodeId;
-            // 前の局面の探索は、移った先を調べ終えていても止める。
-            stopMate();
+            // 前の局面の詰み探索は、移った先を調べ終えていても止める（別の局面の最短手順は、調べ直す
+            // ときだけ止める）。
+            if (mate.runningKind === "mate") stopMate();
             if (mate.results.get(nodeId)?.status === "done") return;
+            stopMate();
             mate.start(node);
         },
     );
@@ -1130,6 +1183,8 @@ export function StudyWorkspaceView({
         cancelPendingPass();
         actionSerialRef.current += 1;
         setPassNodeId(null);
+        // 「詰み」に戻したら、開いている局面を調べ直す（外したことを 1 拍おいて知る前に戻されても）。
+        mateStartedNodeRef.current = null;
         if (next === "read") {
             setStoredMateMode(false);
             stopMate();
@@ -1153,15 +1208,15 @@ export function StudyWorkspaceView({
             positionTitle: `${node.ply}手目 ${studyMoveLabel(tree, nodeId)}`,
         };
     };
-    /** 自動で読むで、いま読んでいる。 */
+    /** 「読む」で、いま読んでいる。 */
     const autoReadingNow = autoAnalyze && analysis.mode === "deep";
-    /** 自動で読むの、スイッチの行に出す状態（読んでいる局面の表記）。出すものが無ければ null。 */
+    /** 「読む」の、読み上げ向けに添える状態（読んでいる局面の表記）。出すものが無ければ null。 */
     const autoReading = ((): string | null => {
         if (autoAnalyze && analysis.mode === null && autoFinishedNodeId === currentNodeId) {
             return STUDY_AUTO_ANALYZE_FINISHED;
         }
         if (!autoReadingNow) return null;
-        // 前の局面の読みを止め終わるまで live は前の局面を指す。自動で読むは見ている局面を読むので、
+        // 前の局面の読みを止め終わるまで live は前の局面を指す。「読む」は見ている局面を読むので、
         // 前の局面の深さは出さない。
         const live = analysis.live?.nodeId === currentNodeId ? analysis.live : null;
         const depth = live?.preview?.depth ?? live?.depth ?? null;
@@ -1174,7 +1229,7 @@ export function StudyWorkspaceView({
             return { kind: "full", progress: analysis.progress, onStop: cancelAnalysis };
         }
         const deepLive = analysis.live;
-        // 自動で読む間に別の局面の live が残るのは、前の局面の読みを止め終わるまで。見ている局面を読む
+        // 「読む」間に別の局面の live が残るのは、前の局面の読みを止め終わるまで。見ている局面を読む
         // 準備の間なので、別の局面の行は出さない。
         if (
             analysis.mode === "deep" &&
@@ -1251,7 +1306,7 @@ export function StudyWorkspaceView({
         ) {
             return;
         }
-        // 別のタブで自動で読むを入れると、深く解析はまだ動いたまま行だけが消える（止めるのは自動で読む）。
+        // 別のタブで「読む」を入れると、深く解析はまだ動いたまま行だけが消える（止めるのは「読む」）。
         if (previous.target.what === "deep" && analysis.mode === "deep") return;
         // 全体の解析は、最後まで読んだときだけ「終わりました」と出す（エンジンが変わった・保存できずに
         // 止めた、などは、その理由のほうを知らせている）。
@@ -1289,7 +1344,7 @@ export function StudyWorkspaceView({
         locked: editingDisabled,
         needsFullAnalysis,
         unanalyzedCount,
-        // 自動で読んでいる間も押せる（押すと自動で読むを切ってから始める）。
+        // 自動で読んでいる間も押せる（押すと「読む」を切ってから始める）。
         startDisabled: analysisBlocked || (analysis.mode !== null && !autoReadingNow),
         onStartFull: startFull,
         onResume: resumeDisplayLayer,
@@ -1465,13 +1520,11 @@ export function StudyWorkspaceView({
             currentPly={currentIndex}
             graph={graph}
             displayLayerLabel={
-                displayLayer
-                    ? isAutoReadLayer(displayLayer)
-                        ? STUDY_AUTO_READ_LABEL
-                        : displayLayer.display.label
-                    : null
+                displayLayer && !isAutoReadLayer(displayLayer) ? displayLayer.display.label : null
             }
-            displayLayerCondition={displayLayer ? graphReadLabel(displayLayer) : null}
+            displayLayerCondition={
+                displayLayer && !isAutoReadLayer(displayLayer) ? graphReadLabel(displayLayer) : null
+            }
             onPrimaryChange={setGraphPrimaryChoice}
             run={analysisRun}
             isMobile={isMobile}
@@ -1527,7 +1580,7 @@ export function StudyWorkspaceView({
               }
             : { bestMove: null, score: null, depth: null, otherAi };
     };
-    // 帯にラムを出すのは自動で読む読みだけ（パスして解析の読みは、止める操作のある候補手のタブで知らせる）。
+    // 帯にラムを出すのは「読む」の読みだけ（パスして解析の読みは、止める操作のある候補手のタブで知らせる）。
     // 局面を移った直後は、前の局面の読みを止めてこの局面を読み始めるまで間があるので、その間も読んでいる
     // ことにする（「未解析」が一瞬出ないように）。
     const bandShowsReading =
@@ -1859,7 +1912,7 @@ export function StudyWorkspaceView({
                                         savedPicked !== null && isOtherAi(savedPicked.layer),
                                     )}
                                     onPlayRecord={playRecordPv}
-                                    // パスして解析の読みも今の読みとして出すが、ラムは自動で読む読みだけ。
+                                    // パスして解析の読みも今の読みとして出すが、ラムは「読む」の読みだけ。
                                     reading={bandShowsReading || liveHere !== undefined}
                                     awaitingFirstReading={awaitingFirstReading}
                                     showRam={bandShowsReading}
