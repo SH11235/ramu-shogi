@@ -246,6 +246,50 @@ describe("createUsiEngineClient", () => {
         }
     });
 
+    it("止めた探索の bestmove が待つ間に届かなければ、次の探索の後に届いた分を渡さない", async () => {
+        let deliver: (payload: unknown) => void = () => {};
+        listenMock.mockImplementation(async (_channel, handler) => {
+            deliver = (payload) => handler({ payload });
+            return unlistenMock;
+        });
+        vi.useFakeTimers();
+        try {
+            const client = createUsiEngineClient({ registrationId: "reg-1" });
+            await client.init();
+            const events: string[] = [];
+            client.subscribe((event) => {
+                events.push(event.type === "info" ? `info:${event.depth}` : event.type);
+            });
+            const first = await client.search({ limits: { movetimeMs: 86_400_000 } });
+            const stopping = first.cancel();
+            await vi.advanceTimersByTimeAsync(3_100);
+            await stopping;
+            await client.search({ limits: { movetimeMs: 86_400_000 } });
+            // 前の探索の残り（info と bestmove）は捨て、そのあとの次の探索の info から渡す。
+            deliver({ type: "info", depth: 30 });
+            deliver({ type: "bestmove", move: "7g7f" });
+            deliver({ type: "info", depth: 1 });
+            expect(events).toEqual(["info:1"]);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("読み終えた探索の handle で止めても、後から始めた探索に stop を送らない", async () => {
+        let deliver: (payload: unknown) => void = () => {};
+        listenMock.mockImplementation(async (_channel, handler) => {
+            deliver = (payload) => handler({ payload });
+            return unlistenMock;
+        });
+        const client = createUsiEngineClient({ registrationId: "reg-1" });
+        await client.init();
+        const first = await client.search({ limits: { movetimeMs: 1_000 } });
+        deliver({ type: "bestmove", move: "7g7f" });
+        await client.search({ limits: { movetimeMs: 1_000 } });
+        await first.cancel();
+        expect(invokeMock).not.toHaveBeenCalledWith("usi_engine_stop", expect.anything());
+    });
+
     it("読み終えた探索を止めても待たない", async () => {
         let deliver: (payload: unknown) => void = () => {};
         listenMock.mockImplementation(async (_channel, handler) => {

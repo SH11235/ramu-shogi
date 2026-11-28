@@ -447,10 +447,13 @@ export function useStudyAnalysis({
             result,
         });
         if (buffer.timer === null) {
-            // 止めてから止め終わるまでの間に保存が失敗しても、止めたあとに始めた解析は止めない。
+            // 止めている途中・止めたあとに保存が失敗しても、止めたあとに始める解析は止めない。
             const generation = generationRef.current;
             buffer.timer = setTimeout(
-                () => flushResults(() => generationRef.current === generation),
+                () =>
+                    flushResults(
+                        () => generationRef.current === generation && stoppingRef.current === null,
+                    ),
                 RESULT_FLUSH_INTERVAL_MS,
             );
         }
@@ -554,7 +557,9 @@ export function useStudyAnalysis({
         },
         onComplete: () => {
             unboundedReadRef.current = null;
-            flushResults();
+            // 保存を待たずに終えるので、そのあとに始めた解析は、この保存の失敗で止めない。
+            const generation = generationRef.current;
+            flushResults(() => generationRef.current === generation);
             if (!runFailedRef.current) setCompletedRuns((count) => count + 1);
             setMode(null);
             setLive(null);

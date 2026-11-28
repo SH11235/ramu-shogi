@@ -58,8 +58,17 @@ export function createUsiEngineClient(options: UsiEngineClientOptions): EngineCl
         searching?.finish();
         searching = null;
     };
+    /**
+     * 止めたのに待つ間に bestmove が届かなかった探索の数。その探索の info・bestmove は次の go の後に
+     * 届くので、数えた bestmove が届くまでの info・bestmove は捨てる（次の探索のものとして渡さない）。
+     */
+    let staleSearches = 0;
 
     const emit = (event: EngineEvent) => {
+        if (staleSearches > 0 && (event.type === "info" || event.type === "bestmove")) {
+            if (event.type === "bestmove") staleSearches -= 1;
+            return;
+        }
         if (event.type === "bestmove" || event.type === "error") finishSearch();
         for (const handler of listeners) {
             handler(event);
@@ -97,6 +106,7 @@ export function createUsiEngineClient(options: UsiEngineClientOptions): EngineCl
         // 購読解除を先に行う
         dropListener();
         finishSearch();
+        staleSearches = 0;
         if (sessionId) {
             const quit = tauriInvoke("usi_engine_quit", { session_id: sessionId });
             if (bestEffort) {
@@ -192,18 +202,28 @@ export function createUsiEngineClient(options: UsiEngineClientOptions): EngineCl
             }
             return {
                 cancel: async () => {
+                    // 読み終えた探索の stop は、同じセッションで後から始めた探索を止めてしまう。
+                    if (searching !== current) return;
                     await tauriInvoke("usi_engine_stop", { session_id: sid }).catch(
                         () => undefined,
                     );
                     // bestmove を返さないエンジンでも、止める操作を待たせ続けない。
+                    let timedOut = false;
                     let timer: ReturnType<typeof setTimeout> | undefined;
                     await Promise.race([
                         current.done,
                         new Promise<void>((resolve) => {
-                            timer = setTimeout(resolve, STOP_BESTMOVE_WAIT_MS);
+                            timer = setTimeout(() => {
+                                timedOut = true;
+                                resolve();
+                            }, STOP_BESTMOVE_WAIT_MS);
                         }),
                     ]);
                     clearTimeout(timer);
+                    if (timedOut && searching === current) {
+                        staleSearches += 1;
+                        finishSearch();
+                    }
                 },
             };
         },
