@@ -70,12 +70,18 @@ export function useStudyMoveEditing({
     }, [currentNodeId, locked]);
     const moveProcessingRef = useRef(false);
 
-    /** いまの局面から手を足す（既にある手なら、その手へ移るだけ）。足せなかったときは false。 */
-    const addMoveFromCurrent = (usiMove: string): boolean => {
-        if (readOnly) return false;
+    /**
+     * いまの局面から手を足す（既にある手なら、その手へ移るだけ）。足せなかったときは `added: false`。
+     * `saved` は足した操作を保存層が受け付けたか（待てるときは Promise。既にある手なら undefined）。
+     */
+    const addMoveWithOutcome = (
+        usiMove: string,
+    ): { added: false } | { added: true; saved: StudyApplyOpsResult } => {
+        const rejected = { added: false } as const;
+        if (readOnly) return rejected;
         if (!isStudyUsiMove(usiMove)) {
             onMessageChange({ text: "この手は研究ノートに追加できません", type: "error" });
-            return false;
+            return rejected;
         }
         const childId = studyChildNodeId(currentNodeId, usiMove);
         if (!tree.nodes.has(childId)) {
@@ -84,24 +90,26 @@ export function useStudyMoveEditing({
                     text: `このノートの局面の数が上限（${STUDY_LIMITS.nodesPerStudy}）に達しました。これ以上、手を足せません。`,
                     type: "error",
                 });
-                return false;
+                return rejected;
             }
             if (currentNode.ply + 1 > STUDY_LIMITS.lineLength) {
                 onMessageChange({
                     text: `このノートの手数が上限（${STUDY_LIMITS.lineLength} 手）に達しました。`,
                     type: "error",
                 });
-                return false;
+                return rejected;
             }
-            trackAddedNodes(
-                currentNodeId,
-                [usiMove],
-                onApplyOps([{ type: "addMoves", parentId: currentNodeId, moves: [usiMove] }]),
-            );
+            const saved = onApplyOps([
+                { type: "addMoves", parentId: currentNodeId, moves: [usiMove] },
+            ]);
+            trackAddedNodes(currentNodeId, [usiMove], saved);
+            navigateTo(childId);
+            return { added: true, saved };
         }
         navigateTo(childId);
-        return true;
+        return { added: true, saved: undefined };
     };
+    const addMoveFromCurrent = (usiMove: string): boolean => addMoveWithOutcome(usiMove).added;
 
     /**
      * いまの局面でパスを指す。パスできない局面（王手がかかっている）と、エンジンが読み込めない
@@ -158,9 +166,11 @@ export function useStudyMoveEditing({
             }
         }
         if (isWanted && !isWanted()) return null;
-        return addMoveFromCurrent(STUDY_PASS_MOVE)
-            ? studyChildNodeId(nodeId, STUDY_PASS_MOVE)
-            : null;
+        const outcome = addMoveWithOutcome(STUDY_PASS_MOVE);
+        if (!outcome.added) return null;
+        // 保存層が受け付けなかったパスは残らないので、足せなかったことにする（呼び出し側が読み方を変えない）。
+        if (outcome.saved instanceof Promise && !(await outcome.saved)) return null;
+        return studyChildNodeId(nodeId, STUDY_PASS_MOVE);
     };
 
     const board: UseMoveExecutionReturn = useMoveExecution({

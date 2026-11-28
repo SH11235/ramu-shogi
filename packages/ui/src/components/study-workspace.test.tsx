@@ -2585,6 +2585,95 @@ describe("StudyWorkspaceView", () => {
         expect(onOps).not.toHaveBeenCalled();
     });
 
+    it("別のタブで「停止」から「読む」へ戻したのを、このタブが前に書いた「読む」と取り違えない", async () => {
+        localStorage.setItem("shogi:studyReadMode", '"stop"');
+        const { doc } = createTestStudy();
+        const onOps = vi.fn();
+        let answerLegalMoves = (_moves: string[]): void => {};
+        render(
+            <Harness
+                initialDoc={doc}
+                onOps={onOps}
+                fetchLegalMoves={() =>
+                    new Promise<string[]>((resolve) => {
+                        answerLegalMoves = resolve;
+                    })
+                }
+            />,
+        );
+        const writeElsewhere = (value: string): void => {
+            act(() => {
+                localStorage.setItem("shogi:studyReadMode", value);
+                window.dispatchEvent(
+                    new StorageEvent("storage", { key: "shogi:studyReadMode", newValue: value }),
+                );
+            });
+        };
+        fireEvent.click(readModeButton("読む"));
+        writeElsewhere('"stop"');
+        fireEvent.click(readModeButton("パス"));
+        writeElsewhere('"read"');
+        await act(async () => {
+            answerLegalMoves(["3c3d", "pass"]);
+        });
+        expect(onOps).not.toHaveBeenCalled();
+        expect(isSelected(readModeButton("読む"))).toBe(true);
+    });
+
+    it("全体の解析を始められずに戻すとき、知らせの届いていない別のタブの選択を書き戻さない", async () => {
+        localStorage.setItem("shogi:studyReadMode", '"read"');
+        const { doc } = createTestStudy();
+        const analysis = createAnalysis({
+            mode: "deep",
+            live: {
+                nodeId: doc.tree.rootId,
+                depth: 18,
+                startedAt: null,
+                budgetMs: 30_000,
+                preview: null,
+            },
+            startFull: vi.fn(async (options?: StudyFullStartOptions) => {
+                options?.onCommit?.();
+                await new Promise((resolve) => setTimeout(resolve, 0));
+                // 別のタブが「詰み」を選んだ（storage の知らせは、まだこのタブに届いていない）。
+                localStorage.setItem("shogi:studyReadMode", '"mate"');
+                options?.onNotStarted?.();
+            }),
+        });
+        render(<Harness initialDoc={doc} analysis={analysis} mate={createMate()} />);
+        fireEvent.click(within(graphRegion()).getByRole("button", { name: "全体を解析" }));
+        await waitFor(() => expect(analysis.startFull).toHaveBeenCalled());
+        await act(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 10));
+        });
+        expect(localStorage.getItem("shogi:studyReadMode")).toBe('"mate"');
+        expect(isSelected(readModeButton("読む"))).toBe(false);
+    });
+
+    it("保存層がパスを受け付けなかったら、読み方を変えない", async () => {
+        localStorage.setItem("shogi:studyReadMode", '"stop"');
+        const { doc, ids } = createTestStudy();
+        const analysis = createAnalysis();
+        render(
+            <Harness
+                initialDoc={doc}
+                analysis={analysis}
+                fetchLegalMoves={async () => ["7g7f", "pass"]}
+                interceptOps={(ops) =>
+                    ops.some((op) => op.type === "addMoves" && op.moves.includes("pass"))
+                        ? Promise.resolve(false)
+                        : undefined
+                }
+            />,
+        );
+        fireEvent.click(readModeButton("パス"));
+        await act(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+        expect(analysis.startDeep).not.toHaveBeenCalledWith(studyChildNodeId(ids[0], "pass"));
+        expect(isSelected(readModeButton("停止"))).toBe(true);
+    });
+
     it("別のタブで「詰み」から「停止」にしたら、このタブの詰み探索も止める", async () => {
         localStorage.setItem("shogi:studyReadMode", '"mate"');
         const { doc } = createTestStudy();

@@ -104,12 +104,15 @@ export type UseLocalStorageReturn<T> = readonly [
  */
 export function useLocalStorage<T>(key: string, defaultValue: T): UseLocalStorageReturn<T> {
     // 初期値を localStorage から読み込む
-    const [{ value, userRevision }, setStored] = useState(() => ({
+    // `fromStorage`: いまの値は保存値から読んだもの（別のタブ・別の hook が保存した）。保存し直さない。
+    // 保存し直すと、遅れて届いた古い通知の値で、その後に保存された値を書き戻してしまう。
+    const [{ value, userRevision, fromStorage }, setStored] = useState(() => ({
         value:
             typeof window === "undefined"
                 ? defaultValue
                 : parseStoredValue(key, localStorage.getItem(key), defaultValue),
         userRevision: 0,
+        fromStorage: false,
     }));
     const [setValue] = useState<UseLocalStorageReturn<T>[1]>(
         () =>
@@ -123,6 +126,7 @@ export function useLocalStorage<T>(key: string, defaultValue: T): UseLocalStorag
                     return {
                         value: nextValue,
                         userRevision: previous.userRevision + (source === "user" ? 1 : 0),
+                        fromStorage: false,
                     };
                 });
             },
@@ -139,6 +143,10 @@ export function useLocalStorage<T>(key: string, defaultValue: T): UseLocalStorag
             return;
         }
         const serialized = JSON.stringify(value);
+        if (fromStorage) {
+            lastPersistedRef.current = { key, serialized, userRevision };
+            return;
+        }
         try {
             localStorage.setItem(key, serialized);
         } catch (error) {
@@ -158,19 +166,26 @@ export function useLocalStorage<T>(key: string, defaultValue: T): UseLocalStorag
             const source = previous.userRevision !== userRevision ? "user" : "automatic";
             dispatchLocalStorageSyncEvent(key, source);
         }
-    }, [key, value, userRevision]);
+    }, [key, value, userRevision, fromStorage]);
 
     useEffect(() => {
         if (typeof window === "undefined") {
             return;
         }
 
-        const syncFromStorage = (stored: string | null): void => {
+        // 通知に載った値ではなく、いまの保存値を読む（通知が遅れて届いても、後の値を見る）。
+        const syncFromStorage = (): void => {
+            let stored: string | null = null;
+            try {
+                stored = window.localStorage.getItem(key);
+            } catch {
+                return;
+            }
             const nextValue = parseStoredValue(key, stored, defaultValue);
             setStored((previous) =>
                 isSameStoredValue(previous.value, nextValue)
                     ? previous
-                    : { ...previous, value: nextValue },
+                    : { ...previous, value: nextValue, fromStorage: true },
             );
         };
 
@@ -178,7 +193,7 @@ export function useLocalStorage<T>(key: string, defaultValue: T): UseLocalStorag
             if (event.key !== null && event.key !== key) {
                 return;
             }
-            syncFromStorage(event.newValue);
+            syncFromStorage();
         };
 
         const handleLocalSync = (event: Event): void => {
@@ -186,7 +201,7 @@ export function useLocalStorage<T>(key: string, defaultValue: T): UseLocalStorag
             if (customEvent.detail?.key !== key) {
                 return;
             }
-            syncFromStorage(window.localStorage.getItem(key));
+            syncFromStorage();
         };
 
         window.addEventListener("storage", handleStorage);

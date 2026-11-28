@@ -734,12 +734,16 @@ export function StudyWorkspaceView({
     );
     /** 別のタブで読み方を選び直した回数。待っている操作が、その選択を上書きしないために見る。 */
     const readModeChangedElsewhereRef = useRef(0);
-    /** このタブで最後に書いた読み方。別のタブで選び直されたのを見分けるのに使う。 */
+    /**
+     * このタブで書いて、まだ値の変化として見ていない読み方。別のタブで選び直されたのを見分けるのに使う。
+     * 変化を見たら消す（別のタブが後で同じ値に戻したのを、自分の書き込みと取り違えないように）。
+     */
     const lastWrittenReadModeRef = useRef<StoredReadMode | null>(null);
     const writeReadMode = (update: (previous: StoredReadMode) => StoredReadMode): void =>
         setStoredReadMode((previous) => {
             const next = update(previous);
-            lastWrittenReadModeRef.current = next;
+            // 値が変わらない書き込みは変化として届かないので、覚えない。
+            if (next !== previous) lastWrittenReadModeRef.current = next;
             return next;
         });
     const autoAnalyze = !readOnly && storedReadMode === "read";
@@ -790,6 +794,8 @@ export function StudyWorkspaceView({
         let request = 0;
         let enabledCount = 0;
         let changedElsewhere = 0;
+        /** 切る前の保存値。始められなかったときに、別のタブが選び直していないかを見るのに使う。 */
+        let storedAtCommit: StoredReadMode = "read";
         const isWanted = (): boolean =>
             actionSerialRef.current === request && autoEnabledCountRef.current === enabledCount;
         return {
@@ -797,6 +803,7 @@ export function StudyWorkspaceView({
                 request = ++actionSerialRef.current;
                 enabledCount = autoEnabledCountRef.current;
                 changedElsewhere = readModeChangedElsewhereRef.current;
+                storedAtCommit = readStoredValue(STUDY_READ_MODE_STORAGE_KEY, storedReadMode);
                 setAutoAnalyzeHere(false);
             },
             isWanted,
@@ -804,8 +811,11 @@ export function StudyWorkspaceView({
             // 始められなかったら（AI のダウンロードを断った、など）、切った「読む」を戻して読み直す。
             onNotStarted: () => {
                 if (!isWanted()) return;
-                // 待つ間に別のタブで読み方を選んでいたら、それを上書きしない。
+                // 待つ間に別のタブで読み方を選んでいたら、それを上書きしない。別のタブの書き込みの知らせは
+                // 遅れて届くことがあるので、保存してある値も見る（切る前の値か、このタブが切った「停止」のままか）。
                 if (readModeChangedElsewhereRef.current !== changedElsewhere) return;
+                const stored = readStoredValue(STUDY_READ_MODE_STORAGE_KEY, storedAtCommit);
+                if (stored !== storedAtCommit && stored !== "stop") return;
                 autoStartedNodeRef.current = null;
                 setAutoAnalyzeHere(true);
             },
@@ -923,7 +933,9 @@ export function StudyWorkspaceView({
     useEffect(() => {
         if (previousReadModeRef.current === storedReadMode) return;
         previousReadModeRef.current = storedReadMode;
-        if (lastWrittenReadModeRef.current === storedReadMode) return;
+        const ownWrite = lastWrittenReadModeRef.current === storedReadMode;
+        lastWrittenReadModeRef.current = null;
+        if (ownWrite) return;
         onReadModeChangedElsewhere();
     }, [storedReadMode]);
     /** 最短手順を求めるために読みを止めている途中。止め終わるまで、読み方の「読む」で読み直さない。 */
