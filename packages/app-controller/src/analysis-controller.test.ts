@@ -288,6 +288,39 @@ describe("対話解析 controller", () => {
         await controller.dispose();
     });
 
+    it("失敗のあとの停止・開始でも、前の失敗を知らせ直さない", async () => {
+        const prepare = vi.fn(async () => {});
+        prepare.mockRejectedValueOnce(new Error("memory access out of bounds"));
+        const onState = vi.fn();
+        const client = createMockEngineClient();
+        const { client: analysisClient, launch } = setup();
+        client.analysis = analysisClient.analysis;
+        const controller = createAnalysisController({
+            createClient: () => client,
+            prepare,
+            onInfo: vi.fn(),
+            onFinished: vi.fn(),
+            onState,
+        });
+        const failures = () => onState.mock.calls.filter(([state]) => state.phase === "error");
+        await controller.select(target("A"));
+        await controller.start();
+        expect(failures()).toHaveLength(1);
+
+        await controller.pause();
+        expect(failures()).toHaveLength(1);
+        expect(controller.getState()).toMatchObject({ phase: "idle", error: null });
+
+        // 選び直さずに開始しても、読み始める前に前の失敗を残さない。
+        const starting = controller.start();
+        expect(controller.getState()).toMatchObject({ phase: "idle", error: null });
+        await starting;
+        expect(failures()).toHaveLength(1);
+        expect(launch).toHaveBeenCalledTimes(1);
+        expect(controller.getState()).toMatchObject({ phase: "running", error: null });
+        await controller.dispose();
+    });
+
     it("パス権を局面の読み込みに渡し、パス権が違えば別の局面として新規探索にする", async () => {
         const { controller, client, launch } = setup();
         const withPass = (count: number): AnalysisTarget => ({

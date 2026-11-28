@@ -239,8 +239,8 @@ export function createAnalysisController(options: InteractiveAnalysisOptions) {
         error = cause instanceof Error ? cause.message : String(cause);
         emit();
     };
-    // 失敗は、それを知らせた時点で済んだことにする。残すと、次の選択のたびに同じ失敗を知らせ直し、
-    // 呼び出し側が新しい失敗と見分けられない。
+    // 失敗は、それを知らせた時点で済んだことにする。残すと、次の操作（選び直し・開始・停止）のたびに
+    // 同じ失敗を知らせ直し、呼び出し側が新しい失敗と見分けられない。
     const clearError = () => {
         if (phase === "error") phase = retained ? "paused" : "idle";
         error = null;
@@ -268,10 +268,12 @@ export function createAnalysisController(options: InteractiveAnalysisOptions) {
         },
         pause(): Promise<void> {
             setFollowing(false);
+            clearError();
             return enqueue();
         },
         setVisible(visible: boolean): Promise<void> {
             if (!visible) setFollowing(false);
+            clearError();
             return enqueue();
         },
         dispose(): Promise<void> {
