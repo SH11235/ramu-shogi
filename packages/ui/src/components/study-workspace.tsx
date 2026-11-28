@@ -794,8 +794,8 @@ export function StudyWorkspaceView({
         let request = 0;
         let enabledCount = 0;
         let changedElsewhere = 0;
-        /** 切る前の保存値。始められなかったときに、別のタブが選び直していないかを見るのに使う。 */
-        let storedAtCommit: StoredReadMode = "read";
+        /** このタブが「読む」を切って「停止」を書いたか（別のタブが先に選び直していたら書かない）。 */
+        let wroteStop = false;
         const isWanted = (): boolean =>
             actionSerialRef.current === request && autoEnabledCountRef.current === enabledCount;
         return {
@@ -803,8 +803,11 @@ export function StudyWorkspaceView({
                 request = ++actionSerialRef.current;
                 enabledCount = autoEnabledCountRef.current;
                 changedElsewhere = readModeChangedElsewhereRef.current;
-                storedAtCommit = readStoredValue(STUDY_READ_MODE_STORAGE_KEY, storedReadMode);
-                setAutoAnalyzeHere(false);
+                // 知らせの届いていない別のタブの選択（「詰み」など）を「停止」で上書きしない。その選択が
+                // 届けば「読む」は切れるので、このタブで切ったものとして扱う（待っている開始を取り消さない）。
+                wroteStop = readStoredValue(STUDY_READ_MODE_STORAGE_KEY, storedReadMode) === "read";
+                if (wroteStop) setAutoAnalyzeHere(false);
+                else localAutoAnalyzeRef.current = false;
             },
             isWanted,
             notice: AUTO_ANALYZE_OFF_NOTICE,
@@ -812,10 +815,11 @@ export function StudyWorkspaceView({
             onNotStarted: () => {
                 if (!isWanted()) return;
                 // 待つ間に別のタブで読み方を選んでいたら、それを上書きしない。別のタブの書き込みの知らせは
-                // 遅れて届くことがあるので、保存してある値も見る（切る前の値か、このタブが切った「停止」のままか）。
-                if (readModeChangedElsewhereRef.current !== changedElsewhere) return;
-                const stored = readStoredValue(STUDY_READ_MODE_STORAGE_KEY, storedAtCommit);
-                if (stored !== storedAtCommit && stored !== "stop") return;
+                // 遅れて届くことがあるので、保存してある値も見る（このタブが書いた「停止」か、それを書き出す
+                // 前の「読む」のままか）。
+                if (!wroteStop || readModeChangedElsewhereRef.current !== changedElsewhere) return;
+                const stored = readStoredValue(STUDY_READ_MODE_STORAGE_KEY, "stop");
+                if (stored !== "stop" && stored !== "read") return;
                 autoStartedNodeRef.current = null;
                 setAutoAnalyzeHere(true);
             },
@@ -873,9 +877,10 @@ export function StudyWorkspaceView({
             passingRef.current = false;
             setPassPendingNodeId(null);
         }
-        // パスを足せなかった・確かめる間に読み方を選び直したら、読み方は変えない（足したあとは
-        // パスの局面へ移っているので、局面は比べない）。
+        // パスを足せなかった・確かめる間に読み方を選び直したら、読み方は変えない。足したあとはパスの
+        // 局面へ 1 度移っているので、それより多く移っていたら（保存を待つ間に利用者が移った）変えない。
         if (addedNodeId === null || passRequestRef.current !== request) return;
+        if (leaveCountRef.current > pressed.leaveCount + 1) return;
         setStoredMateMode(false);
         stopMate();
         setPassNodeId(addedNodeId);

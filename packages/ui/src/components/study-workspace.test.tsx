@@ -2650,6 +2650,95 @@ describe("StudyWorkspaceView", () => {
         expect(isSelected(readModeButton("読む"))).toBe(false);
     });
 
+    it("別のタブで「読む」から「停止」に戻した知らせが続けて届いても、確かめ中のパスを取りやめる", async () => {
+        localStorage.setItem("shogi:studyReadMode", '"stop"');
+        const { doc } = createTestStudy();
+        const onOps = vi.fn();
+        let answerLegalMoves = (_moves: string[]): void => {};
+        render(
+            <Harness
+                initialDoc={doc}
+                onOps={onOps}
+                fetchLegalMoves={() =>
+                    new Promise<string[]>((resolve) => {
+                        answerLegalMoves = resolve;
+                    })
+                }
+            />,
+        );
+        fireEvent.click(readModeButton("パス"));
+        // 別のタブが「読む」→「停止」と選び、2 つの知らせが続けて届いた（保存値はもう「停止」）。
+        localStorage.setItem("shogi:studyReadMode", '"stop"');
+        for (const value of ['"read"', '"stop"']) {
+            act(() => {
+                window.dispatchEvent(
+                    new StorageEvent("storage", { key: "shogi:studyReadMode", newValue: value }),
+                );
+            });
+        }
+        await act(async () => {
+            answerLegalMoves(["3c3d", "pass"]);
+        });
+        expect(onOps).not.toHaveBeenCalled();
+        expect(localStorage.getItem("shogi:studyReadMode")).toBe('"stop"');
+    });
+
+    it("全体を解析を押す前に別のタブが選んだ「詰み」を、知らせが届く前でも「停止」で上書きしない", async () => {
+        localStorage.setItem("shogi:studyReadMode", '"read"');
+        const { doc } = createTestStudy();
+        const analysis = createAnalysis({
+            startFull: vi.fn(async (options?: StudyFullStartOptions) => {
+                options?.onCommit?.();
+                await new Promise((resolve) => setTimeout(resolve, 0));
+                options?.onNotStarted?.();
+            }),
+        });
+        render(<Harness initialDoc={doc} analysis={analysis} mate={createMate()} />);
+        localStorage.setItem("shogi:studyReadMode", '"mate"');
+        fireEvent.click(within(graphRegion()).getByRole("button", { name: "全体を解析" }));
+        await waitFor(() => expect(analysis.startFull).toHaveBeenCalled());
+        await act(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 10));
+        });
+        expect(localStorage.getItem("shogi:studyReadMode")).toBe('"mate"');
+    });
+
+    it("パスの保存を待つ間に利用者が局面を移ったら、保存できても読み方を変えない", async () => {
+        localStorage.setItem("shogi:studyReadMode", '"stop"');
+        const { doc } = createTestStudy();
+        const analysis = createAnalysis();
+        let accept = (_saved: boolean): void => {};
+        let applyToDoc = (_ops: StudyOp[]): void => {};
+        render(
+            <Harness
+                initialDoc={doc}
+                analysis={analysis}
+                fetchLegalMoves={async () => ["7g7f", "pass"]}
+                onExternal={(apply) => {
+                    applyToDoc = apply;
+                }}
+                // 文書には足し、保存層の受け付けは待たせる。
+                interceptOps={(ops) => {
+                    if (!ops.some((op) => op.type === "addMoves" && op.moves.includes("pass"))) {
+                        return undefined;
+                    }
+                    applyToDoc(ops);
+                    return new Promise<boolean>((resolve) => {
+                        accept = resolve;
+                    });
+                }}
+            />,
+        );
+        fireEvent.click(readModeButton("パス"));
+        await waitFor(() => expect(currentMove()).toContain("パス"));
+        fireEvent.click(screen.getByRole("button", { name: "1 手戻る（←）" }));
+        await act(async () => {
+            accept(true);
+        });
+        expect(analysis.startDeep).not.toHaveBeenCalled();
+        expect(isSelected(readModeButton("停止"))).toBe(true);
+    });
+
     it("保存層がパスを受け付けなかったら、読み方を変えない", async () => {
         localStorage.setItem("shogi:studyReadMode", '"stop"');
         const { doc, ids } = createTestStudy();

@@ -144,7 +144,14 @@ export function useLocalStorage<T>(key: string, defaultValue: T): UseLocalStorag
         }
         const serialized = JSON.stringify(value);
         if (fromStorage) {
-            lastPersistedRef.current = { key, serialized, userRevision };
+            // 比べる元は実際の保存値にする（キーが消されたときは既定値を表示していても、保存値は無い）。
+            let stored: string | null = null;
+            try {
+                stored = localStorage.getItem(key);
+            } catch {
+                stored = null;
+            }
+            lastPersistedRef.current = { key, serialized: stored ?? "", userRevision };
             return;
         }
         try {
@@ -173,14 +180,7 @@ export function useLocalStorage<T>(key: string, defaultValue: T): UseLocalStorag
             return;
         }
 
-        // 通知に載った値ではなく、いまの保存値を読む（通知が遅れて届いても、後の値を見る）。
-        const syncFromStorage = (): void => {
-            let stored: string | null = null;
-            try {
-                stored = window.localStorage.getItem(key);
-            } catch {
-                return;
-            }
+        const syncFromStorage = (stored: string | null): void => {
             const nextValue = parseStoredValue(key, stored, defaultValue);
             setStored((previous) =>
                 isSameStoredValue(previous.value, nextValue)
@@ -193,7 +193,8 @@ export function useLocalStorage<T>(key: string, defaultValue: T): UseLocalStorag
             if (event.key !== null && event.key !== key) {
                 return;
             }
-            syncFromStorage();
+            // 通知は届いた順に 1 つずつ映す（途中の選び直しも、値の変化として見えるように）。
+            syncFromStorage(event.newValue);
         };
 
         const handleLocalSync = (event: Event): void => {
@@ -201,7 +202,13 @@ export function useLocalStorage<T>(key: string, defaultValue: T): UseLocalStorag
             if (customEvent.detail?.key !== key) {
                 return;
             }
-            syncFromStorage();
+            let stored: string | null = null;
+            try {
+                stored = window.localStorage.getItem(key);
+            } catch {
+                return;
+            }
+            syncFromStorage(stored);
         };
 
         window.addEventListener("storage", handleStorage);
