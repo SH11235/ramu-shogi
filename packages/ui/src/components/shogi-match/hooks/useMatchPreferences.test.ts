@@ -154,3 +154,26 @@ describe("useMatchPreferences の候補手の矢印", () => {
         });
     });
 });
+
+describe("useMatchPreferences の解析の設定", () => {
+    beforeEach(() => localStorage.clear());
+
+    it("候補手の数を分ける前の設定を対局画面で保存しても、研究ノートの読む本数を変えない", () => {
+        localStorage.setItem(
+            "shogi-analysis-settings",
+            JSON.stringify({ batchAnalysisTimeMs: 1000, multiPv: 5 }),
+        );
+        const { result } = renderHook(() => useMatchPreferences(options(false)));
+        expect(result.current.analysisSettings.deepMultiPv).toBe(5);
+
+        act(() => {
+            result.current.setAnalysisSettings({
+                ...result.current.analysisSettings,
+                batchAnalysisTimeMs: 2000,
+            });
+        });
+
+        const saved = JSON.parse(localStorage.getItem("shogi-analysis-settings") ?? "{}");
+        expect(saved).toMatchObject({ batchAnalysisTimeMs: 2000, multiPv: 5, deepMultiPv: 5 });
+    });
+});

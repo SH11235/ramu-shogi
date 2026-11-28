@@ -47,6 +47,7 @@ import {
     type Message,
 } from "./shogi-match/types";
 import { boardToGrid } from "./shogi-match/utils/positionUtils";
+import { resolveThreadCount } from "./shogi-match/utils/threadOptions";
 import { StudyActionBar } from "./study-workspace/StudyActionBar";
 import type { StudyAnalysisRunState } from "./study-workspace/StudyAnalysisRunControls";
 import { StudyAnalysisSettings } from "./study-workspace/StudyAnalysisSettings";
@@ -2036,6 +2037,8 @@ export function StudyWorkspaceView({
                 }
                 onStartFull={startFull}
                 onOpenNnueLibrary={onOpenNnueLibrary}
+                mateSupported={mate?.supported === true}
+                deepReading={analysis.mode === "deep"}
             />
 
             <StudyTreeDialog
@@ -2250,10 +2253,15 @@ export function StudyWorkspace({
     }, [revertLayerId, controller.mode, doc, displayLayerId, onViewChange]);
 
     const isMobile = useIsMobile();
+    const mateEngine = engineOptions.find((option) => option.supportsMate);
     const mate = useStudyMate({
-        engineOption: engineOptions.find((option) => option.supportsMate),
+        engineOption: mateEngine,
         // スマートフォンはメモリが少ないので、置換表を小さくする
         hashMb: isMobile ? 32 : 64,
+        threads: resolveThreadCount(
+            controller.form.settings.deepAnalysisThreads,
+            mateEngine?.maxThreads,
+        ),
     });
 
     const analysis: StudyAnalysisController = {

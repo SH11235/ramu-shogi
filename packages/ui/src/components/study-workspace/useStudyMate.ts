@@ -26,8 +26,6 @@ import type { EngineOption } from "../shogi-match/types";
 export const STUDY_MATE_TIME_MS = 10_000;
 /** 最短手順を求めるのに掛ける時間の上限。 */
 export const STUDY_SHORTEST_MATE_TIME_MS = 120_000;
-/** 1 局面を解くスレッド数。Web のエンジンの既定のスレッド数に合わせる（多く指定してもエンジンのスレッド数に丸められる）。 */
-const MATE_THREADS = 4;
 
 type StudyDoneState = {
     status: "done";
@@ -115,6 +113,8 @@ interface UseStudyMateOptions {
     engineOption: EngineOption | undefined;
     /** 置換表の大きさ (MB)。スマートフォンでは小さくする。 */
     hashMb: number;
+    /** 1 局面を解くスレッド数。読む・パスと同時には動かないので、同じ数を使う。 */
+    threads: number;
 }
 
 /** 調べている実行。取り消したときに戻す結果を持つ。 */
@@ -142,7 +142,11 @@ function studyMateErrorMessage(error: unknown): string {
     return "詰み探索を始められませんでした。ページを読み込み直してから、もう一度お試しください。";
 }
 
-export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): StudyMateController {
+export function useStudyMate({
+    engineOption,
+    hashMb,
+    threads,
+}: UseStudyMateOptions): StudyMateController {
     const [results, setResults] = useState<ReadonlyMap<string, StudyMateState>>(new Map());
     const [shortestResults, setShortestResults] = useState<ReadonlyMap<string, StudyShortestState>>(
         new Map(),
@@ -242,9 +246,12 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
         return { client, run };
     };
 
-    /** 通常の探索の置換表は使わないので最小にして起動し、詰み探索を使えるか確かめる。 */
+    /**
+     * 通常の探索の置換表は使わないので最小にして起動し、詰み探索を使えるか確かめる。スレッド数は起動時にも
+     * 渡す（Web のエンジンは、起動時のスレッド数より多くは詰み探索に使わない）。
+     */
     const initClient = async (client: EngineClient, checkCurrent: () => void): Promise<void> => {
-        await client.init({ ttSizeMb: 1 });
+        await client.init({ ttSizeMb: 1, threads });
         checkCurrent();
         if (!client.mate?.available()) {
             throw new StudyMateUnavailable("このエンジンでは詰み探索を使えません");
@@ -284,7 +291,7 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
             if (!client.mate)
                 throw new StudyMateUnavailable("このエンジンでは詰み探索を使えません");
             const outcome = await client.mate.solve(
-                { mode, threads: MATE_THREADS, hashMb, timeMs: STUDY_MATE_TIME_MS },
+                { mode, threads, hashMb, timeMs: STUDY_MATE_TIME_MS },
                 (progress) => {
                     if (runRef.current === run) {
                         setResult(nodeId, { status: "running", phase, ...progress, previous });
@@ -391,7 +398,7 @@ export function useStudyMate({ engineOption, hashMb }: UseStudyMateOptions): Stu
                 const outcome = await client.mate.solve(
                     {
                         mode: "Power",
-                        threads: MATE_THREADS,
+                        threads,
                         hashMb,
                         timeMs: STUDY_SHORTEST_MATE_TIME_MS,
                         shortest: "tsume",

@@ -93,8 +93,29 @@ export interface AnalysisSettings {
     multiPv: number;
     /** 全体の解析で、1 局面の探索に使うスレッド数（同時に解析する局面ごと）。 */
     batchAnalysisThreads: number;
-    /** 「この局面を深く解析」のスレッド数（0=自動）。 */
+    /** 研究ノートの 1 局面の読み（読む・パス）と詰み探索のスレッド数（0=自動）。 */
     deepAnalysisThreads: number;
+    /** 研究ノートの 1 局面の読み（読む・パス）で読む候補手の数。 */
+    deepMultiPv: number;
+}
+
+/**
+ * 保存してある解析の設定を、足りない項目を既定値で補って読む。研究ノートと対局画面で同じ値を見るため、
+ * 両方ともこれを通す。
+ */
+export function normalizeAnalysisSettings(
+    stored: Partial<AnalysisSettings> | null | undefined,
+): AnalysisSettings {
+    return {
+        ...DEFAULT_ANALYSIS_SETTINGS,
+        ...stored,
+        // 候補手の数を全体の解析と分ける前の設定では、1 局面の読みは max(候補手の数, 3) 本読んでいた。
+        deepMultiPv: Math.max(
+            1,
+            stored?.deepMultiPv ??
+                Math.max(stored?.multiPv ?? 1, DEFAULT_ANALYSIS_SETTINGS.deepMultiPv),
+        ),
+    };
 }
 
 /** デフォルト解析設定 */
@@ -105,6 +126,7 @@ export const DEFAULT_ANALYSIS_SETTINGS: AnalysisSettings = {
     multiPv: 1,
     batchAnalysisThreads: 1,
     deepAnalysisThreads: 0,
+    deepMultiPv: 3,
 };
 
 export interface AnalysisSnapshotEntryDraft {

@@ -21,6 +21,7 @@ import {
     DEFAULT_ANALYSIS_SETTINGS,
     DEFAULT_DISPLAY_SETTINGS,
     DEFAULT_PASS_RIGHTS_SETTINGS,
+    normalizeAnalysisSettings,
 } from "../types";
 import { DEFAULT_HINT_MULTI_PV, normalizeHintMultiPv } from "../utils/hintSettings";
 import { isSamePassRightsSettings, normalizePassRightsSettings } from "../utils/passRightsSettings";
@@ -370,7 +371,7 @@ export function useMatchPreferences({
         setHintMultiPv,
         displaySettings,
         setDisplaySettings: spectateMode ? setSpectateDisplaySettings : setDisplaySettings,
-        analysisSettings: { ...DEFAULT_ANALYSIS_SETTINGS, ...storedAnalysisSettings },
+        analysisSettings: normalizeAnalysisSettings(storedAnalysisSettings),
         setAnalysisSettings,
         analysisEngineId,
         setAnalysisEngineId,

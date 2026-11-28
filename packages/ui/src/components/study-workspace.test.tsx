@@ -3216,23 +3216,34 @@ describe("StudyWorkspaceView", () => {
         });
     });
 
-    it("解析の設定で、全体の解析と深く解析のスレッド数を別々に選べる", () => {
+    it("解析の設定で、全体の解析とこの局面の読みのスレッド数・候補手の数を別々に選べる", () => {
         const analysis = createAnalysis();
         render(<Harness initialDoc={createTestStudy().doc} analysis={analysis} />);
         fireEvent.click(screen.getByRole("button", { name: /^解析の設定/ }));
         const dialog = screen.getByRole("dialog", { name: "解析の設定" });
+        const full = within(dialog).getByRole("region", { name: "全体の解析" });
+        const position = within(dialog).getByRole("region", { name: "この局面の読み" });
 
-        const batch = within(dialog).getByRole("combobox", { name: /全体の解析/ });
+        const batch = within(full).getByRole("combobox", { name: /スレッド数/ });
         // 全体の解析は局面ごとに並べて読むので、「自動」は出さない。
         expect(within(batch).queryByRole("option", { name: /自動/ })).toBeNull();
         fireEvent.change(batch, { target: { value: "2" } });
         expect(analysis.form.onSettingsChange).toHaveBeenLastCalledWith(
             expect.objectContaining({ batchAnalysisThreads: 2 }),
         );
-        const deep = within(dialog).getByRole("combobox", { name: /読む・パス/ });
+        const deep = within(position).getByRole("combobox", { name: /スレッド数/ });
         fireEvent.change(deep, { target: { value: "4" } });
         expect(analysis.form.onSettingsChange).toHaveBeenLastCalledWith(
             expect.objectContaining({ deepAnalysisThreads: 4 }),
+        );
+
+        const deepPv = within(position).getByRole("group", { name: /候補手の数/ });
+        expect(within(deepPv).getByRole("button", { name: "3" }).getAttribute("aria-pressed")).toBe(
+            "true",
+        );
+        fireEvent.click(within(deepPv).getByRole("button", { name: "5" }));
+        expect(analysis.form.onSettingsChange).toHaveBeenLastCalledWith(
+            expect.objectContaining({ deepMultiPv: 5, multiPv: 1 }),
         );
     });
 

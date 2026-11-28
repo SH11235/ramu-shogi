@@ -33,7 +33,7 @@ import {
 } from "../../lib/studyDrafts";
 import { createStudyFromDocument, createStudyFromKifuSource } from "../../lib/studyEntry";
 import { ensureStudySession, getStudySync } from "../../lib/studySync";
-import { createWebWasmEngineClient } from "../../platform/wasm-engine-client";
+import { createWebWasmEngineClient, getWebWasmMaxThreads } from "../../platform/wasm-engine-client";
 import { StudyShareDialog } from "./StudyShareDialog";
 
 const engineOptions: EngineOption[] = [
@@ -43,6 +43,7 @@ const engineOptions: EngineOption[] = [
         createClient: createWebWasmEngineClient,
         kind: "internal",
         supportsMate: true,
+        maxThreads: getWebWasmMaxThreads(),
     },
 ];
 
