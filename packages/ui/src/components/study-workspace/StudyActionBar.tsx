@@ -125,10 +125,9 @@ export function StudyActionBar({
     const csaReasonId = useId();
     return (
         <div className="flex w-full flex-wrap items-center justify-center gap-x-4 gap-y-1.5 border-t border-border pt-1.5">
-            <div
-                role="group"
+            <fieldset
                 aria-label="書き出す（棋譜は表示中の手順を評価値とコメントつきで）"
-                className="flex flex-wrap items-center justify-center gap-1"
+                className="m-0 flex min-w-0 flex-wrap items-center justify-center gap-1 border-0 p-0"
             >
                 <fieldset
                     aria-describedby={csaUnavailableReason ? csaReasonId : undefined}
@@ -187,15 +186,14 @@ export function StudyActionBar({
                     hint="SFEN"
                     onCopy={onCopySfen}
                 />
-            </div>
+            </fieldset>
             {hasPositionActions && (
                 <>
                     {/* 対局とパスは 1 つの塊にし、折り返すときもパスだけが次の行へ落ちないようにする。
                         区切り線は折り返すと行末に取り残されるので置かず、まとまりの間を空けて分ける。 */}
-                    <div
-                        role="group"
+                    <fieldset
                         aria-label="この局面で"
-                        className="flex shrink-0 items-center gap-1"
+                        className="m-0 flex min-w-0 shrink-0 items-center gap-1 border-0 p-0"
                     >
                         {onPlayFromPosition && (
                             <Button
@@ -219,7 +217,7 @@ export function StudyActionBar({
                                 パスを指す
                             </Button>
                         )}
-                    </div>
+                    </fieldset>
                 </>
             )}
             {csaUnavailableReason && (
