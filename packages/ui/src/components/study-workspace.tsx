@@ -366,9 +366,8 @@ export function StudyWorkspaceView({
         title: string;
         turnLabel: string;
     } | null>(null);
-    // 確認を開いたボタンと、スマートフォンの「メニュー」。閉じたときのフォーカスの戻り先に使う。
+    // 確認を開いたボタン。閉じたときのフォーカスの戻り先に使う。
     const playConfirmOpenerRef = useRef<HTMLElement | null>(null);
-    const mobileMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
     const comments = useStudyCommentDrafts({
         initialDrafts: initialCommentDrafts,
         onDraftChange: onCommentDraftChange,
@@ -1547,7 +1546,6 @@ export function StudyWorkspaceView({
     const openNewNote = newNote && !locked ? () => setIsNewNoteOpen(true) : undefined;
     const mobileMenu = (
         <StudyMobileMenu
-            triggerRef={mobileMenuTriggerRef}
             onOpenChange={setIsMobileMenuOpen}
             triggerId={mobileMenuTriggerId}
             // スマートフォンでは出典・保存先の行と、表題・解析の設定・盤の反転を画面に出さず、ここに置く。
@@ -1852,7 +1850,9 @@ export function StudyWorkspaceView({
                 returnFocusTo={() => {
                     const opener = playConfirmOpenerRef.current;
                     // スマートフォンでは開いた項目がメニューごと消えているので、「メニュー」へ戻す。
-                    return opener?.isConnected ? opener : mobileMenuTriggerRef.current;
+                    return opener?.isConnected
+                        ? opener
+                        : document.getElementById(mobileMenuTriggerId);
                 }}
                 onCancel={() => setPlayConfirm(null)}
                 onConfirm={() => {

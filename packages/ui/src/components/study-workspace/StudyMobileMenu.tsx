@@ -3,7 +3,7 @@
  * ノートの操作を、下から出す一覧にまとめる。
  */
 
-import type { ReactElement, ReactNode, Ref } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { useRef, useState } from "react";
 import { BottomSheet } from "../shogi-match/components/BottomSheet";
 import { MenuIcon } from "./StudyIcons";
@@ -30,8 +30,6 @@ interface StudyMobileMenuProps {
     triggerId?: string;
     /** 見出し「ノート」に並べる項目（共有・表題の変更・解析の設定・盤の反転など）。 */
     noteItems?: Array<{ label: string; note?: string; run: () => void }>;
-    /** 「メニュー」のボタン（メニューから開いた確認を閉じたときのフォーカスの戻り先）。 */
-    triggerRef?: Ref<HTMLButtonElement>;
 }
 
 const ITEM_CLASS =
@@ -51,7 +49,6 @@ export function StudyMobileMenu({
     info,
     noteItems = [],
     triggerId,
-    triggerRef,
 }: StudyMobileMenuProps): ReactElement {
     const [open, setOpenState] = useState(false);
     // BottomSheet は開いたときに中へフォーカスを移さないので、描いたあとで最初の項目へ移す
@@ -107,7 +104,6 @@ export function StudyMobileMenu({
             trigger={
                 <button
                     id={triggerId}
-                    ref={triggerRef}
                     type="button"
                     className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-sm text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
