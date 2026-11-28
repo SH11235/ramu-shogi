@@ -896,6 +896,12 @@ export function StudyWorkspaceView({
             setPassNodeId(null);
         }
     }, [passNodeId, currentNodeId, pendingPassDeepNodeId]);
+    // 確かめている途中に局面を移ったら、「パス」と出すのをやめる（足すのは押した局面にいる間だけ）。
+    useEffect(() => {
+        if (passPendingNodeId !== null && passPendingNodeId !== currentNodeId) {
+            setPassPendingNodeId(null);
+        }
+    }, [passPendingNodeId, currentNodeId]);
     /** 確かめている途中の「パス」を取りやめる。 */
     const cancelPendingPass = (): void => {
         passRequestRef.current += 1;
@@ -1054,8 +1060,11 @@ export function StudyWorkspaceView({
     // 付けた直後に始めると、StrictMode の付け直しで `useStudyAnalysis` の準備が宙に浮くので、
     // 1 拍おいてから始め、その前に外れたら取りやめる。
     // 最短手順を求め終えたら、読み方の「読む」で続きを読む。
+    /** 最短手順を求めるために読みを止めている途中（描画に出す値。判定は `shortestStartingRef` で同期に見る）。 */
+    const [shortestStarting, setShortestStarting] = useState(false);
     const shortestRunningHere =
-        mate?.runningKind === "shortest" && mate.runningNodeId === currentNodeId;
+        shortestStarting ||
+        (mate?.runningKind === "shortest" && mate.runningNodeId === currentNodeId);
     useEffect(() => {
         const timer = setTimeout(() => {
             setAutoDecidedNodeId(currentNodeId);
@@ -1104,6 +1113,7 @@ export function StudyWorkspaceView({
         cancelPendingPass();
         const request = ++actionSerialRef.current;
         shortestStartingRef.current = true;
+        setShortestStarting(true);
         // 読みを止めるので、求め終えたとき（取りやめたときも）に同じ局面の続きを読み直す。
         autoStartedNodeRef.current = null;
         try {
@@ -1119,11 +1129,15 @@ export function StudyWorkspaceView({
             mate.startShortest(node);
         } finally {
             shortestStartingRef.current = false;
+            // 開始を待つ間に見送った「読む」の判定を、もう一度走らせる。
+            setShortestStarting(false);
         }
     };
     // 読み方の「詰み」: 開いている局面の詰み・詰めろを調べる（局面を移れば移った先を）。調べ終えた局面は
     // 調べ直さない。解析の途中・準備中は待ち、終わってから始める。
     const mateStartedNodeRef = useRef<string | null>(null);
+    /** 利用者が「詰み」を選んだ局面。調べ終えていても、1 回だけ調べ直す。 */
+    const mateRetryNodeRef = useRef<string | null>(null);
     useEffect(
         () => () => {
             mateStartedNodeRef.current = null;
@@ -1153,7 +1167,10 @@ export function StudyWorkspaceView({
             // 前の局面の詰み探索は、移った先を調べ終えていても止める（別の局面の最短手順は、調べ直す
             // ときだけ止める）。
             if (mate.runningKind === "mate") stopMate();
-            if (mate.results.get(nodeId)?.status === "done") return;
+            // 「詰み」を選び直した局面は、調べ終えていても調べ直す（時間切れで分からなかったときなど）。
+            const retry = mateRetryNodeRef.current === nodeId;
+            mateRetryNodeRef.current = null;
+            if (!retry && mate.results.get(nodeId)?.status === "done") return;
             stopMate();
             mate.start(node);
         },
@@ -1204,6 +1221,7 @@ export function StudyWorkspaceView({
             return;
         }
         if (autoAnalyze) changeAutoAnalyze(false);
+        if (next === "mate") mateRetryNodeRef.current = currentNodeId;
         setStoredMateMode(next === "mate");
         if (next === "stop") stopMate();
     };

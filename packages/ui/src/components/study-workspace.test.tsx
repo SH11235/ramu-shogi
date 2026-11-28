@@ -2635,9 +2635,7 @@ describe("StudyWorkspaceView", () => {
             await new Promise((resolve) => setTimeout(resolve, 0));
         });
         fireEvent.click(screen.getByRole("button", { name: "最短手順を求める" }));
-        await waitFor(() => expect(mate.startShortest).toHaveBeenCalled());
-        expect(analysis.cancel).toHaveBeenCalled();
-        expect(isSelected(readModeButton("読む"))).toBe(true);
+        // 読みが止まり、この局面の最短手順を求めている。
         const stopped = {
             ...analysis,
             mode: null,
@@ -2650,6 +2648,9 @@ describe("StudyWorkspaceView", () => {
             runningKind: "shortest" as const,
         };
         view.rerender(<Harness initialDoc={doc} analysis={stopped} mate={shortest} />);
+        await waitFor(() => expect(mate.startShortest).toHaveBeenCalled());
+        expect(analysis.cancel).toHaveBeenCalled();
+        expect(isSelected(readModeButton("読む"))).toBe(true);
         await act(async () => {
             await new Promise((resolve) => setTimeout(resolve, 0));
         });
