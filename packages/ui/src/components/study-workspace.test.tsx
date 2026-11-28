@@ -2669,13 +2669,14 @@ describe("StudyWorkspaceView", () => {
         fireEvent.click(readModeButton("パス"));
         // 別のタブが「読む」→「停止」と選び、2 つの知らせが続けて届いた（保存値はもう「停止」）。
         localStorage.setItem("shogi:studyReadMode", '"stop"');
-        for (const value of ['"read"', '"stop"']) {
-            act(() => {
+        // 2 つの知らせが 1 回の描画にまとめて映っても（最後の値は元と同じ「停止」）、取りこぼさない。
+        act(() => {
+            for (const value of ['"read"', '"stop"']) {
                 window.dispatchEvent(
                     new StorageEvent("storage", { key: "shogi:studyReadMode", newValue: value }),
                 );
-            });
-        }
+            }
+        });
         await act(async () => {
             answerLegalMoves(["3c3d", "pass"]);
         });

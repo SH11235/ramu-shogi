@@ -734,25 +734,15 @@ export function StudyWorkspaceView({
     );
     /** 別のタブで読み方を選び直した回数。待っている操作が、その選択を上書きしないために見る。 */
     const readModeChangedElsewhereRef = useRef(0);
-    /**
-     * このタブで書いて、まだ値の変化として見ていない読み方。別のタブで選び直されたのを見分けるのに使う。
-     * 変化を見たら消す（別のタブが後で同じ値に戻したのを、自分の書き込みと取り違えないように）。
-     */
-    const lastWrittenReadModeRef = useRef<StoredReadMode | null>(null);
-    const writeReadMode = (update: (previous: StoredReadMode) => StoredReadMode): void =>
-        setStoredReadMode((previous) => {
-            const next = update(previous);
-            // 値が変わらない書き込みは変化として届かないので、覚えない。
-            if (next !== previous) lastWrittenReadModeRef.current = next;
-            return next;
-        });
     const autoAnalyze = !readOnly && storedReadMode === "read";
     const setAutoAnalyze = (enabled: boolean): void =>
-        writeReadMode((previous) => (enabled ? "read" : previous === "mate" ? "mate" : "stop"));
+        setStoredReadMode((previous) => (enabled ? "read" : previous === "mate" ? "mate" : "stop"));
     /** 読み方が「詰み」か。 */
     const mateMode = !readOnly && mate?.supported === true && storedReadMode === "mate";
     const setStoredMateMode = (enabled: boolean): void =>
-        writeReadMode((previous) => (enabled ? "mate" : previous === "mate" ? "stop" : previous));
+        setStoredReadMode((previous) =>
+            enabled ? "mate" : previous === "mate" ? "stop" : previous,
+        );
     /**
      * 読み方の「パス」で足したパスの局面。読み方は「読む」と同じく入れておき（開いている局面を読み続ける）、
      * この局面にいる間だけ「パス」と出す。別の局面へ移ったら「読む」になる。
@@ -805,7 +795,9 @@ export function StudyWorkspaceView({
                 changedElsewhere = readModeChangedElsewhereRef.current;
                 // 知らせの届いていない別のタブの選択（「詰み」など）を「停止」で上書きしない。その選択が
                 // 届けば「読む」は切れるので、このタブで切ったものとして扱う（待っている開始を取り消さない）。
-                wroteStop = readStoredValue(STUDY_READ_MODE_STORAGE_KEY, storedReadMode) === "read";
+                wroteStop =
+                    readStoredValue<StoredReadMode | null>(STUDY_READ_MODE_STORAGE_KEY, null) ===
+                    "read";
                 if (wroteStop) setAutoAnalyzeHere(false);
                 else localAutoAnalyzeRef.current = false;
             },
@@ -881,6 +873,14 @@ export function StudyWorkspaceView({
         // 局面へ 1 度移っているので、それより多く移っていたら（保存を待つ間に利用者が移った）変えない。
         if (addedNodeId === null || passRequestRef.current !== request) return;
         if (leaveCountRef.current > pressed.leaveCount + 1) return;
+        // 枝が消されて祖先へ戻ったときなど、局面を移る操作を通らずに離れた場合も変えない（保存を待たずに
+        // 足せたときは、パスの局面を映す前なので、押した局面のままでもよい）。
+        if (
+            currentNodeIdRef.current !== addedNodeId &&
+            currentNodeIdRef.current !== pressed.nodeId
+        ) {
+            return;
+        }
         setStoredMateMode(false);
         stopMate();
         setPassNodeId(addedNodeId);
@@ -934,15 +934,17 @@ export function StudyWorkspaceView({
         cancelPendingPass();
         setPassNodeId(null);
     });
-    const previousReadModeRef = useRef(storedReadMode);
+    // storage の知らせは別のタブが書いたときにだけ届くので、届くたびに選び直されたとみなす（値の差では
+    // 見ない。「停止」→「読む」→「停止」のように元へ戻る選び直しや、まとめて映された知らせも取りこぼさない）。
     useEffect(() => {
-        if (previousReadModeRef.current === storedReadMode) return;
-        previousReadModeRef.current = storedReadMode;
-        const ownWrite = lastWrittenReadModeRef.current === storedReadMode;
-        lastWrittenReadModeRef.current = null;
-        if (ownWrite) return;
-        onReadModeChangedElsewhere();
-    }, [storedReadMode]);
+        const handleStorage = (event: StorageEvent): void => {
+            if (event.key === null || event.key === STUDY_READ_MODE_STORAGE_KEY) {
+                onReadModeChangedElsewhere();
+            }
+        };
+        window.addEventListener("storage", handleStorage);
+        return () => window.removeEventListener("storage", handleStorage);
+    }, []);
     /** 最短手順を求めるために読みを止めている途中。止め終わるまで、読み方の「読む」で読み直さない。 */
     const shortestStartingRef = useRef(false);
     /** この局面で最短手順を求めている（求め終えるまで、読み方の「読む」は読まずに待つ）。 */

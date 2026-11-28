@@ -107,7 +107,7 @@ describe("useLocalStorage change source", () => {
         expect(notifications[0]).toEqual({ key: KEY, source: "user" });
         expect(notifications.slice(1).every((event) => event.source === "automatic")).toBe(true);
     });
-    it("別のタブの値を受け取っても保存し直さない（遅れて届いた古い通知で、後の値を書き戻さない）", () => {
+    it("別のタブの値を受け取っても保存し直さず、古い通知が届いてもいまの保存値を映す", () => {
         const { result } = renderHook(() => useLocalStorage(KEY, defaults));
         const older = JSON.stringify({ sound: false, volume: 1 });
         const newer = JSON.stringify({ sound: false, volume: 0.5 });
@@ -116,7 +116,8 @@ describe("useLocalStorage change source", () => {
         act(() => {
             window.dispatchEvent(new StorageEvent("storage", { key: KEY, newValue: older }));
         });
-        expect(result.current[0]).toEqual({ sound: false, volume: 1 });
+        // 届いた通知が古くても、いまの保存値を映す。
+        expect(result.current[0]).toEqual({ sound: false, volume: 0.5 });
         expect(localStorage.getItem(KEY)).toBe(newer);
         act(() => {
             window.dispatchEvent(new StorageEvent("storage", { key: KEY, newValue: newer }));

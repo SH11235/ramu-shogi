@@ -180,7 +180,15 @@ export function useLocalStorage<T>(key: string, defaultValue: T): UseLocalStorag
             return;
         }
 
-        const syncFromStorage = (stored: string | null): void => {
+        // 通知に載った値ではなく、いまの保存値を読む（通知が遅れて届いても、後に保存された値を映す。
+        // 自分のタブの書き込みの後に古い通知が届いても、保存値と表示が食い違わない）。
+        const syncFromStorage = (): void => {
+            let stored: string | null = null;
+            try {
+                stored = window.localStorage.getItem(key);
+            } catch {
+                return;
+            }
             const nextValue = parseStoredValue(key, stored, defaultValue);
             setStored((previous) =>
                 isSameStoredValue(previous.value, nextValue)
@@ -193,8 +201,7 @@ export function useLocalStorage<T>(key: string, defaultValue: T): UseLocalStorag
             if (event.key !== null && event.key !== key) {
                 return;
             }
-            // 通知は届いた順に 1 つずつ映す（途中の選び直しも、値の変化として見えるように）。
-            syncFromStorage(event.newValue);
+            syncFromStorage();
         };
 
         const handleLocalSync = (event: Event): void => {
@@ -202,13 +209,7 @@ export function useLocalStorage<T>(key: string, defaultValue: T): UseLocalStorag
             if (customEvent.detail?.key !== key) {
                 return;
             }
-            let stored: string | null = null;
-            try {
-                stored = window.localStorage.getItem(key);
-            } catch {
-                return;
-            }
-            syncFromStorage(stored);
+            syncFromStorage();
         };
 
         window.addEventListener("storage", handleStorage);
