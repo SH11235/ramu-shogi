@@ -106,9 +106,10 @@ export function useStudyMoveEditing({
     /**
      * いまの局面でパスを指す。パスできない局面（王手がかかっている）と、エンジンが読み込めない
      * 回数（1 つの手順で各側 `STUDY_MAX_PASSES_PER_SIDE` 回まで）は断る。パスの局面へ移ったら、
-     * その局面のノード ID で解決する（断ったときは null）。
+     * その局面のノード ID で解決する（断ったときは null）。`isWanted` が false を返したら（確かめている
+     * 間に取りやめられた）、足さない。
      */
-    const passFromCurrent = async (): Promise<string | null> => {
+    const passFromCurrent = async (isWanted?: () => boolean): Promise<string | null> => {
         // 確かめている間の押し直しは受け付けない。
         if (readOnly || passPendingRef.current) return null;
         const nodeId = currentNodeId;
@@ -156,6 +157,7 @@ export function useStudyMoveEditing({
                 return null;
             }
         }
+        if (isWanted && !isWanted()) return null;
         return addMoveFromCurrent(STUDY_PASS_MOVE)
             ? studyChildNodeId(nodeId, STUDY_PASS_MOVE)
             : null;

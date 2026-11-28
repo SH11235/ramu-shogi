@@ -157,10 +157,11 @@ import {
 import { useStudyNodeNavigation } from "./study-workspace/useStudyNodeNavigation";
 import { TooltipProvider } from "./tooltip";
 
-/** 読み方が「読む」か（端末ごとに覚える）。「パス」の間も入れておき、開いている局面を読み続ける。 */
+/**
+ * 読み方（端末ごとに覚える）。`true` が「読む」（「パス」の間も入れておき、開いている局面を読み続ける）、
+ * `"mate"` が「詰み」、`false` が「停止」。1 つのキーにまとめ、別のタブとも 1 つの値で揃える。
+ */
 const STUDY_AUTO_ANALYZE_STORAGE_KEY = "shogi:studyAutoAnalyze";
-/** 読み方が「詰み」か（端末ごとに覚える）。「読む」とは同時に入れない。 */
-const STUDY_MATE_MODE_STORAGE_KEY = "shogi:studyMateMode";
 
 const AUTO_ANALYZE_OFF_NOTICE: Message = {
     text: "読み方を「停止」にしました（読んだ分は残っています）。",
@@ -717,22 +718,26 @@ export function StudyWorkspaceView({
     );
     // 自動で読む: 入れている間は、見ている局面を読み続ける（局面を移ればその局面を）。切ると止まる。
     // 読んでいるかどうかはスイッチそのものが表すので、自動で読む専用の止めるボタンは置かない。
-    const [storedAutoAnalyze, setAutoAnalyze] = useLocalStorage<boolean>(
+    const [storedReadMode, setStoredReadMode] = useLocalStorage<boolean | "mate">(
         STUDY_AUTO_ANALYZE_STORAGE_KEY,
         false,
     );
-    const autoAnalyze = !readOnly && storedAutoAnalyze;
-    const [storedMateMode, setStoredMateMode] = useLocalStorage<boolean>(
-        STUDY_MATE_MODE_STORAGE_KEY,
-        false,
-    );
-    /** 読み方が「詰み」か。「読む」と両方入っていたら「読む」を取る。 */
-    const mateMode = !readOnly && mate?.supported === true && storedMateMode && !autoAnalyze;
+    const autoAnalyze = !readOnly && storedReadMode === true;
+    const setAutoAnalyze = (enabled: boolean): void =>
+        setStoredReadMode((previous) => (enabled ? true : previous === "mate" ? "mate" : false));
+    /** 読み方が「詰み」か。 */
+    const mateMode = !readOnly && mate?.supported === true && storedReadMode === "mate";
+    const setStoredMateMode = (enabled: boolean): void =>
+        setStoredReadMode((previous) =>
+            enabled ? "mate" : previous === "mate" ? false : previous,
+        );
     /**
      * 読み方の「パス」で足したパスの局面。読み方は「読む」と同じく入れておき（開いている局面を読み続ける）、
      * この局面にいる間だけ「パス」と出す。別の局面へ移ったら「読む」になる。
      */
     const [passNodeId, setPassNodeId] = useState<string | null>(null);
+    /** 「パス」を選んで、パスできるかを確かめている途中。この間も「パス」と出し、選び直せば取りやめる。 */
+    const [passPending, setPassPending] = useState(false);
     /** このタブで最後に書いた自動で読むの値。別のタブで書き換えられたのを見分けるのに使う。 */
     const localAutoAnalyzeRef = useRef<boolean | null>(null);
     const setAutoAnalyzeHere = (enabled: boolean): void => {
@@ -820,17 +825,21 @@ export function StudyWorkspaceView({
      */
     const startDeepAfterPass = async (): Promise<void> => {
         if (locked || deepBlocked || passingRef.current) return;
-        const request = ++actionSerialRef.current;
-        passRequestRef.current = request;
+        actionSerialRef.current += 1;
+        // 取りやめるのは読み方を選び直したとき（自動で続きを読むなど、利用者の操作でないものでは取りやめない）。
+        const request = ++passRequestRef.current;
+        const isWanted = (): boolean => passRequestRef.current === request;
         passingRef.current = true;
+        setPassPending(true);
         let addedNodeId: string | null;
         try {
-            addedNodeId = await editing.passFromCurrent();
+            addedNodeId = await editing.passFromCurrent(isWanted);
         } finally {
             passingRef.current = false;
+            setPassPending(false);
         }
-        // パスを足せなかった・確かめる間に別の操作をしたら、読み方は変えない。
-        if (addedNodeId === null || actionSerialRef.current !== request) return;
+        // パスを足せなかった・確かめる間に読み方を選び直したら、読み方は変えない。
+        if (addedNodeId === null || !isWanted()) return;
         setStoredMateMode(false);
         stopMate();
         setPassNodeId(addedNodeId);
@@ -853,16 +862,19 @@ export function StudyWorkspaceView({
         // 読み方は「読む」と同じく入れてあるので、待つのをやめれば自動で読むがパスの局面を読み始める。
         setPendingPassDeepNodeId(null);
     });
-    // パスの局面から移った・読み方を「読む」から外したら、「パス」と出すのをやめる。
+    // パスの局面から移ったら、「パス」と出すのをやめる（「読む」になる）。読み方を外している間は
+    // 覚えたままにする（全体の解析を始められずに「読む」へ戻ったときに、「パス」のまま出すため）。
     useEffect(() => {
         if (passNodeId === null) return;
-        if (
-            !autoAnalyze ||
-            (passNodeId !== currentNodeId && pendingPassDeepNodeId !== passNodeId)
-        ) {
+        if (passNodeId !== currentNodeId && pendingPassDeepNodeId !== passNodeId) {
             setPassNodeId(null);
         }
-    }, [passNodeId, currentNodeId, pendingPassDeepNodeId, autoAnalyze]);
+    }, [passNodeId, currentNodeId, pendingPassDeepNodeId]);
+    /** 確かめている途中の「パス」を取りやめる。 */
+    const cancelPendingPass = (): void => {
+        passRequestRef.current += 1;
+        setPassPending(false);
+    };
     const onAutoAnalyzeTarget = useEffectEvent(
         (
             nodeId: string,
@@ -1024,17 +1036,17 @@ export function StudyWorkspaceView({
         mate?.stop();
     };
     /**
-     * 詰みのある局面の最短手順を求め始める。詰み探索なので、読み方が「詰み」でなければ「詰み」にする
-     * （読んでいる読みは止める。そこまでの結果は残る）。
+     * 詰みのある局面の最短手順を 1 回だけ求める。読み方は「詰み」にしない。「読む」「パス」の間は
+     * 読みと同時には動かせないので「停止」にする（読んでいる読みは止める。そこまでの結果は残る）。
      */
     const startShortest = async (): Promise<void> => {
         if (!mate || deepBlocked) return;
         const node = currentNode;
         const pressed = { nodeId: currentNodeId, leaveCount: leaveCountRef.current };
-        if (!mateMode) {
+        cancelPendingPass();
+        if (autoAnalyze) {
             setPassNodeId(null);
-            if (autoAnalyze) changeAutoAnalyze(false);
-            setStoredMateMode(true);
+            changeAutoAnalyze(false);
         }
         const request = ++actionSerialRef.current;
         if (analysis.mode === "deep" || analysis.isPreparing) {
@@ -1044,7 +1056,7 @@ export function StudyWorkspaceView({
         // 止め終わるのを待つ間に局面を移ったら、押した局面の探索は始めない。
         if (!isSamePositionAs(pressed)) return;
         // 読み方の「詰み」が同じ局面を調べ直さないよう、この局面は調べ始めたことにする。
-        mateStartedNodeRef.current = node.id;
+        if (mateMode) mateStartedNodeRef.current = node.id;
         stopMate();
         mate.startShortest(node);
     };
@@ -1066,6 +1078,8 @@ export function StudyWorkspaceView({
             isPreparing: boolean,
         ): void => {
             if (!enabled || !mate || isLocked) {
+                // 「詰み」を外した（別のタブで選び直したときも）ら、この読み方で始めた詰み探索は止める。
+                if (mateStartedNodeRef.current !== null && mate?.runningKind === "mate") stopMate();
                 mateStartedNodeRef.current = null;
                 return;
             }
@@ -1075,8 +1089,9 @@ export function StudyWorkspaceView({
             const node = tree.nodes.get(nodeId);
             if (!node) return;
             mateStartedNodeRef.current = nodeId;
-            if (mate.results.get(nodeId)?.status === "done") return;
+            // 前の局面の探索は、移った先を調べ終えていても止める。
             stopMate();
+            if (mate.results.get(nodeId)?.status === "done") return;
             mate.start(node);
         },
     );
@@ -1095,14 +1110,16 @@ export function StudyWorkspaceView({
         return () => clearTimeout(timer);
     }, [currentNodeId, mateMode, locked, analysis.mode, analysis.isPreparing]);
     /** 選んでいる読み方。 */
-    const readMode: StudyReadMode = autoAnalyze
-        ? passNodeId !== null &&
-          (passNodeId === currentNodeId || pendingPassDeepNodeId === passNodeId)
-            ? "pass"
-            : "read"
-        : mateMode
-          ? "mate"
-          : "stop";
+    const readMode: StudyReadMode = passPending
+        ? "pass"
+        : autoAnalyze
+          ? passNodeId !== null &&
+            (passNodeId === currentNodeId || pendingPassDeepNodeId === passNodeId)
+              ? "pass"
+              : "read"
+          : mateMode
+            ? "mate"
+            : "stop";
     /** 読み方を選び直す。選んだ読み方は、利用者が選び直すまで変えない（パスの局面から移ったときを除く）。 */
     const selectReadMode = (next: StudyReadMode): void => {
         if (next === readMode) return;
@@ -1110,6 +1127,8 @@ export function StudyWorkspaceView({
             void startDeepAfterPass();
             return;
         }
+        cancelPendingPass();
+        actionSerialRef.current += 1;
         setPassNodeId(null);
         if (next === "read") {
             setStoredMateMode(false);
@@ -1118,7 +1137,6 @@ export function StudyWorkspaceView({
             return;
         }
         if (autoAnalyze) changeAutoAnalyze(false);
-        else actionSerialRef.current += 1;
         setStoredMateMode(next === "mate");
         if (next === "stop") stopMate();
     };

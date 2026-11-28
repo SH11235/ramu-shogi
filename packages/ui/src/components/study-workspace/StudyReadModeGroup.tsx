@@ -76,7 +76,7 @@ export function StudyReadModeGroup({
                             if (!selected) onChange(option.mode);
                         }}
                         className={cn(
-                            "relative flex h-10 items-center justify-center whitespace-nowrap text-sm transition-colors",
+                            "@container relative flex h-10 items-center justify-center whitespace-nowrap text-sm transition-colors",
                             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                             "disabled:cursor-not-allowed disabled:opacity-40",
                             index > 0 && "border-l border-border",
@@ -89,8 +89,8 @@ export function StudyReadModeGroup({
                             <RamRunningIcon
                                 dotSize={1}
                                 running={running && option.mode !== "stop"}
-                                // 狭い欄（1 枠 約 68px）でも名前に重ならない大きさに縮める。
-                                className="absolute left-0.5 top-1/2 origin-left -translate-y-1/2 scale-[0.7]"
+                                // 名前（2 文字）に重ならない大きさに縮める。1 枠が 64px 未満の狭い欄では、さらに縮める。
+                                className="absolute left-0.5 top-1/2 origin-left -translate-y-1/2 scale-[0.7] @max-[4rem]:left-0 @max-[4rem]:scale-[0.55]"
                             />
                         )}
                         {option.label}
