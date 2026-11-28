@@ -369,6 +369,12 @@ export function createFakeStudyServer(): FakeStudyServer {
                 },
                 create(body: CreateStudyRequest) {
                     return call("create", body.id, body, (userId) => {
+                        if (
+                            body.expectedOwnerUserId !== undefined &&
+                            body.expectedOwnerUserId !== userId
+                        ) {
+                            return fail(409, { error: "OWNER_MISMATCH" });
+                        }
                         const existing = studies.get(body.id);
                         if (existing) {
                             if (existing.ownerId !== userId) {

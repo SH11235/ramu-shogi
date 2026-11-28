@@ -2,7 +2,7 @@ import { STUDY_LIMITS } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
 import type { ReactElement, ReactNode } from "react";
 import { useState } from "react";
-import { SettingsIcon, ShareIcon } from "./StudyIcons";
+import { PlusIcon, SettingsIcon, ShareIcon } from "./StudyIcons";
 
 const HEADER_BUTTON_CLASS =
     "flex h-10 shrink-0 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40";
@@ -60,6 +60,7 @@ export function StudyWorkspaceHeader({
     layerPicker,
     onCommitTitle,
     onOpenShare,
+    onOpenNewNote,
     settingsLabel,
     onOpenSettings,
     metaRow,
@@ -71,6 +72,8 @@ export function StudyWorkspaceHeader({
     onCommitTitle: (title: string) => void;
     /** 公開設定・共有リンクを開く。渡さなければ出さない（閲覧のみのノートなど）。 */
     onOpenShare?: () => void;
+    /** 「新しいノート」のモーダルを開く。渡さなければ出さない。 */
+    onOpenNewNote?: () => void;
     settingsLabel: string;
     onOpenSettings: () => void;
     metaRow: ReactNode;
@@ -89,6 +92,17 @@ export function StudyWorkspaceHeader({
                         disabled={locked}
                         onCommit={onCommitTitle}
                     />
+                )}
+                {onOpenNewNote && (
+                    <button
+                        type="button"
+                        onClick={onOpenNewNote}
+                        aria-haspopup="dialog"
+                        className={HEADER_BUTTON_CLASS}
+                    >
+                        <PlusIcon />
+                        新しいノート
+                    </button>
                 )}
                 {onOpenShare && (
                     <button

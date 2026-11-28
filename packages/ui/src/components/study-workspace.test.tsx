@@ -2,6 +2,7 @@ import {
     applyStudyOps,
     buildStudyLayerSpec,
     createStudyDocumentFromMoves,
+    STUDY_LIMITS,
     type StudyDocument,
     type StudyOp,
     type StudyScore,
@@ -9,7 +10,7 @@ import {
     studyLayerId,
 } from "@shogi/app-core";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { useState } from "react";
+import { type ComponentProps, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_ANALYSIS_SETTINGS, type Message } from "./shogi-match/types";
 import { StudyWorkspaceView } from "./study-workspace";
@@ -125,6 +126,7 @@ interface HarnessProps {
     onPlayFromPosition?: (position: { sfen: string; moves: string[] }) => void;
     onSaveKifuFile?: (file: { fileName: string; text: string }) => void;
     shareDialog?: { open: boolean; onOpen: () => void };
+    newNote?: ComponentProps<typeof StudyWorkspaceView>["newNote"];
     mate?: StudyMateController;
 }
 
@@ -152,6 +154,7 @@ function Harness({
     onPlayFromPosition,
     onSaveKifuFile,
     shareDialog,
+    newNote,
     mate,
 }: HarnessProps) {
     const [doc, setDoc] = useState(initialDoc);
@@ -194,6 +197,7 @@ function Harness({
             onPlayFromPosition={onPlayFromPosition}
             onSaveKifuFile={onSaveKifuFile}
             shareDialog={shareDialog}
+            newNote={newNote}
             analysis={analysis}
             mate={mate}
             message={message}
@@ -1784,6 +1788,378 @@ describe("StudyWorkspaceView", () => {
                 />,
             );
             expect(screen.queryByRole("button", { name: "共有" })).toBeNull();
+        });
+    });
+
+    describe("新しいノート", () => {
+        const openDialog = (): HTMLElement => {
+            fireEvent.click(screen.getByRole("button", { name: "新しいノート" }));
+            return screen.getByRole("dialog", { name: "新しい研究ノート" });
+        };
+
+        it("既定は「開始局面からこの局面まで」で、変化・解析結果とコメントも入れて写す", async () => {
+            const { doc, ids } = createTestStudy([cp(30), cp(45), cp(20), cp(80), cp(-150)]);
+            doc.tree.nodes[ids[1]].comment = "1 手目のコメント";
+            const onCreateFromNote = vi.fn(async (_doc: StudyDocument) => {});
+            render(<Harness initialDoc={doc} newNote={{ onCreateFromNote, onImport: vi.fn() }} />);
+            fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
+            fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
+            const dialog = openDialog();
+            expect(
+                (
+                    within(dialog).getByRole("radio", {
+                        name: /開始局面からこの局面まで/,
+                    }) as HTMLInputElement
+                ).checked,
+            ).toBe(true);
+            expect(
+                (within(dialog).getByRole("checkbox", { name: /変化も入れる/ }) as HTMLInputElement)
+                    .checked,
+            ).toBe(true);
+            expect(
+                (
+                    within(dialog).getByRole("checkbox", {
+                        name: /解析結果とコメントも入れる/,
+                    }) as HTMLInputElement
+                ).checked,
+            ).toBe(true);
+            expect(
+                (
+                    within(dialog).getByRole("textbox", {
+                        name: "新しいノートの表題",
+                    }) as HTMLInputElement
+                ).value,
+            ).toBe("テストのノート（2 手目まで）");
+            expect(within(dialog).getByText(/開始局面から 2 手目までの手順/)).toBeTruthy();
+
+            fireEvent.click(within(dialog).getByRole("button", { name: "ノートを作る" }));
+            await waitFor(() => expect(onCreateFromNote).toHaveBeenCalledTimes(1));
+            const created = onCreateFromNote.mock.calls[0][0];
+            expect(Object.keys(created.tree.nodes).sort()).toEqual(ids.slice(0, 3).sort());
+            expect(created.tree.nodes[ids[1]].comment).toBe("1 手目のコメント");
+            expect(Object.keys(created.layers[0].results).sort()).toEqual(ids.slice(0, 3).sort());
+            expect(created.title).toBe("テストのノート（2 手目まで）");
+            // 作ったら閉じる。
+            await waitFor(() =>
+                expect(screen.queryByRole("dialog", { name: "新しい研究ノート" })).toBeNull(),
+            );
+        });
+
+        it("「この局面だけ」では変化のチェックを押せず、表題は「（N 手目から）」になる", () => {
+            render(
+                <Harness
+                    initialDoc={createTestStudy().doc}
+                    newNote={{ onCreateFromNote: vi.fn(), onImport: vi.fn() }}
+                />,
+            );
+            fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
+            const dialog = openDialog();
+            fireEvent.click(within(dialog).getByRole("radio", { name: /この局面だけ/ }));
+            const variations = within(dialog).getByRole("checkbox", {
+                name: /変化も入れる/,
+            }) as HTMLInputElement;
+            expect(variations.disabled).toBe(true);
+            expect(variations.checked).toBe(false);
+            expect(
+                (
+                    within(dialog).getByRole("textbox", {
+                        name: "新しいノートの表題",
+                    }) as HTMLInputElement
+                ).value,
+            ).toBe("テストのノート（1 手目から）");
+            fireEvent.click(within(dialog).getByRole("radio", { name: /ノートまるごと/ }));
+            expect(
+                (
+                    within(dialog).getByRole("textbox", {
+                        name: "新しいノートの表題",
+                    }) as HTMLInputElement
+                ).value,
+            ).toBe("テストのノート（写し）");
+        });
+
+        it("閉じて開き直すと、最初の面と既定の選び方に戻る", async () => {
+            render(
+                <Harness
+                    initialDoc={createTestStudy().doc}
+                    newNote={{ onCreateFromNote: vi.fn(), onImport: vi.fn() }}
+                />,
+            );
+            let dialog = openDialog();
+            fireEvent.click(within(dialog).getByRole("radio", { name: /この局面だけ/ }));
+            fireEvent.click(within(dialog).getByRole("tab", { name: "棋譜・局面を読む" }));
+            fireEvent.keyDown(dialog, { key: "Escape" });
+            await waitFor(() =>
+                expect(screen.queryByRole("dialog", { name: "新しい研究ノート" })).toBeNull(),
+            );
+            dialog = openDialog();
+            expect(
+                within(dialog)
+                    .getByRole("tab", { name: "いまのノートから" })
+                    .getAttribute("aria-selected"),
+            ).toBe("true");
+            expect(
+                (
+                    within(dialog).getByRole("radio", {
+                        name: /開始局面からこの局面まで/,
+                    }) as HTMLInputElement
+                ).checked,
+            ).toBe(true);
+        });
+
+        it("左右の矢印キーで面を移る", () => {
+            render(
+                <Harness
+                    initialDoc={createTestStudy().doc}
+                    newNote={{ onCreateFromNote: vi.fn(), onImport: vi.fn() }}
+                />,
+            );
+            const dialog = openDialog();
+            const first = within(dialog).getByRole("tab", { name: "いまのノートから" });
+            fireEvent.keyDown(first, { key: "ArrowRight" });
+            const second = within(dialog).getByRole("tab", { name: "棋譜・局面を読む" });
+            expect(second.getAttribute("aria-selected")).toBe("true");
+            expect(document.activeElement).toBe(second);
+        });
+
+        it("長い表題でも、範囲の印は切り詰めで落とさない", async () => {
+            const { doc } = createTestStudy();
+            const long = "長".repeat(STUDY_LIMITS.titleLength);
+            const onCreateFromNote = vi.fn(async (_doc: StudyDocument) => {});
+            render(
+                <Harness
+                    initialDoc={{ ...doc, title: long }}
+                    newNote={{ onCreateFromNote, onImport: vi.fn() }}
+                />,
+            );
+            const dialog = openDialog();
+            fireEvent.click(within(dialog).getByRole("radio", { name: /ノートまるごと/ }));
+            fireEvent.click(within(dialog).getByRole("button", { name: "ノートを作る" }));
+            await waitFor(() => expect(onCreateFromNote).toHaveBeenCalledTimes(1));
+            const title = onCreateFromNote.mock.calls[0][0].title;
+            expect(title.endsWith("（写し）")).toBe(true);
+            expect(Array.from(title)).toHaveLength(STUDY_LIMITS.titleLength);
+        });
+
+        it("作っている間に閉じて開き直しても、保存が終わるまでは別のノートを作らせない", async () => {
+            let finish: () => void = () => {};
+            const onCreateFromNote = vi.fn(
+                () =>
+                    new Promise<void>((resolve) => {
+                        finish = resolve;
+                    }),
+            );
+            const onImport = vi.fn(async () => {});
+            render(
+                <Harness
+                    initialDoc={createTestStudy().doc}
+                    newNote={{ onCreateFromNote, onImport }}
+                />,
+            );
+            let dialog = openDialog();
+            fireEvent.click(within(dialog).getByRole("button", { name: "ノートを作る" }));
+            await waitFor(() => expect(onCreateFromNote).toHaveBeenCalledTimes(1));
+            // 保存が止まっても閉じられる。
+            fireEvent.keyDown(dialog, { key: "Escape" });
+            await waitFor(() =>
+                expect(screen.queryByRole("dialog", { name: "新しい研究ノート" })).toBeNull(),
+            );
+            dialog = openDialog();
+            expect(
+                within(dialog).getByRole<HTMLButtonElement>("button", { name: "作成中…" }).disabled,
+            ).toBe(true);
+            expect(
+                within(dialog).getByRole<HTMLButtonElement>("tab", { name: "棋譜・局面を読む" })
+                    .disabled,
+            ).toBe(true);
+            await act(async () => finish());
+            expect(
+                within(dialog).getByRole<HTMLButtonElement>("button", { name: "ノートを作る" })
+                    .disabled,
+            ).toBe(false);
+            expect(onImport).not.toHaveBeenCalled();
+        });
+
+        it("閉じて開き直したあとに作れなかったときも、理由を出す", async () => {
+            let fail: (error: Error) => void = () => {};
+            const onCreateFromNote = vi.fn(
+                () =>
+                    new Promise<void>((_resolve, reject) => {
+                        fail = reject;
+                    }),
+            );
+            render(
+                <Harness
+                    initialDoc={createTestStudy().doc}
+                    newNote={{ onCreateFromNote, onImport: vi.fn() }}
+                />,
+            );
+            let dialog = openDialog();
+            fireEvent.click(within(dialog).getByRole("button", { name: "ノートを作る" }));
+            await waitFor(() => expect(onCreateFromNote).toHaveBeenCalledTimes(1));
+            fireEvent.keyDown(dialog, { key: "Escape" });
+            await waitFor(() =>
+                expect(screen.queryByRole("dialog", { name: "新しい研究ノート" })).toBeNull(),
+            );
+            dialog = openDialog();
+            await act(async () => fail(new Error("保存できませんでした")));
+            expect((await within(dialog).findByRole("alert")).textContent).toBe(
+                "保存できませんでした",
+            );
+        });
+
+        it("棋譜から作るのを閉じて開き直したあとに失敗しても、取り込みの面に理由を出す", async () => {
+            let fail: (error: Error) => void = () => {};
+            const onImport = vi.fn(
+                () =>
+                    new Promise<void>((_resolve, reject) => {
+                        fail = reject;
+                    }),
+            );
+            render(
+                <Harness
+                    initialDoc={createTestStudy().doc}
+                    newNote={{ onCreateFromNote: vi.fn(), onImport }}
+                />,
+            );
+            let dialog = openDialog();
+            fireEvent.click(within(dialog).getByRole("tab", { name: "棋譜・局面を読む" }));
+            fireEvent.change(within(dialog).getByRole("textbox", { name: "棋譜のテキスト" }), {
+                target: { value: "position startpos moves 7g7f" },
+            });
+            fireEvent.click(within(dialog).getByRole("button", { name: "ノートを作る" }));
+            await waitFor(() => expect(onImport).toHaveBeenCalledTimes(1));
+            fireEvent.keyDown(dialog, { key: "Escape" });
+            await waitFor(() =>
+                expect(screen.queryByRole("dialog", { name: "新しい研究ノート" })).toBeNull(),
+            );
+            dialog = openDialog();
+            await act(async () => fail(new Error("取り込めませんでした")));
+            fireEvent.click(within(dialog).getByRole("tab", { name: "棋譜・局面を読む" }));
+            expect((await within(dialog).findByRole("alert")).textContent).toBe(
+                "取り込めませんでした",
+            );
+        });
+
+        it("保存を待つ間に閉じたら、作り終えても新しいノートを開かせない", async () => {
+            let finish: () => void = () => {};
+            const onImport = vi.fn(
+                (_source: unknown, _options: { shouldOpen: () => boolean }) =>
+                    new Promise<void>((resolve) => {
+                        finish = resolve;
+                    }),
+            );
+            render(
+                <Harness
+                    initialDoc={createTestStudy().doc}
+                    newNote={{ onCreateFromNote: vi.fn(), onImport }}
+                />,
+            );
+            const dialog = openDialog();
+            fireEvent.click(within(dialog).getByRole("tab", { name: "棋譜・局面を読む" }));
+            fireEvent.change(within(dialog).getByRole("textbox", { name: "棋譜のテキスト" }), {
+                target: { value: "position startpos moves 7g7f" },
+            });
+            fireEvent.click(within(dialog).getByRole("button", { name: "ノートを作る" }));
+            await waitFor(() => expect(onImport).toHaveBeenCalledTimes(1));
+            const { shouldOpen } = onImport.mock.calls[0][1];
+            expect(shouldOpen()).toBe(true);
+            fireEvent.click(within(dialog).getByRole("button", { name: "やめる" }));
+            await waitFor(() =>
+                expect(screen.queryByRole("dialog", { name: "新しい研究ノート" })).toBeNull(),
+            );
+            expect(shouldOpen()).toBe(false);
+            await act(async () => finish());
+            // 開き直しても、閉じる前の作成のぶんは開いてよいことにならない。
+            openDialog();
+            expect(shouldOpen()).toBe(false);
+        });
+
+        it("保存を待つ間に画面ごと消えたら、作り終えても新しいノートを開かせない", async () => {
+            const onImport = vi.fn(
+                (_source: unknown, _options: { shouldOpen: () => boolean }) =>
+                    new Promise<void>(() => {}),
+            );
+            const view = render(
+                <Harness
+                    initialDoc={createTestStudy().doc}
+                    newNote={{ onCreateFromNote: vi.fn(), onImport }}
+                />,
+            );
+            const dialog = openDialog();
+            fireEvent.click(within(dialog).getByRole("tab", { name: "棋譜・局面を読む" }));
+            fireEvent.change(within(dialog).getByRole("textbox", { name: "棋譜のテキスト" }), {
+                target: { value: "position startpos moves 7g7f" },
+            });
+            fireEvent.click(within(dialog).getByRole("button", { name: "ノートを作る" }));
+            await waitFor(() => expect(onImport).toHaveBeenCalledTimes(1));
+            const { shouldOpen } = onImport.mock.calls[0][1];
+            view.unmount();
+            expect(shouldOpen()).toBe(false);
+        });
+
+        it("作れなかったら理由を出し、閉じない", async () => {
+            render(
+                <Harness
+                    initialDoc={createTestStudy().doc}
+                    newNote={{
+                        onCreateFromNote: async () => {
+                            throw new Error("保存できませんでした");
+                        },
+                        onImport: vi.fn(),
+                    }}
+                />,
+            );
+            const dialog = openDialog();
+            fireEvent.click(within(dialog).getByRole("button", { name: "ノートを作る" }));
+            expect((await within(dialog).findByRole("alert")).textContent).toBe(
+                "保存できませんでした",
+            );
+            expect(screen.getByRole("dialog", { name: "新しい研究ノート" })).toBeTruthy();
+        });
+
+        it("「棋譜・局面を読む」で貼り付けた棋譜からも作れる", async () => {
+            const onImport = vi.fn(async () => {});
+            render(
+                <Harness
+                    initialDoc={createTestStudy().doc}
+                    newNote={{ onCreateFromNote: vi.fn(), onImport }}
+                />,
+            );
+            const dialog = openDialog();
+            fireEvent.click(within(dialog).getByRole("tab", { name: "棋譜・局面を読む" }));
+            fireEvent.change(within(dialog).getByRole("textbox", { name: "棋譜のテキスト" }), {
+                target: { value: "position startpos moves 7g7f" },
+            });
+            fireEvent.click(within(dialog).getByRole("button", { name: "ノートを作る" }));
+            await waitFor(() => expect(onImport).toHaveBeenCalledTimes(1));
+            expect(onImport.mock.calls[0]).toEqual([
+                expect.objectContaining({ kind: "moves", moves: ["7g7f"] }),
+                { shouldOpen: expect.any(Function) },
+            ]);
+        });
+
+        it("閲覧のみのノートからも作れる。編集できない間と、渡されなければ出さない", () => {
+            const view = render(
+                <Harness
+                    initialDoc={createTestStudy().doc}
+                    readOnly
+                    newNote={{ onCreateFromNote: vi.fn(), onImport: vi.fn() }}
+                />,
+            );
+            expect(openDialog()).toBeTruthy();
+            view.unmount();
+            // ログインが切れている間は出さない（持ち主を確かめられないノートを写させない）。
+            const lockedView = render(
+                <Harness
+                    initialDoc={createTestStudy().doc}
+                    locked
+                    newNote={{ onCreateFromNote: vi.fn(), onImport: vi.fn() }}
+                />,
+            );
+            expect(screen.queryByRole("button", { name: "新しいノート" })).toBeNull();
+            lockedView.unmount();
+            render(<Harness initialDoc={createTestStudy().doc} />);
+            expect(screen.queryByRole("button", { name: "新しいノート" })).toBeNull();
         });
     });
 
@@ -4034,6 +4410,18 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         } finally {
             vi.unstubAllGlobals();
         }
+    });
+
+    it("「メニュー」の「新しいノート」から、新しいノートのモーダルを開く", () => {
+        render(
+            <Harness
+                initialDoc={createTestStudy().doc}
+                newNote={{ onCreateFromNote: vi.fn(), onImport: vi.fn() }}
+            />,
+        );
+        fireEvent.click(screen.getByRole("button", { name: "メニュー" }));
+        fireEvent.click(screen.getByRole("button", { name: "新しいノート" }));
+        expect(screen.getByRole("dialog", { name: "新しい研究ノート" })).toBeTruthy();
     });
 
     it("「メニュー」を開いている間は、矢印キーで局面が動かない（コピーする局面が変わらない）", async () => {

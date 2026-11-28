@@ -1513,7 +1513,12 @@
                 "properties": {
                     "error": {
                         "type": "string",
-                        "enum": ["ID_CONFLICT", "ORIGIN_EXISTS", "REVISION_CONFLICT"]
+                        "enum": [
+                            "ID_CONFLICT",
+                            "ORIGIN_EXISTS",
+                            "REVISION_CONFLICT",
+                            "OWNER_MISMATCH"
+                        ]
                     },
                     "message": {
                         "type": "string"
@@ -1595,6 +1600,12 @@
                         "items": {
                             "$ref": "#/components/schemas/StudyLayerInput"
                         }
+                    },
+                    "expectedOwnerUserId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256,
+                        "description": "The user the client decided should own the study. If it differs from the authenticated user, nothing is created (409 OWNER_MISMATCH)."
                     }
                 },
                 "required": ["id", "title", "origin", "startSfen", "rules", "meta", "tree"],
@@ -3405,7 +3416,7 @@
                         }
                     },
                     "409": {
-                        "description": "ID_CONFLICT or ORIGIN_EXISTS",
+                        "description": "ID_CONFLICT, ORIGIN_EXISTS or OWNER_MISMATCH",
                         "content": {
                             "application/json": {
                                 "schema": {

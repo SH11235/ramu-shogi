@@ -867,7 +867,7 @@ export interface components {
         };
         StudyConflictResponse: {
             /** @enum {string} */
-            error: "ID_CONFLICT" | "ORIGIN_EXISTS" | "REVISION_CONFLICT";
+            error: "ID_CONFLICT" | "ORIGIN_EXISTS" | "REVISION_CONFLICT" | "OWNER_MISMATCH";
             message?: string;
             existingStudyId?: components["schemas"]["StudyId"];
             currentRevision?: number;
@@ -905,6 +905,8 @@ export interface components {
             meta: components["schemas"]["StudyMeta"];
             tree: components["schemas"]["StudyTree"];
             layers?: components["schemas"]["StudyLayerInput"][];
+            /** @description The user the client decided should own the study. If it differs from the authenticated user, nothing is created (409 OWNER_MISMATCH). */
+            expectedOwnerUserId?: string;
         };
         StudyLayerInput: {
             spec: components["schemas"]["StudyLayerSpec"];
@@ -2215,7 +2217,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiErrorResponse"];
                 };
             };
-            /** @description ID_CONFLICT or ORIGIN_EXISTS */
+            /** @description ID_CONFLICT, ORIGIN_EXISTS or OWNER_MISMATCH */
             409: {
                 headers: {
                     [name: string]: unknown;

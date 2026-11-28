@@ -15,4 +15,4 @@ export type { StudySaveStatus } from "./status";
 export type { StoredStudy, StudyStore } from "./store";
 export { createMemoryStudyStore } from "./store";
 export type { StudyLocalSummary, StudySession, StudySync, StudySyncEvent } from "./sync";
-export { createStudySync, isStudyAnalysisOp } from "./sync";
+export { createStudySync, isStudyAnalysisOp, StudySyncError } from "./sync";

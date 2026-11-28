@@ -8,7 +8,7 @@ import {
 } from "@shogi/app-core";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useEffect, useState } from "react";
-import { fn } from "storybook/test";
+import { fn, userEvent, within } from "storybook/test";
 import { DEFAULT_ANALYSIS_SETTINGS, type Message } from "./shogi-match/types";
 import { StudyWorkspaceView } from "./study-workspace";
 import type { StudyWorkspaceSaveStatus } from "./study-workspace/StudySaveStatus";
@@ -182,6 +182,7 @@ function StoryHarness({
                 onPlayFromPosition={() => {}}
                 onSaveKifuFile={() => {}}
                 shareDialog={{ open: false, onOpen: () => {} }}
+                newNote={{ onCreateFromNote: async () => {}, onImport: async () => {} }}
             />
         </div>
     );
@@ -407,5 +408,54 @@ export const 対局情報つき: Story = {
             meta: { ...analyzed.doc.meta, event: "テスト棋戦", timeControl: "10分" },
         },
         initialPly: 3,
+    },
+};
+
+/** 本譜 4 手に、1 手目から分かれる変化と、3 手目のあとで分かれる変化を足したノート。 */
+const withVariations = applyStudyOps(analyzed.doc, [
+    { type: "addMoves", parentId: analyzedIds[1], moves: ["8c8d", "2g2f"] },
+    { type: "addMoves", parentId: analyzedIds[3], moves: ["4c4d"] },
+]);
+
+// モーダルとメニューは body に描かれるので、中の操作は文書全体から探す。
+const inDialog = () => within(document.body);
+/** PC は表題の行の「新しいノート」、スマートフォンは「メニュー」の中の「新しいノート」から開く。 */
+const openNewNote = async ({ canvasElement }: { canvasElement: HTMLElement }) => {
+    const canvas = within(canvasElement);
+    const header = canvas.queryByRole("button", { name: "新しいノート" });
+    if (header) {
+        await userEvent.click(header);
+        return;
+    }
+    await userEvent.click(canvas.getByRole("button", { name: "メニュー" }));
+    await userEvent.click(await inDialog().findByRole("button", { name: "新しいノート" }));
+};
+
+export const 新しいノート_いまのノートから: Story = {
+    args: { doc: withVariations, initialPly: 2 },
+    play: openNewNote,
+};
+
+export const 新しいノート_ノートまるごと: Story = {
+    args: { doc: withVariations, initialPly: 2 },
+    play: async (context) => {
+        await openNewNote(context);
+        await userEvent.click(inDialog().getByRole("radio", { name: /ノートまるごと/ }));
+    },
+};
+
+export const 新しいノート_この局面だけ: Story = {
+    args: { doc: withVariations, initialPly: 2 },
+    play: async (context) => {
+        await openNewNote(context);
+        await userEvent.click(inDialog().getByRole("radio", { name: /この局面だけ/ }));
+    },
+};
+
+export const 新しいノート_棋譜を読む: Story = {
+    args: { doc: withVariations, initialPly: 2 },
+    play: async (context) => {
+        await openNewNote(context);
+        await userEvent.click(inDialog().getByRole("tab", { name: "棋譜・局面を読む" }));
     },
 };

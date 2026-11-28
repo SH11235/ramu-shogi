@@ -3,6 +3,7 @@ import {
     createStudyApiClient,
     isStudyAnalysisOp,
     type StoredStudy,
+    StudySyncError,
     toStudyDocument,
 } from "@shogi/study-client";
 import type {
@@ -12,6 +13,7 @@ import type {
     StudyWorkspaceViewState,
 } from "@shogi/ui";
 import { downloadTextFile, NnueLibraryDialog, StudyWorkspace } from "@shogi/ui";
+import type { StudyKifuSource } from "@shogi/ui/components/study-workspace/studyImport";
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import type { ReactElement, ReactNode } from "react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
@@ -29,6 +31,7 @@ import {
     readStudyCommentDrafts,
     removeStudyCommentDrafts,
 } from "../../lib/studyDrafts";
+import { createStudyFromDocument, createStudyFromKifuSource } from "../../lib/studyEntry";
 import { ensureStudySession, getStudySync } from "../../lib/studySync";
 import { createWebWasmEngineClient } from "../../platform/wasm-engine-client";
 import { StudyShareDialog } from "./StudyShareDialog";
@@ -158,6 +161,61 @@ export default function StudyPage(): ReactElement {
     const { studyId } = routeApi.useParams();
     const navigate = useNavigate();
     const playFromPosition = usePlayFromPosition();
+    // 作り終えたときに、作り始めたノートをまだ開いていれば、新しいノートへ移る（保存を待つ間に
+    // 別の画面へ移っていたら、そこから勝手に動かさない）。
+    const shownStudyRef = useRef<string | null>(studyId);
+    useEffect(() => {
+        shownStudyRef.current = studyId;
+        return () => {
+            shownStudyRef.current = null;
+        };
+    }, [studyId]);
+    const openCreated = async (
+        startedFrom: string,
+        created: string,
+        shouldOpen: () => boolean,
+    ): Promise<void> => {
+        if (shownStudyRef.current !== startedFrom || !shouldOpen()) return;
+        await navigate({ to: "/studies/$studyId", params: { studyId: created } });
+    };
+    // 閲覧のみのノート（他の人の公開ノート）からも作れる。作ったノートは自分のノートになる。
+    const newNote = {
+        onCreateFromNote: async (
+            doc: StudyDocument,
+            { shouldOpen }: { shouldOpen: () => boolean },
+        ): Promise<void> => {
+            const startedFrom = studyId;
+            // アカウントのノートの写しは、そのアカウントのノートとしてしか作らない（別のタブでアカウントを
+            // 切り替えた直後などに、元のノートを読めないアカウントへ中身を渡さない）。
+            const sourceOwner = state.status === "ready" ? state.ownerId : null;
+            let created: string;
+            try {
+                ({ studyId: created } = await createStudyFromDocument(doc, {
+                    sync,
+                    ...(sourceOwner !== null ? { requiredOwner: sourceOwner } : {}),
+                }));
+            } catch (error) {
+                if (error instanceof StudySyncError && error.code === "owner_mismatch") {
+                    throw new Error(
+                        "ログインしているアカウントが、このノートの持ち主と違います。ログインし直してからお試しください。",
+                    );
+                }
+                throw error;
+            }
+            await openCreated(startedFrom, created, shouldOpen);
+        },
+        onImport: async (
+            source: StudyKifuSource,
+            { shouldOpen }: { shouldOpen: () => boolean },
+        ): Promise<void> => {
+            const startedFrom = studyId;
+            const { studyId: created } = await createStudyFromKifuSource(source, {
+                sync,
+                shouldCreate: shouldOpen,
+            });
+            await openCreated(startedFrom, created, shouldOpen);
+        },
+    };
     const { session, isLoadingSession, sessionError, refreshSession } = useAuthSession();
     // 取り直しに失敗して前の値が残っているだけのときは、その値を同期エンジンへ伝え直さない。
     const sessionConfirmed = sessionError === null;
@@ -719,6 +777,7 @@ export default function StudyPage(): ReactElement {
                         key={studyId}
                         doc={state.doc}
                         readOnly
+                        newNote={newNote}
                         onApplyOps={() => Promise.resolve(false)}
                         saveStatus={saveStatus}
                         originLink={renderOriginLink(state.doc.origin)}
@@ -745,6 +804,7 @@ export default function StudyPage(): ReactElement {
                             open: shareStudyId === studyId,
                             onOpen: () => setShareStudyId(studyId),
                         }}
+                        newNote={newNote}
                         originLink={renderOriginLink(state.doc.origin)}
                         onPlayFromPosition={playFromPosition}
                         onSaveKifuFile={downloadTextFile}

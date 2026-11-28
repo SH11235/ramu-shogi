@@ -26,6 +26,8 @@ interface StudyMobileMenuProps {
     onOpenChange?: (open: boolean) => void;
     /** 一覧の上に出す、ノートの情報（出典・保存先など）。 */
     info?: ReactNode;
+    /** 「メニュー」のボタンの id（メニューから開いたダイアログを閉じたとき、フォーカスを戻す先）。 */
+    triggerId?: string;
     /** 見出し「ノート」に並べる項目（共有・表題の変更・解析の設定・盤の反転など）。 */
     noteItems?: Array<{ label: string; note?: string; run: () => void }>;
 }
@@ -46,6 +48,7 @@ export function StudyMobileMenu({
     onOpenChange,
     info,
     noteItems = [],
+    triggerId,
 }: StudyMobileMenuProps): ReactElement {
     const [open, setOpenState] = useState(false);
     // BottomSheet は開いたときに中へフォーカスを移さないので、描いたあとで最初の項目へ移す
@@ -100,6 +103,7 @@ export function StudyMobileMenu({
             height="auto"
             trigger={
                 <button
+                    id={triggerId}
                     type="button"
                     className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-sm text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >

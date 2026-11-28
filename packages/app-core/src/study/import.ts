@@ -49,7 +49,8 @@ interface StudyImportInput {
     meta?: StudyMeta;
 }
 
-const clampTitle = (title: string): string => {
+/** 表題を前後の空白を除いて上限の長さに切る（空なら「研究ノート」）。 */
+export const clampStudyTitle = (title: string): string => {
     const trimmed = title.trim();
     const chars = Array.from(trimmed.length > 0 ? trimmed : "研究ノート");
     return chars.slice(0, STUDY_LIMITS.titleLength).join("");
@@ -151,7 +152,7 @@ export function createStudyDocumentFromMoves(input: StudyImportInput): StudyDocu
 
     return {
         id: input.id,
-        title: clampTitle(input.title),
+        title: clampStudyTitle(input.title),
         origin: checkedOrigin(input.origin),
         startSfen,
         rules: STANDARD_STUDY_RULES,
@@ -235,7 +236,7 @@ export function createStudyDocumentFromKifuTree(input: StudyKifuTreeImportInput)
     return {
         doc: {
             id: input.id,
-            title: clampTitle(input.title),
+            title: clampStudyTitle(input.title),
             origin: checkedOrigin(input.origin),
             startSfen: converted.startSfen,
             rules: STANDARD_STUDY_RULES,

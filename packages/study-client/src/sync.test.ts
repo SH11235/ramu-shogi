@@ -2681,6 +2681,70 @@ describe.each(STORES)("同期エンジン（保存層: $name）", ({ create }) =
             { label: "別のアカウントへの切り替え", other: USER_B },
             { label: "ログアウト", other: null },
         ])(
+            "持ち主を指定して作るとき、画面が知らないまま $label していたら何も書かずに断る",
+            async ({ other }) => {
+                const harness = createVerifyingHarness();
+                harness.login(USER_A);
+                harness.switchCookie(other);
+                await expect(
+                    harness.sync.createStudy(doc, { requiredOwner: USER_A }),
+                ).rejects.toMatchObject({ code: "owner_mismatch" });
+                expect(await harness.sync.load(TEST_STUDY_ID)).toBeNull();
+                await harness.advance(0);
+                expect(harness.server.calls.filter((call) => call.method === "create")).toEqual([]);
+            },
+        );
+
+        it("作成の直前の確認のあとで別のアカウントに切り替わっても、そのアカウントのノートとして作らせない", async () => {
+            // 直前の確認は A と答えるが、作成のリクエストが届く時点の Cookie は B。
+            let verifyCalls = 0;
+            const harness = createHarness({
+                verifySession: async () => {
+                    verifyCalls += 1;
+                    return { userId: verifyCalls <= 2 ? USER_A : USER_B };
+                },
+            });
+            harness.login(USER_A);
+            await harness.sync.createStudy(doc);
+            harness.switchCookie(USER_B);
+            await harness.advance(0);
+            const creates = harness.server.calls.filter((call) => call.method === "create");
+            expect(creates).toHaveLength(1);
+            expect(harness.server.study(TEST_STUDY_ID)).toBeNull();
+            expect(harness.events).toContainEqual({ type: "unauthorized" });
+            expect(harness.sync.getSession()).toEqual({ userId: USER_B });
+        });
+
+        it("持ち主を確かめている間に取り込みをやめたら（shouldCreate が false）、何も書かない", async () => {
+            const harness = createVerifyingHarness();
+            harness.login(USER_A);
+            await expect(
+                harness.sync.createStudy(doc, { shouldCreate: () => false }),
+            ).rejects.toMatchObject({ code: "cancelled" });
+            expect(await harness.sync.load(TEST_STUDY_ID)).toBeNull();
+        });
+
+        it("持ち主を指定して作るとき、サーバーに確かめられなくても伝えられているログインがその人なら、その人のノートにする", async () => {
+            const harness = createHarness({
+                verifySession: async () => {
+                    throw new Error("offline");
+                },
+            });
+            harness.login(USER_A);
+            const created = await harness.sync.createStudy(doc, { requiredOwner: USER_A });
+            expect(created.owner).toBe(USER_A);
+            await expect(
+                harness.sync.createStudy(
+                    { ...doc, id: "c2b2c0c4-1e6f-4f79-9b8a-6c3c0a1e2f3d" },
+                    { requiredOwner: USER_B },
+                ),
+            ).rejects.toMatchObject({ code: "owner_mismatch" });
+        });
+
+        it.each([
+            { label: "別のアカウントへの切り替え", other: USER_B },
+            { label: "ログアウト", other: null },
+        ])(
             "画面が $label を知らないまま作ったノートは、サーバーから見たユーザーのものにする",
             async ({ other }) => {
                 const harness = createVerifyingHarness();

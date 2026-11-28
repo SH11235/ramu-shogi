@@ -13,10 +13,12 @@ import {
     type StudyApi,
     type StudySync,
 } from "@shogi/study-client";
+import { StudyCreationCancelledError } from "@shogi/ui/components/study-workspace/studyEntry";
 import { parseKifuTextForStudy } from "@shogi/ui/components/study-workspace/studyImport";
 import { describe, expect, it, vi } from "vitest";
 import {
     canOpenGameRecordAsStudy,
+    createStudyFromDocument,
     createStudyFromKifuSource,
     createStudyFromKifuTree,
     openOrCreateStudy,
@@ -165,6 +167,44 @@ describe("openOrCreateStudy", () => {
             /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
         );
         expect(build).toHaveBeenCalledWith(studyId);
+    });
+});
+
+describe("取り込みをやめたとき", () => {
+    it("保存の直前に shouldCreate が false なら、何も作らずにやめる", async () => {
+        const api = createApi();
+        const sync = createSync(api);
+        await expect(
+            createStudyFromKifuSource(parseKifuTextForStudy("position startpos moves 7g7f"), {
+                sync,
+                api,
+                replayMovesStrict: async (_sfen: string, moves: string[]) => ({ applied: moves }),
+                shouldCreate: () => false,
+            }),
+        ).rejects.toBeInstanceOf(StudyCreationCancelledError);
+        expect(await sync.listLocal()).toEqual([]);
+    });
+});
+
+describe("研究ノートから写した文書の入口", () => {
+    it("新しい ID で、貼り付けた棋譜と同じ扱いのノートとして保存する（同じ文書でも毎回別のノート）", async () => {
+        const api = createApi();
+        const sync = createSync(api);
+        const doc = createStudyDocumentFromMoves({
+            id: "44444444-4444-4444-8444-444444444444",
+            title: "写したノート",
+            origin: { kind: "rshogi_csa", ref: "wdoor-1" },
+            startSfen: "startpos",
+            moves: ["7g7f"],
+        });
+        const first = await createStudyFromDocument(doc, { sync, api });
+        const second = await createStudyFromDocument(doc, { sync, api });
+        expect(first.existing).toBe(false);
+        expect(first.studyId).not.toBe(doc.id);
+        expect(second.studyId).not.toBe(first.studyId);
+        const stored = await sync.load(first.studyId);
+        expect(stored?.doc.title).toBe("写したノート");
+        expect(stored?.doc.origin).toEqual({ kind: "paste", ref: null });
     });
 });
 

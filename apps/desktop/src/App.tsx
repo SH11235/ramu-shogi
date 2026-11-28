@@ -322,6 +322,7 @@ function App() {
                         engineOptions={engineOptions}
                         onBackToList={handleOpenStudies}
                         onBackToLocal={() => setAppMode("local")}
+                        onOpenStudy={handleOpenStudy}
                         onPlayFromPosition={handlePlayFromPosition}
                     />
                 </main>

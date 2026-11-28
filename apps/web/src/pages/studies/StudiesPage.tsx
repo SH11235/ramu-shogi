@@ -28,7 +28,7 @@ import {
     studyOriginLabel,
     studyPlayersLabel,
 } from "@shogi/ui/components/study-workspace/studyView";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useRouter } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { useEffect, useRef, useState } from "react";
 import { AuthBadge } from "../../components/AuthBadge";
@@ -112,9 +112,17 @@ function progressLabel(item: StudyListItem): string {
 function ImportSection({
     onImport,
     isAuthenticated,
+    busy,
+    onBusyChange,
+    error,
+    onErrorChange,
 }: {
     onImport: (source: StudyKifuSource) => Promise<void>;
     isAuthenticated: boolean;
+    busy: boolean;
+    onBusyChange: (busy: boolean) => void;
+    error: string | null;
+    onErrorChange: (error: string | null) => void;
 }): ReactElement {
     const linkClass =
         "inline-flex h-10 items-center gap-2 rounded-md border border-input px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -123,7 +131,14 @@ function ImportSection({
             <p className="text-sm text-muted-foreground">
                 棋譜を取り込んで全体を解析すると、見直すべき手が自動で並びます。解析結果・変化・コメントは自動で保存されます。
             </p>
-            <StudyImportForm onImport={onImport} />
+            <StudyImportForm
+                onImport={onImport}
+                busy={busy}
+                onBusyChange={onBusyChange}
+                error={error}
+                onErrorChange={onErrorChange}
+                sideBySide
+            />
             <div className="flex flex-col gap-2 border-t border-border pt-3">
                 <p className="text-sm text-muted-foreground">ほかの棋譜から作る</p>
                 <div className="flex flex-col gap-2 sm:flex-row">
@@ -295,10 +310,54 @@ export default function StudiesPage({ api, verifySession }: StudiesPageProps): R
         setIsLoadingMore(false);
     };
 
+    // 取り込み欄は開け閉めでフォームごと作り直されるので、保存の途中かどうかはここで持つ
+    // （閉じて開き直したフォームから、同じ棋譜をもう一度作らせない）。
+    const importingRef = useRef(false);
+    // 保存を待つ間に別の画面へ移り始めたか。移った先の読み込み中は一覧がまだ残っているので、
+    // アンマウントではなくルーターの遷移の始まりで見る。
+    const router = useRouter();
+    const leftRef = useRef(false);
+    useEffect(() => {
+        leftRef.current = false;
+        const unsubscribe = router.subscribe("onBeforeNavigate", () => {
+            leftRef.current = true;
+        });
+        return () => {
+            leftRef.current = true;
+            unsubscribe();
+        };
+    }, [router]);
+    const [isImporting, setIsImporting] = useState(false);
+    // ファイルを読んでいる間（保存の前）も、開き直したフォームから取り込ませない。
+    const [isReadingFile, setIsReadingFile] = useState(false);
+    const readingFileRef = useRef(false);
+    const changeReadingFile = (reading: boolean): void => {
+        if (reading) leftRef.current = false;
+        readingFileRef.current = reading;
+        setIsReadingFile(reading);
+    };
+    const [importError, setImportError] = useState<string | null>(null);
+    // ファイルを読んでいる間に「平手の盤から始める」を押すと、読み終えた棋譜の取り込みが黙って捨てられる。
+    const startFromHirate = (source: StudyKifuSource): Promise<void> =>
+        readingFileRef.current
+            ? Promise.reject(
+                  new Error("棋譜のファイルを読んでいます。読み終えてからお試しください。"),
+              )
+            : handleImport(source);
     const handleImport = async (source: StudyKifuSource): Promise<void> => {
-        if (sessionKnown) await ensureStudySession(userId, { confirmed: sessionConfirmed });
-        const { studyId } = await createStudyFromKifuSource(source, { sync, api: client });
-        await navigate({ to: "/studies/$studyId", params: { studyId } });
+        if (importingRef.current) return;
+        importingRef.current = true;
+        // 移らないのは、この作成を始めたあとに離れたときだけ（ファイルは読み始めた時点から数える）。
+        if (!readingFileRef.current) leftRef.current = false;
+        setIsImporting(true);
+        try {
+            if (sessionKnown) await ensureStudySession(userId, { confirmed: sessionConfirmed });
+            const { studyId } = await createStudyFromKifuSource(source, { sync, api: client });
+            if (!leftRef.current) await navigate({ to: "/studies/$studyId", params: { studyId } });
+        } finally {
+            importingRef.current = false;
+            setIsImporting(false);
+        }
     };
 
     const handleDelete = async (): Promise<void> => {
@@ -402,11 +461,18 @@ export default function StudiesPage({ api, verifySession }: StudiesPageProps): R
                                 AI の読みと一緒に保存されます。
                             </p>
                             <StudyStartFromHirateButton
-                                onImport={handleImport}
+                                onImport={startFromHirate}
                                 className="sm:self-start"
                             />
                         </Section>
-                        <ImportSection onImport={handleImport} isAuthenticated={isAuthenticated} />
+                        <ImportSection
+                            onImport={handleImport}
+                            isAuthenticated={isAuthenticated}
+                            busy={isImporting || isReadingFile}
+                            onBusyChange={changeReadingFile}
+                            error={importError}
+                            onErrorChange={setImportError}
+                        />
                     </>
                 )}
 
@@ -415,7 +481,7 @@ export default function StudiesPage({ api, verifySession }: StudiesPageProps): R
                         <div className="flex items-center justify-between gap-3">
                             <p className="text-xs text-muted-foreground">{items.length} 件</p>
                             <div className="flex flex-wrap items-start justify-end gap-2">
-                                <StudyStartFromHirateButton onImport={handleImport} />
+                                <StudyStartFromHirateButton onImport={startFromHirate} />
                                 <button
                                     type="button"
                                     aria-expanded={isImportOpen}
@@ -430,6 +496,10 @@ export default function StudiesPage({ api, verifySession }: StudiesPageProps): R
                             <ImportSection
                                 onImport={handleImport}
                                 isAuthenticated={isAuthenticated}
+                                busy={isImporting || isReadingFile}
+                                onBusyChange={changeReadingFile}
+                                error={importError}
+                                onErrorChange={setImportError}
                             />
                         )}
                         <ul className="grid gap-3">

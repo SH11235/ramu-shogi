@@ -12,6 +12,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 // つなぎ（開く・操作を流す・拒否されたら戻す）だけを見るので、受け取った値を出すだけの部品にする。
 const workspace = vi.hoisted(() => ({
     onApplyOps: null as ((ops: unknown[]) => unknown) | null,
+    newNote: undefined as
+        | {
+              onCreateFromNote: (
+                  doc: StudyDocument,
+                  options: { shouldOpen: () => boolean },
+              ) => Promise<void>;
+          }
+        | undefined,
 }));
 vi.mock("@shogi/ui", () => ({
     StudyWorkspace: (props: {
@@ -19,8 +27,15 @@ vi.mock("@shogi/ui", () => ({
         onApplyOps: (ops: StudyOp[]) => unknown;
         notice?: { text: string } | null;
         engineOptions: Array<{ id: string }>;
+        newNote?: {
+            onCreateFromNote: (
+                doc: StudyDocument,
+                options: { shouldOpen: () => boolean },
+            ) => Promise<void>;
+        };
     }) => {
         workspace.onApplyOps = props.onApplyOps as (ops: unknown[]) => unknown;
+        workspace.newNote = props.newNote;
         return (
             <div>
                 <p data-testid="title">{props.doc.title}</p>
@@ -82,6 +97,7 @@ const renderView = (sync: StudySync, studyId = STUDY_ID) =>
             engineOptions={engineOptions}
             onBackToList={vi.fn()}
             onBackToLocal={vi.fn()}
+            onOpenStudy={vi.fn()}
             onPlayFromPosition={vi.fn()}
         />,
     );
@@ -97,6 +113,34 @@ describe("StudyView（Desktop の研究ノートの画面）", () => {
         expect((await screen.findByTestId("title")).textContent).toBe("テストのノート");
         expect(screen.getByTestId("nodes").textContent).toBe("3");
         expect(screen.getByTestId("engines").textContent).toBe("native");
+    });
+
+    it("「新しいノート」で写した文書を、この端末に新しいノートとして保存して開く", async () => {
+        const sync = createSync();
+        await sync.createStudy(createDoc());
+        const onOpenStudy = vi.fn();
+        render(
+            <StudyView
+                sync={sync}
+                studyId={STUDY_ID}
+                engineOptions={engineOptions}
+                onBackToList={vi.fn()}
+                onBackToLocal={vi.fn()}
+                onOpenStudy={onOpenStudy}
+                onPlayFromPosition={vi.fn()}
+            />,
+        );
+        await screen.findByTestId("title");
+        await act(async () => {
+            await workspace.newNote?.onCreateFromNote(
+                { ...createDoc(), title: "写したノート" },
+                { shouldOpen: () => true },
+            );
+        });
+        expect(onOpenStudy).toHaveBeenCalledTimes(1);
+        const created = onOpenStudy.mock.calls[0][0] as string;
+        expect(created).not.toBe(STUDY_ID);
+        expect((await sync.load(created))?.doc.title).toBe("写したノート");
     });
 
     it("サーバーへは何も送らない（保存はこの端末の中だけ）", async () => {
@@ -193,6 +237,7 @@ describe("StudyView（Desktop の研究ノートの画面）", () => {
                 engineOptions={engineOptions}
                 onBackToList={onBackToList}
                 onBackToLocal={vi.fn()}
+                onOpenStudy={vi.fn()}
                 onPlayFromPosition={vi.fn()}
             />,
         );

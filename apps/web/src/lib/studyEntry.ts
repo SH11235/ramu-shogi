@@ -5,11 +5,12 @@
  * （ブラウザ内の保存 + クラウド）と API、セッション切れの通知を既定として渡す。
  */
 
-import type { KifuTree } from "@shogi/app-core";
+import type { KifuTree, StudyDocument } from "@shogi/app-core";
 import type { RshogiGame } from "@shogi/match-client";
 import { createStudyApiClient, type StudySync } from "@shogi/study-client";
 import {
     canOpenGameRecordAsStudy,
+    createStudyFromDocument as createFromDocument,
     createStudyFromKifuSource as createFromKifuSource,
     createStudyFromKifuTree as createFromKifuTree,
     type GameRecordForStudy,
@@ -69,6 +70,14 @@ export function createStudyFromKifuTree(
     deps: Partial<StudyImportDeps> = {},
 ): Promise<OpenOrCreateStudyResult> {
     return createFromKifuTree(tree, info, withDefaults(deps)).then(reportStudyCreated);
+}
+
+/** 研究ノートから写した文書を、新しいノートとして保存する。 */
+export function createStudyFromDocument(
+    doc: StudyDocument,
+    deps: Partial<StudyEntryDeps> & { requiredOwner?: string } = {},
+): Promise<OpenOrCreateStudyResult> {
+    return createFromDocument(doc, withDefaults(deps)).then(reportStudyCreated);
 }
 
 // ログイン中に作ったノートはサーバーへ同期される。ログインしていなければ端末内だけ

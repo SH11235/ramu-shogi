@@ -107,7 +107,12 @@ export type StudySyncEvent =
  */
 export type StudyPullState = "not_needed" | "pending" | "done";
 
-type StudySyncErrorCode = "not_found" | "merged" | "already_exists";
+type StudySyncErrorCode =
+    | "not_found"
+    | "merged"
+    | "already_exists"
+    | "owner_mismatch"
+    | "cancelled";
 
 export class StudySyncError extends Error {
     readonly code: StudySyncErrorCode;
@@ -189,8 +194,19 @@ export interface StudySync {
      * 確かめ、そのユーザーを持ち主にする（違っていれば `setSession` で伝え直されたときと同じく
      * 切り替え、`unauthorized` のイベントで画面に取り直しを促す）。確かめられなければ匿名で作る
      * （次の `adoptAnonymousStudies` で、そのとき確かめられたアカウントに引き継がれる）。
+     *
+     * `requiredOwner` を渡すと、そのユーザーのノートとしてしか作らない（別のノートの写しを、元の
+     * ノートを読めないアカウントや匿名で作らない）。持ち主がそのユーザーにならなければ何も書かず
+     * `StudySyncError("owner_mismatch")`。サーバーに確かめられなかっただけで、伝えられている
+     * ログインがそのユーザーなら、そのユーザーのノートとして作る（そのユーザーにしか見えない）。
+     *
+     * `shouldCreate` は書き込む直前（持ち主を確かめたあと）に呼び、false なら何も書かず
+     * `StudySyncError("cancelled")`（確かめている間に、取り込みの画面を閉じられたとき）。
      */
-    createStudy(doc: StudyDocument): Promise<StoredStudy>;
+    createStudy(
+        doc: StudyDocument,
+        options?: { requiredOwner?: string; shouldCreate?: () => boolean },
+    ): Promise<StoredStudy>;
     /**
      * ノートを開く。ローカルにあればそれを返し、裏でサーバーの変更を取り込む。
      * ローカルに無ければ（ログイン中なら）サーバーから取得して保存する。
@@ -335,7 +351,8 @@ const describeError = (status: number, error: StudyApiErrorBody): string =>
  * （結果つきの作成はサーバーの 1 リクエストの処理時間が長くなるため）。レイヤーと結果は、
  * 作成のあとに操作バッチ（`ensureLayer` + `putAnalysis` を少しずつ）で送る。
  */
-const toCreateRequest = (doc: StudyDocument): CreateStudyRequest => ({
+const toCreateRequest = (doc: StudyDocument, owner: string | null): CreateStudyRequest => ({
+    ...(owner !== null ? { expectedOwnerUserId: owner } : {}),
     id: doc.id,
     title: doc.title,
     origin: doc.origin,
@@ -1023,7 +1040,8 @@ export function createStudySync(options: StudySyncOptions): StudySync {
             if (!isVerifiedOwner(verified, study.owner)) return "done";
         }
         const sentDoc = study.doc;
-        const response = await api.create(toCreateRequest(sentDoc));
+        // 確かめてから作成が届くまでの間の切り替えは、サーバーが持ち主を照合して断る（OWNER_MISMATCH）。
+        const response = await api.create(toCreateRequest(sentDoc, study.owner));
         if (response.ok && response.data.existing) {
             // 同じ ID のノートが既にある（作成の応答が届かなかった再送など）。サーバーの中身は
             // 分からない（他の端末が変えているかもしれない）ので、最新の文書を取得し、
@@ -1059,6 +1077,23 @@ export function createStudySync(options: StudySyncOptions): StudySync {
                 };
             });
             return "continue";
+        }
+        if (response.status === 409 && response.error.error === "OWNER_MISMATCH") {
+            // 直前の確認のあとでアカウントが切り替わっていた。確かめ直して画面に取り直しを促し、
+            // 持ち主でログインし直すまで送らない。
+            if (!options.verifySession) {
+                emit({ type: "unauthorized" });
+                return "done";
+            }
+            try {
+                // 確かめ直すと持ち主に戻っていた（もう一度切り替えた）なら、作り直す。
+                return isVerifiedOwner(await options.verifySession(), study.owner)
+                    ? "retry"
+                    : "done";
+            } catch (error) {
+                entryOf(study.id).message = error instanceof Error ? error.message : String(error);
+                return "retry";
+            }
         }
         if (response.status === 409 && response.error.error === "ORIGIN_EXISTS") {
             const existingStudyId = response.error.existingStudyId;
@@ -1752,12 +1787,17 @@ export function createStudySync(options: StudySyncOptions): StudySync {
             return unauthorized;
         },
 
-        createStudy(doc) {
+        createStudy(doc, createOptions) {
+            const requiredOwner = createOptions?.requiredOwner;
             // 持ち主を確かめる間も、同じノートへの後続の書き込みや `flush` を先に進めない
             // （呼んだ順に適用するため）。
             const created = enqueueWrite(doc.id, async () => {
                 const { owner, basis } = await decideCreatedOwner();
                 const study = await mutate(doc.id, (snapshot) => {
+                    // 書き込みの直前（既存のデータを読んだあと）に確かめる。
+                    if (createOptions?.shouldCreate && !createOptions.shouldCreate()) {
+                        throw new StudySyncError("cancelled", "ノートを作るのをやめました");
+                    }
                     if (snapshot.study) {
                         throw new StudySyncError(
                             "already_exists",
@@ -1766,7 +1806,20 @@ export function createStudySync(options: StudySyncOptions): StudySync {
                     }
                     // 持ち主を決めてから書くまでの間にログイン状態が変わっていたら、匿名にして
                     // 引き継ぎに任せる（変わったあとのアカウントから見えなくしないため）。
-                    const settled = (session?.userId ?? null) === basis ? owner : null;
+                    const claimed = session?.userId ?? null;
+                    const settled = claimed === basis ? owner : null;
+                    if (requiredOwner !== undefined) {
+                        const unverifiedButClaimed =
+                            owner === null && basis === requiredOwner && claimed === requiredOwner;
+                        if (settled !== requiredOwner && !unverifiedButClaimed) {
+                            throw new StudySyncError(
+                                "owner_mismatch",
+                                "ログインしているアカウントが、元のノートの持ち主と違います",
+                            );
+                        }
+                        const fresh = newStoredStudy(doc, requiredOwner, null);
+                        return { study: fresh, result: fresh };
+                    }
                     const fresh = newStoredStudy(doc, settled, null);
                     return { study: fresh, result: fresh };
                 });

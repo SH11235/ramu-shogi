@@ -34,7 +34,11 @@ interface StudyEntrySync {
     findLocalByOrigin(origin: StudyOrigin): Promise<string | null>;
     /** ログイン中のセッション。未ログインなら null。 */
     getSession(): unknown;
-    createStudy(doc: StudyDocument): Promise<unknown>;
+    /** `requiredOwner` を渡したら、そのユーザーのノートとしてしか作らない（できなければ例外）。 */
+    createStudy(
+        doc: StudyDocument,
+        options?: { requiredOwner?: string; shouldCreate?: () => boolean },
+    ): Promise<unknown>;
     /**
      * 何局もまとめて作る取り込みが途中で失敗したとき、作ったノートを消すのに使う。
      * 1 件ずつ開く・作る入口では要らないので省略できる。無ければ、作ったノートは消せずに残り、その件数を知らせる。
@@ -59,10 +63,59 @@ export interface StudyEntryDeps {
     api?: StudyEntryApi;
     /** クラウドへの問い合わせでセッション切れ（401）が分かったときに呼ぶ。 */
     onUnauthorized?: () => void;
+    /**
+     * 保存を始める直前に呼び、false なら保存せずに `StudyCreationCancelledError` を投げる
+     * （棋譜を確かめている間に、取り込みの画面を閉じられたとき）。
+     */
+    shouldCreate?: () => boolean;
+}
+
+/** 保存を始める前に取り込みをやめた（`shouldCreate` が false を返した）。 */
+export class StudyCreationCancelledError extends Error {
+    constructor() {
+        super("ノートを作るのをやめました");
+        this.name = "StudyCreationCancelledError";
+    }
+}
+
+const assertShouldCreate = (deps: Pick<StudyEntryDeps, "shouldCreate">): void => {
+    if (deps.shouldCreate && !deps.shouldCreate()) throw new StudyCreationCancelledError();
+};
+
+/**
+ * 保存層の書き込みの直前（持ち主を確かめたあと）にも `shouldCreate` を確かめて保存する。
+ * そこでやめたら `StudyCreationCancelledError` にする。
+ */
+async function createGated(
+    sync: StudyEntrySync,
+    doc: StudyDocument,
+    options: { requiredOwner?: string; shouldCreate?: () => boolean },
+): Promise<void> {
+    let cancelled = false;
+    const { shouldCreate } = options;
+    const gate = shouldCreate
+        ? () => {
+              cancelled = !shouldCreate();
+              return !cancelled;
+          }
+        : undefined;
+    try {
+        await sync.createStudy(doc, {
+            ...(options.requiredOwner !== undefined
+                ? { requiredOwner: options.requiredOwner }
+                : {}),
+            ...(gate ? { shouldCreate: gate } : {}),
+        });
+    } catch (error) {
+        if (cancelled) throw new StudyCreationCancelledError();
+        throw error;
+    }
 }
 
 interface OpenOrCreateStudyOptions extends StudyEntryDeps {
     origin: StudyOrigin;
+    /** 作るノートの持ち主をこのユーザーに限る（別のノートの写しを、別のアカウントに渡さない）。 */
+    requiredOwner?: string;
     /** 新しく作るときだけ呼ばれる。渡された ID で文書を作る。 */
     build: (studyId: string) => StudyDocument;
 }
@@ -86,6 +139,8 @@ export async function openOrCreateStudy({
     sync,
     api,
     onUnauthorized,
+    requiredOwner,
+    shouldCreate,
 }: OpenOrCreateStudyOptions): Promise<OpenOrCreateStudyResult> {
     if (origin.kind !== "paste" && origin.ref !== null) {
         const localId = await sync.findLocalByOrigin(origin);
@@ -104,7 +159,8 @@ export async function openOrCreateStudy({
     }
     const doc = build(generateStudyId());
     explainLimits(doc);
-    await sync.createStudy(doc);
+    assertShouldCreate({ shouldCreate });
+    await createGated(sync, doc, { requiredOwner, shouldCreate });
     return { studyId: doc.id, existing: false };
 }
 
@@ -329,6 +385,7 @@ export async function createStudyFromKifuSource(
         sync: deps.sync,
         api: deps.api,
         onUnauthorized: deps.onUnauthorized,
+        shouldCreate: deps.shouldCreate,
         origin,
         build: (id) =>
             source.kind === "csa"
@@ -380,9 +437,10 @@ async function createStudiesFromSelfplayLog(
     }
     // 保存が途中で失敗したら、作ったぶんを消して、取り込み前に戻す（やり直しで同じ局が重複しないように）。
     const created: string[] = [];
+    assertShouldCreate(deps);
     try {
         for (const doc of docs) {
-            await deps.sync.createStudy(doc);
+            await createGated(deps.sync, doc, { shouldCreate: deps.shouldCreate });
             created.push(doc.id);
         }
     } catch (error) {
@@ -426,6 +484,7 @@ export async function createStudyFromKifuTree(
         sync: deps.sync,
         api: deps.api,
         onUnauthorized: deps.onUnauthorized,
+        shouldCreate: deps.shouldCreate,
         origin,
         build: (id) =>
             createStudyDocumentFromKifuTree({
@@ -439,5 +498,24 @@ export async function createStudyFromKifuTree(
                     ...(gote ? { whiteName: gote } : {}),
                 },
             }).doc,
+    });
+}
+
+/**
+ * 研究ノートから写した文書（`copyStudyDocument`）を、新しいノートとして保存する。
+ * 写した文書の ID は使わず、新しく振り直す（同じ文書を 2 回保存しても別のノートになる）。
+ */
+export function createStudyFromDocument(
+    doc: StudyDocument,
+    deps: StudyEntryDeps & { requiredOwner?: string },
+): Promise<OpenOrCreateStudyResult> {
+    return openOrCreateStudy({
+        sync: deps.sync,
+        api: deps.api,
+        onUnauthorized: deps.onUnauthorized,
+        shouldCreate: deps.shouldCreate,
+        requiredOwner: deps.requiredOwner,
+        origin: { kind: "paste", ref: null },
+        build: (id) => ({ ...doc, id, origin: { kind: "paste", ref: null } }),
     });
 }

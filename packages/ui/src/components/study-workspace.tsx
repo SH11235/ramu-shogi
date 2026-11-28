@@ -81,6 +81,7 @@ import {
 import { StudyMobileMenu } from "./study-workspace/StudyMobileMenu";
 import { StudyMoveList } from "./study-workspace/StudyMoveList";
 import { StudyNavBar } from "./study-workspace/StudyNavBar";
+import { StudyNewNoteDialog, type StudyNewNoteOptions } from "./study-workspace/StudyNewNoteDialog";
 import { StudyNotice } from "./study-workspace/StudyNotice";
 import { type StudyBandLine, StudyPositionBand } from "./study-workspace/StudyPositionBand";
 import { buildStudyReviewItems, StudyReviewList } from "./study-workspace/StudyReviewList";
@@ -105,6 +106,7 @@ import {
     type StudyKifuFormat,
     studyKifuFileName,
 } from "./study-workspace/studyFile";
+import type { StudyKifuSource } from "./study-workspace/studyImport";
 import {
     deriveStudyPositionInsights,
     pickStudyBandResult,
@@ -215,6 +217,16 @@ interface StudyWorkspaceCommonProps {
     readOnly?: boolean;
     shareDialog?: { open: boolean; onOpen: () => void };
     /**
+     * 「新しいノート」（いまのノートから写す・棋譜を読む）。渡さなければ出さない。
+     * どちらも、作ったノートを開くところまで呼び出し側が行い、失敗時は例外を投げる。
+     */
+    newNote?: {
+        onCreateFromNote: (doc: StudyDocument, options: StudyNewNoteOptions) => Promise<void>;
+        onImport: (source: StudyKifuSource, options: StudyNewNoteOptions) => Promise<void>;
+        /** 作ったノートがどこに保存されるかの説明。 */
+        storageNote?: string;
+    };
+    /**
      * 最初に入れておくコメントの下書き（前回、保存できないまま残っていた入力）。手ごとに 1 つ。
      * その手を開いたときにコメント欄へ戻す。
      */
@@ -289,6 +301,7 @@ export function StudyWorkspaceView({
     locked = false,
     readOnly = false,
     shareDialog,
+    newNote,
     initialCommentDrafts,
     onCommentDraftChange,
     commentBaseConfirmed = true,
@@ -337,6 +350,8 @@ export function StudyWorkspaceView({
     // スマートフォンの「メニュー」を開いている間は、矢印キーで局面を動かさない（コピー・対局に渡す局面が、
     // メニューの中でのキー操作で変わってしまうため）。
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const [isNewNoteOpen, setIsNewNoteOpen] = useState(false);
+    const mobileMenuTriggerId = useId();
     // 開いたままスマートフォンの幅を離れると、メニューは閉じる知らせを出さずに外れる。
     useEffect(() => {
         if (!isMobile) setIsMobileMenuOpen(false);
@@ -438,6 +453,7 @@ export function StudyWorkspaceView({
             isTitleDialogOpen ||
             shareDialog?.open === true ||
             isMobileMenuOpen ||
+            isNewNoteOpen ||
             isTreeOpen,
         containerRef: boardSectionRef,
         enableWheelNavigation: displaySettings.enableWheelNavigation,
@@ -645,6 +661,7 @@ export function StudyWorkspaceView({
         if (!locked) return;
         setIsSettingsOpen(false);
         setIsTitleDialogOpen(false);
+        setIsNewNoteOpen(false);
         setDeleteTargetId(null);
     }, [locked, setIsTitleDialogOpen]);
     const settingsOpen = isSettingsOpen && !editingDisabled;
@@ -1505,12 +1522,17 @@ export function StudyWorkspaceView({
         : undefined;
     const passFromCurrent = editingDisabled ? undefined : () => void editing.passFromCurrent();
     const openShare = shareDialog && !readOnly ? shareDialog.onOpen : undefined;
+    // ログインが切れている間は出さない（持ち主を確かめられないノートを、このあとログインする別の
+    // アカウントのノートとして写させない）。
+    const openNewNote = newNote && !locked ? () => setIsNewNoteOpen(true) : undefined;
     const mobileMenu = (
         <StudyMobileMenu
             onOpenChange={setIsMobileMenuOpen}
+            triggerId={mobileMenuTriggerId}
             // スマートフォンでは出典・保存先の行と、表題・解析の設定・盤の反転を画面に出さず、ここに置く。
             info={metaRow}
             noteItems={[
+                ...(openNewNote ? [{ label: "新しいノート", run: openNewNote }] : []),
                 ...(openShare ? [{ label: "公開設定・共有リンク", run: openShare }] : []),
                 ...(!editingDisabled
                     ? [
@@ -1587,6 +1609,7 @@ export function StudyWorkspaceView({
                         readOnly={readOnly}
                         onCommitTitle={commitTitle}
                         onOpenShare={openShare}
+                        onOpenNewNote={openNewNote}
                         settingsLabel={analysis.settingsLabel}
                         onOpenSettings={() => setIsSettingsOpen(true)}
                         metaRow={metaRow}
@@ -1735,6 +1758,21 @@ export function StudyWorkspaceView({
             </div>
 
             <StudyNotice message={message} onDismiss={() => onMessageChange(null)} />
+
+            {newNote && !locked && (
+                <StudyNewNoteDialog
+                    open={isNewNoteOpen}
+                    onOpenChange={setIsNewNoteOpen}
+                    doc={doc}
+                    nodeId={currentNodeId}
+                    line={line}
+                    positionTitle={moveTitle}
+                    onCreateFromNote={newNote.onCreateFromNote}
+                    onImport={newNote.onImport}
+                    storageNote={newNote.storageNote}
+                    fallbackFocusId={isMobile ? mobileMenuTriggerId : undefined}
+                />
+            )}
 
             <StudyTitleDialog
                 open={isTitleDialogOpen && !editingDisabled}

@@ -30,7 +30,7 @@ import {
     studyPlayersLabel,
 } from "@shogi/ui/components/study-workspace/studyView";
 import type { ReactElement } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getDesktopStudySync } from "../../studies/desktopStudySync";
 
 interface Props {
@@ -79,10 +79,39 @@ export function StudiesView({
         };
     }, [sync]);
 
+    // 棋譜のファイルを読み始めてから保存し終えるまでは、ほかの作り方（平手から）を断る
+    // （両方が保存され、終わった順に開くノートが切り替わらないように）。
+    const busyRef = useRef(false);
+    const mountedRef = useRef(true);
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => {
+            mountedRef.current = false;
+        };
+    }, []);
+    const [isCreating, setIsCreating] = useState(false);
     const handleImport = async (source: StudyKifuSource): Promise<void> => {
-        const { studyId } = await createStudyFromKifuSource(source, { sync });
-        onOpenStudy(studyId);
+        if (busyRef.current)
+            throw new Error("ほかの棋譜を取り込んでいます。終わってからお試しください。");
+        busyRef.current = true;
+        setIsCreating(true);
+        try {
+            const { studyId } = await createStudyFromKifuSource(source, { sync });
+            // 保存を待つ間に一覧から別の画面へ移っていたら、そこから動かさない。
+            if (mountedRef.current) onOpenStudy(studyId);
+        } finally {
+            busyRef.current = false;
+            setIsCreating(false);
+        }
     };
+    // フォームはファイルを読み始めた時点から取り込み中になる（保存はまだ始まっていない）。
+    const formBusyRef = useRef(false);
+    const startFromHirate = (source: StudyKifuSource): Promise<void> =>
+        formBusyRef.current
+            ? Promise.reject(
+                  new Error("棋譜のファイルを読んでいます。読み終えてからお試しください。"),
+              )
+            : handleImport(source);
 
     const confirmDelete = (): void => {
         const target = deleteTarget;
@@ -113,7 +142,7 @@ export function StudiesView({
                     平手の開始局面から、盤で手を指して変化を研究できます。指した局面は AI
                     の読みと一緒に保存されます。
                 </p>
-                <StudyStartFromHirateButton onImport={handleImport} className="sm:self-start" />
+                <StudyStartFromHirateButton onImport={startFromHirate} className="sm:self-start" />
             </section>
 
             <section className={cn(cardVariants(), "flex flex-col gap-3 p-4")}>
@@ -125,6 +154,11 @@ export function StudiesView({
                 </p>
                 <StudyImportForm
                     onImport={handleImport}
+                    busy={isCreating}
+                    onBusyChange={(busy) => {
+                        formBusyRef.current = busy;
+                    }}
+                    sideBySide
                     storageNote="読んだ棋譜は、この端末の中で研究ノートになります。"
                 />
             </section>

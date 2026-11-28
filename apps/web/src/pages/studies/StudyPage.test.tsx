@@ -185,6 +185,8 @@ describe("StudyPage", () => {
             expect(workspaceProps?.readOnly).toBe(true);
             expect(workspaceProps?.onViewChange).toBeUndefined();
             expect(workspaceProps?.shareDialog).toBeUndefined();
+            // 閲覧のみのノートからも、新しいノートを作れる。
+            expect(workspaceProps?.newNote).toBeDefined();
             expect(await workspaceProps?.onApplyOps([{ type: "setTitle", value: "変更" }])).toBe(
                 false,
             );
@@ -246,6 +248,7 @@ describe("StudyPage", () => {
             expect(workspaceProps?.doc).toEqual(doc);
             expect(workspaceProps?.readOnly).not.toBe(true);
             expect(workspaceProps?.shareDialog).toBeDefined();
+            expect(workspaceProps?.newNote).toBeDefined();
             expect(getPublic).not.toHaveBeenCalled();
         },
     );

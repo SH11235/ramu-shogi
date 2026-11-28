@@ -17,6 +17,10 @@ import type {
 } from "@shogi/ui";
 import { NnueLibraryDialog, StudyWorkspace } from "@shogi/ui";
 import { Button } from "@shogi/ui/components/button";
+import {
+    createStudyFromDocument,
+    createStudyFromKifuSource,
+} from "@shogi/ui/components/study-workspace/studyEntry";
 import type { ReactElement } from "react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { desktopSpeedSupport } from "../../platform/engineClient";
@@ -29,6 +33,8 @@ interface Props {
     engineOptions: EngineOption[];
     onBackToList: () => void;
     onBackToLocal: () => void;
+    /** 作った研究ノートを開く（「新しいノート」）。 */
+    onOpenStudy: (studyId: string) => void;
     /** 「この局面から対局」。いま見ている局面を、ローカル対局へ引き継ぐ。 */
     onPlayFromPosition: (position: PlayFromPosition) => void;
     /** 同期エンジンの差し替え（テスト用）。省略時はアプリのもの。 */
@@ -83,12 +89,24 @@ export function StudyView({
     engineOptions,
     onBackToList,
     onBackToLocal,
+    onOpenStudy,
     onPlayFromPosition,
     sync = getDesktopStudySync(),
 }: Props): ReactElement {
     const [state, setState] = useState<LoadState>({ status: "loading" });
     const [notice, setNotice] = useState<{ id: number; text: string; type: "error" } | null>(null);
     const [isNnueLibraryOpen, setIsNnueLibraryOpen] = useState(false);
+    // 作り終えたときに、作り始めたノートをまだ開いていれば、新しいノートへ移る。
+    const shownStudyRef = useRef<string | null>(studyId);
+    useEffect(() => {
+        shownStudyRef.current = studyId;
+        return () => {
+            shownStudyRef.current = null;
+        };
+    }, [studyId]);
+    const openCreated = (startedFrom: string, created: string, shouldOpen: () => boolean): void => {
+        if (shownStudyRef.current === startedFrom && shouldOpen()) onOpenStudy(created);
+    };
     const saveStatus = useSyncExternalStore(
         (listener) => sync.subscribeStatus(studyId, listener),
         () => sync.getStatus(studyId),
@@ -281,6 +299,24 @@ export function StudyView({
                         saveStatus={saveStatus}
                         onRetrySave={() => void sync.retry(studyId).catch(() => undefined)}
                         onPlayFromPosition={onPlayFromPosition}
+                        newNote={{
+                            onCreateFromNote: async (doc, { shouldOpen }) => {
+                                const startedFrom = studyId;
+                                const { studyId: created } = await createStudyFromDocument(doc, {
+                                    sync,
+                                });
+                                openCreated(startedFrom, created, shouldOpen);
+                            },
+                            onImport: async (source, { shouldOpen }) => {
+                                const startedFrom = studyId;
+                                const { studyId: created } = await createStudyFromKifuSource(
+                                    source,
+                                    { sync, shouldCreate: shouldOpen },
+                                );
+                                openCreated(startedFrom, created, shouldOpen);
+                            },
+                            storageNote: "読んだ棋譜は、この端末の中で研究ノートになります。",
+                        }}
                         // 保存先はこの端末だけ（ログインの仕組みが無い）。
                         localOnly
                         fetchLegalMoves={(sfen, moves, options) =>
