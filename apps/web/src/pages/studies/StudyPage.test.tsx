@@ -53,7 +53,10 @@ vi.mock("../../components/HeaderNav", () => ({
 vi.mock("../../components/PageHeader", () => ({
     PageHeader: ({ right }: { right?: ReactNode }) => <>{right}</>,
 }));
-vi.mock("../../platform/wasm-engine-client", () => ({ createWebWasmEngineClient: vi.fn() }));
+vi.mock("../../platform/wasm-engine-client", () => ({
+    createWebWasmEngineClient: vi.fn(),
+    getWebWasmMaxThreads: () => 4,
+}));
 // `lib/studySync`（セッションの伝達・引き継ぎ）は本物を使い、その下の同期エンジンだけを差し替える。
 vi.mock("@shogi/study-client", async (importOriginal) => ({
     ...(await importOriginal<typeof import("@shogi/study-client")>()),

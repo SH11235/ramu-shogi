@@ -84,7 +84,9 @@ describe("StudyAnalysisSettings", () => {
         renderSettings({ form });
         const full = screen.getByRole("region", { name: "全体の解析" });
         expect(
-            within(full).getByText(/2 局面 × 3 スレッドで、合わせて 6 スレッドを使います/),
+            within(full).getByText(
+                /同時に 2 局面 × 3 スレッドで、多いときは合わせて 6 スレッドを使います/,
+            ),
         ).toBeTruthy();
     });
 });

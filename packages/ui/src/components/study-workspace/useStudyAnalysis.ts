@@ -39,6 +39,7 @@ import {
     DEFAULT_ANALYSIS_SETTINGS,
     type EngineOption,
     type Message,
+    normalizeAnalysisSettings,
 } from "../shogi-match/types";
 import { sidesWithoutKing } from "../shogi-match/utils/boardUtils";
 import { collectTreeAnalysisJobs } from "../shogi-match/utils/branchTreeUtils";
@@ -266,15 +267,7 @@ export function useStudyAnalysis({
         "shogi-analysis-settings",
         DEFAULT_ANALYSIS_SETTINGS,
     );
-    const stored: Partial<AnalysisSettings> = storedSettings;
-    const settings: AnalysisSettings = {
-        ...DEFAULT_ANALYSIS_SETTINGS,
-        ...stored,
-        // 候補手の数を全体の解析と分ける前の設定では、1 局面の読みは max(候補手の数, 3) 本読んでいた。
-        deepMultiPv:
-            stored.deepMultiPv ??
-            Math.max(stored.multiPv ?? 1, DEFAULT_ANALYSIS_SETTINGS.deepMultiPv),
-    };
+    const settings = normalizeAnalysisSettings(storedSettings);
     const [analysisEngineId, setAnalysisEngineId] = useLocalStorage<string>(
         "shogi-analysis-engine",
         engineOptions[0]?.id ?? "wasm",

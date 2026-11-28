@@ -246,9 +246,12 @@ export function useStudyMate({
         return { client, run };
     };
 
-    /** 通常の探索の置換表は使わないので最小にして起動し、詰み探索を使えるか確かめる。 */
+    /**
+     * 通常の探索の置換表は使わないので最小にして起動し、詰み探索を使えるか確かめる。スレッド数は起動時にも
+     * 渡す（Web のエンジンは、起動時のスレッド数より多くは詰み探索に使わない）。
+     */
     const initClient = async (client: EngineClient, checkCurrent: () => void): Promise<void> => {
-        await client.init({ ttSizeMb: 1 });
+        await client.init({ ttSizeMb: 1, threads });
         checkCurrent();
         if (!client.mate?.available()) {
             throw new StudyMateUnavailable("このエンジンでは詰み探索を使えません");

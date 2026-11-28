@@ -347,7 +347,7 @@ function SettingsBody({
                 </label>
                 {showParallel && (
                     <p className="text-xs text-muted-foreground">
-                        {workers} 局面 × {batchThreads} スレッドで、合わせて{" "}
+                        同時に {workers} 局面 × {batchThreads} スレッドで、多いときは合わせて{" "}
                         {workers * batchThreads} スレッドを使います。
                     </p>
                 )}
