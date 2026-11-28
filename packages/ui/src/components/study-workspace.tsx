@@ -135,6 +135,7 @@ import {
     studyStructureKey,
 } from "./study-workspace/studyView";
 import {
+    hasStudyLiveStarted,
     isStudyAutoReadLayer,
     type StudyAnalysisController,
     type StudyApplyOpsOptions,
@@ -1426,17 +1427,16 @@ export function StudyWorkspaceView({
                     analysis.isPreparing)));
     // 読んでいる間（読み始めるのを待つ間も）に、前に深く読んだ記録のほうが深ければ、それも出す
     // （今の読みが超えるまで）。
-    // 深さの無い記録もあるので、今の読みの深さがまだ無ければ深さを比べずに出す。
-    const liveDepth = liveHere?.preview?.depth ?? liveHere?.depth ?? null;
+    // 途中の候補がまだ無い（出せない AI も含む）間は、深さを比べずに出す（深さの無い記録もある）。
+    const previewDepth = liveHere?.preview?.depth ?? null;
     const recordAhead =
         (liveHere || bandShowsReading) &&
         recordResult &&
-        (liveDepth === null || recordResult.depth > liveDepth)
+        (previewDepth === null || recordResult.depth > previewDepth)
             ? recordResult
             : null;
     // 最初の読み（途中の値か、深さ）がまだ届いていない。AI の読み込み・エンジンの起動を待っている。
-    const awaitingFirstReading =
-        liveHere === undefined || (liveHere.preview === null && liveHere.depth === null);
+    const awaitingFirstReading = liveHere === undefined || !hasStudyLiveStarted(liveHere);
     const candidatesPanel = (
         <StudyCandidatesPanel
             node={currentNode}

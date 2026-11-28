@@ -30,7 +30,11 @@ import {
     studyFirstMoveLabel,
     studyScoreSide,
 } from "./studyView";
-import { isStudyAutoReadLayer, type StudyLiveSearch } from "./useStudyAnalysis";
+import {
+    hasStudyLiveStarted,
+    isStudyAutoReadLayer,
+    type StudyLiveSearch,
+} from "./useStudyAnalysis";
 
 /** 自動で読むで、続きから読めずに読み終えたときの知らせ。 */
 export const STUDY_AUTO_ANALYZE_FINISHED = "この局面は読み終えました。局面を移ると読みます";
@@ -690,8 +694,8 @@ export function StudyCandidatesPanel({
                         )}
                     </div>
                     {recordAhead && <RecordLine node={node} result={recordAhead} />}
-                    {/* エンジンの起動中など、最初の読みが届くまで（途中の候補を出せない AI は、深さだけ届く）。 */}
-                    {!live.preview && live.depth === null && (
+                    {/* エンジンの起動中など、最初の途中経過が届くまで。 */}
+                    {!hasStudyLiveStarted(live) && (
                         <p className="px-1 text-sm text-muted-foreground">{PREPARING_TEXT}</p>
                     )}
                     {live.preview && (
