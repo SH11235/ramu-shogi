@@ -6,7 +6,7 @@ import type {
     StudySource,
 } from "@shogi/app-core";
 import { cn } from "@shogi/design-system";
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { useEffect, useId, useState } from "react";
 import { Button } from "../button";
 import { cardVariants } from "../card";
@@ -21,11 +21,6 @@ import {
     studyMateProgressText,
     studyShortestProgressText,
 } from "./StudyMateSection";
-import {
-    STUDY_READ_MODE_STATUS,
-    type StudyReadMode,
-    StudyReadModeGroup,
-} from "./StudyReadModeGroup";
 import {
     formatStudyScore,
     type StudyPositionResult,
@@ -114,8 +109,6 @@ interface StudyCandidatesPanelProps {
         onChange: (enabled: boolean) => void;
         reading: string | null;
     };
-    /** 読み方のグループを欄の外（局面の帯の下）に置くので、ここには出さない。 */
-    autoSwitchElsewhere?: boolean;
     /** 盤の矢印（上から `count` 個の候補）。渡さなければスイッチも見本の矢印も出さない。 */
     arrows?: {
         enabled: boolean;
@@ -123,25 +116,15 @@ interface StudyCandidatesPanelProps {
         onChange: (enabled: boolean) => void;
     };
     /**
-     * 読んでいる間、前に深く読んだ記録のほうが今の読みより深ければ、その結果（今の読みの見出しの下に
-     * 1 行で添える）。帯に記録を出すスマートフォンでは渡さない。
-     */
-    recordAhead?: StudyAnalysisResult | null;
-    /**
      * 「読む」がこの局面を読み始めるところ（前の局面の読みを止めている間など）。局面の帯と同じく、
      * まだ解析していないとは出さない。
      */
     readingSoon?: boolean;
     /**
-     * 読み方（読む・パス・詰み・停止）のグループ。渡さなければ出さない（編集できないとき）。
-     * `running` は、選んでいる読み方でこの局面を読んでいる（ラムを走らせる）か。
+     * 欄のいちばん上に置く、局面の帯と読み方のグループ（PC）。スマートフォンは局面の移動の下に置くので
+     * 渡さない。
      */
-    readMode?: {
-        mode: StudyReadMode;
-        onChange: (mode: StudyReadMode) => void;
-        running: boolean;
-        disabled: Partial<Record<StudyReadMode, boolean>>;
-    };
+    band?: ReactNode;
     onCancel: () => void;
     onPreviewPv: (request: StudyPvRequest) => void;
     onAddPvAsVariation?: (request: StudyPvRequest) => void;
@@ -475,26 +458,6 @@ function ShallowResultLine({
     );
 }
 
-/** 読んでいる間に添える、前に深く読んだ記録（今の読みより深いときだけ）。帯の下の段と同じ中身。 */
-function RecordLine({
-    node,
-    result,
-}: {
-    node: KifuNode;
-    result: StudyAnalysisResult;
-}): ReactElement | null {
-    const best = studyBestCandidate(result);
-    if (!best) return null;
-    return (
-        <p className="flex flex-wrap items-baseline gap-x-1.5 px-1 text-xs text-muted-foreground">
-            <span>記録</span>
-            <span className="text-wafuu-sumi">{studyFirstMoveLabel(node, best.pv)}</span>
-            <span className="font-mono tabular-nums">{formatStudyScore(best.score)}</span>
-            <span className="tabular-nums">深さ {result.depth}</span>
-        </p>
-    );
-}
-
 export function StudyCandidatesPanel({
     node,
     positionResult,
@@ -504,11 +467,9 @@ export function StudyCandidatesPanel({
     isPreparing,
     live,
     autoAnalyze,
-    autoSwitchElsewhere = false,
     arrows,
-    recordAhead = null,
     readingSoon = false,
-    readMode,
+    band,
     onCancel,
     onPreviewPv,
     onAddPvAsVariation,
@@ -517,10 +478,8 @@ export function StudyCandidatesPanel({
     controlsLast = false,
     className,
 }: StudyCandidatesPanelProps): ReactElement {
-    const readModeStatusId = useId();
     const arrowSwitchId = useId();
     const autoOn = autoAnalyze?.enabled ?? false;
-    const autoFinished = autoAnalyze?.reading === STUDY_AUTO_ANALYZE_FINISHED;
     const isDeepHere = live !== undefined;
     /**
      * 「読む」を入れてから、この局面の読みが始まるまで（AI の読み込みなど）。止まって見えないよう、
@@ -556,48 +515,20 @@ export function StudyCandidatesPanel({
                 />
             </div>
         );
-    /** 読み方のグループの下の行。高さを固定し、読み方を選び直しても文言が変わるだけにする。 */
-    const showsReadModeHere = readMode !== undefined && !autoSwitchElsewhere;
-    const readModeStatus =
-        readMode === undefined
-            ? ""
-            : autoFinished
-              ? STUDY_AUTO_ANALYZE_FINISHED
-              : STUDY_READ_MODE_STATUS[readMode.mode];
-    // 矢印のスイッチは、読み方のグループがあればその下の行に、無ければ（スマートフォン・編集できないとき）
-    // 候補手の上に 1 行で置く。
-    const arrowSwitch = !showsReadModeHere && arrowToggle && shownCandidates.length > 0 && (
-        <div className="flex justify-end px-1">{arrowToggle("矢印を表示")}</div>
+    /**
+     * 結果の見出しの 1 行（深さ・秒・局面数など）。盤の矢印のスイッチを右端に置く（見出しの文が長ければ
+     * 折り返し、スイッチは押しやすい大きさのまま）。
+     */
+    const resultHeader = (meta: ReactNode, action?: ReactNode) => (
+        <div className="flex min-h-7 items-center gap-2 px-1">
+            <div className="min-w-0 flex-1 text-xs text-muted-foreground">{meta}</div>
+            {action}
+            {shownCandidates.length > 0 && arrowToggle("矢印")}
+        </div>
     );
 
     const controls = (
         <>
-            {showsReadModeHere && readMode && (
-                <div className="flex flex-col gap-1.5">
-                    <StudyReadModeGroup
-                        mode={readMode.mode}
-                        onChange={readMode.onChange}
-                        running={readMode.running}
-                        disabled={readMode.disabled}
-                        describedBy={readModeStatusId}
-                    />
-                    <div className="flex h-6 items-center justify-between gap-2 px-1">
-                        <p
-                            id={readModeStatusId}
-                            className="min-w-0 truncate text-xs text-muted-foreground"
-                            title={readModeStatus}
-                        >
-                            {readModeStatus}
-                            {/* 読んでいる局面と深さは「今の読み」に出ているので、画面読み上げ向けにだけ添える。 */}
-                            {!autoFinished && autoAnalyze?.reading && (
-                                <span className="sr-only"> {autoAnalyze.reading}</span>
-                            )}
-                        </p>
-                        {/* 状態の文を削らないよう、名前は短くする（読み上げは「矢印を表示」）。 */}
-                        {arrowToggle("矢印")}
-                    </div>
-                </div>
-            )}
             {elsewhere && <ElsewhereActivityLine activity={elsewhere} />}
 
             {/* 詰み探索の結果は押したボタンの真下に出す（候補手が多い局面でも、列を送らずに見えるように）。 */}
@@ -625,23 +556,16 @@ export function StudyCandidatesPanel({
         >
             {/* 欄の名前は見出しとして画面に出さない（PC は欄の並び、スマートフォンはタブで分かる）。 */}
             <h2 className="sr-only">候補手</h2>
-            {/* スイッチを帯に置くときは、読み終えたことをここに出す（帯には入り切らない）。 */}
-            {autoSwitchElsewhere && autoFinished && (
-                <p className="px-1 text-xs text-muted-foreground">{STUDY_AUTO_ANALYZE_FINISHED}</p>
-            )}
+            {band}
             {!controlsLast && controls}
-            {arrowSwitch}
             {/* 読んでいる途中の候補。満足したら「止める」で、その時点の結果を残せる。 */}
             {live && (
                 <div className="flex flex-col gap-1 rounded-lg bg-wafuu-washi px-2 py-2">
-                    {/* 読む・パスの間はラムを読み方のグループに出す（同じ読みに 2 匹
-                        動かさない）。 */}
-                    <div className="flex min-h-7 items-center gap-1.5 px-1">
-                        {!autoOn && !autoSwitchElsewhere && <RamRunningIcon />}
-                        {/* 深さ・秒数は 1 秒ごとに変わるので、読み上げの領域にはしない（読み続ける間ずっと
-                            読み上げられてしまう）。読んでいることは、ボタン・スイッチの状態で伝わる。 */}
-                        <p className="text-xs text-muted-foreground">
-                            <span className="font-medium text-wafuu-sumi">今の読み</span>
+                    {resultHeader(
+                        // 深さ・秒数は 1 秒ごとに変わるので、読み上げの領域にはしない（読み続ける間ずっと
+                        // 読み上げられてしまう）。今の読みであることは、帯で走るラムで分かる。
+                        <p>
+                            <span className="sr-only">今の読み</span>
                             {/* 「読む」間は局面を移るまで読み続けるので、残りの時間は無い。 */}
                             {!autoOn && (
                                 <span className="tabular-nums">
@@ -649,25 +573,22 @@ export function StudyCandidatesPanel({
                                 </span>
                             )}
                             {live.preview && (
-                                <span className="tabular-nums">
-                                    （{searchStats(live.preview)}）
-                                </span>
+                                <span className="tabular-nums">{searchStats(live.preview)}</span>
                             )}
-                        </p>
-                        {/* 読み方の「読む」でない読みは、ここで止める。読む・パスの間は「停止」で止める。 */}
-                        {!autoOn && (
+                        </p>,
+                        // 読み方の「読む」でない読みは、ここで止める。読む・パスの間は「停止」で止める。
+                        !autoOn && (
                             <Button
                                 type="button"
                                 variant="outline"
                                 size="sm"
-                                className={cn(COMPACT_BUTTON_CLASS, "ml-auto")}
+                                className={COMPACT_BUTTON_CLASS}
                                 onClick={onCancel}
                             >
                                 止める
                             </Button>
-                        )}
-                    </div>
-                    {recordAhead && <RecordLine node={node} result={recordAhead} />}
+                        ),
+                    )}
                     {/* エンジンの起動中など、最初の途中経過が届くまで。 */}
                     {!hasStudyLiveStarted(live) && (
                         <p className="px-1 text-sm text-muted-foreground">{PREPARING_TEXT}</p>
@@ -692,11 +613,10 @@ export function StudyCandidatesPanel({
 
             {autoPreparing && (
                 <div className="flex flex-col gap-1 rounded-lg bg-wafuu-washi px-2 py-2">
-                    <p className="flex min-h-7 items-center px-1 text-xs font-medium text-wafuu-sumi">
-                        今の読み
+                    <p className="flex min-h-7 items-center px-1 text-sm text-muted-foreground">
+                        <span className="sr-only">今の読み</span>
+                        {PREPARING_TEXT}
                     </p>
-                    <p className="px-1 text-sm text-muted-foreground">{PREPARING_TEXT}</p>
-                    {recordAhead && <RecordLine node={node} result={recordAhead} />}
                 </div>
             )}
 
@@ -705,15 +625,13 @@ export function StudyCandidatesPanel({
                 読んだ記録は、帯か今の読みの見出しの下に 1 行で出す）。 */}
             {!live && !autoPreparing && (
                 <div className="flex flex-col gap-1">
-                    {mainResult && (
-                        // 1 行に収まらないときは省略し、全文はマウスを載せると見られるようにする。
-                        <p
-                            className="truncate px-1 text-xs text-muted-foreground"
-                            title={mainNote ?? undefined}
-                        >
-                            {mainNote}
-                        </p>
-                    )}
+                    {mainResult &&
+                        resultHeader(
+                            // 1 行に収まらないときは省略し、全文はマウスを載せると見られるようにする。
+                            <p className="truncate" title={mainNote ?? undefined}>
+                                {mainNote}
+                            </p>,
+                        )}
                     {mainResult ? (
                         <ol className="flex flex-col">
                             {mainResult.result.candidates.map((candidate) => (

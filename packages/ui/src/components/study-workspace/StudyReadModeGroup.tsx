@@ -1,6 +1,5 @@
 import { cn } from "@shogi/design-system";
 import type { ReactElement } from "react";
-import { RamRunningIcon } from "../ram-running-icon";
 
 /**
  * 研究ノートの読み方。エンジンは一度に 1 つしか読めないので、どれか 1 つを選ぶ。
@@ -31,21 +30,18 @@ export const STUDY_READ_MODE_STATUS: Record<StudyReadMode, string> = {
 };
 
 /**
- * 読み方を選ぶ 4 つの枠。名前は枠の真ん中に置き、ラムは選んだ枠の左端に重ねる（並びの外に置くので、
- * 選び直しても名前が動かない）。読んでいる間はラムが走り、停止では止まったラムを出す。
+ * 読み方を選ぶ 4 つの枠。選んだ枠は塗りで示す。読んでいることは、局面の帯の左で走るラムで伝える
+ * （枠の中に置くと名前に重ならない大きさまで縮めることになり、見えない）。
  */
 export function StudyReadModeGroup({
     mode,
     onChange,
-    running,
     disabled = {},
     describedBy,
     className,
 }: {
     mode: StudyReadMode;
     onChange: (mode: StudyReadMode) => void;
-    /** 選んでいる読み方で、いま CPU を使っている（ラムを走らせる）。 */
-    running: boolean;
     /** 選べない読み方（全体の解析の途中のパス、詰み探索の無いエンジンの詰み など）。 */
     disabled?: Partial<Record<StudyReadMode, boolean>>;
     /** 選んでいる読み方の状態を書いた要素の id（画面読み上げ向け）。 */
@@ -76,7 +72,7 @@ export function StudyReadModeGroup({
                             if (!selected) onChange(option.mode);
                         }}
                         className={cn(
-                            "@container relative flex h-10 items-center justify-center whitespace-nowrap text-sm transition-colors",
+                            "flex h-10 items-center justify-center whitespace-nowrap text-sm transition-colors",
                             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                             "disabled:cursor-not-allowed disabled:opacity-40",
                             index > 0 && "border-l border-border",
@@ -85,14 +81,6 @@ export function StudyReadModeGroup({
                                 : "font-medium text-wafuu-sumi hover:bg-wafuu-washi-warm",
                         )}
                     >
-                        {selected && (
-                            <RamRunningIcon
-                                dotSize={1}
-                                running={running && option.mode !== "stop"}
-                                // 名前（2 文字）に重ならない大きさに縮める。1 枠が 64px 未満の狭い欄では、さらに縮める。
-                                className="absolute left-0.5 top-1/2 origin-left -translate-y-1/2 scale-[0.7] @max-[4rem]:left-0 @max-[4rem]:scale-[0.55]"
-                            />
-                        )}
                         {option.label}
                     </button>
                 );

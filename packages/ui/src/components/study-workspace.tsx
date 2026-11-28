@@ -85,7 +85,7 @@ import { StudyNewNoteDialog, type StudyNewNoteOptions } from "./study-workspace/
 import { StudyNotice } from "./study-workspace/StudyNotice";
 import { StudyPlayFromPositionDialog } from "./study-workspace/StudyPlayFromPositionDialog";
 import { type StudyBandLine, StudyPositionBand } from "./study-workspace/StudyPositionBand";
-import type { StudyReadMode } from "./study-workspace/StudyReadModeGroup";
+import { STUDY_READ_MODE_STATUS, type StudyReadMode } from "./study-workspace/StudyReadModeGroup";
 import { buildStudyReviewItems, StudyReviewList } from "./study-workspace/StudyReviewList";
 import {
     StudySaveIndicator,
@@ -1641,26 +1641,12 @@ export function StudyWorkspaceView({
                 (autoDecidedNodeId !== currentNodeId ||
                     analysis.mode === "deep" ||
                     analysis.isPreparing)));
-    // 読んでいる間（読み始めるのを待つ間も）に、前に深く読んだ記録のほうが深ければ、それも出す
-    // （今の読みが超えるまで）。
-    // 途中の候補がまだ無い（出せない AI も含む）間は、深さを比べずに出す（深さの無い記録もある）。
-    const previewDepth = liveHere?.preview?.depth ?? null;
-    const recordAhead =
-        (liveHere || bandShowsReading) &&
-        recordResult &&
-        (previewDepth === null || recordResult.depth > previewDepth)
-            ? recordResult
-            : null;
     // 最初の読み（途中の値か、深さ）がまだ届いていない。AI の読み込み・エンジンの起動を待っている。
     const awaitingFirstReading = liveHere === undefined || !hasStudyLiveStarted(liveHere);
-    /** 読み方のグループに渡す内容。ラムは、選んでいる読み方でこの局面を読んでいる間だけ走らせる。 */
+    /** 読み方のグループに渡す内容。 */
     const readModeProps = {
         mode: readMode,
         onChange: selectReadMode,
-        running:
-            readMode === "mate"
-                ? mate?.runningNodeId === currentNodeId
-                : readMode !== "stop" && (bandShowsReading || liveHere !== undefined),
         disabled: {
             // パス・詰みは、準備中・全体の解析の途中には選べない（読むを選ぶと全体の解析を止める）。
             pass: readMode !== "pass" && (analysis.isPreparing || analysis.mode === "full"),
@@ -1669,6 +1655,35 @@ export function StudyWorkspaceView({
                 (readMode !== "mate" && (analysis.isPreparing || analysis.mode === "full")),
         },
     };
+    // 局面の帯と読み方のグループ。PC は候補手の欄のいちばん上、スマートフォンは局面の移動の下に置く。
+    const positionBand = (
+        <StudyPositionBand
+            live={bandLineOf(
+                liveHere?.preview ?? null,
+                liveLayer !== undefined && isOtherAi(liveLayer),
+            )}
+            record={bandLineOf(
+                savedPicked?.result ?? null,
+                savedPicked !== null && isOtherAi(savedPicked.layer),
+            )}
+            onPlayRecord={playRecordPv}
+            reading={bandShowsReading || liveHere !== undefined}
+            notice={autoReading === STUDY_AUTO_ANALYZE_FINISHED ? autoReading : null}
+            awaitingFirstReading={awaitingFirstReading}
+            readMode={
+                editingDisabled
+                    ? undefined
+                    : {
+                          ...readModeProps,
+                          // 読み終えた知らせは帯に見える形で出すので、読み上げ向けには重ねない。
+                          status:
+                              autoReading === STUDY_AUTO_ANALYZE_FINISHED
+                                  ? null
+                                  : (autoReading ?? STUDY_READ_MODE_STATUS[readMode]),
+                      }
+            }
+        />
+    );
     const candidatesPanel = (
         <StudyCandidatesPanel
             node={currentNode}
@@ -1683,8 +1698,6 @@ export function StudyWorkspaceView({
                     ? undefined
                     : { enabled: autoAnalyze, onChange: changeAutoAnalyze, reading: autoReading }
             }
-            // スマートフォンではスイッチを局面の帯に置く（どの表示からでも止められるように）。
-            autoSwitchElsewhere={isMobile}
             arrows={{
                 enabled: displaySettings.showCandidateArrows,
                 count: displaySettings.candidateArrowCount,
@@ -1695,11 +1708,9 @@ export function StudyWorkspaceView({
                         showCandidateArrows: enabled,
                     })),
             }}
-            // スマートフォンは帯に記録を出すので、ここには添えない。
-            recordAhead={isMobile ? null : recordAhead}
             readingSoon={bandShowsReading && liveHere === undefined}
             controlsLast={isMobile}
-            readMode={editingDisabled ? undefined : readModeProps}
+            band={isMobile ? undefined : positionBand}
             onCancel={cancelAnalysis}
             onPreviewPv={previewPv}
             onAddPvAsVariation={readOnly ? undefined : editing.addPvAsVariation}
@@ -1951,28 +1962,7 @@ export function StudyWorkspaceView({
                             showsComment={showsComment}
                             // 変化に入ったあと、どの表示からでも本譜へ戻れるようにする。
                             onBackToMainLine={nav.onMainLine ? null : nav.backToMainLine}
-                            positionBand={
-                                <StudyPositionBand
-                                    live={bandLineOf(
-                                        liveHere?.preview ?? null,
-                                        liveLayer !== undefined && isOtherAi(liveLayer),
-                                    )}
-                                    record={bandLineOf(
-                                        savedPicked?.result ?? null,
-                                        savedPicked !== null && isOtherAi(savedPicked.layer),
-                                    )}
-                                    onPlayRecord={playRecordPv}
-                                    // パスして解析の読みも今の読みとして出すが、ラムは「読む」の読みだけ。
-                                    reading={bandShowsReading || liveHere !== undefined}
-                                    awaitingFirstReading={awaitingFirstReading}
-                                    showRam={bandShowsReading}
-                                    readMode={
-                                        editingDisabled
-                                            ? undefined
-                                            : { ...readModeProps, status: autoReading }
-                                    }
-                                />
-                            }
+                            positionBand={positionBand}
                             graphPanel={graphPanel}
                             reviewList={
                                 <StudyReviewList
