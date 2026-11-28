@@ -9,6 +9,7 @@ import type {
     EngineClient,
     EngineEventHandler,
     EngineInfoEvent,
+    SearchLimits,
 } from "@shogi/engine-client";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { useState } from "react";
@@ -83,6 +84,41 @@ function createEngineOption(
         searches: () => searches,
         clients: () => clients,
         initThreads: () => initThreads,
+    };
+}
+
+/** 続きから読めず、`emit` で流した info だけを返し、止められるまで bestmove を返さないエンジン。 */
+function createManualEngineOption(): {
+    option: EngineOption;
+    emit: (info: Omit<EngineInfoEvent, "type">) => void;
+    /** 探索ごとに渡された条件。 */
+    limits: () => Array<SearchLimits | undefined>;
+    searches: () => number;
+} {
+    const listeners = new Set<EngineEventHandler>();
+    const limits: Array<SearchLimits | undefined> = [];
+    const createClient = (): EngineClient => ({
+        init: vi.fn().mockResolvedValue(undefined),
+        loadPosition: vi.fn().mockResolvedValue(undefined),
+        setOption: vi.fn().mockResolvedValue(undefined),
+        stop: vi.fn().mockResolvedValue(undefined),
+        dispose: vi.fn().mockResolvedValue(undefined),
+        subscribe(handler) {
+            listeners.add(handler);
+            return () => listeners.delete(handler);
+        },
+        async search(params) {
+            limits.push(params.limits);
+            return { async cancel() {} };
+        },
+    });
+    return {
+        option: { id: "wasm", label: "内蔵エンジン", createClient, kind: "internal" },
+        emit: (info) => {
+            for (const listener of listeners) listener({ type: "info", ...info });
+        },
+        limits: () => limits,
+        searches: () => limits.length,
     };
 }
 
@@ -434,6 +470,90 @@ describe("useStudyAnalysis", () => {
         await waitFor(() => expect(result.current.controller.live?.depth).toBe(12));
         act(() => emit({ scoreCp: 90, multipv: 1, pv: ["7g7f"] }));
         expect(result.current.controller.live?.depth).toBe(12);
+    });
+
+    it("続きから読めないエンジンでは、止めるまで読み続け、途中の候補を出して数秒ごとに残す", async () => {
+        const { doc, ids } = createTestStudy();
+        const engine = createManualEngineOption();
+        const saves: Array<StudyApplyOpsOptions | undefined> = [];
+        let now = 1_000_000;
+        const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+        try {
+            const { result } = renderHook(() =>
+                useHarness(doc, [engine.option], {
+                    onOps: (ops, applyOptions) => {
+                        if (ops.some((op) => op.type === "putAnalysis")) saves.push(applyOptions);
+                    },
+                }),
+            );
+            await act(async () => {
+                await result.current.controller.startDeep(ids[2]);
+            });
+            await waitFor(() => expect(engine.limits()).toHaveLength(1));
+            const limits = engine.limits()[0];
+            expect(limits?.maxDepth).toBe(64);
+            expect(limits?.movetimeMs).toBeGreaterThanOrEqual(60 * 60 * 1000);
+            const live = () => result.current.controller.live as StudyLiveSearch;
+            expect(live().budgetMs).toBeNull();
+            const saved = () => result.current.doc.layers[0]?.results[ids[2]];
+
+            // 最初の候補は待たずに出す。保存は 3 秒たつまで待つ。
+            act(() => engine.emit({ depth: 5, scoreCp: 40, multipv: 1, pv: ["7g7f"] }));
+            await waitFor(() => expect(live().preview?.candidates[0].pv).toEqual(["7g7f"]));
+            expect(saved()).toBeUndefined();
+
+            now += 3_000;
+            act(() => engine.emit({ depth: 8, scoreCp: 60, multipv: 1, pv: ["2g2f"] }));
+            await waitFor(() => expect(saved()?.depth).toBe(8));
+            expect(saved()?.completion).toBe("aborted");
+            expect(saves).toEqual([{ syncDelayMs: 30_000 }]);
+            expect(result.current.startedLayers).toEqual([
+                `deep:${result.current.doc.layers[0].id}:${ids[2]}`,
+            ]);
+
+            // 区切りの時間を過ぎても読み終えない。止めた結果は、区切りまで読んだので「済んだ」になる。
+            now += STUDY_DEEP_TIME_MS;
+            act(() =>
+                engine.emit({ depth: 14, scoreCp: 90, multipv: 1, pv: ["2g2f"], timeMs: 33_000 }),
+            );
+            await waitFor(() => expect(saved()?.depth).toBe(14));
+            expect(result.current.controller.mode).toBe("deep");
+            await act(async () => {
+                await result.current.controller.cancel();
+            });
+            expect(saved()?.completion).toBe("completed");
+            expect(result.current.controller.mode).toBeNull();
+            expect(engine.searches()).toBe(1);
+        } finally {
+            clock.mockRestore();
+        }
+    });
+
+    it("続きから読めないエンジンで、区切りの時間より前に止めた読みは「途中まで」として残る", async () => {
+        const { doc, ids } = createTestStudy();
+        const engine = createManualEngineOption();
+        let now = 1_000_000;
+        const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+        try {
+            const { result } = renderHook(() => useHarness(doc, [engine.option]));
+            await act(async () => {
+                await result.current.controller.startDeep(ids[2]);
+            });
+            await waitFor(() => expect(engine.limits()).toHaveLength(1));
+            now += 5_000;
+            act(() =>
+                engine.emit({ depth: 9, scoreCp: 50, multipv: 1, pv: ["7g7f"], timeMs: 5_000 }),
+            );
+            await act(async () => {
+                await result.current.controller.cancel();
+            });
+            await waitFor(() =>
+                expect(result.current.doc.layers[0]?.results[ids[2]]?.depth).toBe(9),
+            );
+            expect(result.current.doc.layers[0].results[ids[2]].completion).toBe("aborted");
+        } finally {
+            clock.mockRestore();
+        }
     });
 
     it("この局面を深く解析すると、時間の長い別の設定の結果としてその局面だけに入る", async () => {

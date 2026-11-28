@@ -4,7 +4,7 @@
  * 再開できる解析（Web の wasm エンジンの協調停止）が使えるときは、止めても読みの状態（置換表・深さ）を
  * 残し、「続けて読む」でその続きから読む。止めるたび・上限に届くたびに、そこまでの結果を渡す。
  * 使えないとき（Desktop のネイティブエンジン、外部 USI エンジン、共有メモリの無いブラウザ）は
- * `start` が false を返すので、呼び出し側が 1 回だけの読みに切り替える。
+ * `start` が false を返すので、呼び出し側が、止めるまで読み続ける 1 回の探索に切り替える。
  */
 
 import type { InteractiveAnalysisState } from "@shogi/app-controller";
@@ -60,10 +60,10 @@ interface StudyDeepState {
  * 途中の候補を画面へ写す間隔。読みの情報は 1 秒に何度も届くので、そのたびに写すと候補が
  * 目まぐるしく入れ替わって読めない。
  */
-const PREVIEW_INTERVAL_MS = 500;
+export const PREVIEW_INTERVAL_MS = 500;
 
 /** 途中の結果を `onProgress` へ渡す間隔。読み始めの浅い結果で保存と同期を増やさない。 */
-const PROGRESS_INTERVAL_MS = 3_000;
+export const PROGRESS_INTERVAL_MS = 3_000;
 
 interface Options {
     createClient: (() => EngineClient) | null;
@@ -111,7 +111,8 @@ interface Session {
     stopping: boolean;
 }
 
-const progressKeyOf = (result: StudyAnalysisResult): string => {
+/** 途中の結果を渡し直すかを見分ける値（深さ・最善手・評価値）。 */
+export const progressKeyOf = (result: StudyAnalysisResult): string => {
     const best = result.candidates[0];
     return JSON.stringify([result.depth, best?.pv[0] ?? null, best?.score ?? null]);
 };
@@ -132,7 +133,7 @@ export function useStudyDeepSearch(options: Options): {
     } | null>(null);
     const sessionRef = useRef<Session | null>(null);
     const serialRef = useRef(0);
-    /** 再開できる解析が使えないと分かった（以後は呼び出し側の 1 回だけの読みにする）。 */
+    /** 再開できる解析が使えないと分かった（以後は呼び出し側の 1 回の探索にする）。 */
     const unsupportedRef = useRef(false);
 
     const onControllerState = useEffectEvent((controllerState: InteractiveAnalysisState) => {
