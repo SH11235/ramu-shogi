@@ -393,7 +393,7 @@ describe("useStudyAnalysis", () => {
         expect(engine.searches()).toBe(1);
     });
 
-    it("続きから読めないエンジンでは、深さの無い info でも読み始めたことにし、届いていた深さは残す", async () => {
+    it("続きから読めないエンジンでは、深さだけの info でも読み始めたことにし、深さの無い info では深さを残す", async () => {
         const { doc, ids } = createTestStudy();
         const listeners = new Set<EngineEventHandler>();
         const emit = (event: Omit<EngineInfoEvent, "type">): void => {
@@ -423,8 +423,10 @@ describe("useStudyAnalysis", () => {
         await waitFor(() => expect(result.current.controller.live?.nodeId).toBe(ids[2]));
         const live = () => result.current.controller.live as StudyLiveSearch;
         expect(hasStudyLiveStarted(live())).toBe(false);
-        act(() => emit({ scoreCp: 70, multipv: 1, pv: ["7g7f"] }));
-        await waitFor(() => expect(hasStudyLiveStarted(live())).toBe(true));
+        // 評価値を添えない、深さだけの行でも読み始めたことにする。
+        act(() => emit({ depth: 3 }));
+        await waitFor(() => expect(live().depth).toBe(3));
+        expect(hasStudyLiveStarted(live())).toBe(true);
         act(() => emit({ depth: 12, scoreCp: 80, multipv: 1, pv: ["7g7f"] }));
         await waitFor(() => expect(result.current.controller.live?.depth).toBe(12));
         act(() => emit({ scoreCp: 90, multipv: 1, pv: ["7g7f"] }));

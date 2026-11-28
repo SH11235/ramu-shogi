@@ -128,7 +128,7 @@ export interface StudyLiveSearch {
     preview: StudyAnalysisResult | null;
     /** 結果を保存する設定。最初の保存より前から、どの AI の読みかを見分けるのに使う。 */
     layer?: StudyLayerRef | null;
-    /** 評価値つきの途中経過が届いた（深さを添えない AI もあるので、深さとは別に持つ）。 */
+    /** 途中経過（info）が届いた（深さを添えない AI もあるので、深さとは別に持つ）。 */
     hasInfo?: boolean;
 }
 
@@ -419,7 +419,7 @@ export function useStudyAnalysis({
                 latestRef.current.onDeepResult(layer.layerId, runtimeNodeId);
             }
         },
-        onResult: (_ply: number, event: EngineInfoEvent, nodeId?: string) => {
+        onInfo: (_ply: number, event: EngineInfoEvent, nodeId?: string) => {
             if (!nodeId) return;
             setLive((previous) => {
                 if (!previous || previous.nodeId !== nodeId) return previous;
