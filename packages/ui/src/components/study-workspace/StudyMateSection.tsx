@@ -87,21 +87,6 @@ function formatMateSeconds(elapsedMs: number): string {
 /** 候補手の欄の操作のボタン。1 行に並べて候補手の場所を空けるため、小さめにする。 */
 export const COMPACT_BUTTON_CLASS = "h-8 gap-1 whitespace-nowrap px-2 text-xs";
 
-function StopButton({ onStop }: { onStop: () => void }): ReactElement {
-    return (
-        <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            aria-label="詰み探索を止める"
-            className={cn(COMPACT_BUTTON_CLASS, "w-full")}
-            onClick={onStop}
-        >
-            止める
-        </Button>
-    );
-}
-
 function MateLine({
     label,
     mover,
@@ -167,56 +152,6 @@ function MateLine({
                     <div className={RESULT_ACTIONS_CLASS}>{actions}</div>
                 </>
             )}
-        </div>
-    );
-}
-
-/**
- * 「詰みを読む」のボタン。この局面を調べている間は同じ場所が「止める」に替わる。枠の幅は「詰みを読む」
- * に合わせ、途中経過は詰み探索の枠に出す（ボタンの行の幅を変えない）。別の局面を調べている途中に
- * 押すと、そちらを止めてこの局面を調べる（呼び出し側が切り替える）。
- */
-export function StudyMateControl({
-    state,
-    disabled,
-    onStart,
-    onStop,
-}: {
-    /** この局面の結果（調べていなければ undefined）。 */
-    state: StudyMateState | undefined;
-    /** 準備中か、全体の解析の途中（解析と詰み探索は同時に動かさない）。 */
-    disabled: boolean;
-    onStart: () => void;
-    onStop: () => void;
-}): ReactElement {
-    const running = state?.status === "running";
-    return (
-        <div className="grid">
-            <span
-                aria-hidden="true"
-                className={cn(
-                    COMPACT_BUTTON_CLASS,
-                    "invisible col-start-1 row-start-1 flex items-center border border-transparent font-medium",
-                )}
-            >
-                詰みを読む
-            </span>
-            <div className="col-start-1 row-start-1 flex">
-                {running ? (
-                    <StopButton onStop={onStop} />
-                ) : (
-                    <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className={cn(COMPACT_BUTTON_CLASS, "w-full")}
-                        onClick={onStart}
-                        disabled={disabled}
-                    >
-                        詰みを読む
-                    </Button>
-                )}
-            </div>
         </div>
     );
 }

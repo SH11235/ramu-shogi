@@ -3,8 +3,8 @@ import { cn } from "@shogi/design-system";
 import type { ReactElement, ReactNode } from "react";
 import { useId } from "react";
 import { RamRunningIcon } from "../ram-running-icon";
-import { Switch } from "../switch";
 import { PlayIcon } from "./StudyIcons";
+import { type StudyReadMode, StudyReadModeGroup } from "./StudyReadModeGroup";
 import { formatStudyScore, studyScoreSide } from "./studyView";
 
 /** 帯の 1 段に出す読み（最善手・評価値・深さ）。 */
@@ -18,7 +18,7 @@ export interface StudyBandLine {
 }
 
 /**
- * スマートフォンで局面の移動の下に出す、この局面の読みと「自動で読む」のスイッチ。
+ * スマートフォンで局面の移動の下に出す、この局面の読みと、読み方のグループ。
  * 読んでいる間は上の段に今の読み（走るラムが目印）、前に深く読んだ記録がそれより深ければ下の段に記録を
  * 出す。読んでいないときは記録を上の段に出す。高さと右側の幅は固定し、読み始め・読み終わり・桁数の変化で
  * 並びが動かないようにする。
@@ -29,7 +29,7 @@ export function StudyPositionBand({
     reading,
     showRam,
     awaitingFirstReading = false,
-    autoAnalyze,
+    readMode,
     onPlayRecord,
 }: {
     /** この局面を読んでいる途中の値。読んでいなければ null（途中の値がまだ無ければ、各欄が null）。 */
@@ -42,15 +42,20 @@ export function StudyPositionBand({
     showRam: boolean;
     /** 読み始めたが、最初の読みがまだ届いていない（AI の読み込み・エンジンの起動を待っている）。 */
     awaitingFirstReading?: boolean;
-    /** 渡さなければスイッチを出さない（編集できないとき）。`status` は画面読み上げ向けの状態。 */
-    autoAnalyze?: { enabled: boolean; onChange: (enabled: boolean) => void; status: string | null };
+    /** 渡さなければ読み方のグループを出さない（編集できないとき）。`status` は画面読み上げ向けの状態。 */
+    readMode?: {
+        mode: StudyReadMode;
+        onChange: (mode: StudyReadMode) => void;
+        running: boolean;
+        disabled: Partial<Record<StudyReadMode, boolean>>;
+        status: string | null;
+    };
     /**
      * 記録の段を押したとき、その読み筋を盤で見せる。読んでいる間は候補手の欄に記録を出さないので、
      * 記録の読み筋はここから見る。読み筋が無ければ渡さない。
      */
     onPlayRecord?: () => void;
 }): ReactElement {
-    const switchId = useId();
     const statusId = useId();
     // 評価値の無い結果でも、最善手があれば記録として出す。
     const hasRecord = record !== null && (record.score !== null || record.bestMove !== null);
@@ -59,7 +64,8 @@ export function StudyPositionBand({
     const upper = reading ? (
         <BandRow
             label={
-                showRam ? (
+                // 読み方のグループがあれば、ラムはそちらに走らせる（同じ読みに 2 匹動かさない）。
+                showRam && !readMode ? (
                     <>
                         <RamRunningIcon dotSize={1} />
                         {/* ラムは読み上げないので、上の段が今の読みだと名前で伝える。 */}
@@ -83,49 +89,44 @@ export function StudyPositionBand({
         />
     );
     return (
-        <div className="flex h-14 items-center rounded-lg border border-border bg-wafuu-washi-warm text-sm">
-            {/* 読んでいる間に何度も変わるので、読み上げの領域にはしない（帯全体が繰り返し読み上げられて
-                しまう）。 */}
-            <output
-                aria-label="この局面の最善手"
-                aria-live="off"
-                className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 pl-2.5 pr-2 max-[359px]:pl-2 max-[359px]:pr-1.5"
-            >
-                {upper}
-                {/* 記録のある局面を読んでいる間は、下の段が空でも場所を取る（今の読みが記録を超えて
-                    記録が消えたときに、上の段が動かないように）。それ以外は 1 段を上下の中央に置く。 */}
-                {!reading || !hasRecord ? null : recordAhead ? (
-                    <BandRow
-                        label="記録"
-                        line={record}
-                        empty="—"
-                        primary={false}
-                        onPlay={onPlayRecord}
-                    />
-                ) : (
-                    <span aria-hidden="true" className="h-[1.1rem]" />
-                )}
-            </output>
-            {autoAnalyze && (
-                // 名前とスイッチの全体を押せる範囲にする（指で押しやすいように）。
-                <label
-                    htmlFor={switchId}
-                    className="flex h-full shrink-0 cursor-pointer items-center gap-1.5 border-l border-border pl-2 pr-2.5 max-[359px]:gap-1 max-[359px]:px-1.5"
+        <div className="flex flex-col gap-1.5">
+            <div className="flex h-14 items-center rounded-lg border border-border bg-wafuu-washi-warm text-sm">
+                {/* 読んでいる間に何度も変わるので、読み上げの領域にはしない（帯全体が繰り返し読み上げられて
+                    しまう）。 */}
+                <output
+                    aria-label="この局面の最善手"
+                    aria-live="off"
+                    className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 pl-2.5 pr-2 max-[359px]:pl-2 max-[359px]:pr-1.5"
                 >
-                    <span className="text-xs font-medium text-wafuu-sumi">自動読み</span>
-                    <Switch
-                        id={switchId}
-                        aria-describedby={statusId}
-                        checked={autoAnalyze.enabled}
-                        onCheckedChange={autoAnalyze.onChange}
+                    {upper}
+                    {/* 記録のある局面を読んでいる間は、下の段が空でも場所を取る（今の読みが記録を超えて
+                        記録が消えたときに、上の段が動かないように）。それ以外は 1 段を上下の中央に置く。 */}
+                    {!reading || !hasRecord ? null : recordAhead ? (
+                        <BandRow
+                            label="記録"
+                            line={record}
+                            empty="—"
+                            primary={false}
+                            onPlay={onPlayRecord}
+                        />
+                    ) : (
+                        <span aria-hidden="true" className="h-[1.1rem]" />
+                    )}
+                </output>
+            </div>
+            {readMode && (
+                <div>
+                    <StudyReadModeGroup
+                        describedBy={statusId}
+                        mode={readMode.mode}
+                        onChange={readMode.onChange}
+                        running={readMode.running}
+                        disabled={readMode.disabled}
                     />
-                </label>
-            )}
-            {/* スイッチの名前（「自動で読む」）に混ざらないよう、状態の説明は label の外に置く。 */}
-            {autoAnalyze && (
-                <span id={statusId} className="sr-only">
-                    {autoAnalyze.status ?? ""}
-                </span>
+                    <span id={statusId} className="sr-only">
+                        {readMode.status ?? ""}
+                    </span>
+                </div>
             )}
         </div>
     );

@@ -17,11 +17,15 @@ import { StudyIconButton } from "./StudyIconButton";
 import { AddBranchIcon, PlayIcon } from "./StudyIcons";
 import {
     COMPACT_BUTTON_CLASS,
-    StudyMateControl,
     StudyMateResult,
     studyMateProgressText,
     studyShortestProgressText,
 } from "./StudyMateSection";
+import {
+    STUDY_READ_MODE_STATUS,
+    type StudyReadMode,
+    StudyReadModeGroup,
+} from "./StudyReadModeGroup";
 import {
     formatStudyScore,
     type StudyPositionResult,
@@ -133,10 +137,15 @@ interface StudyCandidatesPanelProps {
      */
     readingSoon?: boolean;
     /**
-     * いまの局面でパスを指し（変化として足し）、その局面を読む。手番でない側が続けて指せたら何を
-     * 狙うかを見るため。渡さなければ出さない（編集できないとき）。
+     * 読み方（読む・パス・詰み・停止）のグループ。渡さなければ出さない（編集できないとき）。
+     * `running` は、選んでいる読み方でこの局面を読んでいる（ラムを走らせる）か。
      */
-    onStartDeepAfterPass?: () => void;
+    readMode?: {
+        mode: StudyReadMode;
+        onChange: (mode: StudyReadMode) => void;
+        running: boolean;
+        disabled: Partial<Record<StudyReadMode, boolean>>;
+    };
     onCancel: () => void;
     onPreviewPv: (request: StudyPvRequest) => void;
     onAddPvAsVariation?: (request: StudyPvRequest) => void;
@@ -146,8 +155,6 @@ interface StudyCandidatesPanelProps {
         state: StudyMateState | undefined;
         /** この局面に至った手の表記。開始局面は null。 */
         moveLabel: string | null;
-        onStart: () => void;
-        onStop: () => void;
         /** この局面の最短手順の操作と結果。 */
         shortest: {
             state: StudyShortestState | undefined;
@@ -504,7 +511,7 @@ export function StudyCandidatesPanel({
     arrows,
     recordAhead = null,
     readingSoon = false,
-    onStartDeepAfterPass,
+    readMode,
     onCancel,
     onPreviewPv,
     onAddPvAsVariation,
@@ -513,8 +520,7 @@ export function StudyCandidatesPanel({
     controlsLast = false,
     className,
 }: StudyCandidatesPanelProps): ReactElement {
-    const autoAnalyzeId = useId();
-    const autoAnalyzeStatusId = useId();
+    const readModeStatusId = useId();
     const arrowSwitchId = useId();
     const autoOn = autoAnalyze?.enabled ?? false;
     const autoFinished = autoAnalyze?.reading === STUDY_AUTO_ANALYZE_FINISHED;
@@ -541,90 +547,63 @@ export function StudyCandidatesPanel({
             : [];
     const arrowEmphasisOf = (rank: number): "primary" | "secondary" | undefined =>
         arrowPlan.find((entry) => entry.rank === rank)?.arrow.emphasis;
-    const arrowSwitch = arrows && shownCandidates.length > 0 && (
-        <div className="flex items-center justify-end gap-2 px-1">
-            <label htmlFor={arrowSwitchId} className="text-xs text-muted-foreground">
-                矢印を表示
-            </label>
-            <Switch id={arrowSwitchId} checked={arrows.enabled} onCheckedChange={arrows.onChange} />
-        </div>
+    const arrowToggle = (label: string) =>
+        arrows && (
+            <div className="flex shrink-0 items-center gap-2">
+                <label htmlFor={arrowSwitchId} className="text-xs text-muted-foreground">
+                    {label}
+                </label>
+                <Switch
+                    id={arrowSwitchId}
+                    aria-label="矢印を表示"
+                    checked={arrows.enabled}
+                    onCheckedChange={arrows.onChange}
+                />
+            </div>
+        );
+    /** 読み方のグループの下の行。高さを固定し、読み方を選び直しても文言が変わるだけにする。 */
+    const showsReadModeHere = readMode !== undefined && !autoSwitchElsewhere;
+    const readModeStatus =
+        readMode === undefined
+            ? ""
+            : autoFinished
+              ? STUDY_AUTO_ANALYZE_FINISHED
+              : STUDY_READ_MODE_STATUS[readMode.mode];
+    // 矢印のスイッチは、読み方のグループがあればその下の行に、無ければ（スマートフォン・編集できないとき）
+    // 候補手の上に 1 行で置く。
+    const arrowSwitch = !showsReadModeHere && arrowToggle && shownCandidates.length > 0 && (
+        <div className="flex justify-end px-1">{arrowToggle("矢印を表示")}</div>
     );
 
     const controls = (
         <>
-            {/* 入れたままにする設定なので、押すと始まる操作ボタンの列とは段を分ける。 */}
-            {autoAnalyze && !autoSwitchElsewhere && (
-                <div className="flex items-center gap-3 rounded-lg border border-border bg-wafuu-washi px-3 py-2">
-                    <div className="flex min-w-0 flex-1 items-center gap-2">
-                        <label
-                            htmlFor={autoAnalyzeId}
-                            className="shrink-0 text-sm font-medium text-wafuu-sumi"
-                        >
-                            自動で読む
-                        </label>
-                        {/* 名前・ラム・スイッチを 1 行に収める。読んでいる局面と深さは下の「今の読み」に
-                            出ているので、ここでは画面読み上げ向けにだけ添える。ラムは切っている間も
-                            透明にして幅を取り、入り切りで横にずれないようにする。 */}
-                        <span
-                            id={autoAnalyzeStatusId}
-                            className="flex min-w-0 items-center gap-1.5 text-xs"
-                        >
-                            <RamRunningIcon
-                                running={(isDeepHere || autoPreparing) && !autoFinished}
-                                className={cn(
-                                    autoAnalyze.reading === null && !autoPreparing && "invisible",
-                                )}
-                            />
-                            {autoFinished && (
-                                <span aria-hidden="true" className="truncate text-muted-foreground">
-                                    読み終えました
-                                </span>
-                            )}
-                            {autoAnalyze.reading !== null && (
-                                <span className="sr-only">{autoAnalyze.reading}</span>
-                            )}
-                        </span>
-                    </div>
-                    <Switch
-                        id={autoAnalyzeId}
-                        aria-describedby={autoAnalyzeStatusId}
-                        checked={autoAnalyze.enabled}
-                        onCheckedChange={autoAnalyze.onChange}
+            {showsReadModeHere && readMode && (
+                <div className="flex flex-col gap-1.5">
+                    <StudyReadModeGroup
+                        mode={readMode.mode}
+                        onChange={readMode.onChange}
+                        running={readMode.running}
+                        disabled={readMode.disabled}
+                        describedBy={readModeStatusId}
                     />
+                    <div className="flex h-6 items-center justify-between gap-2 px-1">
+                        <p
+                            id={readModeStatusId}
+                            className="min-w-0 truncate text-xs text-muted-foreground"
+                            title={readModeStatus}
+                        >
+                            {readModeStatus}
+                            {/* 読んでいる局面と深さは「今の読み」に出ているので、画面読み上げ向けにだけ添える。 */}
+                            {!autoFinished && autoAnalyze?.reading && (
+                                <span className="sr-only"> {autoAnalyze.reading}</span>
+                            )}
+                        </p>
+                        {/* 状態の文を削らないよう、名前は短くする（読み上げは「矢印を表示」）。 */}
+                        {arrowToggle("矢印")}
+                    </div>
                 </div>
             )}
-            <div className="flex flex-col gap-2">
-                <div className="flex flex-wrap items-center gap-1.5">
-                    {onStartDeepAfterPass && (
-                        <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className={COMPACT_BUTTON_CLASS}
-                            title="いまの手番を飛ばして、もう一方の側の狙いを読みます（パスは変化として足します）"
-                            onClick={onStartDeepAfterPass}
-                            disabled={startDisabled}
-                        >
-                            パスして読む
-                        </Button>
-                    )}
-                    {mate && (
-                        <StudyMateControl
-                            state={mate.state}
-                            disabled={startDisabled}
-                            onStart={mate.onStart}
-                            onStop={mate.onStop}
-                        />
-                    )}
-                </div>
-                {/* 押せなくはせず、押すと自動で読むが切れることを押す前に知らせる。 */}
-                {autoOn && (
-                    <p className="px-1 text-xs text-muted-foreground">
-                        押すと、自動で読むを切ってから始めます
-                    </p>
-                )}
-                {elsewhere && <ElsewhereActivityLine activity={elsewhere} />}
-            </div>
+            {elsewhere && <ElsewhereActivityLine activity={elsewhere} />}
 
             {/* 詰み探索の結果は押したボタンの真下に出す（候補手が多い局面でも、列を送らずに見えるように）。 */}
             {mate && onAddPvAsVariation && (

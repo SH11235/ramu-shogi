@@ -85,6 +85,7 @@ import { StudyNewNoteDialog, type StudyNewNoteOptions } from "./study-workspace/
 import { StudyNotice } from "./study-workspace/StudyNotice";
 import { StudyPlayFromPositionDialog } from "./study-workspace/StudyPlayFromPositionDialog";
 import { type StudyBandLine, StudyPositionBand } from "./study-workspace/StudyPositionBand";
+import type { StudyReadMode } from "./study-workspace/StudyReadModeGroup";
 import { buildStudyReviewItems, StudyReviewList } from "./study-workspace/StudyReviewList";
 import {
     StudySaveIndicator,
@@ -156,11 +157,13 @@ import {
 import { useStudyNodeNavigation } from "./study-workspace/useStudyNodeNavigation";
 import { TooltipProvider } from "./tooltip";
 
-/** 「自動で読む」を入れているか（端末ごとに覚える）。 */
+/** 読み方が「読む」か（端末ごとに覚える）。「パス」の間も入れておき、開いている局面を読み続ける。 */
 const STUDY_AUTO_ANALYZE_STORAGE_KEY = "shogi:studyAutoAnalyze";
+/** 読み方が「詰み」か（端末ごとに覚える）。「読む」とは同時に入れない。 */
+const STUDY_MATE_MODE_STORAGE_KEY = "shogi:studyMateMode";
 
 const AUTO_ANALYZE_OFF_NOTICE: Message = {
-    text: "自動で読むを切りました（読んだ分は残っています）。",
+    text: "読み方を「停止」にしました（読んだ分は残っています）。",
     type: "warning",
 };
 
@@ -719,6 +722,17 @@ export function StudyWorkspaceView({
         false,
     );
     const autoAnalyze = !readOnly && storedAutoAnalyze;
+    const [storedMateMode, setStoredMateMode] = useLocalStorage<boolean>(
+        STUDY_MATE_MODE_STORAGE_KEY,
+        false,
+    );
+    /** 読み方が「詰み」か。「読む」と両方入っていたら「読む」を取る。 */
+    const mateMode = !readOnly && mate?.supported === true && storedMateMode && !autoAnalyze;
+    /**
+     * 読み方の「パス」で足したパスの局面。読み方は「読む」と同じく入れておき（開いている局面を読み続ける）、
+     * この局面にいる間だけ「パス」と出す。別の局面へ移ったら「読む」になる。
+     */
+    const [passNodeId, setPassNodeId] = useState<string | null>(null);
     /** このタブで最後に書いた自動で読むの値。別のタブで書き換えられたのを見分けるのに使う。 */
     const localAutoAnalyzeRef = useRef<boolean | null>(null);
     const setAutoAnalyzeHere = (enabled: boolean): void => {
@@ -733,19 +747,6 @@ export function StudyWorkspaceView({
         void analysis.cancel().finally(() => {
             stoppingAutoRef.current = false;
         });
-    };
-    /**
-     * 自動で読む以外の解析の操作を始める前に、自動で読むを切る（押した操作をそのまま通し、切ったことを
-     * 知らせる）。読んでいた分は残る。止め終わるまでに別の操作をしたら false（その操作のほうを優先する）。
-     */
-    const leaveAutoAnalyze = async (): Promise<boolean> => {
-        if (!autoAnalyze) return true;
-        setAutoAnalyzeHere(false);
-        onMessageChange(AUTO_ANALYZE_OFF_NOTICE);
-        if (analysis.mode !== "deep" && !analysis.isPreparing) return true;
-        const request = ++actionSerialRef.current;
-        await analysis.cancel();
-        return actionSerialRef.current === request;
     };
     /**
      * 全体の解析（残りを解析も）を始めるときの指定。自動で読むは、始められる設定と分かってから切り、
@@ -813,23 +814,31 @@ export function StudyWorkspaceView({
     // パスを足している間に押し直しても無視する（足す処理は 2 回目を受け付けないので、
     // 押し直しを別の操作として数えると、1 回目の解析まで取りやめてしまう）。
     const passingRef = useRef(false);
+    /**
+     * 読み方の「パス」: いまの局面にパスを変化として足してその局面へ移り、読み方を「読む」と同じく入れて
+     * パスの局面を読み続ける（手番でない側が続けて指せたら何を狙うかを見るため）。
+     */
     const startDeepAfterPass = async (): Promise<void> => {
         if (locked || deepBlocked || passingRef.current) return;
-        const pressed = { nodeId: currentNodeId, leaveCount: leaveCountRef.current };
-        if (autoAnalyze && !(await leaveAutoAnalyze())) return;
-        // 読みを止め終わるのを待つ間に局面を移ったら、移った先にパスを足さない。
-        if (!isSamePositionAs(pressed)) return;
         const request = ++actionSerialRef.current;
         passRequestRef.current = request;
         passingRef.current = true;
-        let passNodeId: string | null;
+        let addedNodeId: string | null;
         try {
-            passNodeId = await editing.passFromCurrent();
+            addedNodeId = await editing.passFromCurrent();
         } finally {
             passingRef.current = false;
         }
-        if (passNodeId !== null && actionSerialRef.current === request) {
-            setPendingPassDeepNodeId(passNodeId);
+        // パスを足せなかった・確かめる間に別の操作をしたら、読み方は変えない。
+        if (addedNodeId === null || actionSerialRef.current !== request) return;
+        setStoredMateMode(false);
+        stopMate();
+        setPassNodeId(addedNodeId);
+        setPendingPassDeepNodeId(addedNodeId);
+        if (!autoAnalyze) {
+            setAutoAnalyzeHere(true);
+            setAutoDecidedNodeId(null);
+            setAutoFinishedNodeId(null);
         }
     };
     // 依存配列を付けず、描画のたびに「待っている局面がツリーに現れたか」を確かめる。
@@ -841,14 +850,19 @@ export function StudyWorkspaceView({
             return;
         }
         if (!tree.nodes.has(pendingPassDeepNodeId)) return;
+        // 読み方は「読む」と同じく入れてあるので、待つのをやめれば自動で読むがパスの局面を読み始める。
         setPendingPassDeepNodeId(null);
-        // 待っている間に別の操作をした・全体の解析が始まっていたら、重ねて動かさない。
-        if (locked || deepBlocked || actionSerialRef.current !== passRequestRef.current) return;
-        actionSerialRef.current += 1;
-        stopMate();
-        autoStartedNodeRef.current = pendingPassDeepNodeId;
-        void analysis.startDeep(pendingPassDeepNodeId);
     });
+    // パスの局面から移った・読み方を「読む」から外したら、「パス」と出すのをやめる。
+    useEffect(() => {
+        if (passNodeId === null) return;
+        if (
+            !autoAnalyze ||
+            (passNodeId !== currentNodeId && pendingPassDeepNodeId !== passNodeId)
+        ) {
+            setPassNodeId(null);
+        }
+    }, [passNodeId, currentNodeId, pendingPassDeepNodeId, autoAnalyze]);
     const onAutoAnalyzeTarget = useEffectEvent(
         (
             nodeId: string,
@@ -1009,23 +1023,104 @@ export function StudyWorkspaceView({
         actionSerialRef.current += 1;
         mate?.stop();
     };
-    /** 詰み・詰めろか最短手順を調べ始める。 */
-    const startMate = async (kind: "mate" | "shortest"): Promise<void> => {
+    /**
+     * 詰みのある局面の最短手順を求め始める。詰み探索なので、読み方が「詰み」でなければ「詰み」にする
+     * （読んでいる読みは止める。そこまでの結果は残る）。
+     */
+    const startShortest = async (): Promise<void> => {
         if (!mate || deepBlocked) return;
         const node = currentNode;
         const pressed = { nodeId: currentNodeId, leaveCount: leaveCountRef.current };
-        if (autoAnalyze && !(await leaveAutoAnalyze())) return;
+        if (!mateMode) {
+            setPassNodeId(null);
+            if (autoAnalyze) changeAutoAnalyze(false);
+            setStoredMateMode(true);
+        }
         const request = ++actionSerialRef.current;
-        // 深く解析している読みは止める（そこまでの結果は残る）。別の局面の詰み探索も止める。
-        if (analysis.mode === "deep") {
+        if (analysis.mode === "deep" || analysis.isPreparing) {
             await analysis.cancel();
             if (actionSerialRef.current !== request) return;
         }
-        // 止め終わるのを待つ間に局面を移ったら、押した局面の詰み探索は始めない。
+        // 止め終わるのを待つ間に局面を移ったら、押した局面の探索は始めない。
         if (!isSamePositionAs(pressed)) return;
+        // 読み方の「詰み」が同じ局面を調べ直さないよう、この局面は調べ始めたことにする。
+        mateStartedNodeRef.current = node.id;
         stopMate();
-        if (kind === "mate") mate.start(node);
-        else mate.startShortest(node);
+        mate.startShortest(node);
+    };
+    // 読み方の「詰み」: 開いている局面の詰み・詰めろを調べる（局面を移れば移った先を）。調べ終えた局面は
+    // 調べ直さない。解析の途中・準備中は待ち、終わってから始める。
+    const mateStartedNodeRef = useRef<string | null>(null);
+    useEffect(
+        () => () => {
+            mateStartedNodeRef.current = null;
+        },
+        [],
+    );
+    const onMateModeTarget = useEffectEvent(
+        (
+            nodeId: string,
+            enabled: boolean,
+            isLocked: boolean,
+            mode: StudyAnalysisController["mode"],
+            isPreparing: boolean,
+        ): void => {
+            if (!enabled || !mate || isLocked) {
+                mateStartedNodeRef.current = null;
+                return;
+            }
+            if (mode !== null || isPreparing) return;
+            if (mate.runningNodeId === nodeId) return;
+            if (mateStartedNodeRef.current === nodeId) return;
+            const node = tree.nodes.get(nodeId);
+            if (!node) return;
+            mateStartedNodeRef.current = nodeId;
+            if (mate.results.get(nodeId)?.status === "done") return;
+            stopMate();
+            mate.start(node);
+        },
+    );
+    useEffect(() => {
+        const timer = setTimeout(
+            () =>
+                onMateModeTarget(
+                    currentNodeId,
+                    mateMode,
+                    locked,
+                    analysis.mode,
+                    analysis.isPreparing,
+                ),
+            0,
+        );
+        return () => clearTimeout(timer);
+    }, [currentNodeId, mateMode, locked, analysis.mode, analysis.isPreparing]);
+    /** 選んでいる読み方。 */
+    const readMode: StudyReadMode = autoAnalyze
+        ? passNodeId !== null &&
+          (passNodeId === currentNodeId || pendingPassDeepNodeId === passNodeId)
+            ? "pass"
+            : "read"
+        : mateMode
+          ? "mate"
+          : "stop";
+    /** 読み方を選び直す。選んだ読み方は、利用者が選び直すまで変えない（パスの局面から移ったときを除く）。 */
+    const selectReadMode = (next: StudyReadMode): void => {
+        if (next === readMode) return;
+        if (next === "pass") {
+            void startDeepAfterPass();
+            return;
+        }
+        setPassNodeId(null);
+        if (next === "read") {
+            setStoredMateMode(false);
+            stopMate();
+            if (!autoAnalyze) changeAutoAnalyze(true);
+            return;
+        }
+        if (autoAnalyze) changeAutoAnalyze(false);
+        else actionSerialRef.current += 1;
+        setStoredMateMode(next === "mate");
+        if (next === "stop") stopMate();
     };
     /**
      * 別の局面で動いている解析・詰み探索の局面の表記。狭い列でも 1 行に収まるよう手数だけにし、
@@ -1437,6 +1532,22 @@ export function StudyWorkspaceView({
             : null;
     // 最初の読み（途中の値か、深さ）がまだ届いていない。AI の読み込み・エンジンの起動を待っている。
     const awaitingFirstReading = liveHere === undefined || !hasStudyLiveStarted(liveHere);
+    /** 読み方のグループに渡す内容。ラムは、選んでいる読み方でこの局面を読んでいる間だけ走らせる。 */
+    const readModeProps = {
+        mode: readMode,
+        onChange: selectReadMode,
+        running:
+            readMode === "mate"
+                ? mate?.runningNodeId === currentNodeId
+                : readMode !== "stop" && (bandShowsReading || liveHere !== undefined),
+        disabled: {
+            // パス・詰みは、準備中・全体の解析の途中には選べない（読むを選ぶと全体の解析を止める）。
+            pass: readMode !== "pass" && (analysis.isPreparing || analysis.mode === "full"),
+            mate:
+                mate?.supported !== true ||
+                (readMode !== "mate" && (analysis.isPreparing || analysis.mode === "full")),
+        },
+    };
     const candidatesPanel = (
         <StudyCandidatesPanel
             node={currentNode}
@@ -1467,7 +1578,7 @@ export function StudyWorkspaceView({
             recordAhead={isMobile ? null : recordAhead}
             readingSoon={bandShowsReading && liveHere === undefined}
             controlsLast={isMobile}
-            onStartDeepAfterPass={editingDisabled ? undefined : () => void startDeepAfterPass()}
+            readMode={editingDisabled ? undefined : readModeProps}
             onCancel={cancelAnalysis}
             onPreviewPv={previewPv}
             onAddPvAsVariation={readOnly ? undefined : editing.addPvAsVariation}
@@ -1477,11 +1588,9 @@ export function StudyWorkspaceView({
                           state: mate.results.get(currentNode.id),
                           moveLabel:
                               currentNode.ply === 0 ? null : studyMoveLabel(tree, currentNodeId),
-                          onStart: () => void startMate("mate"),
-                          onStop: stopMateByUser,
                           shortest: {
                               state: mate.shortestResults.get(currentNode.id),
-                              onStart: () => void startMate("shortest"),
+                              onStart: () => void startShortest(),
                               onStop: stopMateByUser,
                           },
                       }
@@ -1736,14 +1845,10 @@ export function StudyWorkspaceView({
                                     reading={bandShowsReading || liveHere !== undefined}
                                     awaitingFirstReading={awaitingFirstReading}
                                     showRam={bandShowsReading}
-                                    autoAnalyze={
+                                    readMode={
                                         editingDisabled
                                             ? undefined
-                                            : {
-                                                  enabled: autoAnalyze,
-                                                  onChange: changeAutoAnalyze,
-                                                  status: autoReading,
-                                              }
+                                            : { ...readModeProps, status: autoReading }
                                     }
                                 />
                             }
