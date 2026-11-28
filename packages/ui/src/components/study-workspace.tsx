@@ -53,6 +53,7 @@ import type { StudyAnalysisRunState } from "./study-workspace/StudyAnalysisRunCo
 import { StudyAnalysisSettings } from "./study-workspace/StudyAnalysisSettings";
 import {
     STUDY_AUTO_ANALYZE_FINISHED,
+    STUDY_AUTO_ANALYZE_FINISHED_SHORT,
     StudyCandidatesPanel,
     type StudyElsewhereActivity,
     type StudyPvRequest,
@@ -1641,6 +1642,8 @@ export function StudyWorkspaceView({
                 (autoDecidedNodeId !== currentNodeId ||
                     analysis.mode === "deep" ||
                     analysis.isPreparing)));
+    // 帯で今の読みを出し、ラムを走らせる（パスして解析など「読む」でない読みも、この局面を読んでいれば）。
+    const bandReading = bandShowsReading || liveHere !== undefined;
     // 最初の読み（途中の値か、深さ）がまだ届いていない。AI の読み込み・エンジンの起動を待っている。
     const awaitingFirstReading = liveHere === undefined || !hasStudyLiveStarted(liveHere);
     /** 読み方のグループに渡す内容。 */
@@ -1667,19 +1670,22 @@ export function StudyWorkspaceView({
                 savedPicked !== null && isOtherAi(savedPicked.layer),
             )}
             onPlayRecord={playRecordPv}
-            reading={bandShowsReading || liveHere !== undefined}
+            reading={bandReading}
             notice={autoReading === STUDY_AUTO_ANALYZE_FINISHED ? autoReading : null}
+            // 帯はこの局面のことなので「この局面は」を省き、幅の狭い画面でも最後まで読めるようにする。
+            noticeShort={STUDY_AUTO_ANALYZE_FINISHED_SHORT}
             awaitingFirstReading={awaitingFirstReading}
             readMode={
                 editingDisabled
                     ? undefined
                     : {
                           ...readModeProps,
-                          // 読み終えた知らせは帯に見える形で出すので、読み上げ向けには重ねない。
+                          // 選んでいる読み方の説明に、読んでいる局面を添える（読み終えた知らせは帯の
+                          // 読み上げの領域で伝えるので重ねない）。
                           status:
-                              autoReading === STUDY_AUTO_ANALYZE_FINISHED
-                                  ? null
-                                  : (autoReading ?? STUDY_READ_MODE_STATUS[readMode]),
+                              autoReading === null || autoReading === STUDY_AUTO_ANALYZE_FINISHED
+                                  ? STUDY_READ_MODE_STATUS[readMode]
+                                  : `${STUDY_READ_MODE_STATUS[readMode]}。${autoReading}`,
                       }
             }
         />
@@ -1693,11 +1699,7 @@ export function StudyWorkspaceView({
             analysisMode={analysis.mode}
             isPreparing={analysis.isPreparing}
             live={liveHere}
-            autoAnalyze={
-                editingDisabled
-                    ? undefined
-                    : { enabled: autoAnalyze, onChange: changeAutoAnalyze, reading: autoReading }
-            }
+            autoAnalyze={editingDisabled ? undefined : { enabled: autoAnalyze }}
             arrows={{
                 enabled: displaySettings.showCandidateArrows,
                 count: displaySettings.candidateArrowCount,
@@ -1942,7 +1944,7 @@ export function StudyWorkspaceView({
                             menu={mobileMenu}
                             // この局面の読みは帯にラムが出るので、タブには帯に出ない読み（全体の解析・
                             // 詰み探索・別の局面の読み）だけを知らせる。
-                            isReading={isReading && !bandShowsReading}
+                            isReading={isReading && !bandReading}
                             saveStrip={
                                 readOnly ? (
                                     layerPicker

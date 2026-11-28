@@ -33,6 +33,8 @@ import { hasStudyLiveStarted, type StudyLiveSearch } from "./useStudyAnalysis";
 
 /** 「読む」で、続きから読めずに読み終えたときの知らせ。 */
 export const STUDY_AUTO_ANALYZE_FINISHED = "この局面は読み終えました。局面を移ると読みます";
+/** 局面の帯に出す、読み終えた知らせの短い言い方（帯はこの局面のことなので「この局面は」を省く）。 */
+export const STUDY_AUTO_ANALYZE_FINISHED_SHORT = "読み終えました。局面を移ると読みます";
 
 import type { StudyMateState, StudyShortestState } from "./useStudyMate";
 
@@ -100,15 +102,8 @@ interface StudyCandidatesPanelProps {
     isPreparing: boolean;
     /** この局面を深く解析している途中経過。別の局面を解析中・解析していなければ undefined。 */
     live: StudyLiveSearch | undefined;
-    /**
-     * 読み方の「読む」（「パス」の間も入る）。`reading` は読み上げ向けに添える状態（読んでいる局面など）で、無ければ null。
-     * 渡さなければ出さない（編集できないとき）。
-     */
-    autoAnalyze?: {
-        enabled: boolean;
-        onChange: (enabled: boolean) => void;
-        reading: string | null;
-    };
+    /** 読み方の「読む」を選んでいる（局面を移るまで読み続けるので、止めるボタンも残りの時間も出さない）。 */
+    autoAnalyze?: { enabled: boolean };
     /** 盤の矢印（上から `count` 個の候補）。渡さなければスイッチも見本の矢印も出さない。 */
     arrows?: {
         enabled: boolean;
@@ -572,8 +567,13 @@ export function StudyCandidatesPanel({
                                     <DeepProgressNote live={live} />
                                 </span>
                             )}
-                            {live.preview && (
+                            {live.preview ? (
                                 <span className="tabular-nums">{searchStats(live.preview)}</span>
+                            ) : (
+                                // 途中の候補を返さない AI でも、届いた深さは出す。
+                                live.depth !== null && (
+                                    <span className="tabular-nums">深さ {live.depth}</span>
+                                )
                             )}
                         </p>,
                         // 読み方の「読む」でない読みは、ここで止める。読む・パスの間は「停止」で止める。
@@ -622,7 +622,7 @@ export function StudyCandidatesPanel({
 
             {/* 深く解析した結果があれば、それを候補手の一覧にする（同じ局面をより深く読んだ結果なので）。
                 全体の解析の結果は、最善手だけを 1 行で添える。読んでいる間は今の読みだけを出す（前に深く
-                読んだ記録は、帯か今の読みの見出しの下に 1 行で出す）。 */}
+                読んだ記録は帯に出す）。 */}
             {!live && !autoPreparing && (
                 <div className="flex flex-col gap-1">
                     {mainResult &&

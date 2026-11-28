@@ -375,7 +375,7 @@ describe("StudyWorkspaceView", () => {
             expect(label.classList.contains("sr-only")).toBe(true);
         }
         // 記録の段にだけ ▷ が付いても、今の読みの段にも同じ幅を空けて右端をそろえる。
-        const slots = bandBox.querySelectorAll("span.w-2\\.5");
+        const slots = bandBox.querySelectorAll("span.w-3");
         expect(slots).toHaveLength(2);
         expect(slots[0].querySelector("svg")).toBeNull();
         expect(slots[1].querySelector("svg")).not.toBeNull();
@@ -448,7 +448,10 @@ describe("StudyWorkspaceView", () => {
         });
         render(<Harness initialDoc={doc} analysis={analysis} />);
         expect(isSelected(readModeButton("読む"))).toBe(true);
-        expect(screen.getByText("開始局面を読んでいます・深さ 18")).toBeTruthy();
+        // 選んでいる読み方の説明に、読んでいる局面と深さを添える。
+        expect(
+            screen.getByText("開いている局面を読み続けます。開始局面を読んでいます・深さ 18"),
+        ).toBeTruthy();
         // 読む間の止めるボタンは無い（「停止」を選べば止まる）。
         const candidates = screen.getByRole("region", { name: "候補手" });
         expect(within(candidates).queryByRole("button", { name: "止める" })).toBeNull();
@@ -674,6 +677,8 @@ describe("StudyWorkspaceView", () => {
         const panel = screen.getByRole("region", { name: "候補手" });
         expect(within(panel).getByText("今の読み")).toBeTruthy();
         expect(within(panel).queryByText("AI を準備しています…")).toBeNull();
+        // 途中の候補が無くても、届いた深さは見出しに出す。
+        expect(within(panel).getByText("深さ 12")).toBeTruthy();
     });
 
     it("前に深く読んだ記録のある局面では、準備中の間も今の読みの枠に記録を添える", () => {
@@ -3093,7 +3098,7 @@ describe("StudyWorkspaceView", () => {
         expect(within(panel).queryByRole("button", { name: "その局面へ" })).toBeNull();
         expect(screen.queryByText(/開始局面を読んでいます/)).toBeNull();
         // 見ている局面を読んでいることにし、前の局面の深さは出さない。
-        expect(screen.getByText("1手目を読んでいます")).toBeTruthy();
+        expect(screen.getByText("開いている局面を読み続けます。1手目を読んでいます")).toBeTruthy();
     });
 
     it("自動で読む間に局面を移り、前の読みが止まる前に戻ったら、戻った局面を読み直す", async () => {
@@ -4651,6 +4656,7 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         render(<Harness initialDoc={withPv} />);
         const band = screen.getByRole("status", { name: "この局面の最善手" });
         expect(band.textContent).toContain("2六歩");
+        expect(band.textContent).toContain("深さ 16");
         expect(within(band).getByRole("button", { name: /記録.*読み筋を盤で見る/ })).toBeTruthy();
     });
 
@@ -4749,7 +4755,7 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         expect(ram?.classList.contains("animate-ram-run")).toBe(false);
     });
 
-    it("パスして解析の読みは、帯ではなく候補手のタブで知らせる", () => {
+    it("「読む」でない読みも、この局面の読みなら帯でラムを走らせ、候補手のタブには重ねない", () => {
         localStorage.setItem("shogi:studyReadMode", '"stop"');
         const { doc } = createTestStudy();
         const analysis = createAnalysis({
@@ -4764,7 +4770,9 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         });
         render(<Harness initialDoc={doc} analysis={analysis} />);
         fireEvent.click(screen.getByRole("tab", { name: /棋譜/ }));
-        expect(screen.getAllByRole("tab")[0].textContent).toBe("候補手（読んでいます）");
+        expect(screen.getAllByRole("tab")[0].textContent).toBe("候補手");
+        const band = screen.getByRole("status", { name: "この局面の最善手" });
+        expect(band.parentElement?.querySelector("svg.animate-ram-run")).not.toBeNull();
     });
 
     it("ログイン切れでロック中も盤から既存の手へ進める", async () => {

@@ -28,6 +28,7 @@ export function StudyPositionBand({
     record,
     reading,
     notice = null,
+    noticeShort,
     awaitingFirstReading = false,
     readMode,
     onPlayRecord,
@@ -40,6 +41,8 @@ export function StudyPositionBand({
     reading: boolean;
     /** 読んでいないときに下の段に出す知らせ（読み終えたこと など）。止まったラムを添える。 */
     notice?: string | null;
+    /** 知らせを画面に出すときの短い言い方（全文は読み上げと、マウスを載せたときに出す）。 */
+    noticeShort?: string;
     /** 読み始めたが、最初の読みがまだ届いていない（AI の読み込み・エンジンの起動を待っている）。 */
     awaitingFirstReading?: boolean;
     /** 渡さなければ読み方のグループを出さない（編集できないとき）。`status` は画面読み上げ向けの状態。 */
@@ -109,8 +112,14 @@ export function StudyPositionBand({
                     {/* 記録のある局面を読んでいる間は、下の段が空でも場所を取る（今の読みが記録を超えて
                         記録が消えたときに、上の段が動かないように）。それ以外は 1 段を上下の中央に置く。 */}
                     {shownNotice !== null ? (
-                        <span className="truncate text-xs text-wafuu-sumi" title={shownNotice}>
-                            {shownNotice}
+                        // 帯のほかの値は読み上げないが、読み終えたことは知らせる。
+                        <span
+                            role="status"
+                            className="truncate text-xs text-wafuu-sumi"
+                            title={shownNotice}
+                        >
+                            <span aria-hidden="true">{noticeShort ?? shownNotice}</span>
+                            <span className="sr-only">{shownNotice}</span>
                         </span>
                     ) : !reading || !hasRecord ? null : recordAhead ? (
                         <BandRow
@@ -181,7 +190,9 @@ function BandRow({
                 className={cn(
                     "min-w-0 truncate",
                     // 押せる段は、手に薄い下線を引いて示す。
-                    onPlay && bestMove && "underline decoration-border underline-offset-4",
+                    onPlay &&
+                        bestMove &&
+                        "underline decoration-muted-foreground decoration-dotted underline-offset-4",
                     primary
                         ? bestMove
                             ? "text-wafuu-sumi"
@@ -192,7 +203,7 @@ function BandRow({
             >
                 {bestMove ? bestMove.replace(/\(\d\d\)$/, "") : empty}
             </span>
-            {line && scoreText !== "" && (
+            {line && (scoreText !== "" || line.depth !== null) && (
                 <span className="ml-auto flex shrink-0 items-baseline gap-1.5 max-[359px]:gap-1">
                     <span
                         className={cn(
@@ -225,9 +236,10 @@ function BandRow({
             {(playSlot || onPlay) && (
                 <span
                     aria-hidden="true"
-                    className="flex w-2.5 shrink-0 self-center max-[359px]:hidden"
+                    className="flex w-3 shrink-0 self-center max-[359px]:hidden"
                 >
-                    {onPlay && <PlayIcon className="h-2.5 w-2.5 text-wafuu-ai" />}
+                    {/* 候補手の行の ▷ と同じ色にする（同じ「盤で見る」操作）。 */}
+                    {onPlay && <PlayIcon className="h-3 w-3 text-wafuu-sumi-light" />}
                 </span>
             )}
             {onPlay && <span className="sr-only">（読み筋を盤で見る）</span>}
