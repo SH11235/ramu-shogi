@@ -322,7 +322,66 @@ describe("StudyWorkspaceView", () => {
         expect(readModeButton("パス").disabled).toBe(true);
     });
 
-    it("読んでいる間の候補手の欄は今の読みだけを出し、それより深い記録は見出しの下に 1 行で添える", () => {
+    it("PC は候補手の欄の上に帯を置き、読んでいる間は帯の左でラムを走らせ、読み方の枠には出さない", () => {
+        localStorage.setItem("shogi:studyReadMode", '"read"');
+        const { doc: base, ids } = createTestStudy([cp(0), cp(0), cp(0), cp(0), cp(0)]);
+        // 今の読み（深さ 5）より深い、読み筋のある記録。
+        const doc = applyStudyOps(base, [
+            putScoreOp(ids[0], cp(120), { depth: 16, pv: ["2g2f", "8c8d"] }),
+        ]);
+        render(
+            <Harness
+                initialDoc={doc}
+                analysis={createAnalysis({
+                    mode: "deep",
+                    live: {
+                        nodeId: doc.tree.rootId,
+                        depth: 5,
+                        startedAt: null,
+                        budgetMs: 30_000,
+                        preview: {
+                            runId: "preview",
+                            completion: "aborted",
+                            depth: 5,
+                            nodes: 1_000,
+                            timeMs: 1_000,
+                            execution: { threads: null, hashMb: null, parallelWorkers: null },
+                            candidates: [
+                                {
+                                    rank: 1,
+                                    score: cp(-300),
+                                    depth: 5,
+                                    seldepth: null,
+                                    pv: ["7g7f"],
+                                },
+                            ],
+                        },
+                    },
+                })}
+            />,
+        );
+        const panel = screen.getByRole("region", { name: "候補手" });
+        const band = within(panel).getByRole("status", { name: "この局面の最善手" });
+        const bandBox = band.parentElement as HTMLElement;
+        // 帯は欄のいちばん上（読み方のグループより前）にある。
+        const group = within(panel).getByRole("group", { name: "読み方" });
+        expect(
+            bandBox.compareDocumentPosition(group) & Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+        expect(bandBox.querySelector("svg.animate-ram-run")).not.toBeNull();
+        expect(group.querySelector("svg")).toBeNull();
+        // 「今の読み」は見出しとして見せず、読み上げ向けにだけ残す。
+        for (const label of within(panel).getAllByText("今の読み")) {
+            expect(label.classList.contains("sr-only")).toBe(true);
+        }
+        // 記録の段にだけ ▷ が付いても、今の読みの段にも同じ幅を空けて右端をそろえる。
+        const slots = bandBox.querySelectorAll("span.w-4");
+        expect(slots).toHaveLength(2);
+        expect(slots[0].querySelector("svg")).toBeNull();
+        expect(slots[1].querySelector("svg")).not.toBeNull();
+    });
+
+    it("読んでいる間の候補手の欄は今の読みだけを出し、それより深い記録は欄の上の帯の下の段に出す", () => {
         const { doc } = createTestStudy([cp(120), cp(0), cp(0), cp(0), cp(0)]);
         const preview = (depth: number) => ({
             runId: "preview",
@@ -389,7 +448,10 @@ describe("StudyWorkspaceView", () => {
         });
         render(<Harness initialDoc={doc} analysis={analysis} />);
         expect(isSelected(readModeButton("読む"))).toBe(true);
-        expect(screen.getByText("開始局面を読んでいます・深さ 18")).toBeTruthy();
+        // 選んでいる読み方の説明に、読んでいる局面と深さを添える。
+        expect(
+            screen.getByText("開いている局面を読み続けます。開始局面を読んでいます・深さ 18"),
+        ).toBeTruthy();
         // 読む間の止めるボタンは無い（「停止」を選べば止まる）。
         const candidates = screen.getByRole("region", { name: "候補手" });
         expect(within(candidates).queryByRole("button", { name: "止める" })).toBeNull();
@@ -615,6 +677,8 @@ describe("StudyWorkspaceView", () => {
         const panel = screen.getByRole("region", { name: "候補手" });
         expect(within(panel).getByText("今の読み")).toBeTruthy();
         expect(within(panel).queryByText("AI を準備しています…")).toBeNull();
+        // 途中の候補が無くても、届いた深さは見出しに出す。
+        expect(within(panel).getByText("深さ 12")).toBeTruthy();
     });
 
     it("前に深く読んだ記録のある局面では、準備中の間も今の読みの枠に記録を添える", () => {
@@ -2914,8 +2978,7 @@ describe("StudyWorkspaceView", () => {
         render(<Harness initialDoc={doc} analysis={analysis} />);
 
         const panel = screen.getByRole("region", { name: "候補手" });
-        expect(panel.textContent).toMatch(/今の読み（残り 2\d 秒）/);
-        expect(panel.textContent).toContain("（深さ 12・12 秒・482 万局面）");
+        expect(panel.textContent).toMatch(/今の読み（残り 2\d 秒）深さ 12・12 秒・482 万局面/);
         expect(panel.textContent).toContain("7六歩");
     });
 
@@ -3035,7 +3098,7 @@ describe("StudyWorkspaceView", () => {
         expect(within(panel).queryByRole("button", { name: "その局面へ" })).toBeNull();
         expect(screen.queryByText(/開始局面を読んでいます/)).toBeNull();
         // 見ている局面を読んでいることにし、前の局面の深さは出さない。
-        expect(screen.getByText("1手目を読んでいます")).toBeTruthy();
+        expect(screen.getByText("開いている局面を読み続けます。1手目を読んでいます")).toBeTruthy();
     });
 
     it("自動で読む間に局面を移り、前の読みが止まる前に戻ったら、戻った局面を読み直す", async () => {
@@ -4593,6 +4656,7 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         render(<Harness initialDoc={withPv} />);
         const band = screen.getByRole("status", { name: "この局面の最善手" });
         expect(band.textContent).toContain("2六歩");
+        expect(band.textContent).toContain("深さ 16");
         expect(within(band).getByRole("button", { name: /記録.*読み筋を盤で見る/ })).toBeTruthy();
     });
 
@@ -4657,7 +4721,7 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         await waitFor(() => expect(analysis.startDeep).toHaveBeenCalledWith(ids[1]));
     });
 
-    it("自動で読むで読み終えたら、候補手の欄に読み終えたことを出す", async () => {
+    it("自動で読むで読み終えたら、局面の帯に止まったラムと読み終えたことを出す", async () => {
         localStorage.setItem("shogi:studyReadMode", '"read"');
         const { doc } = createTestStudy();
         const reading = createAnalysis({
@@ -4680,13 +4744,22 @@ describe("StudyWorkspaceView: スマートフォン", () => {
                 analysis={{ ...reading, mode: null, live: null, continuableDeepNodeId: null }}
             />,
         );
-        const candidates = screen.getByRole("region", { name: "候補手" });
+        const band = screen.getByRole("status", { name: "この局面の最善手" });
+        const bandBox = band.parentElement as HTMLElement;
+        // 画面には短く出し、読み上げの領域（先に置いてある）には全文を入れる。
         expect(
-            await within(candidates).findByText("この局面は読み終えました。局面を移ると読みます"),
+            await within(bandBox).findByText("読み終えました。局面を移ると読みます"),
         ).toBeTruthy();
+        const announced = within(bandBox)
+            .getAllByRole("status")
+            .find((element) => element !== band);
+        expect(announced?.textContent).toBe("この局面は読み終えました。局面を移ると読みます");
+        // ラムは止まった絵（走らせない）。
+        const ram = band.parentElement?.querySelector("svg");
+        expect(ram?.classList.contains("animate-ram-run")).toBe(false);
     });
 
-    it("パスして解析の読みは、帯ではなく候補手のタブで知らせる", () => {
+    it("「読む」でない読みも、この局面の読みなら帯でラムを走らせ、候補手のタブには重ねない", () => {
         localStorage.setItem("shogi:studyReadMode", '"stop"');
         const { doc } = createTestStudy();
         const analysis = createAnalysis({
@@ -4701,7 +4774,9 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         });
         render(<Harness initialDoc={doc} analysis={analysis} />);
         fireEvent.click(screen.getByRole("tab", { name: /棋譜/ }));
-        expect(screen.getAllByRole("tab")[0].textContent).toBe("候補手（読んでいます）");
+        expect(screen.getAllByRole("tab")[0].textContent).toBe("候補手");
+        const band = screen.getByRole("status", { name: "この局面の最善手" });
+        expect(band.parentElement?.querySelector("svg.animate-ram-run")).not.toBeNull();
     });
 
     it("ログイン切れでロック中も盤から既存の手へ進める", async () => {

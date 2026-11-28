@@ -53,6 +53,7 @@ import type { StudyAnalysisRunState } from "./study-workspace/StudyAnalysisRunCo
 import { StudyAnalysisSettings } from "./study-workspace/StudyAnalysisSettings";
 import {
     STUDY_AUTO_ANALYZE_FINISHED,
+    STUDY_AUTO_ANALYZE_FINISHED_SHORT,
     StudyCandidatesPanel,
     type StudyElsewhereActivity,
     type StudyPvRequest,
@@ -85,7 +86,7 @@ import { StudyNewNoteDialog, type StudyNewNoteOptions } from "./study-workspace/
 import { StudyNotice } from "./study-workspace/StudyNotice";
 import { StudyPlayFromPositionDialog } from "./study-workspace/StudyPlayFromPositionDialog";
 import { type StudyBandLine, StudyPositionBand } from "./study-workspace/StudyPositionBand";
-import type { StudyReadMode } from "./study-workspace/StudyReadModeGroup";
+import { STUDY_READ_MODE_STATUS, type StudyReadMode } from "./study-workspace/StudyReadModeGroup";
 import { buildStudyReviewItems, StudyReviewList } from "./study-workspace/StudyReviewList";
 import {
     StudySaveIndicator,
@@ -1630,9 +1631,8 @@ export function StudyWorkspaceView({
               }
             : { bestMove: null, score: null, depth: null, otherAi };
     };
-    // 帯にラムを出すのは「読む」の読みだけ（パスして解析の読みは、止める操作のある候補手のタブで知らせる）。
-    // 局面を移った直後は、前の局面の読みを止めてこの局面を読み始めるまで間があるので、その間も読んでいる
-    // ことにする（「未解析」が一瞬出ないように）。
+    // 「読む」でこの局面を読んでいる（読み始めるところも含む）。局面を移った直後は、前の局面の読みを止めて
+    // この局面を読み始めるまで間があるので、その間も読んでいることにする（「未解析」が一瞬出ないように）。
     const bandShowsReading =
         autoAnalyze &&
         (liveHere !== undefined ||
@@ -1641,26 +1641,14 @@ export function StudyWorkspaceView({
                 (autoDecidedNodeId !== currentNodeId ||
                     analysis.mode === "deep" ||
                     analysis.isPreparing)));
-    // 読んでいる間（読み始めるのを待つ間も）に、前に深く読んだ記録のほうが深ければ、それも出す
-    // （今の読みが超えるまで）。
-    // 途中の候補がまだ無い（出せない AI も含む）間は、深さを比べずに出す（深さの無い記録もある）。
-    const previewDepth = liveHere?.preview?.depth ?? null;
-    const recordAhead =
-        (liveHere || bandShowsReading) &&
-        recordResult &&
-        (previewDepth === null || recordResult.depth > previewDepth)
-            ? recordResult
-            : null;
+    // 帯で今の読みを出し、ラムを走らせる（パスして解析など「読む」でない読みも、この局面を読んでいれば）。
+    const bandReading = bandShowsReading || liveHere !== undefined;
     // 最初の読み（途中の値か、深さ）がまだ届いていない。AI の読み込み・エンジンの起動を待っている。
     const awaitingFirstReading = liveHere === undefined || !hasStudyLiveStarted(liveHere);
-    /** 読み方のグループに渡す内容。ラムは、選んでいる読み方でこの局面を読んでいる間だけ走らせる。 */
+    /** 読み方のグループに渡す内容。 */
     const readModeProps = {
         mode: readMode,
         onChange: selectReadMode,
-        running:
-            readMode === "mate"
-                ? mate?.runningNodeId === currentNodeId
-                : readMode !== "stop" && (bandShowsReading || liveHere !== undefined),
         disabled: {
             // パス・詰みは、準備中・全体の解析の途中には選べない（読むを選ぶと全体の解析を止める）。
             pass: readMode !== "pass" && (analysis.isPreparing || analysis.mode === "full"),
@@ -1669,6 +1657,38 @@ export function StudyWorkspaceView({
                 (readMode !== "mate" && (analysis.isPreparing || analysis.mode === "full")),
         },
     };
+    // 局面の帯と読み方のグループ。PC は候補手の欄のいちばん上、スマートフォンは局面の移動の下に置く。
+    const positionBand = (
+        <StudyPositionBand
+            live={bandLineOf(
+                liveHere?.preview ?? null,
+                liveLayer !== undefined && isOtherAi(liveLayer),
+            )}
+            record={bandLineOf(
+                savedPicked?.result ?? null,
+                savedPicked !== null && isOtherAi(savedPicked.layer),
+            )}
+            onPlayRecord={playRecordPv}
+            reading={bandReading}
+            notice={autoReading === STUDY_AUTO_ANALYZE_FINISHED ? autoReading : null}
+            // 帯はこの局面のことなので「この局面は」を省き、幅の狭い画面でも最後まで読めるようにする。
+            noticeShort={STUDY_AUTO_ANALYZE_FINISHED_SHORT}
+            awaitingFirstReading={awaitingFirstReading}
+            readMode={
+                editingDisabled
+                    ? undefined
+                    : {
+                          ...readModeProps,
+                          // 選んでいる読み方の説明に、読んでいる局面を添える（読み終えた知らせは帯の
+                          // 読み上げの領域で伝えるので重ねない）。
+                          status:
+                              autoReading === null || autoReading === STUDY_AUTO_ANALYZE_FINISHED
+                                  ? STUDY_READ_MODE_STATUS[readMode]
+                                  : `${STUDY_READ_MODE_STATUS[readMode]}。${autoReading}`,
+                      }
+            }
+        />
+    );
     const candidatesPanel = (
         <StudyCandidatesPanel
             node={currentNode}
@@ -1678,13 +1698,7 @@ export function StudyWorkspaceView({
             analysisMode={analysis.mode}
             isPreparing={analysis.isPreparing}
             live={liveHere}
-            autoAnalyze={
-                editingDisabled
-                    ? undefined
-                    : { enabled: autoAnalyze, onChange: changeAutoAnalyze, reading: autoReading }
-            }
-            // スマートフォンではスイッチを局面の帯に置く（どの表示からでも止められるように）。
-            autoSwitchElsewhere={isMobile}
+            autoAnalyze={editingDisabled ? undefined : { enabled: autoAnalyze }}
             arrows={{
                 enabled: displaySettings.showCandidateArrows,
                 count: displaySettings.candidateArrowCount,
@@ -1695,11 +1709,9 @@ export function StudyWorkspaceView({
                         showCandidateArrows: enabled,
                     })),
             }}
-            // スマートフォンは帯に記録を出すので、ここには添えない。
-            recordAhead={isMobile ? null : recordAhead}
             readingSoon={bandShowsReading && liveHere === undefined}
             controlsLast={isMobile}
-            readMode={editingDisabled ? undefined : readModeProps}
+            band={isMobile ? undefined : positionBand}
             onCancel={cancelAnalysis}
             onPreviewPv={previewPv}
             onAddPvAsVariation={readOnly ? undefined : editing.addPvAsVariation}
@@ -1931,7 +1943,7 @@ export function StudyWorkspaceView({
                             menu={mobileMenu}
                             // この局面の読みは帯にラムが出るので、タブには帯に出ない読み（全体の解析・
                             // 詰み探索・別の局面の読み）だけを知らせる。
-                            isReading={isReading && !bandShowsReading}
+                            isReading={isReading && !bandReading}
                             saveStrip={
                                 readOnly ? (
                                     layerPicker
@@ -1951,28 +1963,7 @@ export function StudyWorkspaceView({
                             showsComment={showsComment}
                             // 変化に入ったあと、どの表示からでも本譜へ戻れるようにする。
                             onBackToMainLine={nav.onMainLine ? null : nav.backToMainLine}
-                            positionBand={
-                                <StudyPositionBand
-                                    live={bandLineOf(
-                                        liveHere?.preview ?? null,
-                                        liveLayer !== undefined && isOtherAi(liveLayer),
-                                    )}
-                                    record={bandLineOf(
-                                        savedPicked?.result ?? null,
-                                        savedPicked !== null && isOtherAi(savedPicked.layer),
-                                    )}
-                                    onPlayRecord={playRecordPv}
-                                    // パスして解析の読みも今の読みとして出すが、ラムは「読む」の読みだけ。
-                                    reading={bandShowsReading || liveHere !== undefined}
-                                    awaitingFirstReading={awaitingFirstReading}
-                                    showRam={bandShowsReading}
-                                    readMode={
-                                        editingDisabled
-                                            ? undefined
-                                            : { ...readModeProps, status: autoReading }
-                                    }
-                                />
-                            }
+                            positionBand={positionBand}
                             graphPanel={graphPanel}
                             reviewList={
                                 <StudyReviewList

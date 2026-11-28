@@ -18,8 +18,8 @@ export interface StudyBandLine {
 }
 
 /**
- * スマートフォンで局面の移動の下に出す、この局面の読みと、読み方のグループ。
- * 読んでいる間は上の段に今の読み（走るラムが目印）、前に深く読んだ記録がそれより深ければ下の段に記録を
+ * 局面のこの読みと、読み方のグループ（PC は候補手の欄の上、スマートフォンは局面の移動の下）。
+ * 読んでいる間は左でラムが走り、上の段に今の読み、前に深く読んだ記録がそれより深ければ下の段に記録を
  * 出す。読んでいないときは記録を上の段に出す。高さと右側の幅は固定し、読み始め・読み終わり・桁数の変化で
  * 並びが動かないようにする。
  */
@@ -27,7 +27,8 @@ export function StudyPositionBand({
     live,
     record,
     reading,
-    showRam,
+    notice = null,
+    noticeShort,
     awaitingFirstReading = false,
     readMode,
     onPlayRecord,
@@ -38,15 +39,16 @@ export function StudyPositionBand({
     record: StudyBandLine | null;
     /** この局面を読んでいる（読み始めるところも含む）。 */
     reading: boolean;
-    /** 今の読みの段にラムを出す（「読む」読みだけ。ほかの読みは「いま」と書く）。 */
-    showRam: boolean;
+    /** 読んでいないときに下の段に出す知らせ（読み終えたこと など）。止まったラムを添える。 */
+    notice?: string | null;
+    /** 知らせを画面に出すときの短い言い方（全文は読み上げと、マウスを載せたときに出す）。 */
+    noticeShort?: string;
     /** 読み始めたが、最初の読みがまだ届いていない（AI の読み込み・エンジンの起動を待っている）。 */
     awaitingFirstReading?: boolean;
     /** 渡さなければ読み方のグループを出さない（編集できないとき）。`status` は画面読み上げ向けの状態。 */
     readMode?: {
         mode: StudyReadMode;
         onChange: (mode: StudyReadMode) => void;
-        running: boolean;
         disabled: Partial<Record<StudyReadMode, boolean>>;
         status: string | null;
     };
@@ -61,23 +63,22 @@ export function StudyPositionBand({
     const hasRecord = record !== null && (record.score !== null || record.bestMove !== null);
     const recordAhead =
         hasRecord && (live === null || live.depth === null || (record.depth ?? 0) > live.depth);
+    const shownNotice = reading ? null : notice;
+    // 記録の段に ▷ が付くときは、ほかの段にも同じ幅を空けて、評価値と深さの右端をそろえる。
+    const playSlot = hasRecord && onPlayRecord !== undefined;
     const upper = reading ? (
         <BandRow
             label={
-                // 読み方のグループがあれば、ラムはそちらに走らせる（同じ読みに 2 匹動かさない）。
-                showRam && !readMode ? (
-                    <>
-                        <RamRunningIcon dotSize={1} />
-                        {/* ラムは読み上げないので、上の段が今の読みだと名前で伝える。 */}
-                        <span className="sr-only">今の読み</span>
-                    </>
-                ) : (
-                    "いま"
-                )
+                <>
+                    いま
+                    {/* ラムは読み上げないので、上の段が今の読みだと名前で伝える。 */}
+                    <span className="sr-only">（今の読み）</span>
+                </>
             }
             line={live}
             empty={awaitingFirstReading ? "準備中…" : "読み中…"}
             primary
+            playSlot={playSlot}
         />
     ) : (
         <BandRow
@@ -85,12 +86,21 @@ export function StudyPositionBand({
             line={record}
             empty={hasRecord ? "—" : "未解析"}
             primary
+            playSlot={playSlot}
             onPlay={hasRecord ? onPlayRecord : undefined}
         />
     );
+    // 読んでいる間は走るラム、読み終えた知らせには止まったラム。読んでいないときは出さない。
+    const ram = reading ? "running" : shownNotice !== null ? "stopped" : null;
     return (
         <div className="flex flex-col gap-1.5">
             <div className="flex h-14 items-center rounded-lg border border-border bg-wafuu-washi-warm text-sm">
+                {ram && (
+                    <RamRunningIcon
+                        running={ram === "running"}
+                        className="ml-2.5 max-[359px]:ml-2"
+                    />
+                )}
                 {/* 読んでいる間に何度も変わるので、読み上げの領域にはしない（帯全体が繰り返し読み上げられて
                     しまう）。 */}
                 <output
@@ -101,18 +111,32 @@ export function StudyPositionBand({
                     {upper}
                     {/* 記録のある局面を読んでいる間は、下の段が空でも場所を取る（今の読みが記録を超えて
                         記録が消えたときに、上の段が動かないように）。それ以外は 1 段を上下の中央に置く。 */}
-                    {!reading || !hasRecord ? null : recordAhead ? (
+                    {shownNotice !== null ? (
+                        <span
+                            aria-hidden="true"
+                            className="truncate text-xs text-wafuu-sumi max-[359px]:text-[11px]"
+                            title={shownNotice}
+                        >
+                            {noticeShort ?? shownNotice}
+                        </span>
+                    ) : !reading || !hasRecord ? null : recordAhead ? (
                         <BandRow
                             label="記録"
                             line={record}
                             empty="—"
                             primary={false}
+                            playSlot={playSlot}
                             onPlay={onPlayRecord}
                         />
                     ) : (
                         <span aria-hidden="true" className="h-[1.1rem]" />
                     )}
                 </output>
+                {/* 帯のほかの値は読み上げないが、読み終えたことは知らせる。読み上げの領域は先に置いておき、
+                    文だけを入れ替える（領域と文を同時に足すと読み上げられないことがある）。 */}
+                <span role="status" className="sr-only">
+                    {shownNotice ?? ""}
+                </span>
             </div>
             {readMode && (
                 <div>
@@ -120,7 +144,6 @@ export function StudyPositionBand({
                         describedBy={statusId}
                         mode={readMode.mode}
                         onChange={readMode.onChange}
-                        running={readMode.running}
                         disabled={readMode.disabled}
                     />
                     <span id={statusId} className="sr-only">
@@ -137,6 +160,7 @@ function BandRow({
     line,
     empty,
     primary,
+    playSlot,
     onPlay,
 }: {
     label: ReactNode;
@@ -145,6 +169,8 @@ function BandRow({
     empty: string;
     /** 上の段（主に見る値）。下の段は控えめに出す。 */
     primary: boolean;
+    /** ▷ の幅を空けておく（同じ帯のどこかの段に ▷ が付くとき）。 */
+    playSlot: boolean;
     /** 渡すと段全体を押せるようにし、読み筋を盤で見せる。 */
     onPlay?: () => void;
 }): ReactElement {
@@ -166,6 +192,10 @@ function BandRow({
             <span
                 className={cn(
                     "min-w-0 truncate",
+                    // 押せる段は、手に薄い下線を引いて示す。
+                    onPlay &&
+                        bestMove &&
+                        "underline decoration-muted-foreground decoration-dotted underline-offset-4",
                     primary
                         ? bestMove
                             ? "text-wafuu-sumi"
@@ -176,7 +206,7 @@ function BandRow({
             >
                 {bestMove ? bestMove.replace(/\(\d\d\)$/, "") : empty}
             </span>
-            {line && scoreText !== "" && (
+            {line && (scoreText !== "" || line.depth !== null) && (
                 <span className="ml-auto flex shrink-0 items-baseline gap-1.5 max-[359px]:gap-1">
                     <span
                         className={cn(
@@ -205,13 +235,17 @@ function BandRow({
                     </span>
                 </span>
             )}
-            {onPlay && (
-                <>
-                    {/* 幅の狭い画面では手の表記を優先して印を省く（段全体は押せる）。 */}
-                    <PlayIcon className="-ml-0.5 h-2.5 w-2.5 self-center text-wafuu-ai max-[359px]:hidden" />
-                    <span className="sr-only">（読み筋を盤で見る）</span>
-                </>
+            {/* 幅の狭い画面では手の表記を優先して印の幅を空けない（段全体は押せる）。 */}
+            {(playSlot || onPlay) && (
+                <span
+                    aria-hidden="true"
+                    className="flex w-4 shrink-0 self-center max-[359px]:hidden"
+                >
+                    {/* 候補手の行の ▷ と同じ色にする（同じ「盤で見る」操作）。 */}
+                    {onPlay && <PlayIcon className="h-4 w-4 text-wafuu-sumi-light" />}
+                </span>
             )}
+            {onPlay && <span className="sr-only">（読み筋を盤で見る）</span>}
         </>
     );
     if (!onPlay) return <span className={rowClass}>{content}</span>;
