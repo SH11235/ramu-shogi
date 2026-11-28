@@ -161,6 +161,8 @@ interface StudyCandidatesPanelProps {
     className?: string;
 }
 
+const PREPARING_TEXT = "AI を準備しています…";
+
 const sideClass = (side: "sente" | "gote" | null): string =>
     side === "sente" ? "text-wafuu-shu" : side === "gote" ? "text-wafuu-ai" : "text-foreground";
 
@@ -513,6 +515,11 @@ export function StudyCandidatesPanel({
     const autoOn = autoAnalyze?.enabled ?? false;
     const autoFinished = autoAnalyze?.reading === STUDY_AUTO_ANALYZE_FINISHED;
     const isDeepHere = live !== undefined;
+    /**
+     * 自動で読むを入れてから、この局面の読みが始まるまで（AI の読み込みなど）。止まって見えないよう、
+     * ラムを走らせ、今の読みの枠を先に出す。
+     */
+    const autoPreparing = readingSoon && !isDeepHere;
     // 別の局面の深い解析・詰み探索は、押せばそれを止めて切り替える。全体の解析の途中だけは始めない。
     const startDisabled = isPreparing || analysisMode === "full";
     const sourceText = formatStudyScore(source?.score);
@@ -559,8 +566,10 @@ export function StudyCandidatesPanel({
                             className="flex min-w-0 items-center gap-1.5 text-xs"
                         >
                             <RamRunningIcon
-                                running={isDeepHere && !autoFinished}
-                                className={cn(autoAnalyze.reading === null && "invisible")}
+                                running={(isDeepHere || autoPreparing) && !autoFinished}
+                                className={cn(
+                                    autoAnalyze.reading === null && !autoPreparing && "invisible",
+                                )}
                             />
                             {autoFinished && (
                                 <span aria-hidden="true" className="truncate text-muted-foreground">
@@ -681,6 +690,10 @@ export function StudyCandidatesPanel({
                         )}
                     </div>
                     {recordAhead && <RecordLine node={node} result={recordAhead} />}
+                    {/* エンジンの起動中など、最初の読みが届くまで。 */}
+                    {!live.preview && (
+                        <p className="px-1 text-sm text-muted-foreground">{PREPARING_TEXT}</p>
+                    )}
                     {live.preview && (
                         <ol className="flex flex-col">
                             {live.preview.candidates.map((candidate) => (
@@ -699,10 +712,19 @@ export function StudyCandidatesPanel({
                 </div>
             )}
 
+            {autoPreparing && (
+                <div className="flex flex-col gap-1 rounded-lg bg-wafuu-washi px-2 py-2">
+                    <p className="flex min-h-7 items-center px-1 text-xs font-medium text-wafuu-sumi">
+                        今の読み
+                    </p>
+                    <p className="px-1 text-sm text-muted-foreground">{PREPARING_TEXT}</p>
+                </div>
+            )}
+
             {/* 深く解析した結果があれば、それを候補手の一覧にする（同じ局面をより深く読んだ結果なので）。
                 全体の解析の結果は、最善手だけを 1 行で添える。読んでいる間は今の読みだけを出す（前に深く
                 読んだ記録は、帯か今の読みの見出しの下に 1 行で出す）。 */}
-            {!live && (
+            {!live && !autoPreparing && (
                 <div className="flex flex-col gap-1">
                     {mainResult && (
                         // 1 行に収まらないときは省略し、全文はマウスを載せると見られるようにする。
@@ -729,7 +751,7 @@ export function StudyCandidatesPanel({
                         </ol>
                     ) : (
                         <p className="px-1 text-sm text-muted-foreground">
-                            {readingSoon ? "読み中…" : "この局面はまだ解析していません。"}
+                            この局面はまだ解析していません。
                         </p>
                     )}
                     {deeperResult && positionResult && (

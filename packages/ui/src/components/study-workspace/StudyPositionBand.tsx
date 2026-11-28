@@ -67,7 +67,8 @@ export function StudyPositionBand({
                 )
             }
             line={live}
-            empty="読み中…"
+            // 最初の読みが届くまでは、AI の読み込み・エンジンの起動を待っている。
+            empty={live?.depth == null ? "準備中…" : "読み中…"}
             primary
         />
     ) : (

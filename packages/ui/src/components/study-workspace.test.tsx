@@ -549,6 +549,41 @@ describe("StudyWorkspaceView", () => {
         expect(analysis.cancel).toHaveBeenCalledTimes(1);
     });
 
+    it("自動で読むを入れてから最初の読みが届くまで、ラムを走らせ、今の読みの枠に準備中と出す", () => {
+        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+        const { doc } = createTestStudy();
+        const panel = () => screen.getByRole("region", { name: "候補手" });
+        const ramRuns = () =>
+            panel().querySelector("svg.animate-ram-run")?.closest("span.invisible") === null;
+        // AI を読み込んでいる間（読みはまだ始まっていない）。
+        const view = render(
+            <Harness initialDoc={doc} analysis={createAnalysis({ isPreparing: true })} />,
+        );
+        expect(within(panel()).getByText("今の読み")).toBeTruthy();
+        expect(within(panel()).getByText("AI を準備しています…")).toBeTruthy();
+        expect(within(panel()).queryByText("この局面はまだ解析していません。")).toBeNull();
+        expect(ramRuns()).toBe(true);
+
+        // エンジンを起動している間（読みは始まったが、途中の値がまだ無い）も同じ。
+        view.rerender(
+            <Harness
+                initialDoc={doc}
+                analysis={createAnalysis({
+                    mode: "deep",
+                    live: {
+                        nodeId: doc.tree.rootId,
+                        depth: null,
+                        startedAt: null,
+                        budgetMs: 30_000,
+                        preview: null,
+                    },
+                })}
+            />,
+        );
+        expect(within(panel()).getByText("AI を準備しています…")).toBeTruthy();
+        expect(ramRuns()).toBe(true);
+    });
+
     it("別のタブで自動で読むを切ったら、読む準備をしている途中でも止める", () => {
         localStorage.setItem("shogi:studyAutoAnalyze", "true");
         const { doc } = createTestStudy();
@@ -4081,7 +4116,7 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         expect(screen.getAllByRole("switch", { name: /自動/ })).toHaveLength(1);
         within(band()).getByRole("switch", { name: "自動読み" });
         // 読み始めるまでは、保存してある記録を下の段に出す。
-        expect(band().textContent).toContain("読み中…");
+        expect(band().textContent).toContain("準備中…");
         expect(band().textContent).toContain("記録");
         expect(band().textContent).toContain("+120");
         expect(band().textContent).toContain("深さ 15");
@@ -4191,7 +4226,7 @@ describe("StudyWorkspaceView: スマートフォン", () => {
                 })}
             />,
         );
-        expect(band().textContent).toContain("読み中");
+        expect(band().textContent).toContain("準備中…");
         expect(band().textContent).not.toContain("未解析");
 
         // 移った直後で、まだ前の局面を読んでいる間も同じ。
@@ -4210,7 +4245,7 @@ describe("StudyWorkspaceView: スマートフォン", () => {
                 })}
             />,
         );
-        expect(band().textContent).toContain("読み中");
+        expect(band().textContent).toContain("準備中…");
     });
 
     it("自動で読むを入れたまま未解析の局面へ移ると、読み始めるまでの間も帯に未解析と出さない", async () => {
@@ -4223,7 +4258,7 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         await waitFor(() => expect(analysis.startDeep).toHaveBeenCalledWith(doc.tree.rootId));
 
         fireEvent.click(screen.getByRole("button", { name: "1手進む" }));
-        expect(band().textContent).toContain("読み中");
+        expect(band().textContent).toContain("準備中…");
         expect(band().textContent).not.toContain("未解析");
         await waitFor(() => expect(analysis.startDeep).toHaveBeenCalledWith(ids[1]));
     });
