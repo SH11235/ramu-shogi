@@ -112,14 +112,12 @@ export function StudyPositionBand({
                     {/* 記録のある局面を読んでいる間は、下の段が空でも場所を取る（今の読みが記録を超えて
                         記録が消えたときに、上の段が動かないように）。それ以外は 1 段を上下の中央に置く。 */}
                     {shownNotice !== null ? (
-                        // 帯のほかの値は読み上げないが、読み終えたことは知らせる。
                         <span
-                            role="status"
-                            className="truncate text-xs text-wafuu-sumi"
+                            aria-hidden="true"
+                            className="truncate text-xs text-wafuu-sumi max-[359px]:text-[11px]"
                             title={shownNotice}
                         >
-                            <span aria-hidden="true">{noticeShort ?? shownNotice}</span>
-                            <span className="sr-only">{shownNotice}</span>
+                            {noticeShort ?? shownNotice}
                         </span>
                     ) : !reading || !hasRecord ? null : recordAhead ? (
                         <BandRow
@@ -134,6 +132,11 @@ export function StudyPositionBand({
                         <span aria-hidden="true" className="h-[1.1rem]" />
                     )}
                 </output>
+                {/* 帯のほかの値は読み上げないが、読み終えたことは知らせる。読み上げの領域は先に置いておき、
+                    文だけを入れ替える（領域と文を同時に足すと読み上げられないことがある）。 */}
+                <span role="status" className="sr-only">
+                    {shownNotice ?? ""}
+                </span>
             </div>
             {readMode && (
                 <div>
@@ -236,10 +239,10 @@ function BandRow({
             {(playSlot || onPlay) && (
                 <span
                     aria-hidden="true"
-                    className="flex w-3 shrink-0 self-center max-[359px]:hidden"
+                    className="flex w-4 shrink-0 self-center max-[359px]:hidden"
                 >
                     {/* 候補手の行の ▷ と同じ色にする（同じ「盤で見る」操作）。 */}
-                    {onPlay && <PlayIcon className="h-3 w-3 text-wafuu-sumi-light" />}
+                    {onPlay && <PlayIcon className="h-4 w-4 text-wafuu-sumi-light" />}
                 </span>
             )}
             {onPlay && <span className="sr-only">（読み筋を盤で見る）</span>}

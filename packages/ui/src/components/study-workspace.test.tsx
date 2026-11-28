@@ -375,7 +375,7 @@ describe("StudyWorkspaceView", () => {
             expect(label.classList.contains("sr-only")).toBe(true);
         }
         // 記録の段にだけ ▷ が付いても、今の読みの段にも同じ幅を空けて右端をそろえる。
-        const slots = bandBox.querySelectorAll("span.w-3");
+        const slots = bandBox.querySelectorAll("span.w-4");
         expect(slots).toHaveLength(2);
         expect(slots[0].querySelector("svg")).toBeNull();
         expect(slots[1].querySelector("svg")).not.toBeNull();
@@ -4745,11 +4745,15 @@ describe("StudyWorkspaceView: スマートフォン", () => {
             />,
         );
         const band = screen.getByRole("status", { name: "この局面の最善手" });
+        const bandBox = band.parentElement as HTMLElement;
+        // 画面には短く出し、読み上げの領域（先に置いてある）には全文を入れる。
         expect(
-            await within(band.parentElement as HTMLElement).findByText(
-                "この局面は読み終えました。局面を移ると読みます",
-            ),
+            await within(bandBox).findByText("読み終えました。局面を移ると読みます"),
         ).toBeTruthy();
+        const announced = within(bandBox)
+            .getAllByRole("status")
+            .find((element) => element !== band);
+        expect(announced?.textContent).toBe("この局面は読み終えました。局面を移ると読みます");
         // ラムは止まった絵（走らせない）。
         const ram = band.parentElement?.querySelector("svg");
         expect(ram?.classList.contains("animate-ram-run")).toBe(false);
