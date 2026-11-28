@@ -391,6 +391,40 @@ describe("useStudyAnalysis", () => {
         expect(engine.searches()).toBe(1);
     });
 
+    it("続きから読めないエンジンで深さの無い info が届いても、届いていた深さを残す", async () => {
+        const { doc, ids } = createTestStudy();
+        const listeners = new Set<EngineEventHandler>();
+        const emit = (event: Omit<EngineInfoEvent, "type">): void => {
+            for (const listener of listeners) listener({ type: "info", ...event });
+        };
+        const option: EngineOption = {
+            id: "wasm",
+            label: "内蔵エンジン",
+            kind: "internal",
+            createClient: (): EngineClient => ({
+                init: vi.fn().mockResolvedValue(undefined),
+                loadPosition: vi.fn().mockResolvedValue(undefined),
+                setOption: vi.fn().mockResolvedValue(undefined),
+                stop: vi.fn().mockResolvedValue(undefined),
+                dispose: vi.fn().mockResolvedValue(undefined),
+                subscribe(handler) {
+                    listeners.add(handler);
+                    return () => listeners.delete(handler);
+                },
+                search: vi.fn().mockResolvedValue({ cancel: async () => {} }),
+            }),
+        };
+        const { result } = renderHook(() => useHarness(doc, [option]));
+        await act(async () => {
+            await result.current.controller.startDeep(ids[2]);
+        });
+        await waitFor(() => expect(result.current.controller.live?.nodeId).toBe(ids[2]));
+        act(() => emit({ depth: 12, scoreCp: 80, multipv: 1, pv: ["7g7f"] }));
+        await waitFor(() => expect(result.current.controller.live?.depth).toBe(12));
+        act(() => emit({ scoreCp: 90, multipv: 1, pv: ["7g7f"] }));
+        expect(result.current.controller.live?.depth).toBe(12);
+    });
+
     it("この局面を深く解析すると、時間の長い別の設定の結果としてその局面だけに入る", async () => {
         const { doc, ids } = createTestStudy();
         const engine = createEngineOption();

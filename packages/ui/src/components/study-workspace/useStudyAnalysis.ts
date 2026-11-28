@@ -414,12 +414,12 @@ export function useStudyAnalysis({
         },
         onResult: (_ply: number, event: EngineInfoEvent, nodeId?: string) => {
             if (!nodeId) return;
-            const depth = event.depth ?? null;
-            setLive((previous) =>
-                previous && previous.nodeId === nodeId && previous.depth !== depth
-                    ? { ...previous, depth }
-                    : previous,
-            );
+            setLive((previous) => {
+                if (!previous || previous.nodeId !== nodeId) return previous;
+                // 深さの無い info もあるので、届いた深さは次の深さが届くまで残す（読み始めたかの判定にも使う）。
+                const depth = event.depth ?? previous.depth;
+                return previous.depth !== depth ? { ...previous, depth } : previous;
+            });
         },
         onComplete: () => {
             flushResults();

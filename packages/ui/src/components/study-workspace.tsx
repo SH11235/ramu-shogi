@@ -1426,10 +1426,12 @@ export function StudyWorkspaceView({
                     analysis.isPreparing)));
     // 読んでいる間（読み始めるのを待つ間も）に、前に深く読んだ記録のほうが深ければ、それも出す
     // （今の読みが超えるまで）。
+    // 深さの無い記録もあるので、今の読みの深さがまだ無ければ深さを比べずに出す。
+    const liveDepth = liveHere?.preview?.depth ?? liveHere?.depth ?? null;
     const recordAhead =
         (liveHere || bandShowsReading) &&
         recordResult &&
-        recordResult.depth > (liveHere?.preview?.depth ?? 0)
+        (liveDepth === null || recordResult.depth > liveDepth)
             ? recordResult
             : null;
     // 最初の読み（途中の値か、深さ）がまだ届いていない。AI の読み込み・エンジンの起動を待っている。
