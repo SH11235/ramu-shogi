@@ -29,12 +29,14 @@ const outDir = path.resolve(__dirname, "../pkg");
 const threadedOutDir = path.resolve(__dirname, "../pkg-threaded");
 const threadedTarget = path.resolve(rustRoot, "targets", "wasm32-unknown-unknown.json");
 
-// 探索スレッドのスタック（バイト）。探索は手数 MAX_PLY (246) で潜るのをやめる。1 手の中でも
-// singular extension・null move の確認・probcut で search_node（約 5.3 KB）を呼び直すので、
-// 毎手 search_node 2 つと try_probcut（約 5 KB）が重なる最悪でも約 3.7 MiB。初回の表の初期化
-// （約 0.2 MB）を足しても 2 倍の余裕を持たせる。wasm の既定（本体 1 MiB・補助スレッド 2 MiB）では
-// 深く読み続けると足りず、本体は `memory access out of bounds` で落ち、補助スレッドはヒープを壊す。
+// 探索スレッドのスタック（バイト）。wasm の既定（本体 1 MiB・補助スレッド 2 MiB）では深く読み続けると
+// 足りず、本体は `memory access out of bounds` で落ち、補助スレッドはヒープを壊す。探索は手数
+// MAX_PLY (246) で潜るのをやめ、search_node は 1 フレーム約 5.3 KB。1 手の中でも singular extension・
+// null move の確認・probcut で呼び直すので、毎手 2〜3 フレーム重なると概算 4〜5 MiB になる。
 const SEARCH_STACK_BYTES = 8 * 1024 * 1024;
+
+// スタックの下端・上端（リンカーが作るシンボル）。wasm から外へ出して、ビルドの最後に大きさを確かめる。
+const STACK_BOUND_EXPORTS = "-C link-arg=--export=__stack_low -C link-arg=--export=__stack_high";
 
 function run(cmd, args, cwd = process.cwd(), extraEnv = {}) {
     const fullCommand = `${cmd} ${args.join(" ")}`;
@@ -77,8 +79,8 @@ function run(cmd, args, cwd = process.cwd(), extraEnv = {}) {
     }
 }
 
-/** wasm の最初の内部グローバル（`__stack_pointer`）の初期値。`--stack-first` ではスタックの大きさと同じ。 */
-function readStackPointerInit(wasmPath) {
+/** wasm の外へ出したグローバルの初期値（`i32.const` で初期化されたもの）を、名前ごとに読む。 */
+function readExportedGlobals(wasmPath) {
     const bytes = readFileSync(wasmPath);
     let offset = 8;
     const readUleb = () => {
@@ -102,35 +104,76 @@ function readStackPointerInit(wasmPath) {
             shift += 7;
         } while (byte & 0x80);
         if (shift < 32 && byte & 0x40) result |= -1 << shift;
-        return result;
+        return result >>> 0;
     };
+    const readName = () => {
+        const length = readUleb();
+        const name = bytes.subarray(offset, offset + length).toString("utf8");
+        offset += length;
+        return name;
+    };
+    const skipLimits = () => {
+        const flags = bytes[offset++];
+        readUleb();
+        if (flags & 1) readUleb();
+    };
+    let importedGlobals = 0;
+    const definedGlobals = [];
+    const exportedGlobals = new Map();
     while (offset < bytes.length) {
         const id = bytes[offset++];
         const size = readUleb();
         const end = offset + size;
-        if (id === 6) {
-            readUleb();
-            const valueType = bytes[offset++];
-            const mutable = bytes[offset++];
-            const opcode = bytes[offset++];
-            // i32・可変・i32.const で初期化されたものだけを __stack_pointer とみなす
-            if (valueType === 0x7f && mutable === 1 && opcode === 0x41) return readSleb32();
-            return null;
+        if (id === 2) {
+            const count = readUleb();
+            for (let i = 0; i < count; i++) {
+                readName();
+                readName();
+                const kind = bytes[offset++];
+                if (kind === 0) readUleb();
+                else if (kind === 1) {
+                    offset++;
+                    skipLimits();
+                } else if (kind === 2) skipLimits();
+                else if (kind === 3) {
+                    offset += 2;
+                    importedGlobals++;
+                } else throw new Error(`${wasmPath}: 想定していない import の種類 ${kind}`);
+            }
+        } else if (id === 6) {
+            const count = readUleb();
+            for (let i = 0; i < count; i++) {
+                offset += 2;
+                const opcode = bytes[offset++];
+                definedGlobals.push(opcode === 0x41 ? readSleb32() : null);
+                while (bytes[offset - 1] !== 0x0b) offset++;
+            }
+        } else if (id === 7) {
+            const count = readUleb();
+            for (let i = 0; i < count; i++) {
+                const name = readName();
+                const kind = bytes[offset++];
+                const index = readUleb();
+                if (kind === 3) exportedGlobals.set(name, index);
+            }
         }
         offset = end;
     }
-    return null;
+    const values = new Map();
+    for (const [name, index] of exportedGlobals) {
+        values.set(name, definedGlobals[index - importedGlobals] ?? null);
+    }
+    return values;
 }
 
-/**
- * `--stack-first` ではスタックが 0 番地から始まり、`__stack_pointer` の初期値がスタックの大きさと
- * 等しい。等しさを求めるので、配置やグローバルの並びが変われば（別の値を読んだら）ここで止まる。
- */
+/** スタックが 0 番地から始まり（`--stack-first`）、ちょうど SEARCH_STACK_BYTES あることを確かめる。 */
 function verifyStackSize(wasmPath) {
-    const stackBytes = readStackPointerInit(wasmPath);
-    if (stackBytes !== SEARCH_STACK_BYTES) {
+    const globals = readExportedGlobals(wasmPath);
+    const low = globals.get("__stack_low");
+    const high = globals.get("__stack_high");
+    if (low !== 0 || high !== SEARCH_STACK_BYTES) {
         throw new Error(
-            `${wasmPath} の __stack_pointer の初期値が ${stackBytes} です（--stack-first で ${SEARCH_STACK_BYTES} バイトのスタックを想定）`,
+            `${wasmPath} の探索スタックが [${low}, ${high}) です（[0, ${SEARCH_STACK_BYTES}) を想定）`,
         );
     }
 }
@@ -232,6 +275,7 @@ function buildWasm({
     if (!existsSync(targetWasm)) {
         throw new Error(`Built wasm not found at ${targetWasm}`);
     }
+    verifyStackSize(targetWasm);
 
     rmSync(outputDir, { recursive: true, force: true });
     mkdirSync(outputDir, { recursive: true });
@@ -243,8 +287,6 @@ function buildWasm({
     );
 
     // wasm-opt は不使用（Cargo LTO で十分最適化済み、wasm-opt は逆効果: -8〜12% NPS低下）
-
-    verifyStackSize(path.join(outputDir, `${artifactName}_bg.wasm`));
 
     if (emitThreadWorker) {
         const workerPath = path.join(outputDir, `${artifactName}_worker.js`);
@@ -303,7 +345,7 @@ try {
         label: "single",
         cargoArgs: [],
         outDir,
-        rustflags: `-C target-feature=+simd128 -C link-arg=-zstack-size=${SEARCH_STACK_BYTES}`,
+        rustflags: `-C target-feature=+simd128 -C link-arg=-zstack-size=${SEARCH_STACK_BYTES} ${STACK_BOUND_EXPORTS}`,
     });
 
     verifyTargetStackSize(threadedTarget);
@@ -311,8 +353,7 @@ try {
         label: "threaded",
         cargoArgs: ["--features", "wasm-threads"],
         outDir: threadedOutDir,
-        rustflags:
-            "-C target-feature=+simd128 -Z unstable-options -C panic=immediate-abort -C link-arg=--shared-memory -C link-arg=--import-memory -C link-arg=--max-memory=2147483648 -C link-arg=--export=__wasm_init_tls -C link-arg=--export=__tls_base -C link-arg=--export=__tls_size -C link-arg=--export=__tls_align",
+        rustflags: `-C target-feature=+simd128 -Z unstable-options -C panic=immediate-abort -C link-arg=--shared-memory -C link-arg=--import-memory -C link-arg=--max-memory=2147483648 -C link-arg=--export=__wasm_init_tls -C link-arg=--export=__tls_base -C link-arg=--export=__tls_size -C link-arg=--export=__tls_align ${STACK_BOUND_EXPORTS}`,
         toolchain: nightlyToolchain,
         cargoZArgs: ["-Z", "build-std=core,alloc,std", "-Z", "json-target-spec"],
         emitThreadWorker: true,
