@@ -899,7 +899,11 @@ export function StudyWorkspaceView({
     const onAutoAnalyzeChange = useEffectEvent((enabled: boolean): void => {
         const local = localAutoAnalyzeRef.current === enabled;
         localAutoAnalyzeRef.current = null;
-        if (enabled) return;
+        // 別のタブで入れ直したときも、読み直すので読み終えた知らせは消す。
+        if (enabled) {
+            setAutoFinishedNodeId(null);
+            return;
+        }
         // 入れ直したら同じ局面を読み直す（1 拍おいて覚えを消す判定は、すぐ入れ直すと走らない）。
         autoStartedNodeRef.current = null;
         if (local) return;
@@ -948,6 +952,8 @@ export function StudyWorkspaceView({
         actionSerialRef.current += 1;
         setAutoAnalyzeHere(enabled);
         setAutoDecidedNodeId(null);
+        // 読み終えた局面で入れ直したら読み直すので、読み終えた知らせは消す。
+        if (enabled) setAutoFinishedNodeId(null);
         if (!enabled) {
             // 入れ直したら同じ局面を読み直す（切ったのが描画に出る前に入れ直されることもあるので、ここでも消す）。
             autoStartedNodeRef.current = null;
@@ -1380,12 +1386,7 @@ export function StudyWorkspaceView({
             className={isMobile ? "min-h-0 flex-1" : isWide ? "max-h-full" : "max-h-[26rem]"}
         />
     );
-    // 読んでいる間に、前に深く読んだ記録のほうが深ければ、それも出す（今の読みが超えるまで）。
     const recordResult = savedPicked?.result ?? null;
-    const recordAhead =
-        liveHere && recordResult && recordResult.depth > (liveHere.preview?.depth ?? 0)
-            ? recordResult
-            : null;
     const recordBest = recordResult ? studyBestCandidate(recordResult) : null;
     const playRecordPv =
         recordBest && recordBest.pv.length > 0
@@ -1423,6 +1424,17 @@ export function StudyWorkspaceView({
                 (autoDecidedNodeId !== currentNodeId ||
                     analysis.mode === "deep" ||
                     analysis.isPreparing)));
+    // 読んでいる間（読み始めるのを待つ間も）に、前に深く読んだ記録のほうが深ければ、それも出す
+    // （今の読みが超えるまで）。
+    const recordAhead =
+        (liveHere || bandShowsReading) &&
+        recordResult &&
+        recordResult.depth > (liveHere?.preview?.depth ?? 0)
+            ? recordResult
+            : null;
+    // 最初の読み（途中の値か、深さ）がまだ届いていない。AI の読み込み・エンジンの起動を待っている。
+    const awaitingFirstReading =
+        liveHere === undefined || (liveHere.preview === null && liveHere.depth === null);
     const candidatesPanel = (
         <StudyCandidatesPanel
             node={currentNode}
@@ -1720,6 +1732,7 @@ export function StudyWorkspaceView({
                                     onPlayRecord={playRecordPv}
                                     // パスして解析の読みも今の読みとして出すが、ラムは自動で読む読みだけ。
                                     reading={bandShowsReading || liveHere !== undefined}
+                                    awaitingFirstReading={awaitingFirstReading}
                                     showRam={bandShowsReading}
                                     autoAnalyze={
                                         editingDisabled

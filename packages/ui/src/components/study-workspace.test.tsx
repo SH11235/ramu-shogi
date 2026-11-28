@@ -584,6 +584,66 @@ describe("StudyWorkspaceView", () => {
         expect(ramRuns()).toBe(true);
     });
 
+    it("途中の候補を出せない AI で深さが届いたら、準備中とは出さない", () => {
+        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+        const { doc } = createTestStudy();
+        render(
+            <Harness
+                initialDoc={doc}
+                analysis={createAnalysis({
+                    mode: "deep",
+                    live: {
+                        nodeId: doc.tree.rootId,
+                        depth: 12,
+                        startedAt: null,
+                        budgetMs: 30_000,
+                        preview: null,
+                    },
+                })}
+            />,
+        );
+        const panel = screen.getByRole("region", { name: "候補手" });
+        expect(within(panel).getByText("今の読み")).toBeTruthy();
+        expect(within(panel).queryByText("AI を準備しています…")).toBeNull();
+    });
+
+    it("前に深く読んだ記録のある局面では、準備中の間も今の読みの枠に記録を添える", () => {
+        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+        const { doc } = createTestStudy([cp(120), cp(0), cp(0), cp(0), cp(0)]);
+        render(<Harness initialDoc={doc} analysis={createAnalysis({ isPreparing: true })} />);
+        const panel = screen.getByRole("region", { name: "候補手" });
+        expect(within(panel).getByText("AI を準備しています…")).toBeTruthy();
+        expect(panel.textContent).toContain("記録");
+        expect(panel.textContent).toContain("+120");
+    });
+
+    it("読み終えた局面で自動で読むを入れ直したら、読み終えた知らせを消す", async () => {
+        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+        const { doc } = createTestStudy();
+        const reading = createAnalysis({
+            mode: "deep",
+            live: {
+                nodeId: doc.tree.rootId,
+                depth: 18,
+                startedAt: null,
+                budgetMs: 30_000,
+                preview: null,
+            },
+        });
+        const { rerender } = render(<Harness initialDoc={doc} analysis={reading} />);
+        await act(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+        const finished = { ...reading, mode: null, live: null, continuableDeepNodeId: null };
+        rerender(<Harness initialDoc={doc} analysis={finished} />);
+        await screen.findByText("この局面は読み終えました。局面を移ると読みます");
+        const toggle = screen.getByRole("switch", { name: "自動で読む" });
+        fireEvent.click(toggle);
+        fireEvent.click(toggle);
+        expect(screen.queryByText("この局面は読み終えました。局面を移ると読みます")).toBeNull();
+        await waitFor(() => expect(reading.startDeep).toHaveBeenCalledWith(doc.tree.rootId));
+    });
+
     it("別のタブで自動で読むを切ったら、読む準備をしている途中でも止める", () => {
         localStorage.setItem("shogi:studyAutoAnalyze", "true");
         const { doc } = createTestStudy();

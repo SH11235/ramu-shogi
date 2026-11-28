@@ -28,6 +28,7 @@ export function StudyPositionBand({
     record,
     reading,
     showRam,
+    awaitingFirstReading = false,
     autoAnalyze,
     onPlayRecord,
 }: {
@@ -39,6 +40,8 @@ export function StudyPositionBand({
     reading: boolean;
     /** 今の読みの段にラムを出す（自動で読む読みだけ。ほかの読みは「いま」と書く）。 */
     showRam: boolean;
+    /** 読み始めたが、最初の読みがまだ届いていない（AI の読み込み・エンジンの起動を待っている）。 */
+    awaitingFirstReading?: boolean;
     /** 渡さなければスイッチを出さない（編集できないとき）。`status` は画面読み上げ向けの状態。 */
     autoAnalyze?: { enabled: boolean; onChange: (enabled: boolean) => void; status: string | null };
     /**
@@ -67,8 +70,7 @@ export function StudyPositionBand({
                 )
             }
             line={live}
-            // 最初の読みが届くまでは、AI の読み込み・エンジンの起動を待っている。
-            empty={live?.depth == null ? "準備中…" : "読み中…"}
+            empty={awaitingFirstReading ? "準備中…" : "読み中…"}
             primary
         />
     ) : (

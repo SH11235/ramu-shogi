@@ -690,8 +690,8 @@ export function StudyCandidatesPanel({
                         )}
                     </div>
                     {recordAhead && <RecordLine node={node} result={recordAhead} />}
-                    {/* エンジンの起動中など、最初の読みが届くまで。 */}
-                    {!live.preview && (
+                    {/* エンジンの起動中など、最初の読みが届くまで（途中の候補を出せない AI は、深さだけ届く）。 */}
+                    {!live.preview && live.depth === null && (
                         <p className="px-1 text-sm text-muted-foreground">{PREPARING_TEXT}</p>
                     )}
                     {live.preview && (
@@ -718,6 +718,7 @@ export function StudyCandidatesPanel({
                         今の読み
                     </p>
                     <p className="px-1 text-sm text-muted-foreground">{PREPARING_TEXT}</p>
+                    {recordAhead && <RecordLine node={node} result={recordAhead} />}
                 </div>
             )}
 
