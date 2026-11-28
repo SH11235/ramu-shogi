@@ -60,8 +60,6 @@ export function isStudyAutoReadLayer(layer: Pick<StudyLayer, "spec">): boolean {
         layer.spec.limits.depth === STUDY_DEEP_DEPTH
     );
 }
-/** 「この局面を深く解析」で読む候補手の数の下限。 */
-const STUDY_DEEP_MIN_MULTI_PV = 3;
 
 /** NNUE を使わない（駒得だけで評価する）ときの AI の表示名。 */
 const MATERIAL_AI_NAME = "簡易AI（駒得）";
@@ -268,7 +266,15 @@ export function useStudyAnalysis({
         "shogi-analysis-settings",
         DEFAULT_ANALYSIS_SETTINGS,
     );
-    const settings = { ...DEFAULT_ANALYSIS_SETTINGS, ...storedSettings };
+    const stored: Partial<AnalysisSettings> = storedSettings;
+    const settings: AnalysisSettings = {
+        ...DEFAULT_ANALYSIS_SETTINGS,
+        ...stored,
+        // 候補手の数を全体の解析と分ける前の設定では、1 局面の読みは max(候補手の数, 3) 本読んでいた。
+        deepMultiPv:
+            stored.deepMultiPv ??
+            Math.max(stored.multiPv ?? 1, DEFAULT_ANALYSIS_SETTINGS.deepMultiPv),
+    };
     const [analysisEngineId, setAnalysisEngineId] = useLocalStorage<string>(
         "shogi-analysis-engine",
         engineOptions[0]?.id ?? "wasm",
@@ -872,10 +878,7 @@ export function useStudyAnalysis({
             { kind: "deep", nodeId },
             async (isCurrent) => {
                 const limits = { timeMs: STUDY_DEEP_TIME_MS, depth: STUDY_DEEP_DEPTH };
-                const multiPv = Math.min(
-                    STUDY_LIMITS.multiPv,
-                    Math.max(STUDY_DEEP_MIN_MULTI_PV, settings.multiPv),
-                );
+                const multiPv = Math.min(STUDY_LIMITS.multiPv, Math.max(1, settings.deepMultiPv));
                 const prepared = await prepareLayer(selection, limits, multiPv);
                 if (!isCurrent() || !prepared || lockedRef.current) return;
                 if (!canUseLayer(prepared.layer.layerId)) return;

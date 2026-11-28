@@ -98,7 +98,9 @@ function setup(
         return found;
     };
     const engine = createMateEngine(resultFor, shortest);
-    const hook = renderHook(() => useStudyMate({ engineOption: engine.option, hashMb: 16 }));
+    const hook = renderHook(() =>
+        useStudyMate({ engineOption: engine.option, hashMb: 16, threads: 4 }),
+    );
     return { node, engine, hook };
 }
 
@@ -116,7 +118,7 @@ describe("useStudyMate", () => {
             }),
         );
         expect(engine.loads).toEqual([AFTER_TWO]);
-        expect(engine.solves[0]).toMatchObject({ mode: "Power", hashMb: 16 });
+        expect(engine.solves[0]).toMatchObject({ mode: "Power", hashMb: 16, threads: 4 });
         expect(hook.result.current.runningNodeId).toBeNull();
         expect(engine.created[0].dispose).toHaveBeenCalled();
     });
@@ -182,7 +184,9 @@ describe("useStudyMate", () => {
                 throw new Error("Worker is not defined");
             },
         };
-        const hook = renderHook(() => useStudyMate({ engineOption: option, hashMb: 16 }));
+        const hook = renderHook(() =>
+            useStudyMate({ engineOption: option, hashMb: 16, threads: 4 }),
+        );
         act(() => hook.result.current.start(node(2)));
         expect(hook.result.current.results.get(node(2).id)).toEqual({
             status: "error",
@@ -205,7 +209,9 @@ describe("useStudyMate", () => {
                 };
             },
         };
-        const hook = renderHook(() => useStudyMate({ engineOption: option, hashMb: 16 }));
+        const hook = renderHook(() =>
+            useStudyMate({ engineOption: option, hashMb: 16, threads: 4 }),
+        );
         act(() => hook.result.current.start(node(2)));
         await waitFor(() =>
             expect(hook.result.current.results.get(node(2).id)).toEqual({
@@ -275,7 +281,7 @@ describe("useStudyMate", () => {
         engine.hold("solve");
         const other = createMateEngine(() => MATE).option;
         const hook = renderHook(
-            ({ option }) => useStudyMate({ engineOption: option, hashMb: 16 }),
+            ({ option }) => useStudyMate({ engineOption: option, hashMb: 16, threads: 4 }),
             { initialProps: { option: engine.option } },
         );
         act(() => hook.result.current.start(node));
@@ -297,6 +303,7 @@ describe("useStudyMate", () => {
                     kind: "internal",
                 },
                 hashMb: 16,
+                threads: 4,
             }),
         );
         expect(result.current.supported).toBe(false);
@@ -327,6 +334,7 @@ describe("useStudyMate", () => {
             expect(engine.solves[0]).toMatchObject({
                 mode: "Power",
                 hashMb: 16,
+                threads: 4,
                 timeMs: STUDY_SHORTEST_MATE_TIME_MS,
                 shortest: "tsume",
             });
@@ -456,7 +464,7 @@ describe("useStudyMate", () => {
             const { node } = setup(() => MATE);
             const engine = createControlledEngine();
             const hook = renderHook(
-                ({ option }) => useStudyMate({ engineOption: option, hashMb: 16 }),
+                ({ option }) => useStudyMate({ engineOption: option, hashMb: 16, threads: 4 }),
                 { initialProps: { option: engine.option } },
             );
             return { node, engine, hook };

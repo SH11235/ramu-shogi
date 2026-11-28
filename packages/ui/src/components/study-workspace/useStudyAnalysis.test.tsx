@@ -455,6 +455,32 @@ describe("useStudyAnalysis", () => {
         expect(engine.searches()).toBe(1);
     });
 
+    it.each([
+        { name: "全体の解析と別に決めた数", stored: { multiPv: 4, deepMultiPv: 1 }, expected: 1 },
+        { name: "分ける前の設定では max(候補手の数, 3)", stored: { multiPv: 4 }, expected: 4 },
+        { name: "分ける前の設定で候補手の数が 1", stored: { multiPv: 1 }, expected: 3 },
+    ])("この局面の読みの候補手の数は、$name", async ({ stored, expected }) => {
+        localStorage.setItem(
+            "shogi-analysis-settings",
+            JSON.stringify({
+                parallelWorkers: 2,
+                batchAnalysisTimeMs: 500,
+                batchAnalysisDepth: 15,
+                ...stored,
+            }),
+        );
+        const { doc, ids } = createTestStudy();
+        const engine = createEngineOption();
+        const { result } = renderHook(() => useHarness(doc, [engine.option]));
+        expect(result.current.controller.form.settings.deepMultiPv).toBe(expected);
+
+        await act(async () => {
+            await result.current.controller.startDeep(ids[2]);
+        });
+        await waitFor(() => expect(result.current.flushCount).toBe(1));
+        expect(result.current.doc.layers[0].spec.multiPv).toBe(expected);
+    });
+
     it("エンジンの準備に失敗した深い読みは、結果を書いたと知らせない", async () => {
         const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
         const { doc, ids } = createTestStudy();
