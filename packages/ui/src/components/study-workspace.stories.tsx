@@ -188,9 +188,9 @@ function StoryHarness({
     );
 }
 
-/** 自動で読むのスイッチ（端末に保存される）を、story ごとに決める。 */
+/** 読み方の「読む」か「停止」か（端末に保存される）を、story ごとに決める。 */
 const withAutoAnalyze = (enabled: boolean) => (): void => {
-    localStorage.setItem("shogi:studyAutoAnalyze", JSON.stringify(enabled));
+    localStorage.setItem("shogi:studyReadMode", JSON.stringify(enabled ? "read" : "stop"));
 };
 
 const meta = {
@@ -228,7 +228,7 @@ export const 全体の解析が終わった: Story = {
     },
 };
 
-export const 自動で読む_読み始め: Story = {
+export const 読む_読み始め: Story = {
     beforeEach: withAutoAnalyze(true),
     args: {
         doc: unanalyzed.doc,
@@ -236,7 +236,7 @@ export const 自動で読む_読み始め: Story = {
     },
 };
 
-export const 自動で読む_読んでいる: Story = {
+export const 読む_読んでいる: Story = {
     beforeEach: withAutoAnalyze(true),
     args: {
         doc: unanalyzed.doc,
@@ -248,7 +248,7 @@ export const 自動で読む_読んでいる: Story = {
     },
 };
 
-export const 自動で読む_記録より浅い読み直し: Story = {
+export const 読む_記録より浅い読み直し: Story = {
     beforeEach: withAutoAnalyze(true),
     args: {
         doc: analyzed.doc,
@@ -259,7 +259,7 @@ export const 自動で読む_記録より浅い読み直し: Story = {
     },
 };
 
-export const 自動で読む_読み終えた: Story = {
+export const 読む_読み終えた: Story = {
     beforeEach: withAutoAnalyze(true),
     args: {
         doc: analyzed.doc,
@@ -268,16 +268,19 @@ export const 自動で読む_読み終えた: Story = {
     },
 };
 
-export const 自動で読む_準備中: Story = {
+export const 読む_準備中: Story = {
     beforeEach: withAutoAnalyze(true),
     args: { doc: unanalyzed.doc, analysis: createAnalysis({ isPreparing: true }) },
 };
 
-export const 自動で読むを切って全体を解析: Story = {
+export const 読むを停止にして全体を解析: Story = {
     args: {
         doc: unanalyzed.doc,
         analysis: createAnalysis({ mode: "full", progress: { completed: 0, total: 5 } }),
-        message: { text: "自動で読むを切りました（読んだ分は残っています）。", type: "warning" },
+        message: {
+            text: "読み方を「停止」にしました（読んだ分は残っています）。",
+            type: "warning",
+        },
     },
 };
 

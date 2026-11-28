@@ -1,16 +1,10 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "../tooltip";
-import { StudyMateControl, StudyMateResult, type StudyShortestProps } from "./StudyMateSection";
+import { StudyMateResult, type StudyShortestProps } from "./StudyMateSection";
 import { createTestStudy, TEST_LAYER_ID } from "./study-test-support";
 import { buildStudyViewTree } from "./studyView";
 import type { StudyMateState, StudyShortestState } from "./useStudyMate";
-
-function renderControl(state: StudyMateState | undefined, { disabled = false } = {}) {
-    const handlers = { onStart: vi.fn(), onStop: vi.fn() };
-    render(<StudyMateControl state={state} disabled={disabled} {...handlers} />);
-    return handlers;
-}
 
 /** 既定は ▲7六歩 △3四歩 の後 (先手番) の局面。`index` で開始局面からの手数を選ぶ。 */
 function renderResult(
@@ -39,32 +33,6 @@ function renderResult(
     );
     return { node, handlers, container };
 }
-
-describe("StudyMateControl", () => {
-    it("調べる前は「詰みを読む」だけを出す", () => {
-        const handlers = renderControl(undefined);
-        fireEvent.click(screen.getByRole("button", { name: "詰みを読む" }));
-        expect(handlers.onStart).toHaveBeenCalled();
-    });
-
-    it("解析が動いている間は押せない", () => {
-        renderControl(undefined, { disabled: true });
-        expect(
-            (screen.getByRole("button", { name: "詰みを読む" }) as HTMLButtonElement).disabled,
-        ).toBe(true);
-    });
-
-    it("調べている間は止めるに替わる", () => {
-        const handlers = renderControl({
-            status: "running",
-            phase: "threat",
-            nodes: 1_234_567,
-            elapsedMs: 3_200,
-        });
-        fireEvent.click(screen.getByRole("button", { name: "詰み探索を止める" }));
-        expect(handlers.onStop).toHaveBeenCalled();
-    });
-});
 
 describe("StudyMateResult", () => {
     it("調べていない局面は何も出さない", () => {

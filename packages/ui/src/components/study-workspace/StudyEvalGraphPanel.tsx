@@ -27,12 +27,9 @@ import {
 const GRAPH_AXIS_CAP = 3000;
 const GRAPH_MIN_SCALE = 1000;
 
-/** 自動で読んだ値の名前（保存の区切りの時間は読んだ長さではないので、時間では呼ばない）。 */
-export const STUDY_AUTO_READ_LABEL = "自動読み";
-
 /** グラフに置く、ある局面の読み（局面の帯に出す値と同じもの）。 */
 export interface StudyGraphRead {
-    /** どの読みか（例: `1秒`・`自動読み`。別の AI なら、その設定の名前）。 */
+    /** どの読みか（例: `1秒`。読み方の「読む」の結果は空。別の AI なら、その設定の名前）。 */
     label: string;
     result: StudyAnalysisResult;
 }

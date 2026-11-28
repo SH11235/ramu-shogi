@@ -53,7 +53,7 @@ import { useStudyDeepSearch } from "./useStudyDeepSearch";
 export const STUDY_DEEP_TIME_MS = 30_000;
 /** 「この局面を深く解析」の探索深さの上限（時間で止まる前提の大きめの値）。 */
 const STUDY_DEEP_DEPTH = 64;
-/** 自動で読む（1 局面の読み）の結果を保存する設定か。 */
+/** 「読む」（1 局面の読み）の結果を保存する設定か。 */
 export function isStudyAutoReadLayer(layer: Pick<StudyLayer, "spec">): boolean {
     return (
         layer.spec.limits.timeMs === STUDY_DEEP_TIME_MS &&
@@ -84,7 +84,7 @@ export interface StudyApplyOpsOptions {
     syncDelayMs?: number;
 }
 
-/** 全体の解析を始めるときの指定（自動で読むを切って始めるときに使う）。 */
+/** 全体の解析を始めるときの指定（「読む」を切って始めるときに使う）。 */
 export interface StudyFullStartOptions {
     /** 始められると分かった（設定を確かめ終えた）ときに、深く解析の読みを止める前に呼ぶ。 */
     onCommit?: () => void;
@@ -217,7 +217,7 @@ interface UseStudyAnalysisOptions {
     /** 全体の解析を始めたレイヤー（画面はこのレイヤーを表示に切り替える）。 */
     onLayerStarted: (layerId: string) => void;
     /**
-     * 1 局面の読み（自動で読む）の結果を、そのレイヤーの局面に書いた。読み始めではなく結果で知らせる
+     * 1 局面の読み（「読む」）の結果を、そのレイヤーの局面に書いた。読み始めではなく結果で知らせる
      * のは、準備に失敗した・始まる前に別の局面へ移った読みで、前に保存した結果を、いま読んだ結果として
      * 画面に出さないため。
      */
@@ -737,7 +737,7 @@ export function useStudyAnalysis({
                 const multiPv = target?.spec.multiPv ?? fullMultiPv;
                 const prepared = await prepareLayer(selection, limits, multiPv);
                 if (!isCurrent() || lockedRef.current) return;
-                // 準備（AI の読み込み）を待つ間に、自動で読むを入れ直すなどの操作があれば始めない。
+                // 準備（AI の読み込み）を待つ間に、「読む」を入れ直すなどの操作があれば始めない。
                 if (options?.isWanted && !options.isWanted()) return;
                 if (!prepared) {
                     notStarted();
@@ -843,7 +843,7 @@ export function useStudyAnalysis({
         start: (afterCancel: boolean) => Promise<void>,
         options?: StudyFullStartOptions,
     ): Promise<void> => {
-        // 始められないと分かっている局面では、自動で読むを切らない。
+        // 始められないと分かっている局面では、「読む」を切らない。
         if (rejectWithoutKing()) return;
         options?.onCommit?.();
         const deepActive =
@@ -1007,7 +1007,7 @@ export function useStudyAnalysis({
         // 読みを止め終わるのを待って始めようとしている解析は、切り替える前のエンジンの条件で
         // 始めることになるので取りやめる。
         if (stoppingRef.current) generationRef.current += 1;
-        // 準備中の全体の解析は始めずに終わる。自動で読むを切って始めようとしていたなら、画面が
+        // 準備中の全体の解析は始めずに終わる。「読む」を切って始めようとしていたなら、画面が
         // 入れ直せるよう知らせる（画面の操作で取って代わられたかは、受け取る側が見分ける）。
         const request = requestRef.current;
         if (preparingRef.current && request?.kind === "full") request.options?.onNotStarted?.();

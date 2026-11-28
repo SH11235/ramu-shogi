@@ -207,6 +207,12 @@ function Harness({
 }
 
 const graphRegion = () => screen.getByRole("region", { name: "評価値グラフ" });
+/** 読み方のグループの枠（読む・パス・詰み・停止）。 */
+const readModeButton = (
+    label: "読む" | "パス" | "詰み" | "停止",
+    container: HTMLElement = document.body,
+): HTMLButtonElement => within(container).getByRole("button", { name: label }) as HTMLButtonElement;
+const isSelected = (button: HTMLElement): boolean => button.getAttribute("aria-pressed") === "true";
 const moveList = () => screen.getByRole("region", { name: "棋譜と変化" });
 /** 棋譜の欄で、表記にその文字列を含む手を押す。 */
 const selectMove = (label: string): void => {
@@ -312,10 +318,8 @@ describe("StudyWorkspaceView", () => {
         const graph = screen.getByRole("region", { name: "評価値グラフ" });
         fireEvent.click(within(graph).getByRole("button", { name: "止める" }));
         expect(analysis.cancel).toHaveBeenCalledTimes(1);
-        // 解析中は「パスして読む」を押せない。
-        expect(
-            (screen.getByRole("button", { name: "パスして読む" }) as HTMLButtonElement).disabled,
-        ).toBe(true);
+        // 全体の解析の間は、読み方の「パス」を選べない。
+        expect(readModeButton("パス").disabled).toBe(true);
     });
 
     it("読んでいる間の候補手の欄は今の読みだけを出し、それより深い記録は見出しの下に 1 行で添える", () => {
@@ -355,16 +359,23 @@ describe("StudyWorkspaceView", () => {
         expect(panel.textContent).not.toContain("+120");
     });
 
-    it("自動で読むを入れると、見ている局面を読み始める", async () => {
+    it("以前「自動で読む」を入れていた端末は、読み方を「読む」から始める", () => {
+        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+        render(<Harness initialDoc={createTestStudy().doc} />);
+        expect(isSelected(readModeButton("読む"))).toBe(true);
+    });
+
+    it("読み方を「読む」にすると、見ている局面を読み始める", async () => {
         const { doc } = createTestStudy();
         const analysis = createAnalysis();
         render(<Harness initialDoc={doc} analysis={analysis} />);
-        fireEvent.click(screen.getByRole("switch", { name: /自動で読む/ }));
+        expect(isSelected(readModeButton("停止"))).toBe(true);
+        fireEvent.click(readModeButton("読む"));
         await waitFor(() => expect(analysis.startDeep).toHaveBeenCalledWith(doc.tree.rootId));
     });
 
-    it("自動で読んでいる間は、何を読んでいるかをスイッチの行に出し、切ると止める", () => {
-        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+    it("読む間は、何を読んでいるかを読み上げ向けに添え、「停止」にすると止める", () => {
+        localStorage.setItem("shogi:studyReadMode", '"read"');
         const { doc } = createTestStudy();
         const analysis = createAnalysis({
             mode: "deep",
@@ -377,19 +388,18 @@ describe("StudyWorkspaceView", () => {
             },
         });
         render(<Harness initialDoc={doc} analysis={analysis} />);
-        const toggle = screen.getByRole("switch", { name: /自動で読む/ });
-        expect(toggle.getAttribute("aria-checked")).toBe("true");
+        expect(isSelected(readModeButton("読む"))).toBe(true);
         expect(screen.getByText("開始局面を読んでいます・深さ 18")).toBeTruthy();
-        // 自動で読む専用の止めるボタンは無い（スイッチを切れば止まる）。深く解析の枠も出さない。
+        // 読む間の止めるボタンは無い（「停止」を選べば止まる）。
         const candidates = screen.getByRole("region", { name: "候補手" });
         expect(within(candidates).queryByRole("button", { name: "止める" })).toBeNull();
-        fireEvent.click(toggle);
+        fireEvent.click(readModeButton("停止"));
         expect(analysis.cancel).toHaveBeenCalledTimes(1);
-        expect(toggle.getAttribute("aria-checked")).toBe("false");
+        expect(isSelected(readModeButton("停止"))).toBe(true);
     });
 
-    it("自動で読んでいる間に詰みを読むを押すと、自動で読むを切って始め、切ったことを知らせる", async () => {
-        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+    it("読む間に「詰み」を選ぶと、読みを止めてから詰みを探し、知らせは出さない", async () => {
+        localStorage.setItem("shogi:studyReadMode", '"read"');
         const { doc } = createTestStudy();
         const analysis = createAnalysis({
             mode: "deep",
@@ -402,19 +412,25 @@ describe("StudyWorkspaceView", () => {
             },
         });
         const mate = createMate();
-        render(<Harness initialDoc={doc} analysis={analysis} mate={mate} />);
-        expect(screen.getByText("押すと、自動で読むを切ってから始めます")).toBeTruthy();
-        fireEvent.click(screen.getByRole("button", { name: "詰みを読む" }));
-        await waitFor(() => expect(mate.start).toHaveBeenCalledTimes(1));
+        const view = render(<Harness initialDoc={doc} analysis={analysis} mate={mate} />);
+        fireEvent.click(readModeButton("詰み"));
         expect(analysis.cancel).toHaveBeenCalled();
-        expect(
-            screen.getByRole("switch", { name: /自動で読む/ }).getAttribute("aria-checked"),
-        ).toBe("false");
-        expect(screen.getByText(/自動で読むを切りました/)).toBeTruthy();
+        expect(isSelected(readModeButton("詰み"))).toBe(true);
+        // 読みが止まってから詰みを探し始める。
+        expect(mate.start).not.toHaveBeenCalled();
+        view.rerender(
+            <Harness
+                initialDoc={doc}
+                analysis={{ ...analysis, mode: null, live: null }}
+                mate={mate}
+            />,
+        );
+        await waitFor(() => expect(mate.start).toHaveBeenCalledTimes(1));
+        expect(screen.queryByText(/読み方を「停止」にしました/)).toBeNull();
     });
 
     it("自動で読む間に区切りまで読んだら、同じ局面の続きを読む", async () => {
-        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+        localStorage.setItem("shogi:studyReadMode", '"read"');
         const { doc } = createTestStudy();
         const analysis = createAnalysis({ continuableDeepNodeId: null });
         const { rerender } = render(<Harness initialDoc={doc} analysis={analysis} />);
@@ -431,12 +447,12 @@ describe("StudyWorkspaceView", () => {
         fireEvent.click(within(graphRegion()).getByRole("button", { name: "全体を解析" }));
         const options = vi.mocked(analysis.startFull).mock.calls[0]?.[0];
         expect(options?.isWanted?.()).toBe(true);
-        fireEvent.click(screen.getByRole("switch", { name: /自動で読む/ }));
+        fireEvent.click(readModeButton("読む"));
         expect(options?.isWanted?.()).toBe(false);
     });
 
-    it("自動で読んでいる間も全体を解析を押せ、押すと自動で読むを切ってから始める", async () => {
-        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+    it("読む間も全体を解析を押せ、押すと読み方を「停止」にしてから始める", async () => {
+        localStorage.setItem("shogi:studyReadMode", '"read"');
         const { doc } = createTestStudy();
         const analysis = createAnalysis({
             mode: "deep",
@@ -458,13 +474,11 @@ describe("StudyWorkspaceView", () => {
         expect(analysis.startFull).toHaveBeenCalledWith(
             expect.objectContaining({
                 notice: expect.objectContaining({
-                    text: expect.stringMatching(/自動で読むを切りました/),
+                    text: expect.stringMatching(/読み方を「停止」にしました/),
                 }),
             }),
         );
-        expect(
-            screen.getByRole("switch", { name: /自動で読む/ }).getAttribute("aria-checked"),
-        ).toBe("false");
+        expect(isSelected(readModeButton("停止"))).toBe(true);
         // このタブで切ったので、別のタブで切ったときのように読みを止めない（止めるのは全体の解析の側）。
         await act(async () => {
             await new Promise((resolve) => setTimeout(resolve, 0));
@@ -473,7 +487,7 @@ describe("StudyWorkspaceView", () => {
     });
 
     it("続きから読めずに読み終えたら、自動で読むを入れたまま読み直し続けず、終わったことを出す", async () => {
-        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+        localStorage.setItem("shogi:studyReadMode", '"read"');
         const { doc } = createTestStudy();
         const reading = createAnalysis({
             mode: "deep",
@@ -500,7 +514,7 @@ describe("StudyWorkspaceView", () => {
     });
 
     it("自動で読む間に全体を解析を押し、始められずに終わったら、自動で読むを入れ直す", async () => {
-        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+        localStorage.setItem("shogi:studyReadMode", '"read"');
         const { doc } = createTestStudy();
         const analysis = createAnalysis({
             mode: "deep",
@@ -519,15 +533,11 @@ describe("StudyWorkspaceView", () => {
         });
         render(<Harness initialDoc={doc} analysis={analysis} />);
         fireEvent.click(within(graphRegion()).getByRole("button", { name: "全体を解析" }));
-        await waitFor(() =>
-            expect(
-                screen.getByRole("switch", { name: /自動で読む/ }).getAttribute("aria-checked"),
-            ).toBe("true"),
-        );
+        await waitFor(() => expect(isSelected(readModeButton("読む"))).toBe(true));
     });
 
     it("別のタブで自動で読むを切ったら、このタブの読みも止める", () => {
-        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+        localStorage.setItem("shogi:studyReadMode", '"read"');
         const { doc } = createTestStudy();
         const analysis = createAnalysis({
             mode: "deep",
@@ -541,16 +551,16 @@ describe("StudyWorkspaceView", () => {
         });
         render(<Harness initialDoc={doc} analysis={analysis} />);
         act(() => {
-            localStorage.setItem("shogi:studyAutoAnalyze", "false");
+            localStorage.setItem("shogi:studyReadMode", '"stop"');
             window.dispatchEvent(
-                new StorageEvent("storage", { key: "shogi:studyAutoAnalyze", newValue: "false" }),
+                new StorageEvent("storage", { key: "shogi:studyReadMode", newValue: '"stop"' }),
             );
         });
         expect(analysis.cancel).toHaveBeenCalledTimes(1);
     });
 
     it("自動で読むを入れてから最初の読みが届くまで、ラムを走らせ、今の読みの枠に準備中と出す", () => {
-        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+        localStorage.setItem("shogi:studyReadMode", '"read"');
         const { doc } = createTestStudy();
         const panel = () => screen.getByRole("region", { name: "候補手" });
         const ramRuns = () =>
@@ -585,7 +595,7 @@ describe("StudyWorkspaceView", () => {
     });
 
     it("途中の候補を出せない AI で深さが届いたら、準備中とは出さない", () => {
-        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+        localStorage.setItem("shogi:studyReadMode", '"read"');
         const { doc } = createTestStudy();
         render(
             <Harness
@@ -608,7 +618,7 @@ describe("StudyWorkspaceView", () => {
     });
 
     it("前に深く読んだ記録のある局面では、準備中の間も今の読みの枠に記録を添える", () => {
-        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+        localStorage.setItem("shogi:studyReadMode", '"read"');
         const { doc } = createTestStudy([cp(120), cp(0), cp(0), cp(0), cp(0)]);
         render(<Harness initialDoc={doc} analysis={createAnalysis({ isPreparing: true })} />);
         const panel = screen.getByRole("region", { name: "候補手" });
@@ -617,8 +627,8 @@ describe("StudyWorkspaceView", () => {
         expect(panel.textContent).toContain("+120");
     });
 
-    it("読み終えた局面で自動で読むを入れ直したら、読み終えた知らせを消す", async () => {
-        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+    it("読み終えた局面で「停止」から「読む」に選び直したら、読み終えた知らせを消す", async () => {
+        localStorage.setItem("shogi:studyReadMode", '"read"');
         const { doc } = createTestStudy();
         const reading = createAnalysis({
             mode: "deep",
@@ -637,29 +647,28 @@ describe("StudyWorkspaceView", () => {
         const finished = { ...reading, mode: null, live: null, continuableDeepNodeId: null };
         rerender(<Harness initialDoc={doc} analysis={finished} />);
         await screen.findByText("この局面は読み終えました。局面を移ると読みます");
-        const toggle = screen.getByRole("switch", { name: "自動で読む" });
-        fireEvent.click(toggle);
-        fireEvent.click(toggle);
+        fireEvent.click(readModeButton("停止"));
+        fireEvent.click(readModeButton("読む"));
         expect(screen.queryByText("この局面は読み終えました。局面を移ると読みます")).toBeNull();
         await waitFor(() => expect(reading.startDeep).toHaveBeenCalledWith(doc.tree.rootId));
     });
 
     it("別のタブで自動で読むを切ったら、読む準備をしている途中でも止める", () => {
-        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+        localStorage.setItem("shogi:studyReadMode", '"read"');
         const { doc } = createTestStudy();
         const analysis = createAnalysis({ isPreparing: true });
         render(<Harness initialDoc={doc} analysis={analysis} />);
         act(() => {
-            localStorage.setItem("shogi:studyAutoAnalyze", "false");
+            localStorage.setItem("shogi:studyReadMode", '"stop"');
             window.dispatchEvent(
-                new StorageEvent("storage", { key: "shogi:studyAutoAnalyze", newValue: "false" }),
+                new StorageEvent("storage", { key: "shogi:studyReadMode", newValue: '"stop"' }),
             );
         });
         expect(analysis.cancel).toHaveBeenCalledTimes(1);
     });
 
     it("自動で読む間に解析エンジンが変わって読みが止まったら、読み終えたことにせず読み直す", async () => {
-        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+        localStorage.setItem("shogi:studyReadMode", '"read"');
         const { doc } = createTestStudy();
         const reading = createAnalysis({
             mode: "deep",
@@ -685,7 +694,7 @@ describe("StudyWorkspaceView", () => {
     });
 
     it("自動で読むで読み終えて止まったあとに解析エンジンが変わったら、新しいエンジンで読み直す", async () => {
-        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+        localStorage.setItem("shogi:studyReadMode", '"read"');
         const { doc } = createTestStudy();
         const reading = createAnalysis({
             mode: "deep",
@@ -709,8 +718,8 @@ describe("StudyWorkspaceView", () => {
         await waitFor(() => expect(reading.startDeep).toHaveBeenCalledWith(doc.tree.rootId));
     });
 
-    it("自動で読むを切って止め終わる前に入れ直したら、止めた読みを読み終えたことにせず読み直す", async () => {
-        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+    it("「停止」にして止め終わる前に「読む」に戻したら、止めた読みを読み終えたことにせず読み直す", async () => {
+        localStorage.setItem("shogi:studyReadMode", '"read"');
         const { doc } = createTestStudy();
         let finishCancel = (): void => {};
         const reading = createAnalysis({
@@ -733,9 +742,8 @@ describe("StudyWorkspaceView", () => {
         await act(async () => {
             await new Promise((resolve) => setTimeout(resolve, 0));
         });
-        const toggle = screen.getByRole("switch", { name: /自動で読む/ });
-        fireEvent.click(toggle);
-        fireEvent.click(toggle);
+        fireEvent.click(readModeButton("停止"));
+        fireEvent.click(readModeButton("読む"));
         await act(async () => {
             await new Promise((resolve) => setTimeout(resolve, 0));
         });
@@ -749,72 +757,35 @@ describe("StudyWorkspaceView", () => {
         expect(screen.queryByText("この局面は読み終えました。局面を移ると読みます")).toBeNull();
     });
 
-    it("自動で読む間に詰みを読むを押し、読みを止め終わるまでに局面を移ったら、詰み探索は始めない", async () => {
-        localStorage.setItem("shogi:studyAutoAnalyze", "true");
-        const { doc } = createTestStudy();
-        let finishCancel = (): void => {};
-        const analysis = createAnalysis({
-            mode: "deep",
-            live: {
-                nodeId: doc.tree.rootId,
-                depth: 18,
-                startedAt: null,
-                budgetMs: 30_000,
-                preview: null,
-            },
-            // 自動で読むを切って止める 1 回目だけ待たせる（2 回目はもう止まっているので、すぐ戻る）。
-            cancel: vi
-                .fn()
-                .mockImplementationOnce(
-                    () =>
-                        new Promise<void>((resolve) => {
-                            finishCancel = resolve;
-                        }),
-                )
-                .mockResolvedValue(undefined),
-        });
-        const mate = createMate();
-        render(<Harness initialDoc={doc} analysis={analysis} mate={mate} />);
-        fireEvent.click(screen.getByRole("button", { name: "詰みを読む" }));
+    it("「詰み」を選んだまま局面を移ると、移った先の詰みを探し、調べ終えた局面は調べ直さない", async () => {
+        const { doc, ids } = createTestStudy();
+        const done: StudyMateState = {
+            status: "done",
+            mate: { kind: "noMate" },
+            mateMs: 500,
+            threat: null,
+            threatMs: null,
+        };
+        const mate = createMate({ results: new Map([[ids[1], done]]) });
+        render(<Harness initialDoc={doc} mate={mate} />);
+        fireEvent.click(readModeButton("詰み"));
+        await waitFor(() =>
+            expect(mate.start).toHaveBeenCalledWith(
+                expect.objectContaining({ id: doc.tree.rootId }),
+            ),
+        );
+        // 1 手目は調べ終えているので、調べ直さない。
         fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
         await act(async () => {
-            finishCancel();
+            await new Promise((resolve) => setTimeout(resolve, 0));
         });
-        expect(mate.start).not.toHaveBeenCalled();
-    });
-
-    it("自動で読む間に詰みを読むを押し、読みを止め終わるまでに局面を移って戻ったときも、詰み探索は始めない", async () => {
-        localStorage.setItem("shogi:studyAutoAnalyze", "true");
-        const { doc } = createTestStudy();
-        let finishCancel = (): void => {};
-        const analysis = createAnalysis({
-            mode: "deep",
-            live: {
-                nodeId: doc.tree.rootId,
-                depth: 18,
-                startedAt: null,
-                budgetMs: 30_000,
-                preview: null,
-            },
-            cancel: vi
-                .fn()
-                .mockImplementationOnce(
-                    () =>
-                        new Promise<void>((resolve) => {
-                            finishCancel = resolve;
-                        }),
-                )
-                .mockResolvedValue(undefined),
-        });
-        const mate = createMate();
-        render(<Harness initialDoc={doc} analysis={analysis} mate={mate} />);
-        fireEvent.click(screen.getByRole("button", { name: "詰みを読む" }));
+        expect(mate.start).toHaveBeenCalledTimes(1);
         fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
-        fireEvent.click(screen.getByRole("button", { name: "1 手戻る（←）" }));
-        await act(async () => {
-            finishCancel();
-        });
-        expect(mate.start).not.toHaveBeenCalled();
+        await waitFor(() =>
+            expect(mate.start).toHaveBeenLastCalledWith(expect.objectContaining({ id: ids[2] })),
+        );
+        // 探し終えても読み方は「詰み」のまま。
+        expect(isSelected(readModeButton("詰み"))).toBe(true);
     });
 
     it("全体の解析を最後まで読み終えたら終わったと知らせ、途中で止まったときは知らせない", () => {
@@ -830,27 +801,27 @@ describe("StudyWorkspaceView", () => {
         expect(panel.textContent).toContain("全体の解析が終わりました");
     });
 
-    it("候補手の欄には解析と詰み探索のボタンだけを並べ、調べる前に詰みの見出しを出さない", () => {
+    it("候補手の欄には読み方の 4 つの枠を並べ、調べる前に詰みの見出しを出さない", () => {
         render(<Harness initialDoc={createTestStudy().doc} mate={createMate()} />);
         const candidates = screen.getByRole("region", { name: "候補手" });
-        // 局面を深く読むのは「自動で読む」のスイッチだけにし、1 回だけ読むボタンは出さない。
-        within(candidates).getByRole("switch", { name: /自動で読む/ });
+        // 局面を読むのは読み方のグループだけにし、1 回だけ読むボタンは出さない。
+        for (const label of ["読む", "パス", "詰み", "停止"] as const) {
+            readModeButton(label, candidates);
+        }
         expect(
             within(candidates).queryByRole("button", { name: /深く解析|続けて読む/ }),
         ).toBeNull();
-        within(candidates).getByRole("button", { name: "パスして読む" });
-        within(candidates).getByRole("button", { name: "詰みを読む" });
         expect(within(candidates).queryByText(/詰めろ/)).toBeNull();
     });
 
-    it("詰み探索の間は全体の解析を始められず、自動で読むを入れると詰み探索を止めて読む", async () => {
+    it("詰み探索の間は全体の解析を始められず、「読む」を選ぶと詰み探索を止めて読む", async () => {
         const { doc, ids } = createTestStudy();
         const analysis = createAnalysis();
         const mate = createMate({ runningNodeId: ids[3] });
         render(<Harness initialDoc={doc} analysis={analysis} mate={mate} />);
         const full = within(graphRegion()).getByRole("button", { name: "全体を解析" });
         expect((full as HTMLButtonElement).disabled).toBe(true);
-        fireEvent.click(screen.getByRole("switch", { name: /自動で読む/ }));
+        fireEvent.click(readModeButton("読む"));
         await waitFor(() => expect(analysis.startDeep).toHaveBeenCalledWith(doc.tree.rootId));
         expect(mate.stop).toHaveBeenCalled();
     });
@@ -907,9 +878,8 @@ describe("StudyWorkspaceView", () => {
         expect(currentMove()).toContain("☗2六歩(27)");
     });
 
-    it("深く解析を止め終わる前に止めたら、待っていた詰み探索は始めない", async () => {
+    it("別の局面を読んでいる間に「詰み」を選ぶと、その読みが止まってから詰みを探す", async () => {
         const { doc, ids } = createTestStudy();
-        let finishCancel = (): void => {};
         const analysis = createAnalysis({
             mode: "deep",
             live: {
@@ -919,31 +889,29 @@ describe("StudyWorkspaceView", () => {
                 budgetMs: 30_000,
                 preview: null,
             },
-            cancel: vi.fn(
-                () =>
-                    new Promise<void>((resolve) => {
-                        finishCancel = resolve;
-                    }),
-            ),
         });
         const mate = createMate();
-        render(<Harness initialDoc={doc} analysis={analysis} mate={mate} />);
-        const candidates = screen.getByRole("region", { name: "候補手" });
-        fireEvent.click(within(candidates).getByRole("button", { name: "詰みを読む" }));
-        fireEvent.click(within(candidates).getByRole("button", { name: "止める" }));
+        const view = render(<Harness initialDoc={doc} analysis={analysis} mate={mate} />);
+        fireEvent.click(readModeButton("詰み"));
         await act(async () => {
-            finishCancel();
+            await new Promise((resolve) => setTimeout(resolve, 0));
         });
         expect(mate.start).not.toHaveBeenCalled();
+        view.rerender(<Harness initialDoc={doc} analysis={createAnalysis()} mate={mate} />);
+        await waitFor(() =>
+            expect(mate.start).toHaveBeenCalledWith(
+                expect.objectContaining({ id: doc.tree.rootId }),
+            ),
+        );
     });
 
-    it("別の局面で詰みを調べている間に「詰みを読む」を押すと、この局面に切り替える", async () => {
+    it("別の局面で詰みを調べている間に「詰み」を選ぶと、この局面に切り替える", async () => {
         const { doc, ids } = createTestStudy();
         const mate = createMate({ runningNodeId: ids[3] });
         render(<Harness initialDoc={doc} mate={mate} />);
         const candidates = screen.getByRole("region", { name: "候補手" });
-        fireEvent.click(within(candidates).getByRole("button", { name: "詰みを読む" }));
-        expect(mate.stop).toHaveBeenCalled();
+        fireEvent.click(readModeButton("詰み", candidates));
+        await waitFor(() => expect(mate.stop).toHaveBeenCalled());
         await waitFor(() =>
             expect(mate.start).toHaveBeenCalledWith(
                 expect.objectContaining({ id: doc.tree.rootId }),
@@ -1019,7 +987,7 @@ describe("StudyWorkspaceView", () => {
         ).toBeTruthy();
     });
 
-    it("解析の間は、詰み探索を始められない", () => {
+    it("全体の解析の間は、読み方の「詰み」を選べない", () => {
         render(
             <Harness
                 initialDoc={createTestStudy().doc}
@@ -1028,8 +996,7 @@ describe("StudyWorkspaceView", () => {
             />,
         );
         const candidates = screen.getByRole("region", { name: "候補手" });
-        const button = within(candidates).getByRole("button", { name: "詰みを読む" });
-        expect((button as HTMLButtonElement).disabled).toBe(true);
+        expect(readModeButton("詰み", candidates).disabled).toBe(true);
         expect(candidates.textContent).toContain("全体を解析中（1 / 5 局面）");
     });
 
@@ -1230,13 +1197,13 @@ describe("StudyWorkspaceView", () => {
             return points;
         };
 
-        it("自動で読んだ結果だけに、候補手の欄で「自動読み」と添える", () => {
+        it("「読む」で読んだ結果にも、候補手の欄でどの読みかの名前は添えない（深さ・秒数で分かる）", () => {
             render(
                 <Harness initialDoc={withDeepRead().doc} initialDisplayLayerId={TEST_LAYER_ID} />,
             );
-            expect(screen.getByRole("region", { name: "候補手" }).textContent).toContain(
-                "自動読み・",
-            );
+            const candidates = screen.getByRole("region", { name: "候補手" }).textContent;
+            expect(candidates).toContain("深さ 22");
+            expect(candidates).not.toContain("自動読み");
         });
 
         it("同じ AI で深く読んだ値は、印にせず線に入れる", () => {
@@ -1455,7 +1422,7 @@ describe("StudyWorkspaceView", () => {
             id: "another-layer",
             display: { ...layer.display, label: "別の解析" },
         };
-        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+        localStorage.setItem("shogi:studyReadMode", '"read"');
         const analysis = createAnalysis();
         const onOps = vi.fn();
         const fetchLegalMoves = vi.fn(async () => ["4g4f"]);
@@ -2491,17 +2458,17 @@ describe("StudyWorkspaceView", () => {
         expect(screen.getByText("読み筋を変化として追加しました（2 手）")).toBeTruthy();
     });
 
-    it("自動で読むは、いま見ている局面を読む", async () => {
+    it("「読む」は、いま見ている局面を読む", async () => {
         const { doc, ids } = createTestStudy();
         const analysis = createAnalysis();
         render(<Harness initialDoc={doc} analysis={analysis} />);
 
         fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
-        fireEvent.click(screen.getByRole("switch", { name: /自動で読む/ }));
+        fireEvent.click(readModeButton("読む"));
         await waitFor(() => expect(analysis.startDeep).toHaveBeenCalledWith(ids[1]));
     });
 
-    it("「パスして読む」は、パスを変化として足してその局面へ移り、そこを深く解析する", async () => {
+    it("「パス」は、パスを変化として足してその局面へ移って読み続け、局面を移ると「読む」になる", async () => {
         const { doc, ids } = createTestStudy();
         const analysis = createAnalysis();
         const onOps = vi.fn();
@@ -2515,7 +2482,7 @@ describe("StudyWorkspaceView", () => {
         );
 
         fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
-        fireEvent.click(screen.getByRole("button", { name: "パスして読む" }));
+        fireEvent.click(readModeButton("パス"));
         await waitFor(() =>
             expect(analysis.startDeep).toHaveBeenCalledWith(studyChildNodeId(ids[1], "pass")),
         );
@@ -2523,13 +2490,18 @@ describe("StudyWorkspaceView", () => {
             { type: "addMoves", parentId: ids[1], moves: ["pass"] },
         ]);
         expect(currentMove()).toContain("パス");
+        expect(isSelected(readModeButton("パス"))).toBe(true);
+        // パスの局面を離れたら「読む」になり、移った先を読む。
+        fireEvent.click(screen.getByRole("button", { name: "1 手戻る（←）" }));
+        expect(isSelected(readModeButton("読む"))).toBe(true);
+        await waitFor(() => expect(analysis.startDeep).toHaveBeenLastCalledWith(ids[1]));
         view.unmount();
 
         render(<Harness initialDoc={doc} locked />);
-        expect(screen.queryByRole("button", { name: "パスして読む" })).toBeNull();
+        expect(screen.queryByRole("button", { name: "パス" })).toBeNull();
     });
 
-    it("「パスして読む」の合法手の確認を待つ間に詰み探索を始めたら、パスの局面は解析しない", async () => {
+    it("「パス」の合法手の確認を待つ間に「詰み」を選んだら、パスは足さず、読み方は「詰み」にする", async () => {
         const { doc } = createTestStudy();
         const analysis = createAnalysis();
         const mate = createMate();
@@ -2548,18 +2520,170 @@ describe("StudyWorkspaceView", () => {
         );
 
         fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
-        fireEvent.click(screen.getByRole("button", { name: "パスして読む" }));
-        fireEvent.click(screen.getByRole("button", { name: "詰みを読む" }));
+        fireEvent.click(readModeButton("パス"));
+        // 確かめている間も「パス」と出す。
+        expect(isSelected(readModeButton("パス"))).toBe(true);
+        fireEvent.click(readModeButton("詰み"));
         await waitFor(() => expect(mate.start).toHaveBeenCalled());
         await act(async () => {
             answerLegalMoves(["3c3d", "pass"]);
         });
-        await waitFor(() => expect(currentMove()).toContain("パス"));
+        expect(currentMove()).not.toContain("パス");
         expect(analysis.startDeep).not.toHaveBeenCalled();
-        expect(mate.stop).not.toHaveBeenCalled();
+        expect(isSelected(readModeButton("詰み"))).toBe(true);
     });
 
-    it("「パスして読む」を確認を待つ間に押し直しても、パスの局面を解析する", async () => {
+    it("「パス」の合法手の確認を待つ間に「停止」を選んだら、パスは足さない", async () => {
+        const { doc } = createTestStudy();
+        const onOps = vi.fn();
+        let answerLegalMoves = (_moves: string[]): void => {};
+        render(
+            <Harness
+                initialDoc={doc}
+                onOps={onOps}
+                fetchLegalMoves={() =>
+                    new Promise<string[]>((resolve) => {
+                        answerLegalMoves = resolve;
+                    })
+                }
+            />,
+        );
+
+        fireEvent.click(readModeButton("パス"));
+        fireEvent.click(readModeButton("停止"));
+        await act(async () => {
+            answerLegalMoves(["3c3d", "pass"]);
+        });
+        expect(onOps).not.toHaveBeenCalled();
+        expect(isSelected(readModeButton("停止"))).toBe(true);
+    });
+
+    it("「パス」の合法手の確認を待つ間に全体を解析を押したら、パスは足さない", async () => {
+        const { doc } = createTestStudy();
+        const onOps = vi.fn();
+        const analysis = createAnalysis();
+        let answerLegalMoves = (_moves: string[]): void => {};
+        render(
+            <Harness
+                initialDoc={doc}
+                analysis={analysis}
+                onOps={onOps}
+                fetchLegalMoves={() =>
+                    new Promise<string[]>((resolve) => {
+                        answerLegalMoves = resolve;
+                    })
+                }
+            />,
+        );
+
+        fireEvent.click(readModeButton("パス"));
+        fireEvent.click(within(graphRegion()).getByRole("button", { name: "全体を解析" }));
+        await act(async () => {
+            answerLegalMoves(["3c3d", "pass"]);
+        });
+        expect(analysis.startFull).toHaveBeenCalled();
+        expect(onOps).not.toHaveBeenCalled();
+    });
+
+    it("別のタブで「詰み」から「停止」にしたら、このタブの詰み探索も止める", async () => {
+        localStorage.setItem("shogi:studyReadMode", '"mate"');
+        const { doc } = createTestStudy();
+        const mate = createMate();
+        const view = render(<Harness initialDoc={doc} mate={mate} />);
+        await waitFor(() => expect(mate.start).toHaveBeenCalledTimes(1));
+        const running = { ...mate, runningNodeId: doc.tree.rootId, runningKind: "mate" as const };
+        view.rerender(<Harness initialDoc={doc} mate={running} />);
+        act(() => {
+            localStorage.setItem("shogi:studyReadMode", '"stop"');
+            window.dispatchEvent(
+                new StorageEvent("storage", { key: "shogi:studyReadMode", newValue: '"stop"' }),
+            );
+        });
+        expect(isSelected(readModeButton("停止"))).toBe(true);
+        await waitFor(() => expect(mate.stop).toHaveBeenCalled());
+    });
+
+    it("「読む」の間に最短手順を求めても読み方は変えず、読みを止めて求め、求めている間は読み直さない", async () => {
+        localStorage.setItem("shogi:studyReadMode", '"read"');
+        const { doc } = createTestStudy();
+        const analysis = createAnalysis({
+            mode: "deep",
+            live: {
+                nodeId: doc.tree.rootId,
+                depth: 18,
+                startedAt: null,
+                budgetMs: 30_000,
+                preview: null,
+            },
+        });
+        const mate = createMate({
+            results: new Map<string, StudyMateState>([
+                [
+                    doc.tree.rootId,
+                    {
+                        status: "done",
+                        mate: { kind: "mate", pv: ["7g7f"] },
+                        mateMs: 500,
+                        threat: null,
+                        threatMs: null,
+                    },
+                ],
+            ]),
+        });
+        const view = render(<Harness initialDoc={doc} analysis={analysis} mate={mate} />);
+        await act(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+        fireEvent.click(screen.getByRole("button", { name: "最短手順を求める" }));
+        // 読みが止まり、この局面の最短手順を求めている。
+        const stopped = {
+            ...analysis,
+            mode: null,
+            live: null,
+            continuableDeepNodeId: doc.tree.rootId,
+        };
+        const shortest = {
+            ...mate,
+            runningNodeId: doc.tree.rootId,
+            runningKind: "shortest" as const,
+        };
+        view.rerender(<Harness initialDoc={doc} analysis={stopped} mate={shortest} />);
+        await waitFor(() => expect(mate.startShortest).toHaveBeenCalled());
+        expect(analysis.cancel).toHaveBeenCalled();
+        expect(isSelected(readModeButton("読む"))).toBe(true);
+        await act(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+        expect(analysis.continueDeep).not.toHaveBeenCalled();
+        expect(analysis.startDeep).not.toHaveBeenCalled();
+        // 求め終えたら、続きを読む。
+        view.rerender(<Harness initialDoc={doc} analysis={stopped} mate={mate} />);
+        await waitFor(() => expect(analysis.continueDeep).toHaveBeenCalled());
+    });
+
+    it("最短手順を求めても、読み方は「詰み」にしない", async () => {
+        const { doc } = createTestStudy();
+        const mate = createMate({
+            results: new Map<string, StudyMateState>([
+                [
+                    doc.tree.rootId,
+                    {
+                        status: "done",
+                        mate: { kind: "mate", pv: ["7g7f"] },
+                        mateMs: 500,
+                        threat: null,
+                        threatMs: null,
+                    },
+                ],
+            ]),
+        });
+        render(<Harness initialDoc={doc} mate={mate} />);
+        fireEvent.click(screen.getByRole("button", { name: "最短手順を求める" }));
+        await waitFor(() => expect(mate.startShortest).toHaveBeenCalled());
+        expect(isSelected(readModeButton("停止"))).toBe(true);
+    });
+
+    it("「パス」を確認を待つ間に押し直しても、パスの局面を読む", async () => {
         const { doc, ids } = createTestStudy();
         const analysis = createAnalysis();
         let answerLegalMoves = (_moves: string[]): void => {};
@@ -2576,8 +2700,8 @@ describe("StudyWorkspaceView", () => {
         );
 
         fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
-        fireEvent.click(screen.getByRole("button", { name: "パスして読む" }));
-        fireEvent.click(screen.getByRole("button", { name: "パスして読む" }));
+        fireEvent.click(readModeButton("パス"));
+        fireEvent.click(readModeButton("パス"));
         await act(async () => {
             answerLegalMoves(["3c3d", "pass"]);
         });
@@ -2695,7 +2819,7 @@ describe("StudyWorkspaceView", () => {
     });
 
     it("自動で読む間に局面を移っても、前の局面の読みが止まるまで別の局面の行を出さない", () => {
-        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+        localStorage.setItem("shogi:studyReadMode", '"read"');
         const { doc } = createTestStudy();
         // 止め終わるまでの間を模すため、cancel しても前の局面の読みが残る。
         const analysis = createAnalysis({
@@ -2718,7 +2842,7 @@ describe("StudyWorkspaceView", () => {
     });
 
     it("自動で読む間に局面を移り、前の読みが止まる前に戻ったら、戻った局面を読み直す", async () => {
-        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+        localStorage.setItem("shogi:studyReadMode", '"read"');
         const { doc, ids } = createTestStudy();
         const analysis = createAnalysis({
             mode: "deep",
@@ -2758,9 +2882,9 @@ describe("StudyWorkspaceView", () => {
         const panel = screen.getByRole("region", { name: "候補手" });
         expect(panel.textContent).toContain("3手目を読んでいます");
         act(() => {
-            localStorage.setItem("shogi:studyAutoAnalyze", "true");
+            localStorage.setItem("shogi:studyReadMode", '"read"');
             window.dispatchEvent(
-                new StorageEvent("storage", { key: "shogi:studyAutoAnalyze", newValue: "true" }),
+                new StorageEvent("storage", { key: "shogi:studyReadMode", newValue: '"read"' }),
             );
         });
         expect(panel.textContent).not.toContain("3手目を読んでいます");
@@ -2898,7 +3022,7 @@ describe("StudyWorkspaceView", () => {
                 <Harness initialDoc={doc} analysis={analysis} initialDisplayLayerId={FAST_ID} />,
             );
             fireEvent.click(screen.getByRole("button", { name: "1 手進む（→）" }));
-            fireEvent.click(screen.getByRole("switch", { name: /自動で読む/ }));
+            fireEvent.click(readModeButton("読む"));
 
             const candidates = screen.getByRole("region", { name: "候補手" });
             await waitFor(() => expect(candidates.textContent).toContain("RAMU・1 秒・"));
@@ -3105,7 +3229,7 @@ describe("StudyWorkspaceView", () => {
         expect(analysis.form.onSettingsChange).toHaveBeenLastCalledWith(
             expect.objectContaining({ batchAnalysisThreads: 2 }),
         );
-        const deep = within(dialog).getByRole("combobox", { name: /自動で読む/ });
+        const deep = within(dialog).getByRole("combobox", { name: /読む・パス/ });
         fireEvent.change(deep, { target: { value: "4" } });
         expect(analysis.form.onSettingsChange).toHaveBeenLastCalledWith(
             expect.objectContaining({ deepAnalysisThreads: 4 }),
@@ -3407,9 +3531,9 @@ describe("StudyWorkspaceView", () => {
             expect(screen.queryByRole("button", { name: "もう一度保存する" })).toBeNull();
             // 「残りを解析」は出さない。コメントは、操作できない領域（inert）の中にある。
             expect(screen.queryByRole("button", { name: /局面を解析/ })).toBeNull();
-            // 読む操作（自動で読む・パスして解析）は出さない。
-            expect(screen.queryByRole("switch", { name: /自動/ })).toBeNull();
-            expect(screen.queryByRole("button", { name: "パスして読む" })).toBeNull();
+            // 読み方のグループは出さない。
+            expect(screen.queryByRole("group", { name: "読み方" })).toBeNull();
+            expect(screen.queryByRole("button", { name: "パス" })).toBeNull();
             expect(commentTextbox().closest("[inert]")).toBeTruthy();
             // キーボードでも動かない。
             const before = currentMove();
@@ -4103,7 +4227,7 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         expect(band().textContent).toContain("+1500");
     });
 
-    it("自動読みの結果を表示しているときも、まだ読んでいない局面の見出しを「30秒」と呼ばない", () => {
+    it("「読む」の結果を表示しているときも、まだ読んでいない局面の見出しを「30秒」と呼ばない", () => {
         const autoSpec = buildStudyLayerSpec({
             engine: { kind: "wasm", name: "rshogi", version: "0.8.1" },
             appVersion: "0.0.0",
@@ -4121,7 +4245,8 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         fireEvent.click(screen.getByRole("tab", { name: "グラフ" }));
 
         const header = graphRegion().firstElementChild?.textContent ?? "";
-        expect(header).toContain("自動読み");
+        expect(header).toContain("解析");
+        expect(header).not.toContain("自動読み");
         expect(header).not.toContain("30秒");
     });
 
@@ -4143,7 +4268,8 @@ describe("StudyWorkspaceView: スマートフォン", () => {
 
         // 線の値と帯の値を別々に並べず、帯と同じ値を 1 つだけ、どの読みか・深さを添えて出す。
         const header = graphRegion().firstElementChild?.textContent ?? "";
-        expect(header).toContain("自動読み+61深さ22");
+        expect(header).toContain("+61深さ22");
+        expect(header).not.toContain("自動読み");
         expect(header).not.toContain("1秒");
         expect(header).not.toContain("30秒");
         expect(screen.getByRole("status", { name: "この局面の最善手" }).textContent).toContain(
@@ -4151,8 +4277,8 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         );
     });
 
-    it("自動で読むのスイッチは局面の帯にあり、帯は今の読みと、それより深い記録を 2 段で出す", () => {
-        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+    it("読み方のグループは局面の帯の下にあり、帯は今の読みと、それより深い記録を 2 段で出す", () => {
+        localStorage.setItem("shogi:studyReadMode", '"read"');
         const { doc } = createTestStudy([cp(120), cp(0), cp(0), cp(0), cp(0)]);
         const live = (depth: number, pv: string[]) => ({
             nodeId: doc.tree.rootId,
@@ -4172,9 +4298,9 @@ describe("StudyWorkspaceView: スマートフォン", () => {
         const view = render(<Harness initialDoc={doc} />);
         const band = () =>
             screen.getByRole("status", { name: "この局面の最善手" }).parentElement as HTMLElement;
-        // 候補手の欄には自動読みのスイッチを出さない（帯の 1 つだけ）。名前は読んでいる間も変わらない。
-        expect(screen.getAllByRole("switch", { name: /自動/ })).toHaveLength(1);
-        within(band()).getByRole("switch", { name: "自動読み" });
+        // 候補手の欄には読み方のグループを出さない（帯の下の 1 つだけ）。
+        expect(screen.getAllByRole("group", { name: "読み方" })).toHaveLength(1);
+        expect(isSelected(readModeButton("読む", band().parentElement as HTMLElement))).toBe(true);
         // 読み始めるまでは、保存してある記録を下の段に出す。
         expect(band().textContent).toContain("準備中…");
         expect(band().textContent).toContain("記録");
@@ -4207,7 +4333,7 @@ describe("StudyWorkspaceView: スマートフォン", () => {
     });
 
     it("帯の記録の段を押すと、記録の最善手の読み筋を盤で再生する（読んでいる間も）", async () => {
-        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+        localStorage.setItem("shogi:studyReadMode", '"read"');
         const { doc, ids } = createTestStudy([cp(120), cp(0), cp(0), cp(0), cp(0)]);
         const withPv = applyStudyOps(doc, [
             putScoreOp(ids[0], cp(120), { depth: 16, pv: ["2g2f", "8c8d"] }),
@@ -4263,7 +4389,7 @@ describe("StudyWorkspaceView: スマートフォン", () => {
     });
 
     it("自動で読み始めて途中の候補がまだ無い間は、帯に未解析ではなく読んでいることを出す", async () => {
-        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+        localStorage.setItem("shogi:studyReadMode", '"read"');
         const { doc } = createTestStudy();
         const view = render(<Harness initialDoc={doc} />);
         const band = () =>
@@ -4309,7 +4435,7 @@ describe("StudyWorkspaceView: スマートフォン", () => {
     });
 
     it("自動で読むを入れたまま未解析の局面へ移ると、読み始めるまでの間も帯に未解析と出さない", async () => {
-        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+        localStorage.setItem("shogi:studyReadMode", '"read"');
         const { doc, ids } = createTestStudy();
         const analysis = createAnalysis();
         render(<Harness initialDoc={doc} analysis={analysis} />);
@@ -4324,7 +4450,7 @@ describe("StudyWorkspaceView: スマートフォン", () => {
     });
 
     it("自動で読むで読み終えたら、候補手の欄に読み終えたことを出す", async () => {
-        localStorage.setItem("shogi:studyAutoAnalyze", "true");
+        localStorage.setItem("shogi:studyReadMode", '"read"');
         const { doc } = createTestStudy();
         const reading = createAnalysis({
             mode: "deep",
@@ -4353,7 +4479,7 @@ describe("StudyWorkspaceView: スマートフォン", () => {
     });
 
     it("パスして解析の読みは、帯ではなく候補手のタブで知らせる", () => {
-        localStorage.setItem("shogi:studyAutoAnalyze", "false");
+        localStorage.setItem("shogi:studyReadMode", '"stop"');
         const { doc } = createTestStudy();
         const analysis = createAnalysis({
             mode: "deep",
