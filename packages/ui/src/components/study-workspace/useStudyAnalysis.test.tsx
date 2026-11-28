@@ -138,10 +138,16 @@ function createResumableEngineOption(
     finishRun: (elapsedMs: number) => void;
     /** いまの読みの info を流す（同じ深さで最善手が入れ替わる、など）。 */
     emitInfo: (info: Omit<EngineInfoEvent, "type">) => void;
+    /** いまの読みを、エンジンが落ちたことにして終える。 */
+    crashRun: (message: string) => void;
+    /** 作ったエンジンの数。 */
+    clients: () => number;
 } {
     let starts = 0;
     let resumes = 0;
     let searches = 0;
+    let clients = 0;
+    let crash: ((cause: Error) => void) | null = null;
     let depth = 0;
     let totalTimeMs = 0;
     let emit: ((info: EngineInfoEvent) => void) | null = null;
@@ -152,8 +158,9 @@ function createResumableEngineOption(
         emit = onInfo;
         onInfo({ type: "info", depth, scoreCp: 100 + depth, multipv: 1, pv: ["8c8d"] });
         let resolve: (finished: AnalysisFinished) => void = () => {};
-        const finished = new Promise<AnalysisFinished>((done) => {
+        const finished = new Promise<AnalysisFinished>((done, fail) => {
             resolve = done;
+            crash = fail;
         });
         let result: AnalysisFinished | null = null;
         end = (reason, elapsedMs) => {
@@ -184,32 +191,35 @@ function createResumableEngineOption(
             },
         };
     };
-    const createClient = (): EngineClient => ({
-        init: vi.fn().mockResolvedValue(undefined),
-        loadPosition: vi.fn().mockResolvedValue(undefined),
-        setOption: vi.fn().mockResolvedValue(undefined),
-        stop: vi.fn().mockResolvedValue(undefined),
-        dispose: vi.fn().mockResolvedValue(undefined),
-        subscribe: () => () => {},
-        async search() {
-            searches++;
-            return { async cancel() {} };
-        },
-        analysis: {
-            available: () => true,
-            async start(sessionId, _budget, onInfo) {
-                starts++;
-                depth = 0;
-                totalTimeMs = 0;
-                return run(sessionId, onInfo);
+    const createClient = (): EngineClient => {
+        clients++;
+        return {
+            init: vi.fn().mockResolvedValue(undefined),
+            loadPosition: vi.fn().mockResolvedValue(undefined),
+            setOption: vi.fn().mockResolvedValue(undefined),
+            stop: vi.fn().mockResolvedValue(undefined),
+            dispose: vi.fn().mockResolvedValue(undefined),
+            subscribe: () => () => {},
+            async search() {
+                searches++;
+                return { async cancel() {} };
             },
-            async resume(sessionId, _budget, onInfo) {
-                resumes++;
-                return run(sessionId, onInfo);
+            analysis: {
+                available: () => true,
+                async start(sessionId, _budget, onInfo) {
+                    starts++;
+                    depth = 0;
+                    totalTimeMs = 0;
+                    return run(sessionId, onInfo);
+                },
+                async resume(sessionId, _budget, onInfo) {
+                    resumes++;
+                    return run(sessionId, onInfo);
+                },
+                release: vi.fn().mockResolvedValue(undefined),
             },
-            release: vi.fn().mockResolvedValue(undefined),
-        },
-    });
+        };
+    };
     return {
         option: { id: "wasm", label: "内蔵エンジン", createClient, kind: "internal" },
         starts: () => starts,
@@ -219,6 +229,8 @@ function createResumableEngineOption(
             end?.("budgetReached", elapsedMs);
         },
         emitInfo: (info) => emit?.({ type: "info", ...info }),
+        crashRun: (message) => crash?.(new Error(message)),
+        clients: () => clients,
     };
 }
 
@@ -712,6 +724,38 @@ describe("useStudyAnalysis", () => {
         expect(result.current.controller.continuableDeepNodeId).toBe(ids[2]);
         expect(engine.starts()).toBe(1);
         expect(engine.searches()).toBe(0);
+    });
+
+    it("深く解析の途中でエンジンが落ちても、もう一度始めると新しいエンジンで読み直す", async () => {
+        const { doc, ids } = createTestStudy();
+        const engine = createResumableEngineOption();
+        const messages: Array<{ text: string } | null> = [];
+        const { result } = renderHook(() =>
+            useHarness(doc, [engine.option], { onMessage: (message) => messages.push(message) }),
+        );
+        const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+        try {
+            await act(async () => {
+                await result.current.controller.startDeep(ids[2]);
+            });
+            await waitFor(() => expect(result.current.controller.mode).toBe("deep"));
+            await act(async () => {
+                engine.crashRun("RuntimeError: memory access out of bounds");
+            });
+            await waitFor(() => expect(result.current.controller.mode).toBeNull());
+            expect(errors).toHaveBeenCalledTimes(1);
+
+            await act(async () => {
+                await result.current.controller.startDeep(ids[2]);
+            });
+            await waitFor(() => expect(result.current.controller.mode).toBe("deep"));
+            expect(engine.starts()).toBe(2);
+            expect(engine.clients()).toBe(2);
+            // 前の失敗を、新しい失敗として知らせ直さない。
+            expect(errors).toHaveBeenCalledTimes(1);
+        } finally {
+            errors.mockRestore();
+        }
     });
 
     it("読んでいる途中も、最善手・評価値・深さが変わるたびに結果を残し、サーバーへはまとめて送る", async () => {
