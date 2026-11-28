@@ -556,6 +556,40 @@ describe("useStudyAnalysis", () => {
         }
     });
 
+    it("続きから読めないエンジンで、最後の info より後に区切りの時間を過ぎてから止めた読みは「済んだ」になる", async () => {
+        const { doc, ids } = createTestStudy();
+        const engine = createManualEngineOption();
+        let now = 1_000_000;
+        const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+        try {
+            const { result } = renderHook(() => useHarness(doc, [engine.option]));
+            await act(async () => {
+                await result.current.controller.startDeep(ids[2]);
+            });
+            await waitFor(() => expect(engine.limits()).toHaveLength(1));
+            // エンジンの用意にかかった時間は、読んだ時間に数えない。
+            now += 40_000;
+            act(() =>
+                engine.emit({ depth: 9, scoreCp: 50, multipv: 1, pv: ["7g7f"], timeMs: 1_000 }),
+            );
+            now += 20_000;
+            act(() =>
+                engine.emit({ depth: 20, scoreCp: 60, multipv: 1, pv: ["7g7f"], timeMs: 20_000 }),
+            );
+            // 次の深さを読んでいる途中で、届き始めてから 30 秒を過ぎた。
+            now += 15_000;
+            await act(async () => {
+                await result.current.controller.cancel();
+            });
+            await waitFor(() =>
+                expect(result.current.doc.layers[0]?.results[ids[2]]?.depth).toBe(20),
+            );
+            expect(result.current.doc.layers[0].results[ids[2]].completion).toBe("completed");
+        } finally {
+            clock.mockRestore();
+        }
+    });
+
     it("この局面を深く解析すると、時間の長い別の設定の結果としてその局面だけに入る", async () => {
         const { doc, ids } = createTestStudy();
         const engine = createEngineOption();

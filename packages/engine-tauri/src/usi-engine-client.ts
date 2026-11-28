@@ -23,6 +23,9 @@ function sfenHasBothKings(sfen: string): boolean {
     return placement.includes("K") && placement.includes("k");
 }
 
+/** 止めた探索の bestmove を待つ上限（ミリ秒）。 */
+const STOP_BESTMOVE_WAIT_MS = 3_000;
+
 interface UsiEngineClientOptions {
     registrationId: string;
 }
@@ -46,7 +49,18 @@ export function createUsiEngineClient(options: UsiEngineClientOptions): EngineCl
         return sessionId;
     };
 
+    /**
+     * 探索中なら、bestmove（か error）が届くと解決する。USI の stop はコマンドを送るだけで戻るので、止めた
+     * 探索の bestmove が次の go の後に届き、次の探索の終わりとして読まれないよう、止めるときにこれを待つ。
+     */
+    let searching: { done: Promise<void>; finish: () => void } | null = null;
+    const finishSearch = (): void => {
+        searching?.finish();
+        searching = null;
+    };
+
     const emit = (event: EngineEvent) => {
+        if (event.type === "bestmove" || event.type === "error") finishSearch();
         for (const handler of listeners) {
             handler(event);
         }
@@ -82,6 +96,7 @@ export function createUsiEngineClient(options: UsiEngineClientOptions): EngineCl
         // quit に伴う旧チャネルの EOF エラーイベントを購読者へ流さないよう、
         // 購読解除を先に行う
         dropListener();
+        finishSearch();
         if (sessionId) {
             const quit = tauriInvoke("usi_engine_quit", { session_id: sessionId });
             if (bestEffort) {
@@ -149,25 +164,46 @@ export function createUsiEngineClient(options: UsiEngineClientOptions): EngineCl
             if (!positionHasBothKings) {
                 throw new Error("cannot search a position without both kings");
             }
-            await tauriInvoke("usi_engine_go", {
-                session_id: sid,
-                params: {
-                    maxDepth: params.limits?.maxDepth,
-                    nodes: params.limits?.nodes,
-                    btimeMs: params.limits?.btimeMs,
-                    wtimeMs: params.limits?.wtimeMs,
-                    byoyomiMs: params.limits?.byoyomiMs,
-                    bincMs: params.limits?.bincMs,
-                    wincMs: params.limits?.wincMs,
-                    movetimeMs: params.limits?.movetimeMs,
-                    infinite: !params.limits,
-                },
+            finishSearch();
+            let finish = (): void => {};
+            const done = new Promise<void>((resolve) => {
+                finish = resolve;
             });
+            const current = { done, finish };
+            searching = current;
+            try {
+                await tauriInvoke("usi_engine_go", {
+                    session_id: sid,
+                    params: {
+                        maxDepth: params.limits?.maxDepth,
+                        nodes: params.limits?.nodes,
+                        btimeMs: params.limits?.btimeMs,
+                        wtimeMs: params.limits?.wtimeMs,
+                        byoyomiMs: params.limits?.byoyomiMs,
+                        bincMs: params.limits?.bincMs,
+                        wincMs: params.limits?.wincMs,
+                        movetimeMs: params.limits?.movetimeMs,
+                        infinite: !params.limits,
+                    },
+                });
+            } catch (error) {
+                if (searching === current) finishSearch();
+                throw error;
+            }
             return {
                 cancel: async () => {
                     await tauriInvoke("usi_engine_stop", { session_id: sid }).catch(
                         () => undefined,
                     );
+                    // bestmove を返さないエンジンでも、止める操作を待たせ続けない。
+                    let timer: ReturnType<typeof setTimeout> | undefined;
+                    await Promise.race([
+                        current.done,
+                        new Promise<void>((resolve) => {
+                            timer = setTimeout(resolve, STOP_BESTMOVE_WAIT_MS);
+                        }),
+                    ]);
+                    clearTimeout(timer);
                 },
             };
         },

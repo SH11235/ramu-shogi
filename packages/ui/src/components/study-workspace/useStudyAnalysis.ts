@@ -342,8 +342,11 @@ export function useStudyAnalysis({
     const unboundedReadRef = useRef<{
         nodeId: string;
         layer: StudyLayerRef;
+        /** 途中の結果と、止めたときの結果に付ける ID（同じ探索の結果として比べるため）。 */
+        runId: string;
         collector: StudyAnalysisCollector;
-        startedAt: number;
+        /** 最初の info が届いた時刻。エンジンの用意にかかった時間を、読んだ時間に数えない。 */
+        firstInfoAt: number | null;
         previewAt: number;
         progressAt: number;
         progressKey: string | null;
@@ -444,7 +447,12 @@ export function useStudyAnalysis({
             result,
         });
         if (buffer.timer === null) {
-            buffer.timer = setTimeout(flushResults, RESULT_FLUSH_INTERVAL_MS);
+            // 止めてから止め終わるまでの間に保存が失敗しても、止めたあとに始めた解析は止めない。
+            const generation = generationRef.current;
+            buffer.timer = setTimeout(
+                () => flushResults(() => generationRef.current === generation),
+                RESULT_FLUSH_INTERVAL_MS,
+            );
         }
     };
 
@@ -476,11 +484,21 @@ export function useStudyAnalysis({
             if (read && runModeRef.current === "deep" && analyzed.runtimeNodeId === read.nodeId) {
                 unboundedReadRef.current = null;
                 // 続きから読める探索と同じく、区切りの時間より長く読んでから止めた結果は「済んだ」とする。
+                // 最後の info の時間は止めた時刻より前なので、届き始めてからの時間とも比べる。
                 const { result } = analyzed;
-                const readMs = result.timeMs ?? Date.now() - read.startedAt;
-                if (result.completion === "aborted" && readMs >= STUDY_DEEP_TIME_MS) {
-                    completion = { ...analyzed, result: { ...result, completion: "completed" } };
-                }
+                const readMs = Math.max(
+                    result.timeMs ?? 0,
+                    read.firstInfoAt === null ? 0 : Date.now() - read.firstInfoAt,
+                );
+                const completed = result.completion === "aborted" && readMs >= STUDY_DEEP_TIME_MS;
+                completion = {
+                    ...analyzed,
+                    result: {
+                        ...result,
+                        runId: read.runId,
+                        ...(completed ? { completion: "completed" as const } : {}),
+                    },
+                };
             }
             handlePositionAnalyzed(completion);
             const { layer, runtimeNodeId } = completion;
@@ -502,6 +520,7 @@ export function useStudyAnalysis({
             if (read && read.nodeId === nodeId) {
                 read.collector.push(event);
                 const now = Date.now();
+                read.firstInfoAt ??= now;
                 const showsPreview = now - read.previewAt >= PREVIEW_INTERVAL_MS;
                 const reportsProgress = now - read.progressAt >= PROGRESS_INTERVAL_MS;
                 const result =
@@ -991,11 +1010,13 @@ export function useStudyAnalysis({
                     if (!isCurrent() || lockedRef.current) return;
                 }
                 const startedAt = Date.now();
+                const runId = crypto.randomUUID();
                 unboundedReadRef.current = {
                     nodeId,
                     layer: prepared.layer,
+                    runId,
                     collector: createStudyAnalysisCollector({
-                        runId: crypto.randomUUID(),
+                        runId,
                         sideToMove: node.positionAfter.turn,
                         execution: {
                             threads: resolveThreadCount(
@@ -1005,7 +1026,7 @@ export function useStudyAnalysis({
                             parallelWorkers: 1,
                         },
                     }),
-                    startedAt,
+                    firstInfoAt: null,
                     // 最初の候補は待たずに出す（読み始めの欄が空のままにならないように）。
                     previewAt: Number.NEGATIVE_INFINITY,
                     progressAt: startedAt,

@@ -204,4 +204,69 @@ describe("createUsiEngineClient", () => {
             },
         });
     });
+
+    it("探索を止めると、止めた探索の bestmove が届くまで待ってから戻る", async () => {
+        let deliver: (payload: unknown) => void = () => {};
+        listenMock.mockImplementation(async (_channel, handler) => {
+            deliver = (payload) => handler({ payload });
+            return unlistenMock;
+        });
+        const client = createUsiEngineClient({ registrationId: "reg-1" });
+        await client.init();
+        const handle = await client.search({ limits: { movetimeMs: 86_400_000 } });
+        let stopped = false;
+        const stopping = handle.cancel().then(() => {
+            stopped = true;
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(invokeMock).toHaveBeenCalledWith("usi_engine_stop", { session_id: "session-1" });
+        expect(stopped).toBe(false);
+        deliver({ type: "bestmove", move: "7g7f" });
+        await stopping;
+        expect(stopped).toBe(true);
+    });
+
+    it("bestmove を返さないエンジンでも、止める操作は待ち続けない", async () => {
+        vi.useFakeTimers();
+        try {
+            const client = createUsiEngineClient({ registrationId: "reg-1" });
+            await client.init();
+            const handle = await client.search({ limits: { movetimeMs: 86_400_000 } });
+            let stopped = false;
+            const stopping = handle.cancel().then(() => {
+                stopped = true;
+            });
+            await vi.advanceTimersByTimeAsync(2_900);
+            expect(stopped).toBe(false);
+            await vi.advanceTimersByTimeAsync(200);
+            await stopping;
+            expect(stopped).toBe(true);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("読み終えた探索を止めても待たない", async () => {
+        let deliver: (payload: unknown) => void = () => {};
+        listenMock.mockImplementation(async (_channel, handler) => {
+            deliver = (payload) => handler({ payload });
+            return unlistenMock;
+        });
+        const client = createUsiEngineClient({ registrationId: "reg-1" });
+        await client.init();
+        const handle = await client.search({ limits: { movetimeMs: 1_000 } });
+        deliver({ type: "bestmove", move: "7g7f" });
+        vi.useFakeTimers();
+        try {
+            let stopped = false;
+            const stopping = handle.cancel().then(() => {
+                stopped = true;
+            });
+            await vi.advanceTimersByTimeAsync(0);
+            await stopping;
+            expect(stopped).toBe(true);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
 });
