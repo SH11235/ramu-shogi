@@ -128,6 +128,13 @@ export interface StudyLiveSearch {
     preview: StudyAnalysisResult | null;
     /** 結果を保存する設定。最初の保存より前から、どの AI の読みかを見分けるのに使う。 */
     layer?: StudyLayerRef | null;
+    /** 途中経過（info）が届いた（深さを添えない AI もあるので、深さとは別に持つ）。 */
+    hasInfo?: boolean;
+}
+
+/** 最初の途中経過が届いたか（届くまでは、AI の読み込み・エンジンの起動を待っている）。 */
+export function hasStudyLiveStarted(live: StudyLiveSearch): boolean {
+    return live.preview !== null || live.depth !== null || live.hasInfo === true;
 }
 
 /** 解析の設定を変える画面に渡すもの。 */
@@ -412,14 +419,23 @@ export function useStudyAnalysis({
                 latestRef.current.onDeepResult(layer.layerId, runtimeNodeId);
             }
         },
-        onResult: (_ply: number, event: EngineInfoEvent, nodeId?: string) => {
+        onInfo: (_ply: number, event: EngineInfoEvent, nodeId?: string) => {
             if (!nodeId) return;
-            const depth = event.depth ?? null;
-            setLive((previous) =>
-                previous && previous.nodeId === nodeId && previous.depth !== depth
-                    ? { ...previous, depth }
-                    : previous,
-            );
+            // 読みの中身の無い info（外部エンジンの `info string` のログなど）は、読み始めたことにしない。
+            const hasProgress =
+                event.depth !== undefined ||
+                event.scoreCp !== undefined ||
+                event.scoreMate !== undefined ||
+                event.nodes !== undefined;
+            if (!hasProgress) return;
+            setLive((previous) => {
+                if (!previous || previous.nodeId !== nodeId) return previous;
+                // 深さの無い info もあるので、届いた深さは次の深さが届くまで残す（読み始めたかの判定にも使う）。
+                const depth = event.depth ?? previous.depth;
+                return previous.depth !== depth || previous.hasInfo !== true
+                    ? { ...previous, depth, hasInfo: true }
+                    : previous;
+            });
         },
         onComplete: () => {
             flushResults();

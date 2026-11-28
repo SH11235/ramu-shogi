@@ -80,6 +80,8 @@ interface UseEnginePoolOptions {
     onProgress?: (progress: BatchAnalysisProgress) => void;
     /** 解析結果のコールバック */
     onResult?: (ply: number, event: EngineInfoEvent, nodeId?: string) => void;
+    /** info が届くたびに、評価値の有無にかかわらず呼ぶ（深さだけの行で進み具合を出すのに使う）。 */
+    onInfo?: (ply: number, event: EngineInfoEvent, nodeId?: string) => void;
     /** 全ジョブ完了時のコールバック */
     onComplete?: () => void;
     /** エラー時のコールバック */
@@ -190,6 +192,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
         threadsPerWorker = 1,
         onProgress,
         onResult,
+        onInfo,
         onComplete,
         onError,
         onPositionAnalyzed,
@@ -258,12 +261,13 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
     const callbacksRef = useRef({
         onProgress,
         onResult,
+        onInfo,
         onComplete,
         onPositionAnalyzed,
     });
     useEffect(() => {
-        callbacksRef.current = { onProgress, onResult, onComplete, onPositionAnalyzed };
-    }, [onProgress, onResult, onComplete, onPositionAnalyzed]);
+        callbacksRef.current = { onProgress, onResult, onInfo, onComplete, onPositionAnalyzed };
+    }, [onProgress, onResult, onInfo, onComplete, onPositionAnalyzed]);
 
     // 進行中の探索の結果をまとめて通知する（1 回の探索につき 1 回だけ）
     const finishRun = (worker: EngineWorker, completion: "completed" | "aborted") => {
@@ -413,6 +417,7 @@ export function useEnginePool(options: UseEnginePoolOptions): EnginePoolHandle {
 
                 if (event.type === "info") {
                     if (run && worker.run === run) run.collector.push(event);
+                    callbacksRef.current.onInfo?.(job.ply, event, job.nodeId);
                     // 評価値が含まれている場合のみコールバック
                     if (event.scoreCp !== undefined || event.scoreMate !== undefined) {
                         callbacksRef.current.onResult?.(job.ply, event, job.nodeId);

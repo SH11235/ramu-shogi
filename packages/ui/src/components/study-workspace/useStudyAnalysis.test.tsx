@@ -17,8 +17,10 @@ import type { EngineOption } from "../shogi-match/types";
 import { createTestStudy } from "./study-test-support";
 import { buildStudyViewTree } from "./studyView";
 import {
+    hasStudyLiveStarted,
     STUDY_DEEP_TIME_MS,
     type StudyApplyOpsOptions,
+    type StudyLiveSearch,
     useStudyAnalysis,
 } from "./useStudyAnalysis";
 
@@ -389,6 +391,49 @@ describe("useStudyAnalysis", () => {
         // 1 つ目は続きから読めるかを確かめるためのエンジン、2 つ目が 1 回だけの読みのエンジン。
         expect(engine.initThreads()).toEqual([3, 3]);
         expect(engine.searches()).toBe(1);
+    });
+
+    it("続きから読めないエンジンでは、深さだけの info でも読み始めたことにし、深さの無い info では深さを残す", async () => {
+        const { doc, ids } = createTestStudy();
+        const listeners = new Set<EngineEventHandler>();
+        const emit = (event: Omit<EngineInfoEvent, "type">): void => {
+            for (const listener of listeners) listener({ type: "info", ...event });
+        };
+        const option: EngineOption = {
+            id: "wasm",
+            label: "内蔵エンジン",
+            kind: "internal",
+            createClient: (): EngineClient => ({
+                init: vi.fn().mockResolvedValue(undefined),
+                loadPosition: vi.fn().mockResolvedValue(undefined),
+                setOption: vi.fn().mockResolvedValue(undefined),
+                stop: vi.fn().mockResolvedValue(undefined),
+                dispose: vi.fn().mockResolvedValue(undefined),
+                subscribe(handler) {
+                    listeners.add(handler);
+                    return () => listeners.delete(handler);
+                },
+                search: vi.fn().mockResolvedValue({ cancel: async () => {} }),
+            }),
+        };
+        const { result } = renderHook(() => useHarness(doc, [option]));
+        await act(async () => {
+            await result.current.controller.startDeep(ids[2]);
+        });
+        await waitFor(() => expect(result.current.controller.live?.nodeId).toBe(ids[2]));
+        const live = () => result.current.controller.live as StudyLiveSearch;
+        expect(hasStudyLiveStarted(live())).toBe(false);
+        // ログの行（info string）では読み始めたことにしない。
+        act(() => emit({}));
+        expect(hasStudyLiveStarted(live())).toBe(false);
+        // 評価値を添えない、深さだけの行でも読み始めたことにする。
+        act(() => emit({ depth: 3 }));
+        await waitFor(() => expect(live().depth).toBe(3));
+        expect(hasStudyLiveStarted(live())).toBe(true);
+        act(() => emit({ depth: 12, scoreCp: 80, multipv: 1, pv: ["7g7f"] }));
+        await waitFor(() => expect(result.current.controller.live?.depth).toBe(12));
+        act(() => emit({ scoreCp: 90, multipv: 1, pv: ["7g7f"] }));
+        expect(result.current.controller.live?.depth).toBe(12);
     });
 
     it("この局面を深く解析すると、時間の長い別の設定の結果としてその局面だけに入る", async () => {
