@@ -134,7 +134,7 @@ export function StudyMobileMenu({
                                 className={ITEM_CLASS}
                                 onClick={run(onPlayFromPosition)}
                             >
-                                ここから対局
+                                ここから対局…
                             </button>
                         )}
                         {onPass && (

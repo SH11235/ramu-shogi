@@ -83,6 +83,7 @@ import { StudyMoveList } from "./study-workspace/StudyMoveList";
 import { StudyNavBar } from "./study-workspace/StudyNavBar";
 import { StudyNewNoteDialog, type StudyNewNoteOptions } from "./study-workspace/StudyNewNoteDialog";
 import { StudyNotice } from "./study-workspace/StudyNotice";
+import { StudyPlayFromPositionDialog } from "./study-workspace/StudyPlayFromPositionDialog";
 import { type StudyBandLine, StudyPositionBand } from "./study-workspace/StudyPositionBand";
 import { buildStudyReviewItems, StudyReviewList } from "./study-workspace/StudyReviewList";
 import {
@@ -359,6 +360,14 @@ export function StudyWorkspaceView({
     const [isTreeOpen, setIsTreeOpen] = useState(false);
     const treeOpener = useRef<HTMLElement | null>(null);
     const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+    // 確認を開いた時点の局面。開いている間に局面が変わっても（パスの手の取得の完了など）、確かめた局面を渡す。
+    const [playConfirm, setPlayConfirm] = useState<{
+        position: PlayFromPosition;
+        title: string;
+        turnLabel: string;
+    } | null>(null);
+    // 確認を開いたボタン。閉じたときのフォーカスの戻り先に使う。
+    const playConfirmOpenerRef = useRef<HTMLElement | null>(null);
     const comments = useStudyCommentDrafts({
         initialDrafts: initialCommentDrafts,
         onDraftChange: onCommentDraftChange,
@@ -449,6 +458,7 @@ export function StudyWorkspaceView({
             locked ||
             pvPreview !== null ||
             deleteTargetId !== null ||
+            playConfirm !== null ||
             isSettingsOpen ||
             isTitleDialogOpen ||
             shareDialog?.open === true ||
@@ -1517,8 +1527,17 @@ export function StudyWorkspaceView({
             )}
         </div>
     );
-    const playFromPosition = onPlayFromPosition
-        ? () => onPlayFromPosition({ sfen: tree.startSfen, moves: movesToCurrent })
+    // 押すとページを移るので、確認を挟む。押したボタンは引数で受け取る（Safari はクリックでボタンに
+    // フォーカスを移さないので、activeElement からは取れない）。
+    const requestPlayFromPosition = onPlayFromPosition
+        ? (opener?: HTMLElement) => {
+              playConfirmOpenerRef.current = opener ?? null;
+              setPlayConfirm({
+                  position: { sfen: tree.startSfen, moves: movesToCurrent },
+                  title: moveTitle,
+                  turnLabel: position.turn === "sente" ? "☗先手番" : "☖後手番",
+              });
+          }
         : undefined;
     const passFromCurrent = editingDisabled ? undefined : () => void editing.passFromCurrent();
     const openShare = shareDialog && !readOnly ? shareDialog.onOpen : undefined;
@@ -1554,19 +1573,18 @@ export function StudyWorkspaceView({
             onSaveKifu={saveKifu}
             csaUnavailableReason={csaUnavailableReason}
             onCopySfen={() => void copySfen(true)}
-            onPlayFromPosition={playFromPosition}
+            onPlayFromPosition={requestPlayFromPosition}
         />
     );
     const actionBar = (
         <StudyActionBar
-            positionTitle={moveTitle}
             positionKey={currentNodeId}
             lineKey={line[line.length - 1] ?? currentNodeId}
             onCopyKifu={(format) => copyKifu(format, false)}
             onSaveKifu={saveKifu}
             csaUnavailableReason={csaUnavailableReason}
             onCopySfen={() => copySfen(false)}
-            onPlayFromPosition={playFromPosition}
+            onPlayFromPosition={requestPlayFromPosition}
             onPass={passFromCurrent}
         />
     );
@@ -1823,6 +1841,24 @@ export function StudyWorkspaceView({
                               </div>
                           )
                 }
+            />
+
+            <StudyPlayFromPositionDialog
+                open={playConfirm !== null && onPlayFromPosition !== undefined}
+                positionTitle={playConfirm?.title ?? ""}
+                turnLabel={playConfirm?.turnLabel ?? ""}
+                returnFocusTo={() => {
+                    const opener = playConfirmOpenerRef.current;
+                    // スマートフォンでは開いた項目がメニューごと消えているので、「メニュー」へ戻す。
+                    return opener?.isConnected
+                        ? opener
+                        : document.getElementById(mobileMenuTriggerId);
+                }}
+                onCancel={() => setPlayConfirm(null)}
+                onConfirm={() => {
+                    if (playConfirm) onPlayFromPosition?.(playConfirm.position);
+                    setPlayConfirm(null);
+                }}
             />
 
             <StudyDeleteVariationDialog

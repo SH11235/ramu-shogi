@@ -1,13 +1,15 @@
 /**
- * PC・タブレットの盤の下に置く、棋譜と、いまの局面の操作。
+ * PC・タブレットの盤の下に置く操作の行。
  *
- * 何を扱う操作かで 2 つにまとめ、まとまりの見出しに対象の名前を書く（ボタンは「コピー」「ファイルに保存」と
- * 短くする）。盤の幅が足りないときは、まとまりごとに 2 段に折り返す。
+ * 書き出す操作（棋譜・局面のコピー、ファイルに保存）を枠だけのボタンで左にまとめ、性質の違う
+ * 「ここから対局」「パスを指す」は淡い地のボタンで右に離して置く。ボタンの名前に対象を入れて
+ * 見出しを置かず、行の高さを 1 段のボタンの高さに抑える。
  */
 
 import { cn } from "@shogi/design-system";
-import type { ReactElement, ReactNode } from "react";
-import { useEffect, useRef, useState } from "react";
+import type { ReactElement } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { Button } from "../button";
 import { useLocalStorage } from "../shogi-match/hooks/useLocalStorage";
 import { CheckIcon, CopyIcon, DownloadIcon, PlayIcon } from "./StudyIcons";
 import type { StudyKifuFormat } from "./studyFile";
@@ -16,8 +18,8 @@ const KIFU_FORMAT_STORAGE_KEY = "shogi:studyKifuFormat";
 const COPIED_LABEL_MS = 2000;
 const COPIED_LABEL = "コピーしました";
 
-const BUTTON_CLASS =
-    "inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-border bg-background px-2.5 text-sm text-wafuu-sumi transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40";
+// 共通の Button（outline / secondary）を、盤の下の 1 段の高さと文字の太さに合わせる。
+const BUTTON_CLASS = "h-8 shrink-0 gap-1.5 px-2 font-normal shadow-none";
 
 function useCopiedFlash(): { copied: string | null; flash: (label: string) => void } {
     const [copied, setCopied] = useState<string | null>(null);
@@ -47,12 +49,15 @@ function useStudyKifuFormat(): [StudyKifuFormat, (format: StudyKifuFormat) => vo
 
 function CopyButton({
     label,
+    text,
     copyKey,
     hint,
     onCopy,
 }: {
     /** 読み上げ用の、何をコピーするか（「棋譜をコピー（KIF）」など）。 */
     label: string;
+    /** ボタンに出す文字。 */
+    text: string;
     /** コピーする中身の識別（形式・手順・局面）。 */
     copyKey: string;
     hint?: string;
@@ -63,8 +68,9 @@ function CopyButton({
     const copied = copiedKey === copyKey;
     return (
         <>
-            <button
+            <Button
                 type="button"
+                variant="outline"
                 aria-label={label}
                 className={BUTTON_CLASS}
                 onClick={() => {
@@ -75,9 +81,9 @@ function CopyButton({
             >
                 {/* 結果はアイコンだけで返し、文字と幅は変えない。幅が変わると行が折り返し、盤の大きさまで変わる。 */}
                 {copied ? <CheckIcon className="text-status-success" /> : <CopyIcon />}
-                コピー
+                {text}
                 {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
-            </button>
+            </Button>
             <span role="status" className="sr-only">
                 {copied ? COPIED_LABEL : ""}
             </span>
@@ -85,28 +91,7 @@ function CopyButton({
     );
 }
 
-function Group({
-    heading,
-    note,
-    children,
-}: {
-    heading: string;
-    note?: string;
-    children: ReactNode;
-}): ReactElement {
-    return (
-        <fieldset className="m-0 flex min-w-0 flex-col border-0 p-0">
-            <legend className="mb-0.5 p-0 text-xs leading-4 text-muted-foreground">
-                {heading}
-                {note && <span className="block text-status-warning">{note}</span>}
-            </legend>
-            <div className="flex flex-wrap items-center gap-1.5">{children}</div>
-        </fieldset>
-    );
-}
-
 export function StudyActionBar({
-    positionTitle,
     positionKey,
     lineKey,
     onCopyKifu,
@@ -116,20 +101,19 @@ export function StudyActionBar({
     onPlayFromPosition,
     onPass,
 }: {
-    /** いまの局面の手数と指し手（「23手目 ☗2六歩(27)」）。 */
-    positionTitle: string;
     /** いまの局面の識別（ノードの ID）。 */
     positionKey: string;
     /** 表示中の手順の識別（手順の末端のノードの ID）。 */
     lineKey: string;
     /** 書き出した棋譜を写す。写せたら true。 */
     onCopyKifu: (format: StudyKifuFormat) => Promise<boolean>;
-    /** 渡さなければ「保存」を出さない（保存できない環境）。 */
+    /** 渡さなければ「ファイルに保存」を出さない（保存できない環境）。 */
     onSaveKifu?: (format: StudyKifuFormat) => void;
-    /** CSA で書き出せない理由。あれば CSA を選べなくし、見出しの下に添える。 */
+    /** CSA で書き出せない理由。あれば CSA を選べなくし、行の下に添える。 */
     csaUnavailableReason?: string;
     onCopySfen: () => Promise<boolean>;
-    onPlayFromPosition?: () => void;
+    /** 確認を出してから対局の画面へ移る。押したボタンを渡す（確認を閉じたときのフォーカスの戻り先）。 */
+    onPlayFromPosition?: (opener: HTMLElement) => void;
     /** 渡さなければ出さない（編集できないとき）。 */
     onPass?: () => void;
 }): ReactElement {
@@ -137,11 +121,19 @@ export function StudyActionBar({
     // 選んだ形式は書き換えずに覚えておき、CSA にできる手順へ戻ったら CSA に戻す。
     const format: StudyKifuFormat = csaUnavailableReason !== undefined ? "kif" : storedFormat;
     const formatLabel = format.toUpperCase();
+    const hasPositionActions = onPlayFromPosition !== undefined || onPass !== undefined;
+    const csaReasonId = useId();
     return (
-        <div className="flex w-full flex-wrap items-start justify-center gap-x-4 gap-y-1 border-t border-border pt-1">
-            <Group heading="棋譜（表示中の手順・評価値とコメントつき）" note={csaUnavailableReason}>
-                <fieldset className="m-0 inline-flex h-8 overflow-hidden rounded-md border border-border p-0">
-                    <legend className="sr-only">書き出す形式</legend>
+        <div className="flex w-full flex-wrap items-center justify-center gap-x-4 gap-y-1.5 border-t border-border pt-1.5">
+            <fieldset
+                aria-label="書き出す（棋譜は表示中の手順を評価値とコメントつきで）"
+                className="m-0 flex min-w-0 flex-wrap items-center justify-center gap-1 border-0 p-0"
+            >
+                <fieldset
+                    aria-describedby={csaUnavailableReason ? csaReasonId : undefined}
+                    className="m-0 inline-flex h-8 overflow-hidden rounded-md border border-border p-0"
+                >
+                    <legend className="sr-only">棋譜の形式</legend>
                     {(["kif", "csa"] as const).map((option) => {
                         const disabled = option === "csa" && csaUnavailableReason !== undefined;
                         return (
@@ -149,7 +141,7 @@ export function StudyActionBar({
                                 key={option}
                                 title={disabled ? csaUnavailableReason : undefined}
                                 className={cn(
-                                    "flex min-w-11 cursor-pointer items-center justify-center border-r border-border px-2.5 text-xs font-medium text-wafuu-sumi-light transition-colors last:border-r-0 hover:bg-muted/60 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-inset has-[:focus-visible]:ring-ring",
+                                    "flex min-w-10 cursor-pointer items-center justify-center border-r border-border px-2 text-xs font-medium text-wafuu-sumi-light transition-colors last:border-r-0 hover:bg-muted/60 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-inset has-[:focus-visible]:ring-ring",
                                     format === option &&
                                         "bg-wafuu-kin/20 font-bold text-wafuu-sumi hover:bg-wafuu-kin/20",
                                     disabled &&
@@ -171,46 +163,68 @@ export function StudyActionBar({
                 </fieldset>
                 <CopyButton
                     label={`棋譜をコピー（${formatLabel}）`}
+                    text="棋譜をコピー"
                     copyKey={`${format}:${lineKey}`}
                     onCopy={() => onCopyKifu(format)}
                 />
                 {onSaveKifu && (
-                    <button
+                    <Button
                         type="button"
+                        variant="outline"
                         aria-label={`棋譜をファイルに保存（${formatLabel}）`}
                         className={BUTTON_CLASS}
                         onClick={() => onSaveKifu(format)}
                     >
                         <DownloadIcon />
                         ファイルに保存
-                    </button>
+                    </Button>
                 )}
-            </Group>
-            <div aria-hidden="true" className="w-px self-stretch bg-border" />
-            <Group heading={`いまの局面（${positionTitle}）`}>
                 <CopyButton
                     label="局面をコピー（SFEN）"
+                    text="局面をコピー"
                     copyKey={positionKey}
                     hint="SFEN"
                     onCopy={onCopySfen}
                 />
-                {onPlayFromPosition && (
-                    <button type="button" className={BUTTON_CLASS} onClick={onPlayFromPosition}>
-                        <PlayIcon />
-                        ここから対局
-                    </button>
-                )}
-                {onPass && (
-                    <button
-                        type="button"
-                        title="変則ルール「パス権」の棋譜の研究用"
-                        className={BUTTON_CLASS}
-                        onClick={onPass}
+            </fieldset>
+            {hasPositionActions && (
+                <>
+                    {/* 対局とパスは 1 つの塊にし、折り返すときもパスだけが次の行へ落ちないようにする。
+                        区切り線は折り返すと行末に取り残されるので置かず、まとまりの間を空けて分ける。 */}
+                    <fieldset
+                        aria-label="この局面で"
+                        className="m-0 flex min-w-0 shrink-0 items-center gap-1 border-0 p-0"
                     >
-                        パスを指す
-                    </button>
-                )}
-            </Group>
+                        {onPlayFromPosition && (
+                            <Button
+                                type="button"
+                                variant="secondary"
+                                className={BUTTON_CLASS}
+                                onClick={(event) => onPlayFromPosition(event.currentTarget)}
+                            >
+                                <PlayIcon />
+                                ここから対局…
+                            </Button>
+                        )}
+                        {onPass && (
+                            <Button
+                                type="button"
+                                variant="secondary"
+                                title="変則ルール「パス権」の棋譜の研究用"
+                                className={BUTTON_CLASS}
+                                onClick={onPass}
+                            >
+                                パスを指す
+                            </Button>
+                        )}
+                    </fieldset>
+                </>
+            )}
+            {csaUnavailableReason && (
+                <p id={csaReasonId} className="basis-full text-center text-xs text-status-warning">
+                    {csaUnavailableReason}
+                </p>
+            )}
         </div>
     );
 }
