@@ -107,4 +107,58 @@ describe("useLocalStorage change source", () => {
         expect(notifications[0]).toEqual({ key: KEY, source: "user" });
         expect(notifications.slice(1).every((event) => event.source === "automatic")).toBe(true);
     });
+    it("別のタブの値を受け取っても保存し直さず、古い通知が届いてもいまの保存値を映す", () => {
+        const { result } = renderHook(() => useLocalStorage(KEY, defaults));
+        const older = JSON.stringify({ sound: false, volume: 1 });
+        const newer = JSON.stringify({ sound: false, volume: 0.5 });
+        // 別のタブが 2 回続けて保存し、どちらの通知もこのタブにまだ届いていない。
+        localStorage.setItem(KEY, newer);
+        act(() => {
+            window.dispatchEvent(new StorageEvent("storage", { key: KEY, newValue: older }));
+        });
+        // 届いた通知が古くても、いまの保存値を映す。
+        expect(result.current[0]).toEqual({ sound: false, volume: 0.5 });
+        expect(localStorage.getItem(KEY)).toBe(newer);
+        act(() => {
+            window.dispatchEvent(new StorageEvent("storage", { key: KEY, newValue: newer }));
+        });
+        expect(result.current[0]).toEqual({ sound: false, volume: 0.5 });
+        expect(localStorage.getItem(KEY)).toBe(newer);
+        expect(notifications).toEqual([]);
+
+        // 受け取った後の自分の編集は、いつもどおり保存する。
+        act(() => result.current[1]({ sound: true, volume: 0.5 }));
+        expect(JSON.parse(localStorage.getItem(KEY) ?? "null")).toEqual({
+            sound: true,
+            volume: 0.5,
+        });
+        expect(notifications).toEqual([{ key: KEY, source: "user" }]);
+    });
+
+    it("受け取った値と同じ値へ自分で戻しても、保存する", () => {
+        const { result } = renderHook(() => useLocalStorage(KEY, defaults));
+        localStorage.setItem(KEY, JSON.stringify({ sound: false, volume: 1 }));
+        act(() => {
+            window.dispatchEvent(new StorageEvent("storage", { key: KEY }));
+        });
+        act(() => result.current[1]({ sound: true, volume: 1 }));
+        act(() => result.current[1]({ sound: false, volume: 1 }));
+        expect(JSON.parse(localStorage.getItem(KEY) ?? "null")).toEqual({
+            sound: false,
+            volume: 1,
+        });
+    });
+    it("別のタブでキーが消されたあと、表示中の既定値を自分で保存したら編集として知らせる", () => {
+        const { result } = renderHook(() => useLocalStorage(KEY, defaults));
+        act(() => result.current[1]({ sound: false, volume: 1 }));
+        notifications = [];
+        localStorage.removeItem(KEY);
+        act(() => {
+            window.dispatchEvent(new StorageEvent("storage", { key: KEY, newValue: null }));
+        });
+        expect(result.current[0]).toEqual(defaults);
+        act(() => result.current[1]({ ...defaults }));
+        expect(JSON.parse(localStorage.getItem(KEY) ?? "null")).toEqual(defaults);
+        expect(notifications).toEqual([{ key: KEY, source: "user" }]);
+    });
 });
