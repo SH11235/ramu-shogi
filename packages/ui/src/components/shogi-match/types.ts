@@ -110,9 +110,11 @@ export function normalizeAnalysisSettings(
         ...DEFAULT_ANALYSIS_SETTINGS,
         ...stored,
         // 候補手の数を全体の解析と分ける前の設定では、1 局面の読みは max(候補手の数, 3) 本読んでいた。
-        deepMultiPv:
+        deepMultiPv: Math.max(
+            1,
             stored?.deepMultiPv ??
-            Math.max(stored?.multiPv ?? 1, DEFAULT_ANALYSIS_SETTINGS.deepMultiPv),
+                Math.max(stored?.multiPv ?? 1, DEFAULT_ANALYSIS_SETTINGS.deepMultiPv),
+        ),
     };
 }
 

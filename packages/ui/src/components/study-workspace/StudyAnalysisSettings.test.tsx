@@ -64,9 +64,16 @@ describe("StudyAnalysisSettings", () => {
     });
 
     it("この局面を読んでいる間は、変えた値が次に読み始めるときから効くと知らせる", () => {
+        const view = renderSettings({ deepReading: false });
+        const notice = () =>
+            within(screen.getByRole("region", { name: "この局面の読み" })).getByText(
+                /次に読み始めるときから使います/,
+            );
+        // 読んでいない間も場所は取っておき、見せない（読み始めで下の段が動かないように）。
+        expect(notice().classList.contains("invisible")).toBe(true);
+        view.unmount();
         renderSettings({ deepReading: true });
-        const position = screen.getByRole("region", { name: "この局面の読み" });
-        expect(within(position).getByText(/次に読み始めるときから使います/)).toBeTruthy();
+        expect(notice().classList.contains("invisible")).toBe(false);
     });
 
     it("スレッドを使えないブラウザでは、スレッド数を選ばせず理由を書く", () => {

@@ -332,7 +332,7 @@ function SettingsBody({
                     </span>
                     <NativeSelect
                         value={String(batchThreads)}
-                        disabled={batchThreadOptions.length <= 1}
+                        disabled={maxThreads !== undefined && maxThreads <= 1}
                         onChange={(event) =>
                             set({ batchAnalysisThreads: Number(event.target.value) })
                         }
@@ -386,7 +386,7 @@ function SettingsBody({
                     スレッド数
                     <NativeSelect
                         value={String(clampThreads(form.settings.deepAnalysisThreads, maxThreads))}
-                        disabled={threadOptions.length <= 2}
+                        disabled={maxThreads !== undefined && maxThreads <= 1}
                         onChange={(event) =>
                             set({ deepAnalysisThreads: Number(event.target.value) })
                         }
@@ -400,11 +400,13 @@ function SettingsBody({
                     </NativeSelect>
                 </label>
                 {threadCapNote && <p className="text-xs text-muted-foreground">{threadCapNote}</p>}
-                {deepReading && (
-                    <p className="text-xs text-status-warning">
-                        いま読んでいる局面には効きません。次に読み始めるときから使います。
-                    </p>
-                )}
+                {/* 開いている間に読み始め・読み終わりが来ても下の段が動かないよう、場所は取っておく。 */}
+                <p
+                    aria-hidden={!deepReading}
+                    className={cn("text-xs text-status-warning", !deepReading && "invisible")}
+                >
+                    いま読んでいる局面には効きません。次に読み始めるときから使います。
+                </p>
             </Section>
 
             {mateSupported && (
