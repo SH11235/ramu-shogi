@@ -61,6 +61,7 @@ export function createUsiEngineClient(options: UsiEngineClientOptions): EngineCl
     /**
      * 止めたのに待つ間に bestmove が届かなかった探索の数。その探索の info・bestmove は次の go の後に
      * 届くので、数えた bestmove が届くまでの info・bestmove は捨てる（次の探索のものとして渡さない）。
+     * USI では stop に必ず bestmove を返すので、遅れても届く前提にしている。
      */
     let staleSearches = 0;
 
