@@ -29,12 +29,12 @@ const outDir = path.resolve(__dirname, "../pkg");
 const threadedOutDir = path.resolve(__dirname, "../pkg-threaded");
 const threadedTarget = path.resolve(rustRoot, "targets", "wasm32-unknown-unknown.json");
 
-// 探索スレッドのスタック（バイト）。探索は手数 MAX_PLY (246) で潜るのをやめるので、1 手ごとの
-// search_node（約 5.3 KB）と probcut（約 5 KB）が毎手重なっても約 2.5 MB に収まる。wasm の既定
-// （本体 1 MiB・補助スレッド 2 MiB）では深く読み続けると足りず、本体は `memory access out of bounds`
-// で落ち、補助スレッドはヒープを壊す。スレッド版の本体の値は targets/wasm32-unknown-unknown.json の
-// `stack-size` と同じにする（verifyStackSize で確かめる）。
-const SEARCH_STACK_BYTES = 4 * 1024 * 1024;
+// 探索スレッドのスタック（バイト）。探索は手数 MAX_PLY (246) で潜るのをやめる。1 手の中でも
+// singular extension・null move の確認・probcut で search_node（約 5.3 KB）を呼び直すので、
+// 毎手 search_node 2 つと try_probcut（約 5 KB）が重なる最悪でも約 3.7 MiB。初回の表の初期化
+// （約 0.2 MB）を足しても 2 倍の余裕を持たせる。wasm の既定（本体 1 MiB・補助スレッド 2 MiB）では
+// 深く読み続けると足りず、本体は `memory access out of bounds` で落ち、補助スレッドはヒープを壊す。
+const SEARCH_STACK_BYTES = 8 * 1024 * 1024;
 
 function run(cmd, args, cwd = process.cwd(), extraEnv = {}) {
     const fullCommand = `${cmd} ${args.join(" ")}`;
@@ -122,12 +122,27 @@ function readStackPointerInit(wasmPath) {
     return null;
 }
 
+/**
+ * `--stack-first` ではスタックが 0 番地から始まり、`__stack_pointer` の初期値がスタックの大きさと
+ * 等しい。等しさを求めるので、配置やグローバルの並びが変われば（別の値を読んだら）ここで止まる。
+ */
 function verifyStackSize(wasmPath) {
     const stackBytes = readStackPointerInit(wasmPath);
-    if (stackBytes === null || stackBytes < SEARCH_STACK_BYTES) {
+    if (stackBytes !== SEARCH_STACK_BYTES) {
         throw new Error(
-            `${wasmPath} の探索スタックが ${stackBytes} バイトしかありません（${SEARCH_STACK_BYTES} 以上が必要）`,
+            `${wasmPath} の __stack_pointer の初期値が ${stackBytes} です（--stack-first で ${SEARCH_STACK_BYTES} バイトのスタックを想定）`,
         );
+    }
+}
+
+/** スレッド版の本体のスタックは、ターゲット仕様の `stack-size` で決まる。 */
+function verifyTargetStackSize(targetPath) {
+    const spec = JSON.parse(readFileSync(targetPath, "utf8"));
+    const expected = `stack-size=${SEARCH_STACK_BYTES}`;
+    const linkArgs = Object.values(spec["pre-link-args"] ?? {}).flat();
+    const sizes = linkArgs.filter((arg) => arg.includes("stack-size="));
+    if (sizes.length === 0 || sizes.some((arg) => !arg.endsWith(expected))) {
+        throw new Error(`${targetPath} の stack-size が ${SEARCH_STACK_BYTES} ではありません`);
     }
 }
 
@@ -137,15 +152,20 @@ function verifyStackSize(wasmPath) {
  */
 function setRayonThreadStackSize(outputDir) {
     const snippetsDir = path.join(outputDir, "snippets");
-    const helper = readdirSync(snippetsDir, { recursive: true })
+    const helpers = readdirSync(snippetsDir, { recursive: true })
         .map((entry) => path.join(snippetsDir, String(entry)))
-        .find((entry) => path.basename(entry) === "workerHelpers.js");
-    if (!helper) throw new Error(`workerHelpers.js not found under ${snippetsDir}`);
+        .filter((entry) => path.basename(entry) === "workerHelpers.js");
+    if (helpers.length !== 1) {
+        throw new Error(
+            `${snippetsDir} に workerHelpers.js が ${helpers.length} 個あります（1 個を想定）`,
+        );
+    }
+    const [helper] = helpers;
     const source = readFileSync(helper, "utf8");
     const original = "init: { module_or_path: module, memory },";
-    if (!source.includes(original)) {
+    if (source.split(original).length !== 2) {
         throw new Error(
-            `${helper} の補助スレッドの初期化が想定と違います（thread_stack_size を足せません）`,
+            `${helper} の補助スレッドの初期化が想定と違います（thread_stack_size を足す箇所が 1 つではない）`,
         );
     }
     writeFileSync(
@@ -286,6 +306,7 @@ try {
         rustflags: `-C target-feature=+simd128 -C link-arg=-zstack-size=${SEARCH_STACK_BYTES}`,
     });
 
+    verifyTargetStackSize(threadedTarget);
     buildWasm({
         label: "threaded",
         cargoArgs: ["--features", "wasm-threads"],
