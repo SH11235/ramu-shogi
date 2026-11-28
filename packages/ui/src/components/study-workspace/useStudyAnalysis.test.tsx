@@ -423,6 +423,9 @@ describe("useStudyAnalysis", () => {
         await waitFor(() => expect(result.current.controller.live?.nodeId).toBe(ids[2]));
         const live = () => result.current.controller.live as StudyLiveSearch;
         expect(hasStudyLiveStarted(live())).toBe(false);
+        // ログの行（info string）では読み始めたことにしない。
+        act(() => emit({}));
+        expect(hasStudyLiveStarted(live())).toBe(false);
         // 評価値を添えない、深さだけの行でも読み始めたことにする。
         act(() => emit({ depth: 3 }));
         await waitFor(() => expect(live().depth).toBe(3));

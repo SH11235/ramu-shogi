@@ -421,6 +421,13 @@ export function useStudyAnalysis({
         },
         onInfo: (_ply: number, event: EngineInfoEvent, nodeId?: string) => {
             if (!nodeId) return;
+            // 読みの中身の無い info（外部エンジンの `info string` のログなど）は、読み始めたことにしない。
+            const hasProgress =
+                event.depth !== undefined ||
+                event.scoreCp !== undefined ||
+                event.scoreMate !== undefined ||
+                event.nodes !== undefined;
+            if (!hasProgress) return;
             setLive((previous) => {
                 if (!previous || previous.nodeId !== nodeId) return previous;
                 // 深さの無い info もあるので、届いた深さは次の深さが届くまで残す（読み始めたかの判定にも使う）。
